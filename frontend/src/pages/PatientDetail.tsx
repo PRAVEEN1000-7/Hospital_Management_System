@@ -14,6 +14,7 @@ export const PatientDetail: React.FC = () => {
   const [error, setError] = useState('');
   const [photoUploading, setPhotoUploading] = useState(false);
   const [photoSuccess, setPhotoSuccess] = useState('');
+  const [photoError, setPhotoError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -38,16 +39,16 @@ export const PatientDetail: React.FC = () => {
     // Validate client-side
     const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
     if (!allowedTypes.includes(file.type)) {
-      setError('Please select a JPEG, PNG, or WebP image');
+      setPhotoError('Please select a JPEG, PNG, or WebP image');
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      setError('Image must be less than 5MB');
+      setPhotoError('Image must be less than 5MB');
       return;
     }
 
     setPhotoUploading(true);
-    setError('');
+    setPhotoError('');
     setPhotoSuccess('');
     try {
       const updated = await patientService.uploadPhoto(patient.id, file);
@@ -55,7 +56,7 @@ export const PatientDetail: React.FC = () => {
       setPhotoSuccess('Photo uploaded successfully!');
       setTimeout(() => setPhotoSuccess(''), 3000);
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to upload photo');
+      setPhotoError(err.response?.data?.detail || 'Failed to upload photo');
     } finally {
       setPhotoUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -70,7 +71,7 @@ export const PatientDetail: React.FC = () => {
     );
   }
 
-  if (error || !patient) {
+  if (!patient) {
     return (
       <div className="max-w-2xl mx-auto">
         <button
@@ -115,6 +116,12 @@ export const PatientDetail: React.FC = () => {
           <div className="mx-8 mt-4 p-3 bg-green-50 border border-green-200 rounded-lg flex items-center">
             <CheckCircle className="w-4 h-4 text-green-600 mr-2" />
             <p className="text-sm text-green-800">{photoSuccess}</p>
+          </div>
+        )}
+        {photoError && (
+          <div className="mx-8 mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center">
+            <AlertCircle className="w-4 h-4 text-red-600 mr-2" />
+            <p className="text-sm text-red-800">{photoError}</p>
           </div>
         )}
 

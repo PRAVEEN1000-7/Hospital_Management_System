@@ -4,13 +4,14 @@ import { authService } from '../services/authService';
 import {
   UserCircle,
   Mail,
-  Shield,
   Lock,
   Eye,
   EyeOff,
   CheckCircle,
   AlertCircle,
   KeyRound,
+  AtSign,
+  ChevronDown,
 } from 'lucide-react';
 
 const ROLE_LABELS: Record<string, string> = {
@@ -25,10 +26,21 @@ const ROLE_LABELS: Record<string, string> = {
   inventory_manager: 'Inventory Manager',
 };
 
+const ROLE_COLORS: Record<string, string> = {
+  super_admin: 'bg-red-100 text-red-700',
+  admin: 'bg-orange-100 text-orange-700',
+  doctor: 'bg-blue-100 text-blue-700',
+  nurse: 'bg-teal-100 text-teal-700',
+  staff: 'bg-gray-100 text-gray-700',
+  receptionist: 'bg-purple-100 text-purple-700',
+  pharmacist: 'bg-green-100 text-green-700',
+  cashier: 'bg-yellow-100 text-yellow-700',
+  inventory_manager: 'bg-indigo-100 text-indigo-700',
+};
+
 export const Profile: React.FC = () => {
   const { user } = useAuth();
 
-  // Change password state
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [form, setForm] = useState({
     currentPassword: '',
@@ -87,61 +99,64 @@ export const Profile: React.FC = () => {
   };
 
   const inputClass =
-    'w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent pr-12';
+    'w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent pr-12 transition-colors';
 
   if (!user) return null;
+
+  const roleBadgeClass = ROLE_COLORS[user.role] || 'bg-gray-100 text-gray-700';
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <h1 className="text-2xl font-bold text-gray-900">My Profile</h1>
 
       {/* Profile Info Card */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200">
         {/* Header banner */}
-        <div className="h-24 bg-gradient-to-r from-primary-600 to-primary-700" />
+        <div className="relative h-36 bg-gradient-to-br from-primary-600 via-primary-700 to-primary-800 rounded-t-xl overflow-hidden">
+          <div className="absolute top-0 right-0 w-40 h-40 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/4" />
+          <div className="absolute bottom-0 left-1/3 w-24 h-24 bg-white/5 rounded-full translate-y-1/2" />
+          <div className="absolute top-4 left-8 w-12 h-12 bg-white/5 rounded-full" />
+        </div>
 
-        <div className="px-8 pb-8">
-          {/* Avatar + name */}
-          <div className="flex items-end -mt-10 mb-6">
-            <div className="w-20 h-20 rounded-full bg-white border-4 border-white shadow-md flex items-center justify-center">
-              <UserCircle className="w-16 h-16 text-primary-400" />
-            </div>
-            <div className="ml-4 mb-1">
-              <h2 className="text-xl font-bold text-gray-900">{user.full_name}</h2>
-              <span className="inline-block mt-1 px-3 py-0.5 bg-primary-100 text-primary-700 rounded-full text-xs font-medium">
-                {ROLE_LABELS[user.role] || user.role}
-              </span>
-            </div>
+        {/* Avatar + Name — positioned to overlap banner bottom */}
+        <div className="flex flex-col items-center -mt-14 pb-6">
+          <div className="w-24 h-24 rounded-full bg-white border-4 border-white shadow-lg flex items-center justify-center">
+            <UserCircle className="w-16 h-16 text-primary-400" />
           </div>
+          <h2 className="text-xl font-bold text-gray-900 mt-3">{user.full_name}</h2>
+          <span className={`mt-1.5 px-3 py-1 rounded-full text-xs font-semibold ${roleBadgeClass}`}>
+            {ROLE_LABELS[user.role] || user.role}
+          </span>
+        </div>
 
-          {/* Details grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-            <div className="flex items-center space-x-3 p-4 bg-gray-50 rounded-lg">
-              <UserCircle className="w-5 h-5 text-gray-400 flex-shrink-0" />
-              <div>
-                <p className="text-xs text-gray-500">Username</p>
-                <p className="text-sm font-medium text-gray-900">{user.username}</p>
+        {/* Details grid */}
+        <div className="px-8 pb-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="flex items-center space-x-3 p-4 bg-gray-50 rounded-xl border border-gray-100 hover:bg-gray-100 transition-colors">
+              <div className="w-9 h-9 rounded-lg bg-primary-100 flex items-center justify-center flex-shrink-0">
+                <AtSign className="w-4 h-4 text-primary-600" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs text-gray-500 font-medium">Username</p>
+                <p className="text-sm font-semibold text-gray-900 truncate">{user.username}</p>
               </div>
             </div>
-            <div className="flex items-center space-x-3 p-4 bg-gray-50 rounded-lg">
-              <Mail className="w-5 h-5 text-gray-400 flex-shrink-0" />
-              <div>
-                <p className="text-xs text-gray-500">Email</p>
-                <p className="text-sm font-medium text-gray-900">{user.email}</p>
+            <div className="flex items-center space-x-3 p-4 bg-gray-50 rounded-xl border border-gray-100 hover:bg-gray-100 transition-colors">
+              <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                <Mail className="w-4 h-4 text-blue-600" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs text-gray-500 font-medium">Email</p>
+                <p className="text-sm font-semibold text-gray-900 truncate">{user.email}</p>
               </div>
             </div>
-            <div className="flex items-center space-x-3 p-4 bg-gray-50 rounded-lg">
-              <Shield className="w-5 h-5 text-gray-400 flex-shrink-0" />
-              <div>
-                <p className="text-xs text-gray-500">Role</p>
-                <p className="text-sm font-medium text-gray-900">{ROLE_LABELS[user.role] || user.role}</p>
+            <div className="flex items-center space-x-3 p-4 bg-gray-50 rounded-xl border border-gray-100 hover:bg-gray-100 transition-colors">
+              <div className="w-9 h-9 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
+                <Lock className="w-4 h-4 text-green-600" />
               </div>
-            </div>
-            <div className="flex items-center space-x-3 p-4 bg-gray-50 rounded-lg">
-              <Lock className="w-5 h-5 text-gray-400 flex-shrink-0" />
-              <div>
-                <p className="text-xs text-gray-500">Password</p>
-                <p className="text-sm font-medium text-gray-900">••••••••</p>
+              <div className="min-w-0">
+                <p className="text-xs text-gray-500 font-medium">Password</p>
+                <p className="text-sm font-semibold text-gray-900">••••••••</p>
               </div>
             </div>
           </div>
@@ -159,20 +174,17 @@ export const Profile: React.FC = () => {
           className="w-full flex items-center justify-between px-8 py-5 text-left hover:bg-gray-50 transition-colors"
         >
           <div className="flex items-center">
-            <KeyRound className="w-5 h-5 text-primary-600 mr-3" />
+            <div className="w-9 h-9 rounded-lg bg-primary-100 flex items-center justify-center mr-3">
+              <KeyRound className="w-4 h-4 text-primary-600" />
+            </div>
             <div>
               <p className="text-sm font-semibold text-gray-900">Change Password</p>
               <p className="text-xs text-gray-500">Update your account password</p>
             </div>
           </div>
-          <svg
-            className={`w-5 h-5 text-gray-400 transition-transform ${showPasswordForm ? 'rotate-180' : ''}`}
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
+          <ChevronDown
+            className={`w-5 h-5 text-gray-400 transition-transform duration-200 ${showPasswordForm ? 'rotate-180' : ''}`}
+          />
         </button>
 
         {showPasswordForm && (
@@ -239,7 +251,7 @@ export const Profile: React.FC = () => {
                     {passwordRequirements.map((req, idx) => (
                       <div key={idx} className="flex items-center text-xs">
                         <div
-                          className={`w-2.5 h-2.5 rounded-full mr-2 flex-shrink-0 ${
+                          className={`w-2.5 h-2.5 rounded-full mr-2 flex-shrink-0 transition-colors ${
                             req.test(form.newPassword) ? 'bg-green-500' : 'bg-gray-300'
                           }`}
                         />
@@ -292,14 +304,14 @@ export const Profile: React.FC = () => {
                     setError('');
                     setSuccess('');
                   }}
-                  className="px-5 py-2 border border-gray-300 rounded-lg text-gray-700 text-sm hover:bg-gray-50"
+                  className="px-5 py-2.5 border border-gray-300 rounded-lg text-gray-700 text-sm font-medium hover:bg-gray-50 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={loading || !form.currentPassword || !form.newPassword || !form.confirmPassword}
-                  className="px-5 py-2 bg-primary-600 text-white text-sm rounded-lg hover:bg-primary-700 disabled:opacity-50"
+                  className="px-5 py-2.5 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
                 >
                   {loading ? 'Changing...' : 'Update Password'}
                 </button>

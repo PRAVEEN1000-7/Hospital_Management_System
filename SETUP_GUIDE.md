@@ -118,19 +118,17 @@ psql -h localhost -U hospital_admin -d hospital_management -f scripts/003_global
 # 4. Hospital details table
 psql -h localhost -U hospital_admin -d hospital_management -f scripts/004_create_hospital_details.sql
 
-# 5. Add country codes support
-psql -h localhost -U hospital_admin -d hospital_management -f scripts/005_add_hospital_country_codes.sql
 
-# 6. Apply migrations (user profile fields)
+# 5. Apply migrations (user profile fields)
 psql -h localhost -U hospital_admin -d hospital_management -f migrations/001_add_user_profile_fields.sql
 
-# 7. Add employee sequences and indexes
+# 6. Add employee sequences and indexes
 psql -h localhost -U hospital_admin -d hospital_management -f migrations/002_add_employee_sequences_and_indexes.sql
 
-# 8. Backfill employee IDs
+# 7. Backfill employee IDs
 psql -h localhost -U hospital_admin -d hospital_management -f migrations/003_backfill_employee_ids.sql
 
-# 9. Seed initial data
+# 8. Seed initial data
 psql -h localhost -U hospital_admin -d hospital_management -f seeds/seed_data.sql
 ```
 

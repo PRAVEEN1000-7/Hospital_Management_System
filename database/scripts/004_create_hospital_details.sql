@@ -1,4 +1,5 @@
 -- Migration Script: Hospital Details Module (Task 4)
+-- Merged: Includes country code support for international phone numbers
 -- Run this to add hospital configuration table
 
 -----------------------------------------------------
@@ -18,11 +19,15 @@ CREATE TABLE IF NOT EXISTS hospital_details (
     
     -- ============================================
     -- CONTACT INFORMATION (Required)
+    -- Country codes stored separately from phone numbers
     -- ============================================
+    primary_phone_country_code VARCHAR(5) NOT NULL DEFAULT '+91',
     primary_phone VARCHAR(20) NOT NULL,
+    secondary_phone_country_code VARCHAR(5),
     secondary_phone VARCHAR(20),
     email VARCHAR(255) NOT NULL,
     website VARCHAR(255),
+    emergency_hotline_country_code VARCHAR(5),
     emergency_hotline VARCHAR(20),
     
     -- ============================================
@@ -32,7 +37,7 @@ CREATE TABLE IF NOT EXISTS hospital_details (
     address_line2 TEXT,
     city VARCHAR(100) NOT NULL,
     state VARCHAR(100) NOT NULL,
-    country VARCHAR(100) NOT NULL DEFAULT 'India',
+    country VARCHAR(100) NOT NULL,
     pin_code VARCHAR(10) NOT NULL,
     
     -- ============================================
@@ -72,17 +77,49 @@ CREATE TABLE IF NOT EXISTS hospital_details (
     -- ============================================
     -- CONSTRAINTS
     -- ============================================
-    CONSTRAINT chk_hospital_phone_format CHECK (primary_phone ~ '^\+?[0-9\s\-\(\)]{7,20}$'),
+    -- Phone: digits only (country code stored separately)
+    CONSTRAINT chk_hospital_phone_format CHECK (primary_phone ~ '^\d{4,15}$'),
     CONSTRAINT chk_hospital_email_format CHECK (email ~ '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'),
-    CONSTRAINT chk_gst_format CHECK (gst_number ~ '^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$' OR gst_number IS NULL),
-    CONSTRAINT chk_pan_format CHECK (pan_number ~ '^[A-Z]{5}[0-9]{4}[A-Z]{1}$' OR pan_number IS NULL),
+    
+    -- Country code format: +N to +NNNN
+    CONSTRAINT chk_primary_phone_country_code CHECK (primary_phone_country_code ~ '^\+[0-9]{1,4}$'),
+    CONSTRAINT chk_secondary_phone_country_code CHECK (secondary_phone_country_code ~ '^\+[0-9]{1,4}$' OR secondary_phone_country_code IS NULL),
+    CONSTRAINT chk_emergency_hotline_country_code CHECK (emergency_hotline_country_code ~ '^\+[0-9]{1,4}$' OR emergency_hotline_country_code IS NULL),
+    
+    -- GST/PAN: validated only for Indian hospitals, NULL or empty always allowed
+    CONSTRAINT chk_gst_format CHECK (
+        gst_number IS NULL 
+        OR gst_number = '' 
+        OR (country = 'India' AND gst_number ~ '^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$')
+        OR country != 'India'
+    ),
+    CONSTRAINT chk_pan_format CHECK (
+        pan_number IS NULL 
+        OR pan_number = '' 
+        OR (country = 'India' AND pan_number ~ '^[A-Z]{5}[0-9]{4}[A-Z]{1}$')
+        OR country != 'India'
+    ),
+    
+    -- Working hours: end must be after start
     CONSTRAINT chk_hospital_working_hours CHECK (working_hours_end > working_hours_start OR working_hours_end IS NULL OR working_hours_start IS NULL)
 );
 
--- Create indexes
+-- ============================================
+-- INDEXES
+-- ============================================
 CREATE INDEX IF NOT EXISTS idx_hospital_name ON hospital_details(hospital_name);
 CREATE INDEX IF NOT EXISTS idx_hospital_code ON hospital_details(hospital_code);
 CREATE INDEX IF NOT EXISTS idx_hospital_configured ON hospital_details(is_configured);
+CREATE INDEX IF NOT EXISTS idx_hospital_country ON hospital_details(country);
+
+-- ============================================
+-- COLUMN COMMENTS
+-- ============================================
+COMMENT ON COLUMN hospital_details.primary_phone_country_code IS 'Country calling code for primary phone (e.g., +1, +91, +44)';
+COMMENT ON COLUMN hospital_details.secondary_phone_country_code IS 'Country calling code for secondary phone';
+COMMENT ON COLUMN hospital_details.emergency_hotline_country_code IS 'Country calling code for emergency hotline';
+COMMENT ON CONSTRAINT chk_gst_format ON hospital_details IS 'GST format validation - applies only to Indian hospitals';
+COMMENT ON CONSTRAINT chk_pan_format ON hospital_details IS 'PAN format validation - applies only to Indian hospitals';
 
 -----------------------------------------------------
 -- 2. Trigger for updated_at
@@ -126,7 +163,8 @@ CREATE TRIGGER audit_hospital_details
 DO $$
 BEGIN
     RAISE NOTICE 'Hospital Details table created successfully!';
-    RAISE NOTICE 'Table: hospital_details';
+    RAISE NOTICE 'Table: hospital_details (with country code support)';
     RAISE NOTICE 'Constraints: Only ONE hospital record allowed (no delete from app)';
+    RAISE NOTICE 'Country codes: primary_phone_country_code, secondary_phone_country_code, emergency_hotline_country_code';
     RAISE NOTICE 'Next step: Use API to create hospital record via super_admin';
 END $$;

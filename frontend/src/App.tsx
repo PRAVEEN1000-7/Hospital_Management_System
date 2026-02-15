@@ -1,0 +1,50 @@
+import React from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider } from './contexts/AuthContext';
+import ProtectedRoute from './components/common/ProtectedRoute';
+import Layout from './components/common/Layout';
+import Login from './pages/Login';
+import Dashboard from './pages/Dashboard';
+import Register from './pages/Register';
+import PatientList from './pages/PatientList';
+import PatientDetail from './pages/PatientDetail';
+import PatientIdCard from './pages/PatientIdCard';
+import UserManagement from './pages/UserManagement';
+import Profile from './pages/Profile';
+
+const App: React.FC = () => {
+  return (
+    <BrowserRouter>
+      <AuthProvider>
+        <Routes>
+          {/* Public */}
+          <Route path="/login" element={<Login />} />
+
+          {/* Protected */}
+          <Route
+            element={
+              <ProtectedRoute>
+                <Layout />
+              </ProtectedRoute>
+            }
+          >
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/patients" element={<PatientList />} />
+            <Route path="/patients/:id" element={<PatientDetail />} />
+            <Route path="/patients/:id/id-card" element={<PatientIdCard />} />
+            <Route path="/user-management" element={<UserManagement />} />
+            <Route path="/profile" element={<Profile />} />
+          </Route>
+
+          {/* Redirects */}
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/change-password" element={<Navigate to="/profile" replace />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
+      </AuthProvider>
+    </BrowserRouter>
+  );
+};
+
+export default App;

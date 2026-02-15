@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+  <title>HMS Design System Foundations</title>
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;display=swap"
+    rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+    rel="stylesheet" />
+  <script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "primary": "#137fec",
+            "background-light": "#f6f7f8",
+            "background-dark": "#101922",
+          },
+          fontFamily: {
+            "display": ["Inter", "sans-serif"]
+          },
+          borderRadius: { "DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px" },
+        },
+      },
+    }
+  </script>
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+
+    .sidebar-item-active {
+      background-color: rgba(19, 127, 236, 0.1);
+      border-left: 4px solid #137fec;
+      color: #137fec;
+    }
+  </style>
+</head>
+
+<body class="bg-background-light dark:bg-background-dark text-slate-800 dark:text-slate-200 antialiased font-display">
+  <div class="flex min-h-screen">
+    <!-- Sidebar -->
+    <aside
+      class="w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 fixed h-full overflow-y-auto">
+      <div class="p-6">
+        <div class="flex items-center gap-2 mb-8">
+          <div class="w-8 h-8 bg-primary rounded flex items-center justify-center">
+            <span class="material-icons text-white text-sm">health_and_safety</span>
+          </div>
+          <span class="font-bold text-lg tracking-tight">HMS Core</span>
+        </div>
+        <nav class="space-y-8">
+          <div>
+            <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4 px-4">Foundations</h3>
+            <ul class="space-y-1">
+              <li><a class="sidebar-item-active flex items-center px-4 py-2 text-sm font-medium transition-colors"
+                  href="#colors">Colors</a></li>
+              <li><a
+                  class="flex items-center px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                  href="#typography">Typography</a></li>
+              <li><a
+                  class="flex items-center px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                  href="#spacing">Spacing &amp; Grid</a></li>
+              <li><a
+                  class="flex items-center px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                  href="#iconography">Iconography</a></li>
+            </ul>
+          </div>
+          <div>
+            <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4 px-4">Components</h3>
+            <ul class="space-y-1">
+              <li><a
+                  class="flex items-center px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                  href="#">Buttons</a></li>
+              <li><a
+                  class="flex items-center px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                  href="#">Inputs &amp; Forms</a></li>
+              <li><a
+                  class="flex items-center px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                  href="#">Cards</a></li>
+              <li><a
+                  class="flex items-center px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                  href="#">Modals</a></li>
+            </ul>
+          </div>
+        </nav>
+      </div>
+    </aside>
+    <!-- Main Content -->
+    <main class="flex-1 ml-64 p-10 max-w-6xl">
+      <!-- Header Section -->
+      <header class="flex justify-between items-center mb-12">
+        <div>
+          <nav class="flex text-sm text-slate-400 mb-2">
+            <span>Design System</span>
+            <span class="mx-2">/</span>
+            <span class="text-slate-600">Foundations</span>
+          </nav>
+          <h1 class="text-3xl font-bold text-slate-900 dark:text-white">Style Guide Foundations</h1>
+        </div>
+        <div class="relative">
+          <span class="absolute inset-y-0 left-0 flex items-center pl-3">
+            <span class="material-icons text-slate-400 text-sm">search</span>
+          </span>
+          <input
+            class="pl-10 pr-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all w-64"
+            placeholder="Search tokens..." type="text" />
+        </div>
+      </header>
+      <!-- Colors Section -->
+      <section class="mb-16" id="colors">
+        <div class="flex items-center gap-3 mb-6">
+          <span class="material-icons text-primary">palette</span>
+          <h2 class="text-2xl font-semibold">Color Palette</h2>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <!-- Medical Blue -->
+          <div
+            class="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm group">
+            <div
+              class="h-24 bg-primary rounded-lg mb-4 flex items-end justify-end p-2 opacity-100 hover:opacity-90 cursor-pointer">
+              <span
+                class="material-icons text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity">content_copy</span>
+            </div>
+            <h4 class="font-semibold text-sm mb-1">Medical Blue (Primary)</h4>
+            <code class="text-xs text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded">#137fec</code>
+          </div>
+          <!-- Success Green -->
+          <div
+            class="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm group">
+            <div
+              class="h-24 bg-[#10b981] rounded-lg mb-4 flex items-end justify-end p-2 opacity-100 hover:opacity-90 cursor-pointer">
+              <span
+                class="material-icons text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity">content_copy</span>
+            </div>
+            <h4 class="font-semibold text-sm mb-1">Success Green</h4>
+            <code class="text-xs text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded">#10b981</code>
+          </div>
+          <!-- Danger Red -->
+          <div
+            class="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm group">
+            <div
+              class="h-24 bg-[#ef4444] rounded-lg mb-4 flex items-end justify-end p-2 opacity-100 hover:opacity-90 cursor-pointer">
+              <span
+                class="material-icons text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity">content_copy</span>
+            </div>
+            <h4 class="font-semibold text-sm mb-1">Danger Red</h4>
+            <code class="text-xs text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded">#ef4444</code>
+          </div>
+          <!-- Warning Orange -->
+          <div
+            class="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm group">
+            <div
+              class="h-24 bg-[#f59e0b] rounded-lg mb-4 flex items-end justify-end p-2 opacity-100 hover:opacity-90 cursor-pointer">
+              <span
+                class="material-icons text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity">content_copy</span>
+            </div>
+            <h4 class="font-semibold text-sm mb-1">Warning Amber</h4>
+            <code class="text-xs text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded">#f59e0b</code>
+          </div>
+        </div>
+        <div class="mt-8 grid grid-cols-6 gap-2">
+          <div
+            class="h-12 bg-slate-50 dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700 flex items-center justify-center text-[10px] text-slate-400">
+            50</div>
+          <div
+            class="h-12 bg-slate-100 dark:bg-slate-700 rounded border border-slate-200 dark:border-slate-600 flex items-center justify-center text-[10px] text-slate-400">
+            100</div>
+          <div
+            class="h-12 bg-slate-200 dark:bg-slate-600 rounded border border-slate-200 dark:border-slate-500 flex items-center justify-center text-[10px] text-slate-400">
+            200</div>
+          <div
+            class="h-12 bg-slate-400 dark:bg-slate-500 rounded border border-slate-200 dark:border-slate-400 flex items-center justify-center text-[10px] text-white">
+            400</div>
+          <div
+            class="h-12 bg-slate-600 dark:bg-slate-400 rounded border border-slate-200 dark:border-slate-300 flex items-center justify-center text-[10px] text-white">
+            600</div>
+          <div
+            class="h-12 bg-slate-900 dark:bg-slate-200 rounded border border-slate-200 dark:border-slate-100 flex items-center justify-center text-[10px] text-white dark:text-slate-900">
+            900</div>
+        </div>
+      </section>
+      <!-- Typography Section -->
+      <section class="mb-16" id="typography">
+        <div class="flex items-center gap-3 mb-6">
+          <span class="material-icons text-primary">text_fields</span>
+          <h2 class="text-2xl font-semibold">Typography</h2>
+        </div>
+        <div
+          class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
+          <table class="w-full text-left border-collapse">
+            <thead class="bg-slate-50 dark:bg-slate-800/50">
+              <tr>
+                <th class="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Style</th>
+                <th class="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Weight</th>
+                <th class="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Size/Line Height
+                </th>
+                <th class="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Preview</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+              <tr>
+                <td class="px-6 py-4 text-sm font-medium">H1 - Heading</td>
+                <td class="px-6 py-4 text-sm text-slate-500">Bold (700)</td>
+                <td class="px-6 py-4 text-sm text-slate-500">32px / 40px</td>
+                <td class="px-6 py-4"><span class="text-3xl font-bold">The quick brown fox</span></td>
+              </tr>
+              <tr>
+                <td class="px-6 py-4 text-sm font-medium">H2 - Heading</td>
+                <td class="px-6 py-4 text-sm text-slate-500">Semibold (600)</td>
+                <td class="px-6 py-4 text-sm text-slate-500">24px / 32px</td>
+                <td class="px-6 py-4"><span class="text-2xl font-semibold">The quick brown fox</span></td>
+              </tr>
+              <tr>
+                <td class="px-6 py-4 text-sm font-medium">H3 - Heading</td>
+                <td class="px-6 py-4 text-sm text-slate-500">Semibold (600)</td>
+                <td class="px-6 py-4 text-sm text-slate-500">20px / 28px</td>
+                <td class="px-6 py-4"><span class="text-xl font-semibold">The quick brown fox</span></td>
+              </tr>
+              <tr>
+                <td class="px-6 py-4 text-sm font-medium">Body - Large</td>
+                <td class="px-6 py-4 text-sm text-slate-500">Regular (400)</td>
+                <td class="px-6 py-4 text-sm text-slate-500">16px / 24px</td>
+                <td class="px-6 py-4"><span class="text-base">The quick brown fox jumps over the lazy dog.</span></td>
+              </tr>
+              <tr>
+                <td class="px-6 py-4 text-sm font-medium">Body - Default</td>
+                <td class="px-6 py-4 text-sm text-slate-500">Regular (400)</td>
+                <td class="px-6 py-4 text-sm text-slate-500">14px / 20px</td>
+                <td class="px-6 py-4"><span class="text-sm">The quick brown fox jumps over the lazy dog.</span></td>
+              </tr>
+              <tr>
+                <td class="px-6 py-4 text-sm font-medium">Caption</td>
+                <td class="px-6 py-4 text-sm text-slate-500">Medium (500)</td>
+                <td class="px-6 py-4 text-sm text-slate-500">12px / 16px</td>
+                <td class="px-6 py-4"><span class="text-xs font-medium uppercase text-slate-500">The quick brown
+                    fox</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <!-- Spacing Section -->
+      <section class="mb-16" id="spacing">
+        <div class="flex items-center gap-3 mb-6">
+          <span class="material-icons text-primary">straighten</span>
+          <h2 class="text-2xl font-semibold">Spacing &amp; Grid (8px Base)</h2>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div
+            class="bg-white dark:bg-slate-900 p-8 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+            <h3 class="text-sm font-semibold mb-6 text-slate-400 uppercase tracking-widest">Spacing Scale</h3>
+            <div class="space-y-4">
+              <div class="flex items-center gap-4">
+                <div class="w-1 h-1 bg-primary/20 rounded"></div>
+                <span class="text-xs font-mono w-16 text-slate-400">4px</span>
+                <div class="flex-1 h-1 bg-primary/10 rounded"></div>
+              </div>
+              <div class="flex items-center gap-4">
+                <div class="w-2 h-2 bg-primary/30 rounded"></div>
+                <span class="text-xs font-mono w-16 text-slate-400">8px</span>
+                <div class="flex-1 h-2 bg-primary/20 rounded"></div>
+              </div>
+              <div class="flex items-center gap-4">
+                <div class="w-4 h-4 bg-primary/40 rounded"></div>
+                <span class="text-xs font-mono w-16 text-slate-400">16px</span>
+                <div class="flex-1 h-4 bg-primary/30 rounded"></div>
+              </div>
+              <div class="flex items-center gap-4">
+                <div class="w-6 h-6 bg-primary/50 rounded"></div>
+                <span class="text-xs font-mono w-16 text-slate-400">24px</span>
+                <div class="flex-1 h-6 bg-primary/40 rounded"></div>
+              </div>
+              <div class="flex items-center gap-4">
+                <div class="w-8 h-8 bg-primary/60 rounded"></div>
+                <span class="text-xs font-mono w-16 text-slate-400">32px</span>
+                <div class="flex-1 h-8 bg-primary/50 rounded"></div>
+              </div>
+              <div class="flex items-center gap-4">
+                <div class="w-12 h-12 bg-primary/80 rounded"></div>
+                <span class="text-xs font-mono w-16 text-slate-400">48px</span>
+                <div class="flex-1 h-12 bg-primary/60 rounded"></div>
+              </div>
+            </div>
+          </div>
+          <div
+            class="bg-white dark:bg-slate-900 p-8 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden">
+            <h3 class="text-sm font-semibold mb-6 text-slate-400 uppercase tracking-widest">Grid Logic Visualized</h3>
+            <div
+              class="relative w-full aspect-video bg-slate-50 dark:bg-slate-800 rounded-lg border border-dashed border-slate-200 dark:border-slate-700 p-4">
+              <!-- Abstract grid representation -->
+              <div class="grid grid-cols-4 gap-4 h-full">
+                <div class="bg-primary/5 border border-primary/20 rounded-md flex items-center justify-center">
+                  <span class="text-[10px] text-primary/60">Col 1</span>
+                </div>
+                <div class="bg-primary/5 border border-primary/20 rounded-md flex items-center justify-center">
+                  <span class="text-[10px] text-primary/60">Col 2</span>
+                </div>
+                <div class="bg-primary/5 border border-primary/20 rounded-md flex items-center justify-center">
+                  <span class="text-[10px] text-primary/60">Col 3</span>
+                </div>
+                <div class="bg-primary/5 border border-primary/20 rounded-md flex items-center justify-center">
+                  <span class="text-[10px] text-primary/60">Col 4</span>
+                </div>
+              </div>
+              <!-- Measurement markers -->
+              <div
+                class="absolute top-1/2 left-0 right-0 -translate-y-1/2 flex justify-between px-2 items-center pointer-events-none">
+                <div class="w-full h-[1px] bg-red-400/30 relative">
+                  <span class="absolute -top-5 left-1/2 -translate-x-1/2 text-[10px] text-red-400 font-mono">16px
+                    Gutter</span>
+                </div>
+              </div>
+            </div>
+            <p class="mt-4 text-xs text-slate-500 leading-relaxed">
+              We utilize a strict 8px soft grid. All components, layouts, and spacing between elements must be a
+              multiple of 8 (e.g., 8, 16, 24, 32, 48, 64). For fine-tuning icons or labels, a 4px half-step is
+              permitted.
+            </p>
+          </div>
+        </div>
+      </section>
+      <!-- Components Preview Stub -->
+      <section class="mb-16 opacity-60" id="components">
+        <div class="flex items-center gap-3 mb-6">
+          <span class="material-icons text-slate-400">widgets</span>
+          <h2 class="text-2xl font-semibold text-slate-400">Components Preview</h2>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div
+            class="p-6 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 border-dashed flex flex-col items-center justify-center gap-4 text-slate-400">
+            <button class="bg-primary text-white px-6 py-2 rounded-lg text-sm font-medium">Prescription Button</button>
+            <span class="text-xs">Primary Action State</span>
+          </div>
+          <div
+            class="p-6 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 border-dashed flex flex-col items-center justify-center gap-4 text-slate-400">
+            <div
+              class="w-full h-10 border border-slate-200 dark:border-slate-800 rounded-lg bg-slate-50 dark:bg-slate-800 flex items-center px-3">
+              <span class="text-xs">Patient Name...</span>
+            </div>
+            <span class="text-xs">Form Input State</span>
+          </div>
+          <div
+            class="p-6 border border-slate-200 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 border-dashed flex flex-col items-center justify-center gap-4 text-slate-400">
+            <div class="flex gap-2">
+              <div class="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700"></div>
+              <div class="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700"></div>
+              <div class="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700"></div>
+            </div>
+            <span class="text-xs">Avatar Group</span>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <!-- Quick Footer/Status -->
+  <footer
+    class="ml-64 px-10 py-6 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex justify-between items-center">
+    <div class="flex items-center gap-4">
+      <span class="flex items-center gap-1 text-xs text-green-500 font-medium">
+        <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+        System Live
+      </span>
+      <span class="text-xs text-slate-400">v2.4.0 Stable</span>
+    </div>
+    <div class="flex items-center gap-6">
+      <a class="text-xs text-slate-500 hover:text-primary transition-colors" href="#">Documentation</a>
+      <a class="text-xs text-slate-500 hover:text-primary transition-colors" href="#">Github Repo</a>
+      <a class="text-xs text-slate-500 hover:text-primary transition-colors" href="#">Figma File</a>
+    </div>
+  </footer>
+</body>
+
+</html>

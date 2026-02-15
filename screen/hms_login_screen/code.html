@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>HMS Provider Portal | Secure Login</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#137fec",
+                        "background-light": "#f6f7f8",
+                        "background-dark": "#101922",
+                    },
+                    fontFamily: {
+                        "display": ["Manrope"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                },
+            },
+        }
+    </script>
+</head>
+<body class="font-display bg-background-light dark:bg-background-dark min-h-screen flex items-center justify-center">
+<main class="w-full min-h-screen flex flex-col md:flex-row overflow-hidden">
+<section class="hidden md:flex md:w-7/12 lg:w-3/5 relative bg-primary items-center justify-center overflow-hidden">
+<div class="absolute inset-0 z-0">
+<img alt="Modern Hospital Corridor" class="w-full h-full object-cover opacity-40 mix-blend-overlay" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAY9XKOewOnGBuqSJLua1JF4J7T33NLnVXWK4nfzlXr7IUq_0Ks5kuB8j3G2h_BUFjfpUEXxhnyq17cBECdpPVGbO4VAiOf-Ez-dVZd0Sw-_77IFOtfXrY8oKxkiX-t4KIXxlew93ZkKqsFmrnoAviAXgwiIqec7BSykP3KYxHpTi_kifipp2l8yQQmdk_Tts1Cyvx__cudqG9yME34Y0GmlKbSglNjnbeZ-N80iHZC0z4_VRt0tUB2tqQTLRZPCFaka5V3PdAQyj4"/>
+</div>
+<div class="relative z-10 p-12 lg:p-24 text-white max-w-2xl">
+<div class="mb-8 flex items-center gap-3">
+<div class="bg-white p-2 rounded-lg">
+<span class="material-icons text-primary text-3xl">local_hospital</span>
+</div>
+<span class="text-3xl font-bold tracking-tight">HMS Global</span>
+</div>
+<h1 class="text-4xl lg:text-5xl font-extrabold leading-tight mb-6">
+                Empowering Healthcare Through Intelligence.
+            </h1>
+<p class="text-lg lg:text-xl text-white/80 leading-relaxed mb-10">
+                Access the next generation of patient care coordination and clinical management systems. Streamlined, secure, and built for modern providers.
+            </p>
+<div class="grid grid-cols-2 gap-6 pt-10 border-t border-white/20">
+<div class="flex items-center gap-3">
+<span class="material-icons text-white/70">verified_user</span>
+<span class="text-sm font-medium">HIPAA Compliant</span>
+</div>
+<div class="flex items-center gap-3">
+<span class="material-icons text-white/70">lock</span>
+<span class="text-sm font-medium">256-bit Encryption</span>
+</div>
+</div>
+</div>
+<div class="absolute bottom-[-10%] right-[-5%] w-96 h-96 bg-white/10 rounded-full blur-3xl"></div>
+<div class="absolute top-[-10%] left-[-5%] w-64 h-64 bg-primary/30 rounded-full blur-3xl"></div>
+</section>
+<section class="flex-1 bg-white dark:bg-background-dark flex flex-col justify-between p-8 md:p-12 lg:p-20">
+<div class="md:hidden flex items-center gap-2 mb-12">
+<span class="material-icons text-primary text-2xl">local_hospital</span>
+<span class="text-xl font-bold text-slate-800 dark:text-white">HMS Global</span>
+</div>
+<div class="w-full max-w-md mx-auto">
+<div class="mb-10">
+<h2 class="text-3xl font-bold text-slate-900 dark:text-white mb-2">Welcome Back</h2>
+<p class="text-slate-500 dark:text-slate-400">Enter your credentials to access the provider portal.</p>
+</div>
+<form class="space-y-6">
+<div>
+<label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2" for="username">Email or Username</label>
+<div class="relative group">
+<div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+<span class="material-icons text-slate-400 group-focus-within:text-primary transition-colors text-xl">alternate_email</span>
+</div>
+<input class="block w-full pl-10 pr-3 py-3 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all" id="username" name="username" placeholder="name@hospital.com" type="text"/>
+</div>
+</div>
+<div>
+<div class="flex items-center justify-between mb-2">
+<label class="block text-sm font-semibold text-slate-700 dark:text-slate-300" for="password">Password</label>
+<a class="text-sm font-semibold text-primary hover:underline transition-all" href="#">Forgot Password?</a>
+</div>
+<div class="relative group">
+<div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+<span class="material-icons text-slate-400 group-focus-within:text-primary transition-colors text-xl">lock_outline</span>
+</div>
+<input class="block w-full pl-10 pr-10 py-3 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all" id="password" name="password" placeholder="••••••••" type="password"/>
+<button class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600" type="button">
+<span class="material-icons text-xl">visibility_off</span>
+</button>
+</div>
+</div>
+<div class="flex items-center">
+<input class="h-4 w-4 text-primary focus:ring-primary border-slate-300 rounded" id="remember-me" name="remember-me" type="checkbox"/>
+<label class="ml-2 block text-sm text-slate-600 dark:text-slate-400" for="remember-me">Remember this device</label>
+</div>
+<button class="w-full bg-primary hover:bg-primary/90 text-white font-bold py-3.5 rounded-lg shadow-lg shadow-primary/20 transition-all flex items-center justify-center gap-2" type="submit">
+<span>Sign In to Dashboard</span>
+<span class="material-icons text-lg">arrow_forward</span>
+</button>
+</form>
+<div class="mt-8 pt-8 border-t border-slate-100 dark:border-slate-800 flex items-center justify-center gap-2 text-slate-400">
+<span class="material-icons text-sm">shield</span>
+<span class="text-xs font-medium uppercase tracking-wider">End-to-End Secure Session</span>
+</div>
+</div>
+<footer class="mt-12 text-center text-xs text-slate-400 space-x-4">
+<a class="hover:text-primary transition-colors" href="#">Privacy Policy</a>
+<span class="text-slate-300">|</span>
+<a class="hover:text-primary transition-colors" href="#">Terms of Service</a>
+<span class="text-slate-300">|</span>
+<a class="hover:text-primary transition-colors" href="#">Contact Support</a>
+</footer>
+</section>
+</main>
+
+</body></html>

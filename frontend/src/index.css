@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply font-display text-slate-700 bg-background-light;
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  * {
+    @apply border-slate-200;
+  }
+}
+
+@layer components {
+  .input-field {
+    @apply w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm
+      focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary
+      disabled:bg-slate-100 disabled:cursor-not-allowed transition-all;
+  }
+
+  .sidebar-item-active {
+    @apply bg-blue-50 text-primary border-r-4 border-primary font-semibold;
+  }
+}
+
+/* Custom Scrollbar */
+.custom-scrollbar::-webkit-scrollbar { width: 4px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+
+/* Password Strength Meter */
+.password-strength-meter {
+  height: 4px;
+  border-radius: 2px;
+  background: #e2e8f0;
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-area,
+  .print-area * {
+    visibility: visible;
+  }
+  .print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+  }
+}

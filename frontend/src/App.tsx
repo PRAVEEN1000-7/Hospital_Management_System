@@ -10,6 +10,7 @@ import PatientList from './pages/PatientList';
 import PatientDetail from './pages/PatientDetail';
 import PatientIdCard from './pages/PatientIdCard';
 import UserManagement from './pages/UserManagement';
+import StaffDirectory from './pages/StaffDirectory';
 import Profile from './pages/Profile';
 
 const App: React.FC = () => {
@@ -33,6 +34,7 @@ const App: React.FC = () => {
             <Route path="/patients" element={<PatientList />} />
             <Route path="/patients/:id" element={<PatientDetail />} />
             <Route path="/patients/:id/id-card" element={<PatientIdCard />} />
+            <Route path="/staff" element={<StaffDirectory />} />
             <Route path="/user-management" element={<UserManagement />} />
             <Route path="/profile" element={<Profile />} />
           </Route>

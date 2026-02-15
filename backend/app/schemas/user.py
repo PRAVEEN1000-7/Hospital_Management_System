@@ -14,8 +14,13 @@ class UserCreate(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
     email: EmailStr
     password: str = Field(..., min_length=8, max_length=128)
-    full_name: str = Field(..., min_length=1, max_length=255)
+    first_name: str = Field(..., min_length=1, max_length=100)
+    last_name: str = Field(..., min_length=1, max_length=100)
+    full_name: Optional[str] = Field(None, max_length=255)  # Auto-generated if not provided
     role: str = Field(default="staff")
+    employee_id: Optional[str] = Field(None, max_length=50)
+    department: Optional[str] = Field(None, max_length=100)
+    phone_number: Optional[str] = Field(None, max_length=20)
 
     @field_validator("username")
     @classmethod
@@ -47,8 +52,13 @@ class UserCreate(BaseModel):
 
 class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
+    first_name: Optional[str] = Field(None, min_length=1, max_length=100)
+    last_name: Optional[str] = Field(None, min_length=1, max_length=100)
     full_name: Optional[str] = Field(None, min_length=1, max_length=255)
     role: Optional[str] = None
+    employee_id: Optional[str] = Field(None, max_length=50)
+    department: Optional[str] = Field(None, max_length=100)
+    phone_number: Optional[str] = Field(None, max_length=20)
     is_active: Optional[bool] = None
 
     @field_validator("role")
@@ -80,8 +90,14 @@ class UserResponse(BaseModel):
     id: int
     username: str
     email: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
     full_name: str
     role: str
+    employee_id: Optional[str] = None
+    department: Optional[str] = None
+    phone_number: Optional[str] = None
+    photo_url: Optional[str] = None
     is_active: bool
     last_login: Optional[datetime] = None
     created_at: datetime

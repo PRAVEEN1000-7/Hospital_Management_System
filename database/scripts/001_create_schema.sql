@@ -21,6 +21,12 @@ CREATE TABLE IF NOT EXISTS users (
     last_login TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    first_name VARCHAR(100),
+    last_name VARCHAR(100),
+    employee_id VARCHAR(50) UNIQUE,
+    department VARCHAR(100),
+    phone_number VARCHAR(20),
+    photo_url VARCHAR(500),
     
     CONSTRAINT chk_role CHECK (role IN ('super_admin', 'admin', 'doctor', 'nurse', 'staff', 'receptionist', 'pharmacist', 'cashier', 'inventory_manager'))
 );
@@ -28,6 +34,22 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+CREATE INDEX IF NOT EXISTS idx_users_employee_id ON users(employee_id);
+CREATE INDEX IF NOT EXISTS idx_users_role_active ON users(role, is_active) WHERE is_active = TRUE;
+CREATE INDEX IF NOT EXISTS idx_users_department_role ON users(department, role);
+CREATE INDEX IF NOT EXISTS idx_users_created_at_desc ON users(created_at DESC);
+
+-----------------------------------------------------
+-- 1a. Employee ID Sequences
+-----------------------------------------------------
+CREATE SEQUENCE IF NOT EXISTS seq_employee_doctor START WITH 1 INCREMENT BY 1;
+CREATE SEQUENCE IF NOT EXISTS seq_employee_nurse START WITH 1 INCREMENT BY 1;
+CREATE SEQUENCE IF NOT EXISTS seq_employee_admin START WITH 1 INCREMENT BY 1;
+CREATE SEQUENCE IF NOT EXISTS seq_employee_pharmacist START WITH 1 INCREMENT BY 1;
+CREATE SEQUENCE IF NOT EXISTS seq_employee_receptionist START WITH 1 INCREMENT BY 1;
+CREATE SEQUENCE IF NOT EXISTS seq_employee_cashier START WITH 1 INCREMENT BY 1;
+CREATE SEQUENCE IF NOT EXISTS seq_employee_inventory_manager START WITH 1 INCREMENT BY 1;
+CREATE SEQUENCE IF NOT EXISTS seq_employee_staff START WITH 1 INCREMENT BY 1;
 
 -----------------------------------------------------
 -- 2. Patients Table

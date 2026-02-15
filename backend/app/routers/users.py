@@ -83,13 +83,29 @@ async def create_new_user(
                 detail="Email already exists",
             )
 
+        # Check employee_id uniqueness if provided
+        if user_data.employee_id:
+            existing_emp_id = (
+                db.query(User).filter(User.employee_id == user_data.employee_id).first()
+            )
+            if existing_emp_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Employee ID already exists",
+                )
+
         user = create_user(
             db=db,
             username=user_data.username.lower(),
             email=user_data.email,
             password=user_data.password,
+            first_name=user_data.first_name,
+            last_name=user_data.last_name,
             full_name=user_data.full_name,
             role=user_data.role,
+            employee_id=user_data.employee_id,
+            department=user_data.department,
+            phone_number=user_data.phone_number,
         )
 
         # Send password via email if requested
@@ -98,7 +114,7 @@ async def create_new_user(
                 to_email=user_data.email,
                 username=user_data.username.lower(),
                 password=user_data.password,
-                full_name=user_data.full_name,
+                full_name=user.full_name,
             )
 
         return UserResponse.model_validate(user)

@@ -31,13 +31,17 @@ ALTER TABLE patients ADD CONSTRAINT chk_pin_code CHECK (
 -- 4. Insert default Super Admin user
 --    Password: <set your own>  (bcrypt hash with rounds=12)
 -----------------------------------------------------
-INSERT INTO users (username, email, password_hash, full_name, role)
+INSERT INTO users (username, email, password_hash, full_name, first_name, last_name, role, employee_id, department)
 VALUES (
     'superadmin',
     'superadmin@hms.com',
     '$2b$12$eXcJvdukvD3awfuhvmX0zuCdjxUhryfOw8rKiFWrX0bTYU8D7da.y',
     'Super Administrator',
-    'super_admin'
+    'Super',
+    'Administrator',
+    'super_admin',
+    'EMP-2024-001',
+    'Administration'
 )
 ON CONFLICT (username) DO UPDATE SET role = 'super_admin';
 

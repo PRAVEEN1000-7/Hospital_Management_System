@@ -41,16 +41,69 @@
 }
 
 @media print {
+  @page {
+    size: A4 landscape;
+    margin: 0;
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+  }
+
   body * {
-    visibility: hidden;
+    visibility: hidden !important;
   }
-  .print-area,
-  .print-area * {
-    visibility: visible;
-  }
+
   .print-area {
-    position: absolute;
-    left: 0;
-    top: 0;
+    visibility: visible !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .print-area * {
+    visibility: visible !important;
+  }
+
+  .print-fold-line {
+    visibility: visible !important;
+  }
+
+  /* Container for print layout */
+  .print-area:first-of-type {
+    position: fixed !important;
+    left: 50% !important;
+    top: 25mm !important;
+    transform: translateX(-50%) !important;
+    margin: 0 !important;
+    z-index: 1000;
+  }
+
+  /* Fold line */
+  .print-fold-line {
+    position: fixed !important;
+    left: 50% !important;
+    top: 95mm !important;
+    transform: translateX(-50%) !important;
+    text-align: center !important;
+    font-size: 11pt !important;
+    color: #888 !important;
+    width: 440px !important;
+    background: white !important;
+    padding: 4px 0 !important;
+    z-index: 1001;
+  }
+
+  /* Back of card */
+  .print-area:last-of-type {
+    position: fixed !important;
+    left: 50% !important;
+    top: 105mm !important;
+    transform: translateX(-50%) !important;
+    margin: 0 !important;
+    z-index: 1000;
   }
 }
+

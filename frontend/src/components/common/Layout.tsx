@@ -16,8 +16,8 @@ const Layout: React.FC = () => {
 
   const navItems = [
     { to: '/dashboard', label: 'Dashboard', icon: 'dashboard' },
-    { to: '/patients', label: 'Patients', icon: 'group' },
-    { to: '/register', label: 'Register Patient', icon: 'person_add' },
+    { to: '/patients', label: 'Patient Directory', icon: 'group' },
+    { to: '/staff', label: 'Staff Directory', icon: 'badge' },
   ];
 
   if (user?.role === 'super_admin') {

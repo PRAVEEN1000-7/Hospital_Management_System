@@ -68,13 +68,8 @@ const PatientIdCard: React.FC = () => {
     if (pdf && patient) pdf.save(`ID-Card-${patient.prn}.pdf`);
   };
 
-  const handlePrint = async () => {
-    const pdf = await generatePDF();
-    if (pdf) {
-      const blobUrl = pdf.output('bloburl');
-      const printWindow = window.open(blobUrl as unknown as string);
-      printWindow?.print();
-    }
+  const handlePrint = () => {
+    window.print();
   };
 
   const handleEmail = async () => {
@@ -162,7 +157,7 @@ const PatientIdCard: React.FC = () => {
       )}
 
       {/* ID Card - Front */}
-      <div className="flex flex-col items-center gap-4">
+      <div className="flex flex-col items-center gap-4 print:block">
         <div
           ref={frontRef}
           className="print-area"
@@ -211,7 +206,7 @@ const PatientIdCard: React.FC = () => {
           </div>
         </div>
 
-        <div className="text-slate-400 text-sm font-mono">--- ✂ Fold Here ✂ ---</div>
+        <div className="text-slate-400 text-sm font-mono print-fold-line">--- ✂ Fold Here ✂ ---</div>
 
         {/* ID Card - Back */}
         <div

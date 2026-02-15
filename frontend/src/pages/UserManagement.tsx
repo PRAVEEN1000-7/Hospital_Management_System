@@ -10,7 +10,11 @@ import { ROLE_COLORS, ROLE_LABELS } from '../utils/constants';
 const userCreateSchema = z.object({
   username: z.string().min(3, 'Min 3 characters').max(50),
   email: z.string().email('Invalid email'),
-  full_name: z.string().min(1, 'Required'),
+  first_name: z.string().min(1, 'Required'),
+  last_name: z.string().min(1, 'Required'),
+  phone_number: z.string().optional(),
+  employee_id: z.string().optional(),
+  department: z.string().optional(),
   role: z.string().min(1, 'Required'),
   password: z.string().min(8, 'Min 8 characters')
     .regex(/[A-Z]/, 'Need uppercase letter')
@@ -26,7 +30,11 @@ const userCreateSchema = z.object({
 const userEditSchema = z.object({
   username: z.string().min(3).max(50),
   email: z.string().email('Invalid email'),
-  full_name: z.string().min(1, 'Required'),
+  first_name: z.string().min(1, 'Required'),
+  last_name: z.string().min(1, 'Required'),
+  phone_number: z.string().optional(),
+  employee_id: z.string().optional(),
+  department: z.string().optional(),
   role: z.string().min(1, 'Required'),
   is_active: z.boolean(),
 });
@@ -335,7 +343,12 @@ const CreateUserModal: React.FC<{ onClose: () => void; onSuccess: () => void; on
       const payload: UserCreateData = {
         username: data.username,
         email: data.email,
-        full_name: data.full_name,
+        first_name: data.first_name,
+        last_name: data.last_name,
+        full_name: `${data.first_name} ${data.last_name}`,
+        phone_number: data.phone_number,
+        employee_id: data.employee_id,
+        department: data.department,
         role: data.role,
         password: data.password,
       };
@@ -359,11 +372,19 @@ const CreateUserModal: React.FC<{ onClose: () => void; onSuccess: () => void; on
           <Field label="Username" error={errors.username?.message}>
             <input {...register('username')} className="input-field" placeholder="Enter username" />
           </Field>
-          <Field label="Full Name" error={errors.full_name?.message}>
-            <input {...register('full_name')} className="input-field" placeholder="Enter full name" />
-          </Field>
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="First Name" error={errors.first_name?.message}>
+              <input {...register('first_name')} className="input-field" placeholder="e.g. Sarah" />
+            </Field>
+            <Field label="Last Name" error={errors.last_name?.message}>
+              <input {...register('last_name')} className="input-field" placeholder="e.g. Jenkins" />
+            </Field>
+          </div>
           <Field label="Email" error={errors.email?.message}>
             <input {...register('email')} type="email" className="input-field" placeholder="Enter email" />
+          </Field>
+          <Field label="Phone Number" error={errors.phone_number?.message}>
+            <input {...register('phone_number')} className="input-field" placeholder="+1 (555) 000-0000" />
           </Field>
         </section>
 
@@ -373,10 +394,36 @@ const CreateUserModal: React.FC<{ onClose: () => void; onSuccess: () => void; on
             <span className="w-8 h-[2px] bg-primary/20 rounded-full"></span>
             <h3 className="text-sm font-bold text-primary uppercase tracking-wider">Professional Info</h3>
           </div>
-          <Field label="Role" error={errors.role?.message}>
-            <select {...register('role')} className="input-field">
-              <option value="">Select role</option>
-              {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>)}
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Role" error={errors.role?.message}>
+              <select {...register('role')} className="input-field">
+                <option value="">Select role</option>
+                {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>)}
+              </select>
+            </Field>
+            <Field label="Employee ID (Auto-generated)" error={errors.employee_id?.message}>
+              <input 
+                {...register('employee_id')} 
+                className="input-field bg-slate-50" 
+                placeholder="Auto-generated on creation"
+                disabled
+              />
+              <p className="text-xs text-slate-500 mt-1">Format: ROLE-YYYY-####</p>
+            </Field>
+          </div>
+          <Field label="Department" error={errors.department?.message}>
+            <select {...register('department')} className="input-field">
+              <option value="">Select department</option>
+              <option value="Cardiology">Cardiology</option>
+              <option value="Emergency">Emergency (ER)</option>
+              <option value="Pharmacy">Main Pharmacy</option>
+              <option value="Surgery">Surgery</option>
+              <option value="Pediatrics">Pediatrics</option>
+              <option value="Radiology">Radiology</option>
+              <option value="Laboratory">Laboratory</option>
+              <option value="Administration">Administration</option>
+              <option value="ICU">ICU</option>
+              <option value="General Ward">General Ward</option>
             </select>
           </Field>
         </section>
@@ -414,7 +461,11 @@ const EditUserModal: React.FC<{ user: UserData; onClose: () => void; onSuccess: 
     defaultValues: {
       username: user.username,
       email: user.email,
-      full_name: user.full_name,
+      first_name: user.first_name || '',
+      last_name: user.last_name || '',
+      phone_number: user.phone_number || '',
+      employee_id: user.employee_id || '',
+      department: user.department || '',
       role: user.role,
       is_active: user.is_active,
     },
@@ -424,7 +475,12 @@ const EditUserModal: React.FC<{ user: UserData; onClose: () => void; onSuccess: 
     try {
       const payload: UserUpdateData = {
         email: data.email,
-        full_name: data.full_name,
+        first_name: data.first_name,
+        last_name: data.last_name,
+        full_name: `${data.first_name} ${data.last_name}`,
+        phone_number: data.phone_number,
+        employee_id: data.employee_id,
+        department: data.department,
         role: data.role,
         is_active: data.is_active,
       };
@@ -446,11 +502,19 @@ const EditUserModal: React.FC<{ user: UserData; onClose: () => void; onSuccess: 
           <Field label="Username">
             <input value={user.username} disabled className="input-field bg-slate-100 cursor-not-allowed" />
           </Field>
-          <Field label="Full Name" error={errors.full_name?.message}>
-            <input {...register('full_name')} className="input-field" />
-          </Field>
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="First Name" error={errors.first_name?.message}>
+              <input {...register('first_name')} className="input-field" />
+            </Field>
+            <Field label="Last Name" error={errors.last_name?.message}>
+              <input {...register('last_name')} className="input-field" />
+            </Field>
+          </div>
           <Field label="Email" error={errors.email?.message}>
             <input {...register('email')} type="email" className="input-field" />
+          </Field>
+          <Field label="Phone Number" error={errors.phone_number?.message}>
+            <input {...register('phone_number')} className="input-field" placeholder="+1 (555) 000-0000" />
           </Field>
         </section>
 
@@ -459,9 +523,34 @@ const EditUserModal: React.FC<{ user: UserData; onClose: () => void; onSuccess: 
             <span className="w-8 h-[2px] bg-primary/20 rounded-full"></span>
             <h3 className="text-sm font-bold text-primary uppercase tracking-wider">Professional Info</h3>
           </div>
-          <Field label="Role" error={errors.role?.message}>
-            <select {...register('role')} className="input-field">
-              {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>)}
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Role" error={errors.role?.message}>
+              <select {...register('role')} className="input-field">
+                {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>)}
+              </select>
+            </Field>
+            <Field label="Employee ID">
+              <input 
+                value={user.employee_id || 'Not assigned'} 
+                disabled 
+                className="input-field bg-slate-100 cursor-not-allowed" 
+              />
+              <p className="text-xs text-slate-500 mt-1">Auto-generated, cannot be changed</p>
+            </Field>
+          </div>
+          <Field label="Department" error={errors.department?.message}>
+            <select {...register('department')} className="input-field">
+              <option value="">Select department</option>
+              <option value="Cardiology">Cardiology</option>
+              <option value="Emergency">Emergency (ER)</option>
+              <option value="Pharmacy">Main Pharmacy</option>
+              <option value="Surgery">Surgery</option>
+              <option value="Pediatrics">Pediatrics</option>
+              <option value="Radiology">Radiology</option>
+              <option value="Laboratory">Laboratory</option>
+              <option value="Administration">Administration</option>
+              <option value="ICU">ICU</option>
+              <option value="General Ward">General Ward</option>
             </select>
           </Field>
         </section>

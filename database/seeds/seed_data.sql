@@ -5,12 +5,12 @@
 -- Passwords:
 --   superadmin: <set your own strong password>
 --   admin/doctor1/nurse1: <set your own strong password>
-INSERT INTO users (username, email, password_hash, full_name, role)
+INSERT INTO users (username, email, password_hash, full_name, first_name, last_name, role, employee_id, department, phone_number)
 VALUES 
-    ('superadmin', 'superadmin@hms.com', '$2b$12$eXcJvdukvD3awfuhvmX0zuCdjxUhryfOw8rKiFWrX0bTYU8D7da.y', 'Super Administrator', 'super_admin'),
-    ('admin', 'admin@hms.com', '$2b$12$57j65e3svieVI8JtnNUiRe.Q0ejZZ3AW3LLCZWYJp0KKBw0fRMu56', 'System Administrator', 'admin'),
-    ('doctor1', 'doctor1@hms.com', '$2b$12$57j65e3svieVI8JtnNUiRe.Q0ejZZ3AW3LLCZWYJp0KKBw0fRMu56', 'Dr. Sakthivel', 'doctor'),
-    ('nurse1', 'nurse1@hms.com', '$2b$12$57j65e3svieVI8JtnNUiRe.Q0ejZZ3AW3LLCZWYJp0KKBw0fRMu56', 'Nurse Sharumathi', 'nurse')
+    ('superadmin', 'superadmin@hms.com', '$2b$12$eXcJvdukvD3awfuhvmX0zuCdjxUhryfOw8rKiFWrX0bTYU8D7da.y', 'Super Administrator', 'Super', 'Administrator', 'super_admin', 'EMP-2024-001', 'Administration', '+1-555-0001'),
+    ('admin', 'admin@hms.com', '$2b$12$57j65e3svieVI8JtnNUiRe.Q0ejZZ3AW3LLCZWYJp0KKBw0fRMu56', 'System Administrator', 'System', 'Administrator', 'admin', 'EMP-2024-002', 'Administration', '+1-555-0002'),
+    ('doctor1', 'doctor1@hms.com', '$2b$12$57j65e3svieVI8JtnNUiRe.Q0ejZZ3AW3LLCZWYJp0KKBw0fRMu56', 'Dr. Sakthivel', 'Sakthivel', 'Kumar', 'doctor', 'EMP-2024-003', 'Cardiology', '+1-555-0003'),
+    ('nurse1', 'nurse1@hms.com', '$2b$12$57j65e3svieVI8JtnNUiRe.Q0ejZZ3AW3LLCZWYJp0KKBw0fRMu56', 'Nurse Sharumathi', 'Sharumathi', 'Devi', 'nurse', 'EMP-2024-004', 'General Ward', '+1-555-0004')
 ON CONFLICT (username) DO NOTHING;
 
 -- Initialize PRN sequence (start from 1 if not already set)

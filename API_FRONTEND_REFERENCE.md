@@ -832,7 +832,7 @@ export function getPhoneCodeForCountry(countryName: string): string {
 ```json
 {
   "username": "superadmin",
-  "password": "Super@123"
+  "password": "<YOUR_PASSWORD>"
 }
 ```
 
@@ -1701,4 +1701,4 @@ No API calls — displays user info from `useAuth()` context.
 6. **Build pages** using the API calls listed per page in Section 15
 7. **Handle errors** using the pattern in Section 14
 8. **Apply role-based visibility** using rules in Section 13
-9. **Default login:** `superadmin` / `Super@123`
+9. **Default login:** `superadmin` / `<see seed_data.sql comments — change after first login>`

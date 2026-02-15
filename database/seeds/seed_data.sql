@@ -3,8 +3,8 @@
 -- Create default users
 -- Passwords are hashed with bcrypt (rounds=12)
 -- Passwords:
---   superadmin: Super@123
---   admin/doctor1/nurse1: Admin@123
+--   superadmin: <set your own strong password>
+--   admin/doctor1/nurse1: <set your own strong password>
 INSERT INTO users (username, email, password_hash, full_name, role)
 VALUES 
     ('superadmin', 'superadmin@hms.com', '$2b$12$eXcJvdukvD3awfuhvmX0zuCdjxUhryfOw8rKiFWrX0bTYU8D7da.y', 'Super Administrator', 'super_admin'),

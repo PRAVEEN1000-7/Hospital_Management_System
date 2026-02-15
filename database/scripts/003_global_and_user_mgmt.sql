@@ -29,7 +29,7 @@ ALTER TABLE patients ADD CONSTRAINT chk_pin_code CHECK (
 
 -----------------------------------------------------
 -- 4. Insert default Super Admin user
---    Password: Super@123  (bcrypt hash with rounds=12)
+--    Password: <set your own>  (bcrypt hash with rounds=12)
 -----------------------------------------------------
 INSERT INTO users (username, email, password_hash, full_name, role)
 VALUES (

@@ -806,7 +806,7 @@ APP_VERSION=1.0.0
 DEBUG=True
 
 # Database
-DATABASE_URL=postgresql://hospital_admin:HMS%402026@localhost:5432/hospital_management
+DATABASE_URL=postgresql://hospital_admin:<YOUR_PASSWORD>@localhost:5432/hospital_management
 DB_ECHO=False
 
 # Security
@@ -969,10 +969,10 @@ npm run dev
 
 | Username | Password | Role | Description |
 |----------|----------|------|-------------|
-| `superadmin` | `Super@123` | Super Admin | Full system access |
-| `admin` | `Admin@123` | Admin | Hospital config + patient management |
-| `doctor1` | `Admin@123` | Doctor | Patient management |
-| `nurse1` | `Admin@123` | Nurse | Patient management |
+| `superadmin` | `<set your own>` | Super Admin | Full system access |
+| `admin` | `<set your own>` | Admin | Hospital config + patient management |
+| `doctor1` | `<set your own>` | Doctor | Patient management |
+| `nurse1` | `<set your own>` | Nurse | Patient management |
 
 > **Important:** Change all default passwords after first login in production.
 

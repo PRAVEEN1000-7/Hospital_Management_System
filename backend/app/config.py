@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     DEBUG: bool = True
 
     # Database
-    DATABASE_URL: str = "postgresql://hospital_admin:HMS%402026@localhost:5432/hospital_management"
+    DATABASE_URL: str = "postgresql://user:password@localhost:5432/hospital_management"
     DB_ECHO: bool = False
 
     # Security

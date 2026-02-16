@@ -81,7 +81,12 @@ def _is_about_patients(msg: str) -> bool:
         "tell me about patient", "details of patient", "info on patient",
         "information about patient", "show me patient", "get patient",
         "patient detail", "about patient", "which patient",
+        "reference id", "reference number", "ref id", "ref no",
+        "reference no", "ref number", "patient ref", "patient id",
     ]
+    # Also trigger if message contains a PRN-like pattern (HMS-000001, PRN 123, etc.)
+    if re.search(r'(?:hms[-\s]?\d+|prn[-\s:]*\d+|ref(?:erence)?[-\s]*(?:id|no|number|#)[-\s:]*\d+)', msg, re.IGNORECASE):
+        return True
     return any(kw in msg for kw in keywords)
 
 
@@ -261,7 +266,7 @@ def _get_patient_data(db: Session, msg: str) -> str:
             blood_str = ", ".join([f"{b}: {c}" for b, c in blood_counts])
             parts.append(f"**By blood group:** {blood_str}")
 
-    # Search for specific patient by PRN (HMS-000001, PRN 000001, patient #3, etc.)
+    # Search for specific patient by PRN (HMS-000001, HMS 000001, etc.)
     prn_match = re.search(r'(hms[-\s]?\d+)', msg, re.IGNORECASE)
     if prn_match:
         prn_search = prn_match.group(1).upper().replace(" ", "-")
@@ -272,6 +277,29 @@ def _get_patient_data(db: Session, msg: str) -> str:
             parts.append(_format_patient_detail(patient))
         else:
             parts.append(f"**No patient found with PRN {prn_search}**")
+
+    # Search by PRN number only (e.g., "PRN 000001", "prn:000001", "reference id 000001", "ref id 000001")
+    if not prn_match:
+        ref_match = re.search(
+            r'(?:prn|reference\s*(?:id|no\.?|number|#)|ref\s*(?:id|no\.?|number|#)|patient\s*(?:ref|reference)\s*(?:id|no\.?|number|#)?)[-\s:]*?(\d{1,6})',
+            msg, re.IGNORECASE
+        )
+        if ref_match:
+            num = ref_match.group(1).zfill(6)  # Pad to 6 digits
+            prn_search = f"HMS-{num}"
+            patient = db.query(Patient).filter(Patient.prn == prn_search).first()
+            if patient:
+                parts.append(_format_patient_detail(patient))
+                prn_match = ref_match  # Prevent further searches
+            else:
+                # Also try matching the raw number as DB id
+                patient = db.query(Patient).filter(Patient.id == int(ref_match.group(1))).first()
+                if patient:
+                    parts.append(_format_patient_detail(patient))
+                    prn_match = ref_match
+                else:
+                    parts.append(f"**No patient found with reference {prn_search} or ID #{ref_match.group(1)}**")
+                    prn_match = ref_match
 
     # Search by patient number/ID (e.g., "patient #3", "patient number 5", "patient id 12")
     if not prn_match:

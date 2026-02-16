@@ -170,7 +170,7 @@ const PatientList: React.FC = () => {
                 <tr>
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Patient ID</th>
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Name</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider hidden md:table-cell">Gender</th>
+                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Gender</th>
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider hidden sm:table-cell">Blood</th>
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider hidden lg:table-cell">Registered</th>
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Actions</th>
@@ -180,7 +180,7 @@ const PatientList: React.FC = () => {
                 {patients.map((patient) => (
                   <tr key={patient.id} className="hover:bg-slate-50 transition-colors group">
                     <td className="px-6 py-4">
-                      <span className="text-sm font-semibold font-mono text-slate-400">#{patient.prn}</span>
+                      <span className="text-sm font-semibold font-mono text-slate-400">{patient.prn}</span>
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
@@ -198,7 +198,7 @@ const PatientList: React.FC = () => {
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 hidden md:table-cell">
+                    <td className="px-6 py-4">
                       <span className="text-sm">{patient.gender}</span>
                     </td>
                     <td className="px-6 py-4 hidden sm:table-cell">

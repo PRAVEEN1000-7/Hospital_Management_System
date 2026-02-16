@@ -40,6 +40,10 @@ def create_hospital(db: Session, hospital_data: HospitalCreate, user_id: int) ->
             detail="Hospital record already exists. Use update endpoint to modify."
         )
     
+    # Set default hospital name if not provided
+    if not hospital_data.hospital_name or not hospital_data.hospital_name.strip():
+        hospital_data.hospital_name = "HMS Core"
+    
     # Create new hospital record
     # Use mode='python' to keep Python objects (like datetime.time) instead of serializing to JSON
     data = hospital_data.model_dump(mode='python')

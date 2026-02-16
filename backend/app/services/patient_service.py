@@ -4,13 +4,36 @@ from math import ceil
 from typing import Optional
 from ..config import settings
 from ..models.patient import Patient, prn_sequence
+from ..models.hospital import HospitalDetails
 from ..schemas.patient import PatientCreate, PatientUpdate, PaginatedPatientResponse, PatientListItem
 
 
+def get_hospital_prefix(db: Session) -> str:
+    """
+    Get hospital prefix from hospital name by taking first letter of each word.
+    Examples:
+    - "HMS Core" -> "HC"
+    - "Apollo Hospital" -> "AH"
+    - "Max Super Speciality Hospital" -> "MSSH"
+    """
+    hospital = db.query(HospitalDetails).first()
+    if hospital and hospital.hospital_name:
+        # Extract first letter of each word and convert to uppercase
+        words = hospital.hospital_name.strip().split()
+        prefix = ''.join(word[0].upper() for word in words if word)
+        return prefix if prefix else 'HC'  # Default to HC if empty
+    return 'HC'  # Default for "HMS Core"
+
+
 def generate_prn(db: Session) -> str:
-    """Generate a unique Patient Reference Number using the configured prefix and DB sequence"""
+    """
+    Generate a unique Patient Reference Number in format: [HOSPITAL_PREFIX][YEAR][NUMBER]
+    Examples: HC2026000001, AH2026000042, MSSH2026000123
+    """
+    hospital_prefix = get_hospital_prefix(db)
+    year = 2026  # Current year
     next_val = db.execute(prn_sequence.next_value()).scalar()
-    return f"{settings.PRN_PREFIX}-{next_val:06d}"
+    return f"{hospital_prefix}{year}{next_val:06d}"
 
 
 def create_patient(db: Session, patient_data: PatientCreate, user_id: int) -> Patient:

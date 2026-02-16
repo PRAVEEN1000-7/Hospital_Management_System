@@ -146,11 +146,6 @@ const StaffDirectory: React.FC = () => {
   const getInitials = (name: string) =>
     name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 
-  const getStaffId = (id: number, createdAt: string) => {
-    const year = new Date(createdAt).getFullYear();
-    return `STF-${year}-${String(id).padStart(3, '0')}`;
-  };
-
   const getDepartment = (role: string): string => {
     const deptMap: Record<string, string> = {
       doctor: 'Medical',
@@ -193,9 +188,8 @@ const StaffDirectory: React.FC = () => {
   };
 
   const handleExportCSV = () => {
-    const headers = ['Staff ID', 'Employee ID', 'First Name', 'Last Name', 'Full Name', 'Email', 'Phone', 'Role', 'Department', 'Status', 'Last Login'];
+    const headers = ['Employee ID', 'First Name', 'Last Name', 'Full Name', 'Email', 'Phone', 'Role', 'Department', 'Status', 'Last Login'];
     const rows = users.map(u => [
-      getStaffId(u.id, u.created_at),
       u.employee_id || 'N/A',
       u.first_name || '',
       u.last_name || '',
@@ -324,7 +318,7 @@ const StaffDirectory: React.FC = () => {
                       className="w-4 h-4 rounded border-slate-300 text-primary focus:ring-2 focus:ring-primary/30"
                     />
                   </th>
-                  <th className="px-5 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Staff ID</th>
+                  <th className="px-5 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Employee ID</th>
                   <th className="px-5 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Staff Name</th>
                   <th className="px-5 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Role</th>
                   <th className="px-5 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Department</th>
@@ -344,7 +338,7 @@ const StaffDirectory: React.FC = () => {
                       />
                     </td>
                     <td className="px-5 py-4">
-                      <span className="text-sm font-medium text-slate-500">{getStaffId(user.id, user.created_at)}</span>
+                      <span className="text-sm font-semibold font-mono text-slate-700">{user.employee_id || 'N/A'}</span>
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-3">

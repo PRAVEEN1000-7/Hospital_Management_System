@@ -1,13 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatRole } from '../../utils/constants';
+import hospitalService from '../../services/hospitalService';
 
 const Layout: React.FC = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [hospitalName, setHospitalName] = useState('HMS Core');
 
   const handleLogout = async () => {
     await logout();
@@ -49,7 +51,7 @@ const Layout: React.FC = () => {
           <div className="w-8 h-8 bg-primary rounded flex items-center justify-center text-white mr-3">
             <span className="material-icons text-xl">health_and_safety</span>
           </div>
-          <span className="font-bold text-lg tracking-tight text-slate-900">HMS Core</span>
+          <span className="font-bold text-lg tracking-tight text-slate-900">{hospitalName}</span>
         </div>
 
         {/* Navigation */}

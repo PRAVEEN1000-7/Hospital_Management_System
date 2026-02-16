@@ -5,22 +5,43 @@ from math import ceil
 from typing import Optional
 from datetime import datetime
 from ..models.user import User
+from ..models.hospital import HospitalDetails
 from ..utils.security import get_password_hash
 
 logger = logging.getLogger(__name__)
 
 
+def get_hospital_prefix(db: Session) -> str:
+    """
+    Get hospital prefix from hospital name by taking first letter of each word.
+    Examples:
+    - "HMS Core" -> "HC"
+    - "Apollo Hospital" -> "AH"
+    - "Max Super Speciality Hospital" -> "MSSH"
+    """
+    hospital = db.query(HospitalDetails).first()
+    if hospital and hospital.hospital_name:
+        # Extract first letter of each word and convert to uppercase
+        words = hospital.hospital_name.strip().split()
+        prefix = ''.join(word[0].upper() for word in words if word)
+        return prefix if prefix else 'HC'  # Default to HC if empty
+    return 'HC'  # Default for "HMS Core"
+
+
 def generate_employee_id(db: Session, role: str) -> str:
     """
-    Generate unique employee ID in format: ROLE-YYYY-NNNN
-    Examples: DOC-2026-0001, NUR-2026-0042, ADM-2026-0003
+    Generate unique employee ID in format: [HOSPITAL_PREFIX][ROLE][YEAR][NUMBER]
+    Examples: HCDOC2026001, AHNUR2026042, HCADM2026003
     """
+    # Get hospital prefix
+    hospital_prefix = get_hospital_prefix(db)
+    
     # Map roles to prefixes
     role_prefix_map = {
         'doctor': 'DOC',
         'nurse': 'NUR',
         'admin': 'ADM',
-        'super_admin': 'ADM',
+        'super_admin': 'SADM',
         'pharmacist': 'PHA',
         'receptionist': 'REC',
         'cashier': 'CSH',
@@ -28,7 +49,7 @@ def generate_employee_id(db: Session, role: str) -> str:
         'staff': 'STF'
     }
     
-    prefix = role_prefix_map.get(role, 'STF')
+    role_prefix = role_prefix_map.get(role, 'STF')
     year = datetime.now().year
     
     # Get next sequence number for this role
@@ -38,8 +59,8 @@ def generate_employee_id(db: Session, role: str) -> str:
         result = db.execute(text(f"SELECT nextval('{sequence_name}')"))
         seq_num = result.scalar()
         
-        # Format: PREFIX-YYYY-NNNN (e.g., DOC-2026-0001)
-        employee_id = f"{prefix}-{year}-{seq_num:04d}"
+        # Format: [HOSPITAL][ROLE][YEAR][NUMBER] (e.g., HCDOC2026001)
+        employee_id = f"{hospital_prefix}{role_prefix}{year}{seq_num:04d}"
         
         logger.info(f"Generated employee_id: {employee_id} for role: {role}")
         return employee_id
@@ -49,7 +70,7 @@ def generate_employee_id(db: Session, role: str) -> str:
         # Fallback to timestamp-based ID if sequence fails
         import time
         timestamp = int(time.time() * 1000) % 100000
-        return f"{prefix}-{year}-{timestamp:05d}"
+        return f"{hospital_prefix}{role_prefix}{year}{timestamp:05d}"
 
 
 def create_user(

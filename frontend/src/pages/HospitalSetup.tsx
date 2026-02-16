@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
 import { useToast } from '../contexts/ToastContext';
 import { COUNTRIES } from '../utils/constants';
@@ -51,7 +51,7 @@ interface HospitalData {
 }
 
 const INITIAL_DATA: HospitalData = {
-  hospital_name: '',
+  hospital_name: 'HMS Core',
   hospital_code: '',
   registration_number: '',
   established_date: '',
@@ -138,6 +138,107 @@ const INDIAN_STATES = [
   'Daman and Diu', 'Delhi', 'Jammu and Kashmir', 'Ladakh', 'Lakshadweep', 'Puducherry',
 ];
 
+// Form Components - Memoized to prevent unnecessary re-renders
+const FormInput = React.memo<{
+  label: string;
+  name: string;
+  placeholder?: string;
+  required?: boolean;
+  type?: string;
+  disabled?: boolean;
+  helpText?: string;
+  value: any;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  error?: string;
+}>(({ label, name, placeholder, required, type = 'text', disabled, helpText, value, onChange, error }) => (
+  <div>
+    <label className="block text-sm font-medium text-slate-700 mb-1.5">
+      {label}{required && <span className="text-red-500">*</span>}
+    </label>
+    <input
+      type={type}
+      name={name}
+      value={value || ''}
+      onChange={onChange}
+      placeholder={placeholder}
+      disabled={disabled}
+      className={`w-full px-3 py-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all
+        ${error ? 'border-red-400 bg-red-50' : 'border-slate-200 bg-white'} ${disabled ? 'bg-slate-50 text-slate-500' : ''}`}
+    />
+    {helpText && <p className="text-xs text-slate-500 mt-1">{helpText}</p>}
+    {error && <p className="text-red-500 text-xs mt-1">{error}</p>}
+  </div>
+));
+
+const PhoneInput = React.memo<{
+  label: string;
+  countryCodeName: string;
+  phoneName: string;
+  required?: boolean;
+  countryCodeValue: string;
+  phoneValue: string;
+  onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => void;
+  error?: string;
+}>(({ label, countryCodeName, phoneName, required, countryCodeValue, phoneValue, onChange, error }) => (
+  <div>
+    <label className="block text-sm font-medium text-slate-700 mb-1.5">
+      {label}{required && <span className="text-red-500">*</span>}
+    </label>
+    <div className="flex gap-2">
+      <select
+        name={countryCodeName}
+        value={countryCodeValue || '+91'}
+        onChange={onChange}
+        className="w-28 px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+      >
+        {COUNTRIES.map(c => (
+          <option key={c.code} value={c.phoneCode}>{c.phoneCode}</option>
+        ))}
+      </select>
+      <input
+        type="text"
+        name={phoneName}
+        value={phoneValue || ''}
+        onChange={onChange}
+        placeholder="1234567890"
+        className={`flex-1 px-3 py-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none
+          ${error ? 'border-red-400 bg-red-50' : 'border-slate-200'}`}
+      />
+    </div>
+    {error && <p className="text-red-500 text-xs mt-1">{error}</p>}
+  </div>
+));
+
+const FormSelect = React.memo<{
+  label: string;
+  name: string;
+  options: string[];
+  placeholder?: string;
+  required?: boolean;
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
+  error?: string;
+}>(({ label, name, options, placeholder, required, value, onChange, error }) => (
+  <div>
+    <label className="block text-sm font-medium text-slate-700 mb-1.5">
+      {label}{required && <span className="text-red-500">*</span>}
+    </label>
+    <select
+      name={name}
+      value={value || ''}
+      onChange={onChange}
+      className={`w-full px-3 py-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all appearance-none bg-white
+        ${error ? 'border-red-400 bg-red-50' : 'border-slate-200'}`}
+    >
+      <option value="">{placeholder || `-- Select ${label.toLowerCase()} --`}</option>
+      {options.map(opt => (
+        <option key={opt} value={opt}>{opt}</option>
+      ))}
+    </select>
+    {error && <p className="text-red-500 text-xs mt-1">{error}</p>}
+  </div>
+));
+
 const HospitalSetup: React.FC = () => {
   const toast = useToast();
   const [currentStep, setCurrentStep] = useState(0);
@@ -196,7 +297,7 @@ const HospitalSetup: React.FC = () => {
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+  const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
     const checked = (e.target as HTMLInputElement).checked;
     setFormData(prev => ({
@@ -204,10 +305,15 @@ const HospitalSetup: React.FC = () => {
       [name]: type === 'checkbox' ? checked : value,
     }));
     // Clear error on change
-    if (errors[name]) {
-      setErrors(prev => ({ ...prev, [name]: '' }));
-    }
-  };
+    setErrors(prev => {
+      if (prev[name]) {
+        const newErrors = { ...prev };
+        delete newErrors[name];
+        return newErrors;
+      }
+      return prev;
+    });
+  }, []);
 
   const handleWorkingDayToggle = (day: string) => {
     setFormData(prev => {
@@ -363,99 +469,6 @@ const HospitalSetup: React.FC = () => {
     );
   };
 
-  // Input component
-  const FormInput: React.FC<{
-    label: string;
-    name: string;
-    placeholder?: string;
-    required?: boolean;
-    type?: string;
-    disabled?: boolean;
-    helpText?: string;
-  }> = ({ label, name, placeholder, required, type = 'text', disabled, helpText }) => (
-    <div>
-      <label className="block text-sm font-medium text-slate-700 mb-1.5">
-        {label}{required && <span className="text-red-500">*</span>}
-      </label>
-      <input
-        type={type}
-        name={name}
-        value={(formData as any)[name] || ''}
-        onChange={handleChange}
-        placeholder={placeholder}
-        disabled={disabled}
-        className={`w-full px-3 py-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all
-          ${errors[name] ? 'border-red-400 bg-red-50' : 'border-slate-200 bg-white'} ${disabled ? 'bg-slate-50 text-slate-500' : ''}`}
-      />
-      {helpText && <p className="text-xs text-slate-500 mt-1">{helpText}</p>}
-      {errors[name] && <p className="text-red-500 text-xs mt-1">{errors[name]}</p>}
-    </div>
-  );
-
-  // Phone input with country code
-  const PhoneInput: React.FC<{
-    label: string;
-    countryCodeName: string;
-    phoneName: string;
-    required?: boolean;
-  }> = ({ label, countryCodeName, phoneName, required }) => (
-    <div>
-      <label className="block text-sm font-medium text-slate-700 mb-1.5">
-        {label}{required && <span className="text-red-500">*</span>}
-      </label>
-      <div className="flex gap-2">
-        <select
-          name={countryCodeName}
-          value={(formData as any)[countryCodeName] || '+91'}
-          onChange={handleChange}
-          className="w-28 px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-        >
-          {COUNTRIES.map(c => (
-            <option key={c.code} value={c.phoneCode}>{c.phoneCode}</option>
-          ))}
-        </select>
-        <input
-          type="text"
-          name={phoneName}
-          value={(formData as any)[phoneName] || ''}
-          onChange={handleChange}
-          placeholder="1234567890"
-          className={`flex-1 px-3 py-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none
-            ${errors[phoneName] ? 'border-red-400 bg-red-50' : 'border-slate-200'}`}
-        />
-      </div>
-      {errors[phoneName] && <p className="text-red-500 text-xs mt-1">{errors[phoneName]}</p>}
-    </div>
-  );
-
-  // Select component
-  const FormSelect: React.FC<{
-    label: string;
-    name: string;
-    options: string[];
-    placeholder?: string;
-    required?: boolean;
-  }> = ({ label, name, options, placeholder, required }) => (
-    <div>
-      <label className="block text-sm font-medium text-slate-700 mb-1.5">
-        {label}{required && <span className="text-red-500">*</span>}
-      </label>
-      <select
-        name={name}
-        value={(formData as any)[name] || ''}
-        onChange={handleChange}
-        className={`w-full px-3 py-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all appearance-none bg-white
-          ${errors[name] ? 'border-red-400 bg-red-50' : 'border-slate-200'}`}
-      >
-        <option value="">{placeholder || `-- Select ${label.toLowerCase()} --`}</option>
-        {options.map(opt => (
-          <option key={opt} value={opt}>{opt}</option>
-        ))}
-      </select>
-      {errors[name] && <p className="text-red-500 text-xs mt-1">{errors[name]}</p>}
-    </div>
-  );
-
   if (loading) {
     return (
       <div className="max-w-5xl mx-auto flex items-center justify-center py-32">
@@ -518,50 +531,50 @@ const HospitalSetup: React.FC = () => {
             {currentStep === 0 && (
               <div className="space-y-5 max-w-lg">
                 <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3">Hospital Information</h3>
-                <FormInput label="Hospital Name" name="hospital_name" placeholder="e.g. Manipal Hospital" required />
+                <FormInput label="Hospital Name" name="hospital_name" placeholder="e.g. Manipal Hospital" required value={formData.hospital_name} onChange={handleChange} error={errors.hospital_name} />
                 
                 <div className="grid grid-cols-2 gap-4">
-                  <FormInput label="Hospital Code" name="hospital_code" placeholder="e.g. MH-BLR-01" helpText="Short code for internal use" />
-                  <FormInput label="Registration Number" name="registration_number" placeholder="Registration no." />
+                  <FormInput label="Hospital Code" name="hospital_code" placeholder="e.g. MH-BLR-01" helpText="Short code for internal use" value={formData.hospital_code} onChange={handleChange} error={errors.hospital_code} />
+                  <FormInput label="Registration Number" name="registration_number" placeholder="Registration no." value={formData.registration_number} onChange={handleChange} error={errors.registration_number} />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
-                  <FormInput label="Established Date" name="established_date" type="date" />
-                  <FormSelect label="Hospital Type" name="hospital_type" options={PRACTICE_TYPES} placeholder="-- Select type --" required />
+                  <FormInput label="Established Date" name="established_date" type="date" value={formData.established_date} onChange={handleChange} error={errors.established_date} />
+                  <FormSelect label="Hospital Type" name="hospital_type" options={PRACTICE_TYPES} placeholder="-- Select type --" required value={formData.hospital_type} onChange={handleChange} error={errors.hospital_type} />
                 </div>
 
-                <FormSelect label="Specialisation" name="specialisation" options={SPECIALISATIONS} placeholder="-- Select specialisation --" required />
-                <FormInput label="NABH Accreditation" name="nabh_accreditation" placeholder="e.g. NABH-12345" helpText="Optional certification" />
+                <FormSelect label="Specialisation" name="specialisation" options={SPECIALISATIONS} placeholder="-- Select specialisation --" required value={formData.specialisation} onChange={handleChange} error={errors.specialisation} />
+                <FormInput label="NABH Accreditation" name="nabh_accreditation" placeholder="e.g. NABH-12345" helpText="Optional certification" value={formData.nabh_accreditation} onChange={handleChange} error={errors.nabh_accreditation} />
 
                 <hr className="border-slate-100 my-4" />
                 <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3">Facility Admin Contact</h3>
-                <FormInput label="Admin Name" name="facility_admin_name" placeholder="e.g. Rakesh Kumar" required />
-                <FormInput label="Admin Phone" name="facility_admin_phone" placeholder="e.g. 9991828388" required />
+                <FormInput label="Admin Name" name="facility_admin_name" placeholder="e.g. Rakesh Kumar" required value={formData.facility_admin_name} onChange={handleChange} error={errors.facility_admin_name} />
+                <FormInput label="Admin Phone" name="facility_admin_phone" placeholder="e.g. 9991828388" required value={formData.facility_admin_phone} onChange={handleChange} error={errors.facility_admin_phone} />
 
                 <hr className="border-slate-100 my-4" />
                 <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3">Contact Information</h3>
-                <PhoneInput label="Primary Phone" countryCodeName="primary_phone_country_code" phoneName="primary_phone" required />
-                <PhoneInput label="Secondary Phone" countryCodeName="secondary_phone_country_code" phoneName="secondary_phone" />
-                <FormInput label="Email Address" name="email" placeholder="e.g. manipal@support.com" required type="email" />
-                <FormInput label="Website" name="website" placeholder="e.g. www.hospital.com" />
-                <PhoneInput label="Emergency Hotline" countryCodeName="emergency_hotline_country_code" phoneName="emergency_hotline" />
+                <PhoneInput label="Primary Phone" countryCodeName="primary_phone_country_code" phoneName="primary_phone" required countryCodeValue={formData.primary_phone_country_code} phoneValue={formData.primary_phone} onChange={handleChange} error={errors.primary_phone} />
+                <PhoneInput label="Secondary Phone" countryCodeName="secondary_phone_country_code" phoneName="secondary_phone" countryCodeValue={formData.secondary_phone_country_code} phoneValue={formData.secondary_phone} onChange={handleChange} error={errors.secondary_phone} />
+                <FormInput label="Email Address" name="email" placeholder="e.g. manipal@support.com" required type="email" value={formData.email} onChange={handleChange} error={errors.email} />
+                <FormInput label="Website" name="website" placeholder="e.g. www.hospital.com" value={formData.website} onChange={handleChange} error={errors.website} />
+                <PhoneInput label="Emergency Hotline" countryCodeName="emergency_hotline_country_code" phoneName="emergency_hotline" countryCodeValue={formData.emergency_hotline_country_code} phoneValue={formData.emergency_hotline} onChange={handleChange} error={errors.emergency_hotline} />
 
                 <hr className="border-slate-100 my-4" />
                 <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3">Address Details</h3>
-                <FormInput label="Address Line 1" name="address_line1" placeholder="Street address" required />
-                <FormInput label="Address Line 2" name="address_line2" placeholder="Landmark, Area (optional)" />
+                <FormInput label="Address Line 1" name="address_line1" placeholder="Street address" required value={formData.address_line1} onChange={handleChange} error={errors.address_line1} />
+                <FormInput label="Address Line 2" name="address_line2" placeholder="Landmark, Area (optional)" value={formData.address_line2} onChange={handleChange} error={errors.address_line2} />
                 
                 <div className="grid grid-cols-2 gap-4">
-                  <FormInput label="City" name="city" placeholder="e.g. Bangalore" required />
-                  <FormSelect label="State" name="state" options={INDIAN_STATES} placeholder="-- Select state --" required />
+                  <FormInput label="City" name="city" placeholder="e.g. Bangalore" required value={formData.city} onChange={handleChange} error={errors.city} />
+                  <FormSelect label="State" name="state" options={INDIAN_STATES} placeholder="-- Select state --" required value={formData.state} onChange={handleChange} error={errors.state} />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
-                  <FormInput label="PIN Code" name="pin_code" placeholder="e.g. 560001" required />
-                  <FormInput label="Country" name="country" placeholder="e.g. India" required />
+                  <FormInput label="PIN Code" name="pin_code" placeholder="e.g. 560001" required value={formData.pin_code} onChange={handleChange} error={errors.pin_code} />
+                  <FormInput label="Country" name="country" placeholder="e.g. India" required value={formData.country} onChange={handleChange} error={errors.country} />
                 </div>
 
-                <FormInput label="Establishment Location" name="establishment_location" placeholder="GPS coordinates or landmark" helpText="Optional location details" />
+                <FormInput label="Establishment Location" name="establishment_location" placeholder="GPS coordinates or landmark" helpText="Optional location details" value={formData.establishment_location} onChange={handleChange} error={errors.establishment_location} />
               </div>
             )}
 
@@ -570,8 +583,8 @@ const HospitalSetup: React.FC = () => {
               <div className="space-y-5 max-w-lg">
                 <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3">Facility Strength</h3>
                 <div className="grid grid-cols-2 gap-4">
-                  <FormInput label="Number of Beds" name="number_of_beds" placeholder="e.g. 50" required type="number" />
-                  <FormInput label="Staff Strength" name="staff_strength" placeholder="e.g. 100" required type="number" />
+                  <FormInput label="Number of Beds" name="number_of_beds" placeholder="e.g. 50" required type="number" value={formData.number_of_beds} onChange={handleChange} error={errors.number_of_beds} />
+                  <FormInput label="Staff Strength" name="staff_strength" placeholder="e.g. 100" required type="number" value={formData.staff_strength} onChange={handleChange} error={errors.staff_strength} />
                 </div>
 
                 <hr className="border-slate-100 my-4" />
@@ -645,15 +658,21 @@ const HospitalSetup: React.FC = () => {
                       name="gst_number" 
                       placeholder="e.g. 22AAAAA0000A1Z5" 
                       helpText="15 characters - Format: 22AAAAA0000A1Z5"
+                      value={formData.gst_number}
+                      onChange={handleChange}
+                      error={errors.gst_number}
                     />
                     <FormInput 
                       label="PAN Number" 
                       name="pan_number" 
                       placeholder="e.g. ABCDE1234F" 
                       helpText="10 characters - Format: ABCDE1234F"
+                      value={formData.pan_number}
+                      onChange={handleChange}
+                      error={errors.pan_number}
                     />
-                    <FormInput label="Drug License Number" name="drug_license_number" placeholder="Drug license number" />
-                    <FormInput label="Medical Registration Number" name="medical_registration_number" placeholder="Medical registration number" />
+                    <FormInput label="Drug License Number" name="drug_license_number" placeholder="Drug license number" value={formData.drug_license_number} onChange={handleChange} error={errors.drug_license_number} />
+                    <FormInput label="Medical Registration Number" name="medical_registration_number" placeholder="Medical registration number" value={formData.medical_registration_number} onChange={handleChange} error={errors.medical_registration_number} />
                   </>
                 )}
               </div>

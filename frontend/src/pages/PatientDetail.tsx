@@ -3,15 +3,17 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { format, differenceInYears } from 'date-fns';
 import patientService from '../services/patientService';
 import type { Patient } from '../types/patient';
+import { useToast } from '../contexts/ToastContext';
 
 const PatientDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const toast = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [patient, setPatient] = useState<Patient | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [fetchError, setFetchError] = useState('');
 
   useEffect(() => {
     const fetchPatient = async () => {
@@ -19,7 +21,7 @@ const PatientDetail: React.FC = () => {
         const data = await patientService.getPatient(Number(id));
         setPatient(data);
       } catch {
-        setError('Patient not found');
+        setFetchError('Patient not found');
       } finally {
         setLoading(false);
       }
@@ -32,20 +34,20 @@ const PatientDetail: React.FC = () => {
     if (!file) return;
     const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
     if (!allowedTypes.includes(file.type)) {
-      setError('Only JPEG, PNG, and WebP images are allowed');
+      toast.error('Only JPEG, PNG, and WebP images are allowed');
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      setError('File size must be less than 5MB');
+      toast.error('File size must be less than 5MB');
       return;
     }
     setUploading(true);
-    setError('');
     try {
       const updatedPatient = await patientService.uploadPhoto(Number(id), file);
       setPatient(updatedPatient);
+      toast.success('Photo uploaded successfully');
     } catch {
-      setError('Failed to upload photo');
+      toast.error('Failed to upload photo');
     } finally {
       setUploading(false);
     }
@@ -63,7 +65,7 @@ const PatientDetail: React.FC = () => {
     return (
       <div className="text-center py-20">
         <span className="material-icons text-5xl text-red-300 mb-4">error_outline</span>
-        <p className="text-lg font-bold text-slate-900">{error || 'Patient not found'}</p>
+        <p className="text-lg font-bold text-slate-900">{fetchError || 'Patient not found'}</p>
         <button onClick={() => navigate('/patients')} className="mt-4 text-primary hover:underline text-sm font-semibold">
           Back to patients
         </button>
@@ -93,14 +95,6 @@ const PatientDetail: React.FC = () => {
           </button>
         </div>
       </div>
-
-      {/* Error */}
-      {error && (
-        <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-200 flex items-center gap-3">
-          <span className="material-icons text-red-500">error</span>
-          <p className="text-sm text-red-700">{error}</p>
-        </div>
-      )}
 
       {/* Hero Header */}
       <div className="bg-primary rounded-t-xl p-6 md:p-8 text-white">

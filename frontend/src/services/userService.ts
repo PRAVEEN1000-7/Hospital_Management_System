@@ -38,6 +38,17 @@ export const userService = {
     const response = await api.post(`/users/${id}/send-password`, data);
     return response.data;
   },
+
+  getPhotoUrl(photoUrl: string | null): string | null {
+    if (!photoUrl) return null;
+    // If already a full URL, return as is
+    if (photoUrl.startsWith('http://') || photoUrl.startsWith('https://')) {
+      return photoUrl;
+    }
+    // Otherwise, construct full URL from API base
+    const baseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000').replace('/api/v1', '');
+    return baseUrl + photoUrl;
+  },
 };
 
 export default userService;

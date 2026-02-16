@@ -18,6 +18,25 @@ CREATE TABLE IF NOT EXISTS hospital_details (
     hospital_type VARCHAR(50) DEFAULT 'General',
     
     -- ============================================
+    -- FACILITY ADMIN
+    -- ============================================
+    facility_admin_name VARCHAR(200),
+    facility_admin_phone VARCHAR(20),
+    
+    -- ============================================
+    -- ACCREDITATION & SPECIALISATION
+    -- ============================================
+    nabh_accreditation VARCHAR(100),
+    specialisation VARCHAR(100),
+    
+    -- ============================================
+    -- FACILITY STRENGTH
+    -- ============================================
+    number_of_beds INTEGER,
+    staff_strength INTEGER,
+    establishment_location TEXT,
+    
+    -- ============================================
     -- CONTACT INFORMATION (Required)
     -- Country codes stored separately from phone numbers
     -- ============================================

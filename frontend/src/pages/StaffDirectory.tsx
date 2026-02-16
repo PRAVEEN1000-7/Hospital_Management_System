@@ -5,26 +5,43 @@ import { z } from 'zod';
 import { format, formatDistanceToNow } from 'date-fns';
 import userService from '../services/userService';
 import type { UserData, UserCreateData, UserUpdateData } from '../types/user';
-import { ROLE_COLORS, ROLE_LABELS } from '../utils/constants';
+import { ROLE_COLORS, ROLE_LABELS, COUNTRIES } from '../utils/constants';
+import { useToast } from '../contexts/ToastContext';
 
 // ---------- Schemas ----------
 const staffCreateSchema = z.object({
-  username: z.string().min(3, 'Min 3 characters').max(50).regex(/^[a-zA-Z0-9_]+$/, 'Only letters, numbers, underscores'),
+  username: z.string().min(3, 'Min 3 characters').max(50, 'Max 50 characters').regex(/^[a-zA-Z0-9_]+$/, 'Only letters, numbers, and underscores'),
   email: z.string().email('Invalid email'),
   first_name: z.string().min(1, 'Required').max(100),
   last_name: z.string().min(1, 'Required').max(100),
   phone_number: z.string().optional(),
+  country_code: z.string().optional(),
   role: z.string().min(1, 'Select a role'),
   employee_id: z.string().optional(),
   department: z.string().optional(),
-  password: z.string().min(8, 'Min 8 characters')
-    .regex(/[A-Z]/, 'Need uppercase letter')
-    .regex(/[a-z]/, 'Need lowercase letter')
-    .regex(/[0-9]/, 'Need digit')
-    .regex(/[^A-Za-z0-9]/, 'Need special char'),
-  confirm_password: z.string(),
+  password: z.string().optional(),
+  confirm_password: z.string().optional(),
   auto_generate_password: z.boolean().optional(),
-}).refine(data => data.password === data.confirm_password, {
+}).refine(data => {
+  // Only validate password if auto-generate is not enabled
+  if (data.auto_generate_password) return true;
+  
+  // If not auto-generating, password is required and must meet criteria
+  if (!data.password || data.password.length < 8) return false;
+  if (!/[A-Z]/.test(data.password)) return false;
+  if (!/[a-z]/.test(data.password)) return false;
+  if (!/[0-9]/.test(data.password)) return false;
+  if (!/[^A-Za-z0-9]/.test(data.password)) return false;
+  
+  return true;
+}, {
+  message: "Password must be at least 8 characters with uppercase, lowercase, digit, and special character",
+  path: ['password'],
+}).refine(data => {
+  // Only validate password match if not auto-generating
+  if (data.auto_generate_password) return true;
+  return data.password === data.confirm_password;
+}, {
   message: "Passwords don't match",
   path: ['confirm_password'],
 });
@@ -34,6 +51,7 @@ const staffEditSchema = z.object({
   first_name: z.string().min(1, 'Required').max(100),
   last_name: z.string().min(1, 'Required').max(100),
   phone_number: z.string().optional(),
+  country_code: z.string().optional(),
   role: z.string().min(1, 'Required'),
   employee_id: z.string().optional(),
   department: z.string().optional(),
@@ -62,6 +80,7 @@ const ROLES = [
 ];
 
 const StaffDirectory: React.FC = () => {
+  const toast = useToast();
   const [users, setUsers] = useState<UserData[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -69,8 +88,6 @@ const StaffDirectory: React.FC = () => {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
 
   const [roleFilter, setRoleFilter] = useState('');
   const [selectedUsers, setSelectedUsers] = useState<Set<number>>(new Set());
@@ -94,20 +111,13 @@ const StaffDirectory: React.FC = () => {
       setTotalPages(res.total_pages);
       setTotal(res.total);
     } catch {
-      setError('Failed to load staff');
+      toast.error('Failed to load staff');
     } finally {
       setLoading(false);
     }
-  }, [page, search, roleFilter]);
+  }, [page, search, roleFilter, toast]);
 
   useEffect(() => { fetchUsers(); }, [fetchUsers]);
-
-  useEffect(() => {
-    if (success) {
-      const timer = setTimeout(() => setSuccess(''), 4000);
-      return () => clearTimeout(timer);
-    }
-  }, [success]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -119,11 +129,11 @@ const StaffDirectory: React.FC = () => {
     if (!deleteConfirm) return;
     try {
       await userService.deleteUser(deleteConfirm.id);
-      setSuccess('Staff member removed successfully');
+      toast.success('Staff member removed successfully');
       setDeleteConfirm(null);
       fetchUsers();
     } catch (err: any) {
-      setError(err?.response?.data?.detail || 'Failed to remove staff member');
+      toast.error(err?.response?.data?.detail || 'Failed to remove staff member');
     }
   };
 
@@ -235,28 +245,6 @@ const StaffDirectory: React.FC = () => {
         </div>
       </header>
 
-      {/* Alerts */}
-      {error && (
-        <div className="mb-4 p-4 rounded-xl bg-red-50 border border-red-200 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm text-red-700">
-            <span className="material-icons text-lg">error</span> {error}
-          </div>
-          <button onClick={() => setError('')} className="text-red-400 hover:text-red-600">
-            <span className="material-icons text-lg">close</span>
-          </button>
-        </div>
-      )}
-      {success && (
-        <div className="mb-4 p-4 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm text-emerald-700">
-            <span className="material-icons text-lg">check_circle</span> {success}
-          </div>
-          <button onClick={() => setSuccess('')} className="text-emerald-400 hover:text-emerald-600">
-            <span className="material-icons text-lg">close</span>
-          </button>
-        </div>
-      )}
-
       {/* Main Content Card */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
         {/* Search & Filters */}
@@ -362,7 +350,7 @@ const StaffDirectory: React.FC = () => {
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs flex-shrink-0 overflow-hidden">
                           {user.photo_url ? (
-                            <img src={user.photo_url} alt={user.full_name} className="w-full h-full object-cover" />
+                            <img src={userService.getPhotoUrl(user.photo_url) || ''} alt={user.full_name} className="w-full h-full object-cover" />
                           ) : (
                             getInitials(user.full_name)
                           )}
@@ -478,7 +466,7 @@ const StaffDirectory: React.FC = () => {
           <div className="flex flex-col items-center mb-6">
             <div className="w-20 h-20 rounded-full bg-primary/10 text-primary flex items-center justify-center text-2xl font-bold mb-3 overflow-hidden">
               {viewUser.photo_url ? (
-                <img src={viewUser.photo_url} alt={viewUser.full_name} className="w-full h-full object-cover" />
+                <img src={userService.getPhotoUrl(viewUser.photo_url) || ''} alt={viewUser.full_name} className="w-full h-full object-cover" />
               ) : (
                 getInitials(viewUser.full_name)
               )}
@@ -555,8 +543,8 @@ const StaffDirectory: React.FC = () => {
       {showCreate && (
         <CreateStaffModal
           onClose={() => setShowCreate(false)}
-          onSuccess={() => { setShowCreate(false); setSuccess('Staff member added successfully'); fetchUsers(); }}
-          onError={setError}
+          onSuccess={() => { setShowCreate(false); toast.success('Staff member added successfully'); fetchUsers(); }}
+          onError={(msg) => toast.error(msg)}
         />
       )}
 
@@ -565,8 +553,8 @@ const StaffDirectory: React.FC = () => {
         <EditStaffModal
           user={editUser}
           onClose={() => setEditUser(null)}
-          onSuccess={() => { setEditUser(null); setSuccess('Staff member updated successfully'); fetchUsers(); }}
-          onError={setError}
+          onSuccess={() => { setEditUser(null); toast.success('Staff member updated successfully'); fetchUsers(); }}
+          onError={(msg) => toast.error(msg)}
         />
       )}
 
@@ -575,8 +563,8 @@ const StaffDirectory: React.FC = () => {
         <ResetPasswordModal
           user={resetUser}
           onClose={() => setResetUser(null)}
-          onSuccess={() => { setResetUser(null); setSuccess('Password reset successfully'); }}
-          onError={setError}
+          onSuccess={() => { setResetUser(null); toast.success('Password reset successfully'); }}
+          onError={(msg) => toast.error(msg)}
         />
       )}
     </div>
@@ -628,23 +616,35 @@ const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => void; o
   const [photoError, setPhotoError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { register, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm<CreateFormData>({
+  const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm<CreateFormData>({
     resolver: zodResolver(staffCreateSchema),
+    defaultValues: {
+      country_code: '+91',
+    },
   });
 
+  const email = watch('email', '');
   const password = watch('password', '');
   const firstName = watch('first_name', '');
   const lastName = watch('last_name', '');
   const autoGenPassword = watch('auto_generate_password', false);
+
+  // Auto-generate username from email
+  React.useEffect(() => {
+    if (email && email.includes('@')) {
+      const suggestedUsername = email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '_');
+      setValue('username', suggestedUsername);
+    }
+  }, [email, setValue]);
   
   const fullName = `${firstName} ${lastName}`.trim();
   
   const strengthChecks = [
-    { label: '8+ characters', pass: password.length >= 8 },
-    { label: 'Uppercase letter', pass: /[A-Z]/.test(password) },
-    { label: 'Lowercase letter', pass: /[a-z]/.test(password) },
-    { label: 'Contains digit', pass: /[0-9]/.test(password) },
-    { label: 'Special character', pass: /[^A-Za-z0-9]/.test(password) },
+    { label: '8+ characters', pass: (password || '').length >= 8 },
+    { label: 'Uppercase letter', pass: /[A-Z]/.test(password || '') },
+    { label: 'Lowercase letter', pass: /[a-z]/.test(password || '') },
+    { label: 'Contains digit', pass: /[0-9]/.test(password || '') },
+    { label: 'Special character', pass: /[^A-Za-z0-9]/.test(password || '') },
   ];
   const passedCount = strengthChecks.filter(c => c.pass).length;
 
@@ -714,7 +714,7 @@ const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => void; o
       }
 
       const payload: UserCreateData = {
-        username: data.email.split('@')[0], // Generate username from email
+        username: data.username,
         email: data.email,
         first_name: data.first_name,
         last_name: data.last_name,
@@ -793,12 +793,20 @@ const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => void; o
           </div>
           <Field label="Email Address" error={errors.email?.message}>
             <input {...register('email')} type="email" className="input-field" placeholder="sarah.j@hospital.com" />
-            {/* <p className="text-xs text-emerald-600 mt-1 flex items-center gap-1">
-              <span className="material-icons text-sm">check_circle</span> Email is available
-            </p> */}
+          </Field>
+          <Field label="Username (for login)" error={errors.username?.message}>
+            <input {...register('username')} className="input-field" placeholder="Auto-filled from email" />
+            <p className="text-xs text-slate-500 mt-1">Used for logging into the system</p>
           </Field>
           <Field label="Phone Number" error={errors.phone_number?.message}>
-            <input {...register('phone_number')} className="input-field" placeholder="+1 (555) 000-0000" />
+            <div className="flex gap-2">
+              <select {...register('country_code')} className="input-field w-28">
+                {COUNTRIES.map(c => (
+                  <option key={c.code} value={c.phoneCode}>{c.phoneCode}</option>
+                ))}
+              </select>
+              <input {...register('phone_number')} className="input-field flex-1" placeholder="1234567890" />
+            </div>
           </Field>
         </section>
 
@@ -869,7 +877,7 @@ const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => void; o
                     <span className="material-icons text-lg">{showPassword ? 'visibility_off' : 'visibility'}</span>
                   </button>
                 </div>
-                {password.length > 0 && (
+                {(password || '').length > 0 && (
                   <div className="mt-2">
                     <div className="password-strength-meter flex gap-1">
                       {[0, 1, 2, 3, 4].map(i => (
@@ -916,6 +924,7 @@ const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onSuccess:
       first_name: user.first_name || '',
       last_name: user.last_name || '',
       phone_number: user.phone_number || '',
+      country_code: '+91',
       employee_id: user.employee_id || '',
       department: user.department || '',
       role: user.role,
@@ -1044,7 +1053,14 @@ const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onSuccess:
             <input {...register('email')} type="email" className="input-field" />
           </Field>
           <Field label="Phone Number" error={errors.phone_number?.message}>
-            <input {...register('phone_number')} className="input-field" placeholder="+1 (555) 000-0000" />
+            <div className="flex gap-2">
+              <select {...register('country_code')} className="input-field w-28">
+                {COUNTRIES.map(c => (
+                  <option key={c.code} value={c.phoneCode}>{c.phoneCode}</option>
+                ))}
+              </select>
+              <input {...register('phone_number')} className="input-field flex-1" placeholder="1234567890" />
+            </div>
           </Field>
         </section>
 

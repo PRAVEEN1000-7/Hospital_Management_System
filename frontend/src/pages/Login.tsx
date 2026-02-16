@@ -4,11 +4,12 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useAuth } from '../contexts/AuthContext';
 import { loginSchema, type LoginFormData } from '../utils/validation';
+import { useToast } from '../contexts/ToastContext';
 
 const Login: React.FC = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [error, setError] = useState<string>('');
+  const toast = useToast();
   const [showPassword, setShowPassword] = useState(false);
 
   const {
@@ -20,13 +21,12 @@ const Login: React.FC = () => {
   });
 
   const onSubmit = async (data: LoginFormData) => {
-    setError('');
     try {
       await login(data);
       navigate('/dashboard');
     } catch (err: unknown) {
       const axiosError = err as { response?: { data?: { detail?: string } } };
-      setError(axiosError.response?.data?.detail || 'Login failed. Please try again.');
+      toast.error(axiosError.response?.data?.detail || 'Login failed. Please try again.');
     }
   };
 
@@ -83,14 +83,6 @@ const Login: React.FC = () => {
             <h2 className="text-3xl font-bold text-slate-900 mb-2">Welcome Back</h2>
             <p className="text-slate-500">Enter your credentials to access the provider portal.</p>
           </div>
-
-          {/* Error Banner */}
-          {error && (
-            <div className="mb-6 p-4 rounded-lg bg-red-50 border border-red-200 flex items-center gap-3">
-              <span className="material-icons text-red-500 text-xl">error_outline</span>
-              <p className="text-sm text-red-700">{error}</p>
-            </div>
-          )}
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
             <div>

@@ -16,6 +16,19 @@ class HospitalDetails(Base):
     established_date = Column(Date, nullable=True)
     hospital_type = Column(String(50), default="General")
     
+    # Facility Admin
+    facility_admin_name = Column(String(200), nullable=True)
+    facility_admin_phone = Column(String(20), nullable=True)
+    
+    # Accreditation & Specialisation
+    nabh_accreditation = Column(String(100), nullable=True)
+    specialisation = Column(String(100), nullable=True)
+    
+    # Facility Strength
+    number_of_beds = Column(Integer, nullable=True)
+    staff_strength = Column(Integer, nullable=True)
+    establishment_location = Column(Text, nullable=True)
+    
     # Contact Information
     primary_phone_country_code = Column(String(5), nullable=False, default="+91")
     primary_phone = Column(String(20), nullable=False)

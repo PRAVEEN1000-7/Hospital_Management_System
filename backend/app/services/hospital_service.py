@@ -50,7 +50,9 @@ def create_hospital(db: Session, hospital_data: HospitalCreate, user_id: int) ->
                        'medical_registration_number', 'secondary_phone', 'address_line2',
                        'secondary_phone_country_code', 'emergency_hotline_country_code',
                        'emergency_hotline', 'website', 'hospital_code', 'registration_number',
-                       'established_date', 'working_hours_start', 'working_hours_end']
+                       'established_date', 'working_hours_start', 'working_hours_end',
+                       'facility_admin_name', 'facility_admin_phone', 'nabh_accreditation',
+                       'specialisation', 'establishment_location']
     for field in optional_fields:
         if field in data and (data[field] == '' or data[field] is None):
             data[field] = None
@@ -94,7 +96,9 @@ def update_hospital(db: Session, hospital_data: HospitalUpdate, user_id: int) ->
     
     # Convert empty strings to None for optional fields with database constraints
     optional_fields = ['gst_number', 'pan_number', 'drug_license_number', 
-                       'medical_registration_number', 'secondary_phone', 'address_line2']
+                       'medical_registration_number', 'secondary_phone', 'address_line2',
+                       'facility_admin_name', 'facility_admin_phone', 'nabh_accreditation',
+                       'specialisation', 'establishment_location']
     for field in optional_fields:
         if field in update_data and update_data[field] == '':
             update_data[field] = None

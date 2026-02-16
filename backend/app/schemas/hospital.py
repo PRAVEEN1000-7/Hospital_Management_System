@@ -12,6 +12,19 @@ class HospitalBase(BaseModel):
     established_date: Optional[date] = None
     hospital_type: str = Field(default="General", max_length=50)
     
+    # Facility Admin
+    facility_admin_name: Optional[str] = Field(None, max_length=200, description="Facility admin contact name")
+    facility_admin_phone: Optional[str] = Field(None, max_length=20, description="Facility admin phone number")
+    
+    # Accreditation & Specialisation
+    nabh_accreditation: Optional[str] = Field(None, max_length=100, description="NABH Accreditation details")
+    specialisation: Optional[str] = Field(None, max_length=100, description="Hospital specialisation")
+    
+    # Facility Strength
+    number_of_beds: Optional[int] = Field(None, ge=0, description="Total number of beds")
+    staff_strength: Optional[int] = Field(None, ge=0, description="Total staff strength")
+    establishment_location: Optional[str] = Field(None, description="Establishment location / GPS coordinates")
+    
     # Contact (with country codes for international support)
     primary_phone_country_code: str = Field(default="+91", pattern=r"^\+[0-9]{1,4}$", description="Country calling code")
     primary_phone: str = Field(..., pattern=r"^\d{4,15}$", description="Phone number (digits only, 4-15 digits)")
@@ -29,6 +42,8 @@ class HospitalBase(BaseModel):
         if isinstance(data, dict):
             optional_fields = [
                 'hospital_code', 'registration_number', 'established_date',
+                'facility_admin_name', 'facility_admin_phone',
+                'nabh_accreditation', 'specialisation', 'establishment_location',
                 'secondary_phone_country_code', 'secondary_phone',
                 'website', 'emergency_hotline_country_code', 'emergency_hotline',
                 'address_line2', 'gst_number', 'pan_number',
@@ -169,6 +184,15 @@ class HospitalUpdate(BaseModel):
     working_hours_end: Optional[time] = None
     working_days: Optional[List[str]] = None
     emergency_24_7: Optional[bool] = None
+    
+    # New fields
+    facility_admin_name: Optional[str] = Field(None, max_length=200)
+    facility_admin_phone: Optional[str] = Field(None, max_length=20)
+    nabh_accreditation: Optional[str] = Field(None, max_length=100)
+    specialisation: Optional[str] = Field(None, max_length=100)
+    number_of_beds: Optional[int] = None
+    staff_strength: Optional[int] = None
+    establishment_location: Optional[str] = None
 
 
 class HospitalResponse(HospitalBase):

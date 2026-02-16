@@ -6,6 +6,7 @@ import { jsPDF } from 'jspdf';
 import patientService from '../services/patientService';
 import type { Patient } from '../types/patient';
 import api from '../services/api';
+import { useToast } from '../contexts/ToastContext';
 
 interface HospitalConfig {
   hospital_name: string;
@@ -22,6 +23,7 @@ interface HospitalConfig {
 const PatientIdCard: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const toast = useToast();
   const frontRef = useRef<HTMLDivElement>(null);
   const backRef = useRef<HTMLDivElement>(null);
 
@@ -29,8 +31,6 @@ const PatientIdCard: React.FC = () => {
   const [hospital, setHospital] = useState<HospitalConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
 
   useEffect(() => {
     const fetchData = async () => {
@@ -42,13 +42,13 @@ const PatientIdCard: React.FC = () => {
         setPatient(patientData);
         setHospital(hospitalRes.data);
       } catch {
-        setError('Failed to load data');
+        toast.error('Failed to load data');
       } finally {
         setLoading(false);
       }
     };
     fetchData();
-  }, [id]);
+  }, [id, toast]);
 
   const generatePDF = async (): Promise<jsPDF | null> => {
     if (!frontRef.current || !backRef.current) return null;
@@ -75,17 +75,15 @@ const PatientIdCard: React.FC = () => {
   const handleEmail = async () => {
     if (!patient?.email) return;
     setSending(true);
-    setError('');
-    setSuccess('');
     try {
       const pdf = await generatePDF();
       if (pdf) {
         const blob = pdf.output('blob');
         await patientService.emailIdCard(patient.id, blob);
-        setSuccess(`ID card sent to ${patient.email}`);
+        toast.success(`ID card sent to ${patient.email}`);
       }
     } catch {
-      setError('Failed to send email');
+      toast.error('Failed to send email');
     } finally {
       setSending(false);
     }
@@ -103,7 +101,7 @@ const PatientIdCard: React.FC = () => {
     return (
       <div className="text-center py-20 text-slate-500">
         <span className="material-icons text-5xl text-red-300 mb-4">error_outline</span>
-        <p>{error || 'Data not found'}</p>
+        <p>Data not found</p>
       </div>
     );
   }
@@ -143,16 +141,6 @@ const PatientIdCard: React.FC = () => {
         <div className="mb-6 p-4 rounded-xl bg-amber-50 border border-amber-200 flex items-center gap-3">
           <span className="material-icons text-amber-600">warning</span>
           <p className="text-sm text-amber-700">Patient does not have an email address on file.</p>
-        </div>
-      )}
-      {error && (
-        <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700 flex items-center gap-3">
-          <span className="material-icons text-red-500">error</span> {error}
-        </div>
-      )}
-      {success && (
-        <div className="mb-6 p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-sm text-emerald-700 flex items-center gap-3">
-          <span className="material-icons text-emerald-500">check_circle</span> {success}
         </div>
       )}
 

@@ -6,6 +6,7 @@ import { format } from 'date-fns';
 import userService from '../services/userService';
 import type { UserData, UserCreateData, UserUpdateData } from '../types/user';
 import { ROLE_COLORS, ROLE_LABELS } from '../utils/constants';
+import { useToast } from '../contexts/ToastContext';
 
 const userCreateSchema = z.object({
   username: z.string().min(3, 'Min 3 characters').max(50),
@@ -61,13 +62,12 @@ const ROLES = [
 ];
 
 const UserManagement: React.FC = () => {
+  const toast = useToast();
   const [users, setUsers] = useState<UserData[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
 
   // Modal states
   const [showCreate, setShowCreate] = useState(false);
@@ -82,32 +82,25 @@ const UserManagement: React.FC = () => {
       setUsers(res.data);
       setTotalPages(res.total_pages);
     } catch {
-      setError('Failed to load users');
+      toast.error('Failed to load users');
     } finally {
       setLoading(false);
     }
-  }, [page, search]);
+  }, [page, search, toast]);
 
   useEffect(() => {
     fetchUsers();
   }, [fetchUsers]);
 
-  useEffect(() => {
-    if (success) {
-      const timer = setTimeout(() => setSuccess(''), 4000);
-      return () => clearTimeout(timer);
-    }
-  }, [success]);
-
   const handleDelete = async () => {
     if (!deleteConfirm) return;
     try {
       await userService.deleteUser(deleteConfirm.id);
-      setSuccess('User deleted successfully');
+      toast.success('User deleted successfully');
       setDeleteConfirm(null);
       fetchUsers();
     } catch {
-      setError('Failed to delete user');
+      toast.error('Failed to delete user');
     }
   };
 
@@ -131,24 +124,6 @@ const UserManagement: React.FC = () => {
           <span className="material-icons text-lg">add</span> Add User
         </button>
       </div>
-
-      {/* Alerts */}
-      {error && (
-        <div className="mb-4 p-4 rounded-xl bg-red-50 border border-red-200 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm text-red-700">
-            <span className="material-icons text-lg">error</span> {error}
-          </div>
-          <button onClick={() => setError('')} className="text-red-400 hover:text-red-600"><span className="material-icons text-lg">close</span></button>
-        </div>
-      )}
-      {success && (
-        <div className="mb-4 p-4 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm text-emerald-700">
-            <span className="material-icons text-lg">check_circle</span> {success}
-          </div>
-          <button onClick={() => setSuccess('')} className="text-emerald-400 hover:text-emerald-600"><span className="material-icons text-lg">close</span></button>
-        </div>
-      )}
 
       {/* Search */}
       <div className="mb-6">
@@ -289,8 +264,8 @@ const UserManagement: React.FC = () => {
       {showCreate && (
         <CreateUserModal
           onClose={() => setShowCreate(false)}
-          onSuccess={() => { setShowCreate(false); setSuccess('User created successfully'); fetchUsers(); }}
-          onError={setError}
+          onSuccess={() => { setShowCreate(false); toast.success('User created successfully'); fetchUsers(); }}
+          onError={(msg) => toast.error(msg)}
         />
       )}
 
@@ -299,8 +274,8 @@ const UserManagement: React.FC = () => {
         <EditUserModal
           user={editUser}
           onClose={() => setEditUser(null)}
-          onSuccess={() => { setEditUser(null); setSuccess('User updated successfully'); fetchUsers(); }}
-          onError={setError}
+          onSuccess={() => { setEditUser(null); toast.success('User updated successfully'); fetchUsers(); }}
+          onError={(msg) => toast.error(msg)}
         />
       )}
 
@@ -309,8 +284,8 @@ const UserManagement: React.FC = () => {
         <ResetPasswordModal
           user={resetUser}
           onClose={() => setResetUser(null)}
-          onSuccess={() => { setResetUser(null); setSuccess('Password reset successfully'); }}
-          onError={setError}
+          onSuccess={() => { setResetUser(null); toast.success('Password reset successfully'); }}
+          onError={(msg) => toast.error(msg)}
         />
       )}
     </div>

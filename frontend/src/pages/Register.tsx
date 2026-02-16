@@ -9,11 +9,11 @@ import {
   getStatesForCountry, getPostalLabel, getPhoneCode
 } from '../utils/constants';
 import patientService from '../services/patientService';
+import { useToast } from '../contexts/ToastContext';
 
 const Register: React.FC = () => {
   const navigate = useNavigate();
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const toast = useToast();
 
   const {
     register,
@@ -52,26 +52,18 @@ const Register: React.FC = () => {
   const states = getStatesForCountry(watchCountry || 'India');
   const postalLabel = getPostalLabel(watchCountry || 'India');
 
-  useEffect(() => {
-    if (success) {
-      const timer = setTimeout(() => navigate('/patients'), 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [success, navigate]);
-
   const onSubmit = async (data: PatientFormData) => {
-    setError('');
-    setSuccess('');
     try {
       const result = await patientService.createPatient(data);
-      setSuccess(`Patient registered successfully! PRN: ${result.prn}`);
+      toast.success(`Patient registered successfully! PRN: ${result.prn}`);
+      setTimeout(() => navigate('/patients'), 2000);
     } catch (err: unknown) {
       const axiosError = err as { response?: { data?: { detail?: string | Array<{ msg: string }> } } };
       const detail = axiosError.response?.data?.detail;
       if (Array.isArray(detail)) {
-        setError(detail.map((d) => d.msg).join(', '));
+        toast.error(detail.map((d) => d.msg).join(', '));
       } else {
-        setError(detail || 'Failed to register patient');
+        toast.error(detail || 'Failed to register patient');
       }
     }
   };
@@ -98,20 +90,6 @@ const Register: React.FC = () => {
           </div>
         </div>
       </header>
-
-      {/* Banners */}
-      {success && (
-        <div className="mb-6 p-4 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center gap-3">
-          <span className="material-icons text-emerald-500">check_circle</span>
-          <p className="text-sm text-emerald-700">{success}</p>
-        </div>
-      )}
-      {error && (
-        <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-200 flex items-center gap-3">
-          <span className="material-icons text-red-500">error</span>
-          <p className="text-sm text-red-700">{error}</p>
-        </div>
-      )}
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
         {/* Section 1: Personal Details */}

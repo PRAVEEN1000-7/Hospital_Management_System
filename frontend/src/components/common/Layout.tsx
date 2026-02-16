@@ -20,6 +20,9 @@ const Layout: React.FC = () => {
     { to: '/staff', label: 'Staff Directory', icon: 'badge' },
   ];
 
+  if (user?.role === 'super_admin' ) {
+    navItems.push({ to: '/hospital-setup', label: 'Hospital Setup', icon: 'local_hospital' });
+  }
   if (user?.role === 'super_admin') {
     navItems.push({ to: '/user-management', label: 'User Management', icon: 'admin_panel_settings' });
   }

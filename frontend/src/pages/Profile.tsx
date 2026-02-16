@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import authService from '../services/authService';
 import { changePasswordSchema } from '../utils/validation';
 import { ROLE_LABELS, ROLE_COLORS } from '../utils/constants';
+import { useToast } from '../contexts/ToastContext';
 
 type ChangePasswordData = {
   current_password: string;
@@ -14,9 +15,8 @@ type ChangePasswordData = {
 
 const Profile: React.FC = () => {
   const { user } = useAuth();
+  const toast = useToast();
   const [showChangePassword, setShowChangePassword] = useState(false);
-  const [success, setSuccess] = useState('');
-  const [error, setError] = useState('');
   const [showCurrent, setShowCurrent] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -38,15 +38,13 @@ const Profile: React.FC = () => {
   const passedCount = strengthChecks.filter(c => c.pass).length;
 
   const onSubmit = async (data: ChangePasswordData) => {
-    setError('');
-    setSuccess('');
     try {
       await authService.changePassword(data.current_password, data.new_password);
-      setSuccess('Password changed successfully');
+      toast.success('Password changed successfully');
       reset();
       setShowChangePassword(false);
     } catch (err: any) {
-      setError(err?.response?.data?.detail || 'Failed to change password');
+      toast.error(err?.response?.data?.detail || 'Failed to change password');
     }
   };
 
@@ -85,18 +83,6 @@ const Profile: React.FC = () => {
         </div>
 
         <div className="border-t border-slate-200" />
-
-        {/* Alerts */}
-        {success && (
-          <div className="mx-6 mt-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center gap-2 text-sm text-emerald-700">
-            <span className="material-icons text-lg">check_circle</span> {success}
-          </div>
-        )}
-        {error && (
-          <div className="mx-6 mt-4 p-3 rounded-xl bg-red-50 border border-red-200 flex items-center gap-2 text-sm text-red-700">
-            <span className="material-icons text-lg">error</span> {error}
-          </div>
-        )}
 
         {/* Change Password Accordion */}
         <div className="p-6">
@@ -213,7 +199,7 @@ const Profile: React.FC = () => {
               <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => { setShowChangePassword(false); reset(); setError(''); }}
+                  onClick={() => { setShowChangePassword(false); reset(); }}
                   className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
                 >
                   Cancel

@@ -1,6 +1,8 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
+import { ToastProvider } from './contexts/ToastContext';
+import ToastContainer from './components/common/ToastContainer';
 import ProtectedRoute from './components/common/ProtectedRoute';
 import Layout from './components/common/Layout';
 import Login from './pages/Login';
@@ -12,12 +14,15 @@ import PatientIdCard from './pages/PatientIdCard';
 import UserManagement from './pages/UserManagement';
 import StaffDirectory from './pages/StaffDirectory';
 import Profile from './pages/Profile';
+import HospitalSetup from './pages/HospitalSetup';
 
 const App: React.FC = () => {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <Routes>
+        <ToastProvider>
+          <ToastContainer />
+          <Routes>
           {/* Public */}
           <Route path="/login" element={<Login />} />
 
@@ -36,6 +41,7 @@ const App: React.FC = () => {
             <Route path="/patients/:id/id-card" element={<PatientIdCard />} />
             <Route path="/staff" element={<StaffDirectory />} />
             <Route path="/user-management" element={<UserManagement />} />
+            <Route path="/hospital-setup" element={<HospitalSetup />} />
             <Route path="/profile" element={<Profile />} />
           </Route>
 
@@ -43,7 +49,8 @@ const App: React.FC = () => {
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/change-password" element={<Navigate to="/profile" replace />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
-        </Routes>
+          </Routes>
+        </ToastProvider>
       </AuthProvider>
     </BrowserRouter>
   );

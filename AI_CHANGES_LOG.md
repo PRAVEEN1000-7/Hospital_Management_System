@@ -8,7 +8,7 @@
 
 - **7 new files** created (4 backend, 3 frontend)
 - **4 existing files** modified (2 backend, 1 backend config, 1 frontend)
-- **1 new pip dependency** added (`httpx`)
+- **0 new pip dependencies** added (`httpx` was already in requirements.txt)
 - **1 new environment variable** added (`GROQ_API_KEY`)
 - **Zero existing files deleted or renamed**
 
@@ -192,10 +192,10 @@ The widget is placed inside `<AuthProvider>` and `<ToastProvider>` so it has acc
 
 ---
 
-## Dependency Added
+## Dependencies
 
 ### `backend/requirements.txt`
-- Added: `httpx==0.26.0` — async HTTP client used to call the Google Gemini API from the backend
+- `httpx==0.26.0` — async HTTP client used to call the Groq API from the backend (was already listed as an existing dependency)
 
 ---
 
@@ -225,4 +225,4 @@ The widget is placed inside `<AuthProvider>` and `<ToastProvider>` so it has acc
 6. **Optionally remove:**
    - `GROQ_API_KEY` from `backend/.env`
    - `GROQ_API_KEY` field from `backend/app/config.py`
-   - `httpx` from `backend/requirements.txt`
+   - (Do NOT remove `httpx` from requirements — it was already a project dependency)

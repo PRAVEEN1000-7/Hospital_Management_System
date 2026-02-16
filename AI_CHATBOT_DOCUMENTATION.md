@@ -193,7 +193,7 @@ Response: "Currently, there are **42 active patients** in the system (25 male, 1
 
 ### What it does
 
-1. **Tries to match known actions** — even without Gemini, it uses the same keyword extraction to give permission-based answers
+1. **Tries to match known actions** — even without Groq, it uses the same keyword extraction to give permission-based answers
 2. **Recognizes greetings** — "hello", "hi", "hey", "help" → welcome message with suggestions
 3. **Recognizes thanks** — "thank you", "thanks" → polite acknowledgment
 4. **Default** — shows the user's role and suggests example questions they can ask
@@ -216,7 +216,7 @@ The AI chatbot can query the HMS PostgreSQL database in real-time to answer data
 
 | Category | Keywords Detected | Queries Run |
 |----------|-------------------|-------------|
-| **Patients** | patient, prn, hms-, registered, blood group | Count, gender breakdown, blood groups, search by PRN/name, recent |
+| **Patients** | patient, prn, hms-, registered, blood group, reference id, ref id, ref no | Count, gender breakdown, blood groups, search by PRN/name/reference id, recent |
 | **Users/Staff** | user, staff, doctor, nurse, admin, employee | Count, role breakdown, list by role, search by name |
 | **Hospital** | hospital name, beds, accreditation, working hours | Full hospital configuration |
 | **Statistics** | how many, total, count, stats, overview, summary | Combined system statistics |
@@ -227,6 +227,9 @@ The AI chatbot can query the HMS PostgreSQL database in real-time to answer data
 "How many patients?" → Total active patients: 42, Inactive: 3
 "Show me patient HMS-000001" → Full patient details (name, DOB, gender, phone, address, etc.)
 "Find patient John" → Matching patients list (up to 5)
+"Patient with reference id 000001" → Finds patient by PRN (pads to HMS-000001)
+"Get patient with ref id 3" → Finds patient by reference number or DB ID
+"PRN 000001" → Looks up patient by PRN number
 "How many doctors?" → Doctors: 5 (with names and departments)
 "List all nurses" → All active nurses with names, employee IDs, departments
 "Hospital details" → Hospital name, type, beds, contact, address, legal info
@@ -283,7 +286,7 @@ The chatbot knows all 9 HMS roles and adapts its responses:
 1. User logs in → gets a JWT token containing their `role`
 2. Every chat request sends the JWT in the `Authorization: Bearer` header
 3. The backend extracts the role from the JWT via the `get_current_active_user` dependency
-4. The chat service uses the role to check permissions and build the Gemini prompt
+4. The chat service uses the role to check permissions and build the Groq prompt
 
 ---
 
@@ -410,7 +413,7 @@ All endpoints are under `/api/v1/chat/` and require JWT authentication.
 ```json
 {
   "response": "🚫 **No, as a Nurse you cannot deactivate a user account.**\n\nThe following roles can do this: Super Admin.\n\n💡 Please contact a Super Admin to help you with this.",
-  "source": "rules",
+  "source": "instant",
   "action_detected": "delete_user"
 }
 ```
@@ -609,33 +612,33 @@ upload_hospital_logo → "upload logo", "hospital logo", "change logo", "add log
 
 | Question | Source | Response Type |
 |----------|--------|---------------|
-| "Can I delete a user?" | rules | ✅ Yes or 🚫 No with guidance |
-| "Am I able to register a patient?" | rules | ✅ Yes with step-by-step |
-| "Who can manage users?" | rules | Lists allowed roles |
-| "What can I do?" | rules | Full role permission summary |
-| "How do I change my password?" | rules | Step-by-step with nav path |
-| "Can I upload the hospital logo?" | rules | ✅/🚫 based on role |
+| "Can I delete a user?" | instant | ✅ Yes or 🚫 No with guidance |
+| "Am I able to register a patient?" | instant | ✅ Yes with step-by-step |
+| "Who can manage users?" | instant | Lists allowed roles |
+| "What can I do?" | instant | Full role permission summary |
+| "How do I change my password?" | instant | Step-by-step with nav path |
+| "Can I upload the hospital logo?" | instant | ✅/🚫 based on role |
 
 ### Complex Questions (→ Groq AI)
 
 | Question | Source |
 |----------|--------|
-| "Explain the difference between Admin and Super Admin" | groq |
-| "Walk me through the patient registration workflow" | groq |
-| "What should I do if a patient's ID card isn't showing the logo?" | groq |
-| "How does the employee ID numbering work?" | groq |
-| "I'm new here, give me an overview of the system" | groq |
+| "Explain the difference between Admin and Super Admin" | ai |
+| "Walk me through the patient registration workflow" | ai |
+| "What should I do if a patient's ID card isn't showing the logo?" | ai |
+| "How does the employee ID numbering work?" | ai |
+| "I'm new here, give me an overview of the system" | ai |
 
 ### Database Questions (→ Groq AI + DB)
 
 | Question | Source |
 |----------|--------|
-| "How many patients are registered?" | groq+db |
-| "List all doctors" | groq+db |
-| "Show me patient HMS-000001" | groq+db |
-| "How many male vs female patients?" | groq+db |
-| "What are the hospital details?" | groq+db |
-| "Give me a system overview with numbers" | groq+db |
+| "How many patients are registered?" | ai+db |
+| "List all doctors" | ai+db |
+| "Show me patient HMS-000001" | ai+db |
+| "How many male vs female patients?" | ai+db |
+| "What are the hospital details?" | ai+db |
+| "Give me a system overview with numbers" | ai+db |
 
 ### Conversational (→ Fallback)
 
@@ -653,10 +656,10 @@ Every bot message shows a small badge at the bottom indicating where the respons
 
 | Badge | Source | Meaning |
 |-------|--------|--------|
-| ⚡ Instant | `rules` | Answered from local knowledge base in <50ms |
-| ✨ AI | `groq` | Answered by Groq Llama 3.3 70B AI (1-3s) |
-| ✨ AI+DB | `groq+db` | Answered by AI with live database data |
-| ℹ Offline | `fallback` | Answered without API — local keyword matching |
+| ⚡ Instant | `instant` | Answered from local knowledge base in <50ms |
+| ✨ AI | `ai` | Answered by Groq Llama 3.3 70B AI (1-3s) |
+| ✨ AI+DB | `ai+db` | Answered by AI with live database data |
+| ℹ Offline | `offline` | Answered without API — local keyword matching |
 
 ---
 
@@ -693,4 +696,4 @@ Every bot message shows a small badge at the bottom indicating where the respons
 - No WebSocket server needed
 - No additional npm packages installed
 - No Docker changes needed
-- Only 1 pip package added (`httpx`)
+- Only 1 pip package needed (`httpx` — was already a project dependency)

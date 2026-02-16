@@ -183,7 +183,7 @@ const AIChatWidget: React.FC = () => {
           role: 'assistant',
           content: `👋 Hi **${user.full_name || user.username}**! I'm the HMS AI Assistant.\n\nYou're logged in as **${roleName}**. I can help you with:\n\n• Understanding your permissions\n• Step-by-step guides for any feature\n• Finding where things are\n• Troubleshooting issues\n\nJust type a question or tap a suggestion below!`,
           timestamp: new Date(),
-          source: 'rules',
+          source: 'instant',
         },
       ]);
     }
@@ -237,7 +237,7 @@ const AIChatWidget: React.FC = () => {
         role: 'assistant',
         content: `⚠️ Sorry, I couldn't process that. ${errorMsg.includes('401') ? 'Your session may have expired — try logging in again.' : 'Please try again.'}`,
         timestamp: new Date(),
-        source: 'fallback',
+        source: 'offline',
       };
       setMessages((prev) => [...prev, errMessage]);
     } finally {

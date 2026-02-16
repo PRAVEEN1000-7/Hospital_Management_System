@@ -24,7 +24,7 @@ export interface ChatRequest {
 
 export interface ChatResponse {
   response: string;
-  source: 'rules' | 'gemini' | 'fallback';
+  source: 'ai' | 'ai+db' | 'instant' | 'offline';
   action_detected: string | null;
 }
 

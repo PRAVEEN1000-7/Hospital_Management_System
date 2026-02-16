@@ -11,6 +11,17 @@ const Layout: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [hospitalName, setHospitalName] = useState('HMS Core');
 
+  useEffect(() => {
+    hospitalService.getHospitalDetails()
+      .then(res => {
+        setHospitalName(res.hospital_name);
+        document.title = `${res.hospital_name} | Hospital Management System`;
+      })
+      .catch(() => {
+        // Keep default on error
+      });
+  }, []);
+
   const handleLogout = async () => {
     await logout();
     navigate('/login');

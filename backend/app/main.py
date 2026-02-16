@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 from .config import settings
-from .routers import auth, patients, users, hospital
+from .routers import auth, patients, users, hospital, chat
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +49,7 @@ app.include_router(auth.router, prefix="/api/v1")
 app.include_router(patients.router, prefix="/api/v1")
 app.include_router(users.router, prefix="/api/v1")
 app.include_router(hospital.router, prefix="/api/v1")
+app.include_router(chat.router, prefix="/api/v1")  # AI Chat — remove this line to disable
 
 
 @app.get("/")

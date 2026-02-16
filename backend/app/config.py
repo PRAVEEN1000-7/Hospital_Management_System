@@ -59,5 +59,8 @@ class Settings(BaseSettings):
     HOSPITAL_EMAIL: str = "info@hospital.com"
     HOSPITAL_WEBSITE: str = "www.hospital.com"
 
+    # AI Chat (Groq)
+    GROQ_API_KEY: str = ""
+
 
 settings = Settings()

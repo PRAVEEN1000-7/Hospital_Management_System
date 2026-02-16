@@ -15,6 +15,7 @@ import UserManagement from './pages/UserManagement';
 import StaffDirectory from './pages/StaffDirectory';
 import Profile from './pages/Profile';
 import HospitalSetup from './pages/HospitalSetup';
+import AIChatWidget from './components/chat/AIChatWidget'; // AI Chat — remove this line to disable
 
 const App: React.FC = () => {
   return (
@@ -22,6 +23,7 @@ const App: React.FC = () => {
       <AuthProvider>
         <ToastProvider>
           <ToastContainer />
+          <AIChatWidget /> {/* AI Chat — remove this line to disable */}
           <Routes>
           {/* Public */}
           <Route path="/login" element={<Login />} />

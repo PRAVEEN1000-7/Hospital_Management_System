@@ -13,7 +13,7 @@ PLUG-AND-PLAY: Delete this file to remove DB awareness from the AI.
 
 import logging
 import re
-from sqlalchemy import func, text, or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 from ..database import SessionLocal
 from ..models.patient import Patient
@@ -383,7 +383,6 @@ def _get_user_data(db: Session, msg: str) -> str:
             parts.append(f"- {label}: {count}")
 
     # List specific role
-    import re
     role_map = {
         "doctor": "doctor", "doctors": "doctor",
         "nurse": "nurse", "nurses": "nurse",

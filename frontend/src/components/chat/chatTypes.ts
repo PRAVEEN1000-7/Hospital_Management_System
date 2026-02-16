@@ -10,7 +10,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
-  source?: 'rules' | 'gemini' | 'fallback';
+  source?: 'ai' | 'ai+db' | 'instant' | 'offline';
   isLoading?: boolean;
 }
 

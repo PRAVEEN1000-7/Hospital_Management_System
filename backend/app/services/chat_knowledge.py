@@ -212,7 +212,7 @@ NAVIGATION = {
 }
 
 # ──────────────────────────────────────────────
-# 4. SYSTEM KNOWLEDGE (for Gemini context)
+# 4. SYSTEM KNOWLEDGE (for Groq context)
 # ──────────────────────────────────────────────
 HMS_SYSTEM_KNOWLEDGE = """
 ## Hospital Management System (HMS) — Complete Knowledge Base
@@ -336,7 +336,7 @@ def check_permission(role: str, action: str) -> dict:
                     "suggestion": f"Contact a {allowed_labels[0]} for assistance.",
                 }
 
-    return None  # No matching permission found — let Gemini handle it
+    return None  # No matching permission found — let Groq handle it
 
 
 def get_role_summary(role: str) -> str:

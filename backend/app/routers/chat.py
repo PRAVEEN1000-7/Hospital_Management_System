@@ -47,7 +47,7 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     response: str = Field(description="AI response text (markdown)")
-    source: str = Field(description="'rules', 'gemini', or 'fallback'")
+    source: str = Field(description="'ai', 'ai+db', 'instant', or 'offline'")
     action_detected: Optional[str] = Field(default=None, description="Detected permission action key")
 
 

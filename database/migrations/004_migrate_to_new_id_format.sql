@@ -280,7 +280,7 @@ COMMIT;
 -- Run this script using PowerShell:
 --
 -- cd d:\HMS\v1\database
--- $env:PGPASSWORD="HMS@2026"
+-- $env:PGPASSWORD="<YOUR_DB_PASSWORD>"
 -- psql -h localhost -U hospital_admin -d hospital_management -f migrations\004_migrate_to_new_id_format.sql
 --
 -- WHAT THIS SCRIPT DOES:

@@ -24,8 +24,9 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql://user:password@localhost:5432/hospital_management"
     DB_ECHO: bool = False
 
-    # Security
-    SECRET_KEY: str = "your-secret-key-min-32-characters-long-change-in-production"
+    # Security — MUST be overridden via backend/.env (never commit real keys)
+    SECRET_KEY: str = "CHANGE-ME-generate-with-secrets-token-hex-32"
+    # Generate: python -c "import secrets; print(secrets.token_hex(32))"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7

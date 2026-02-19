@@ -1,211 +1,114 @@
-# Hospital Management System - Setup Guide
+# Setup Guide
 
-> **Version:** 1.0.0  
-> **Date:** February 16, 2026  
-> **Tech Stack:** React 19 + FastAPI + PostgreSQL 15+
+Step-by-step instructions to get the Hospital Management System running on your local machine.
 
 ---
 
-## 📋 Table of Contents
+## Prerequisites
 
-1. [Prerequisites](#prerequisites)
-2. [Database Setup](#database-setup)
-3. [Backend Setup](#backend-setup)
-4. [Frontend Setup](#frontend-setup)
-5. [Running the Application](#running-the-application)
-6. [First-Time Configuration](#first-time-configuration)
-7. [Troubleshooting](#troubleshooting)
+Install the following before proceeding:
 
----
+| Software | Version | Download |
+|----------|---------|----------|
+| PostgreSQL | 15 or higher | https://www.postgresql.org/download/windows/ |
+| Python | 3.11 or higher | https://www.python.org/downloads/ |
+| Node.js | 20 or higher | https://nodejs.org/ |
 
-## 🔧 Prerequisites
+> **Tip:** During PostgreSQL installation, note down the superuser password you set. You'll need it to create the application database.
 
-### Required Software
-
-| Software | Version | Download Link |
-|----------|---------|---------------|
-| **PostgreSQL** | 15+ | https://www.postgresql.org/download/ |
-| **Python** | 3.11+ | https://www.python.org/downloads/ |
-| **Node.js** | 20+ | https://nodejs.org/ |
-| **Git** | Latest | https://git-scm.com/downloads/ |
-
-### Verify Installation
-
-Open PowerShell and run:
-
-```powershell
-# Check PostgreSQL
-psql --version
-# Expected: psql (PostgreSQL) 15.x or higher
-
-# Check Python
-python --version
-# Expected: Python 3.11.x or higher
-
-# Check Node.js
-node --version
-# Expected: v20.x.x or higher
-
-# Check npm
-npm --version
-# Expected: 10.x.x or higher
-```
+> **Tip:** During Python installation, check **"Add Python to PATH"**.
 
 ---
 
-## 🗄️ Database Setup
+## Step 1 — Create the Database
 
-### Step 1: Create Database User
+Open **pgAdmin** or a terminal with `psql` access.
 
-Open PostgreSQL command line (psql) as superuser:
-
-```bash
-# Windows
-psql -U postgres
-
-# macOS/Linux
-sudo -u postgres psql
-```
-
-Execute these commands:
+### Using psql
 
 ```sql
--- Create database user
-CREATE USER hospital_admin WITH PASSWORD 'HMS@2026';
+-- Connect as the PostgreSQL superuser
+psql -U postgres
 
--- Create database
+-- Create the application user
+CREATE USER hospital_admin WITH PASSWORD '<YOUR_DB_PASSWORD>';
+
+-- Create the database
 CREATE DATABASE hospital_management;
 
--- Grant privileges
+-- Grant permissions
 GRANT ALL PRIVILEGES ON DATABASE hospital_management TO hospital_admin;
 
--- Connect to the database
+-- Connect to the new database
 \c hospital_management
 
--- Grant schema privileges
+-- Grant schema permissions
 GRANT ALL ON SCHEMA public TO hospital_admin;
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO hospital_admin;
 GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO hospital_admin;
 
--- Enable extensions
+-- Enable required extension
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- Exit
+-- Exit psql
 \q
 ```
 
-### Step 2: Run Database Scripts
+### Run Schema & Migration Scripts
 
-Navigate to the project database directory:
-
-Navigate to database directory and execute scripts using PowerShell:
+Open **PowerShell** and run:
 
 ```powershell
 cd d:\HMS\v1\database
 
-# Set environment variable for password
-$env:PGPASSWORD="HMS@2026"
+# Set password for non-interactive execution
+$env:PGPASSWORD = "<YOUR_DB_PASSWORD>"
 
-# 1. Create schema
+# Schema scripts (run in order)
 psql -h localhost -U hospital_admin -d hospital_management -f scripts\001_create_schema.sql
-
-# 2. Apply patient field migrations
 psql -h localhost -U hospital_admin -d hospital_management -f scripts\002_migrate_patient_fields.sql
-
-# 3. Global support and user management
 psql -h localhost -U hospital_admin -d hospital_management -f scripts\003_global_and_user_mgmt.sql
-
-# 4. Hospital details table
 psql -h localhost -U hospital_admin -d hospital_management -f scripts\004_create_hospital_details.sql
 
-# 5. Apply migrations (user profile fields)
+# Migration scripts (run in order)
 psql -h localhost -U hospital_admin -d hospital_management -f migrations\001_add_user_profile_fields.sql
-
-# 6. Add employee sequences and indexes
 psql -h localhost -U hospital_admin -d hospital_management -f migrations\002_add_employee_sequences_and_indexes.sql
-
-# 7. Backfill employee IDs
 psql -h localhost -U hospital_admin -d hospital_management -f migrations\003_backfill_employee_ids.sql
-
-# 8. Seed initial data (creates default users and sample patients)
-psql -h localhost -U hospital_admin -d hospital_management -f seeds\seed_data.sql
-
-# 9. Migrate to new ID format (removes hyphens, adds hospital prefix)
 psql -h localhost -U hospital_admin -d hospital_management -f migrations\004_migrate_to_new_id_format.sql
+
+# Seed initial data
+psql -h localhost -U hospital_admin -d hospital_management -f seeds\seed_data.sql
 ```
 
-**Note:** Step 9 creates the default hospital "HMS Core" and updates all IDs to the new format (e.g., `HMS-000001` → `HC2026000001`).
-
-### Step 3: Verify Database Setup
-
-```powershell
-# Connect to database
-psql -h localhost -U hospital_admin -d hospital_management
-
-# Check tables
-\dt
-
-# Check users (should show 4 default users with new ID format)
-SELECT id, username, email, role, employee_id FROM users;
--- Expected employee_id format: HCSADM20240001, HCADM20240002, etc.
-
-# Check patients (should show 4 sample patients with new PRN format)
-SELECT prn, first_name, last_name, mobile_number FROM patients;
--- Expected prn format: HC2026000001, HC2026000002, etc.
-
-# Check hospital (should show HMS Core)
-SELECT id, hospital_name, is_configured FROM hospital_details;
-
-# Exit
-\q
-```
+> **Note:** If `psql` is not recognized, add PostgreSQL's `bin` directory to your system PATH (e.g., `C:\Program Files\PostgreSQL\15\bin`).
 
 ---
 
-## 🐍 Backend Setup
+## Step 2 — Set Up the Backend
 
-### Step 1: Navigate to Backend Directory
+### Create a Virtual Environment
 
 ```powershell
 cd d:\HMS\v1\backend
-```
-
-### Step 2: Create Virtual Environment
-
-```powershell
-# Create virtual environment
 python -m venv venv
-
-# Activate virtual environment (PowerShell)
 .\venv\Scripts\Activate.ps1
-
-# If you get execution policy error, run:
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```
 
-### Step 3: Install Dependencies
+### Install Dependencies
 
 ```powershell
-# Upgrade pip
-python -m pip install --upgrade pip
-
-# Install all requirements
 pip install -r requirements.txt
-
-# Verify installation
-pip list
 ```
 
-### Step 4: Configure Environment Variables
+### Configure Environment Variables
 
-Create `.env` file in `backend/` directory:
+Copy the example file and update it:
 
 ```powershell
-# Create .env file
-New-Item -Path .env -ItemType File -Force
+Copy-Item .env.example .env
 ```
 
-Add the following content to `.env`:
+Edit `backend\.env` with your actual values:
 
 ```env
 # Application
@@ -214,321 +117,174 @@ APP_VERSION=1.0.0
 DEBUG=True
 
 # Database
-DATABASE_URL=postgresql://hospital_admin:HMS%402026@localhost:5432/hospital_management
+DATABASE_URL=postgresql://hospital_admin:<YOUR_DB_PASSWORD>@localhost:5432/hospital_management
+DB_ECHO=False
 
 # Security
-SECRET_KEY=ecb11559e040a01fd00456e98845390b186fac7e257041cd73ae2700cc9f193b
+SECRET_KEY=<generate-with-python-secrets-token_hex-32>
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=60
+REFRESH_TOKEN_EXPIRE_DAYS=7
 
-# CORS (Frontend URLs)
-CORS_ORIGINS=["http://localhost:5173"]
+# CORS
+CORS_ORIGINS=["http://localhost:3000", "http://localhost:5173"]
+
+# Pagination
+DEFAULT_PAGE_SIZE=10
+MAX_PAGE_SIZE=100
+
+# PRN (Patient Reference Number)
+PRN_PREFIX=HMS
 ```
 
-**⚠️ IMPORTANT:** For production, generate a new SECRET_KEY:
+> **Important:** The `@` in the database password must be URL-encoded as `%40` in `DATABASE_URL`.
+
+> Generate a strong secret key: `python -c "import secrets; print(secrets.token_hex(32))"`
+
+### Start the Backend Server
 
 ```powershell
-python -c "import secrets; print(secrets.token_hex(32))"
-```
-
-### Step 5: Verify Backend Installation
-
-```bash
-# Test FastAPI server
 uvicorn app.main:app --reload --port 8000
-
-# Expected output: Server running at http://127.0.0.1:8000
-# API Docs available at: http://127.0.0.1:8000/docs
 ```
 
-Press `Ctrl+C` to stop the server after verification.
+You should see:
+
+```
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process
+```
+
+Verify by opening http://localhost:8000/docs in your browser.
 
 ---
 
-## powershell
-# Start FastAPI server
-uvicorn app.main:app --reload --port 8000
+## Step 3 — Set Up the Frontend
 
-# Expected output: 
-# INFO:     Uvicorn running on http://127.0.0.1:8000
-# INFO:     Application startup complete
-```
+Open a **new PowerShell window** (keep the backend running).
 
-Open browser and visit:
-- **API Docs:** http://127.0.0.1:8000/docs
-- **Health Check:** http://127.0.0.1:8000/health
+### Install Dependencies
 
-### Step 2: Install Dependencies
-
-```bash
-# Install all npm packages
-npm install
-
-# Expected: ~200+ packages installed
-```
-
-###powershell
-# Install all npm packages
-npm install
-
-# This will install React, TypeScript, Tailwind CSS, and other dependencies
-# Expected: 200+ packages installed successfully
-# Create .env file
-Newpowershell
-# Create .env file
-New-Item -Path .env -ItemType File -Force
-```
-
-Add the following content:
-
-```env
-# API Configuration (Backend URL)
-VITE_API_BASE_URL=http://localhost:8000/api/v1
-### Step 4: Verify Frontend Installation
-
-```bash
-# Start development server
-npm run dev
-
-# Expected output: 
-# VITE v7.3.1  ready in xxx ms
-# ➜  Local:   http://localhost:5173/
-```powershell
-# Start development server
-npm run dev
-
-# Expected output: 
-# VITE ready in xxx ms
-# ➜  Local:   http://localhost:5173/
-# ➜  Network: use --host to expose
-```
-
-Open browser and visit http://localhost:5173
-### Option 1: Manual Start (Development)
-
-**Terminal 1 - Backend:**
-```bash
-cd d:\HMS\v1\backend
-.\venv\Scripts\Activate.ps1
-uvicorn app.main:app --reload --port 8000
-```Start Both Services
-
-Open **two separate PowerShell terminals**:
-
-**Terminal 1 - Backend Server:**
-```powershell
-cd d:\HMS\v1\backend
-.\venv\Scripts\Activate.ps1
-uvicorn app.main:app --reload --port 8000
-```
-
-**Terminal 2 - Frontend Server:**
 ```powershell
 cd d:\HMS\v1\frontend
+npm install
+```
+
+### Configure Environment Variables
+
+Create `frontend\.env`:
+
+```env
+VITE_API_BASE_URL=http://localhost:8000/api/v1
+```
+
+### Start the Development Server
+
+```powershell
 npm run dev
 ```
 
-### Access Points
+You should see:
 
-Once both servers are running:
+```
+  VITE v7.x.x  ready in xxx ms
 
-- **Application:** http://localhost:5173
-- **API Backend:** http://localhost:8000
-- **API Documentation:** http://localhost:8000/docs
+  ➜  Local:   http://localhost:5173/
+```
 
-**Keep both terminals open while using the application.**
-1. **Frontend:** http://localhost:5173
-2. **Backend API:** http://localhost:8000
-3. **API Documentation:** http://localhost:8000/docs
-4. **Alternative API Docs:** http://localhost:8000/redoc
+---
 
-### Default Login Credentials
+## Step 4 — First-Time Login
 
-| Role | Username | Password | Employee ID |
-|------|----------|----------|-------------|
-| Super Admin | `superadmin` | (check seed file) | ADM-2024-0002 |
-| Admin | `admin` | (check seed file) | ADM-2024-0003 |
-| Doctor | `doctor1` | (check seed file) | DOC-2024-0001 |
-| Nurse | `nurse1` | (check seed file) | NUR-2024-0001 |
+1. Open http://localhost:5173 in your browser
+2. Log in with the default superadmin credentials:
+   - **Username:** `superadmin`
+   - **Password:** (set during database seed — see `seeds/seed_data.sql`)
+3. Complete the **Hospital Setup** wizard (3 steps)
+4. **Change the default password** from the profile settings
 
-**⚠️ Change these passwords immediately in production!**
+---
 
-### Configure Hospital Details
+## Troubleshooting
 
-1. Login as Super Admin
-2. Navigate to Settings > Hospital Configuration
-3. Fill in your hospital information:
-   - HFirst-Time Configuration
+### Port Already in Use
 
-### Step 1: Login
-
-Open http://localhost:5173 in your browser.
-
-**Default Login Credentials:**
-
-| Username | Role | Employee ID |
-|----------|------|-------------|
-| `superadmin` | Super Admin | EMP-2024-001 |
-| `admin` | Admin | EMP-2024-002 |
-| `doctor1` | Doctor | EMP-2024-003 |
-| `nurse1` | Nurse | EMP-2024-004 |
-
-**Default Password:** Check `database/seeds/seed_data.sql` for the password (currently hashed).
-
-To set a custom password, decode the bcrypt hash or update the seed file before running it.
-
-**⚠️ SECURITY:** Change all default passwords immediately after first login!
-
-### Step 2: Configure Hospital Details
-
-1. Login as **Super Admin** or **Admin**
-2. Navigate to **Hospital Setup** from the dashboard
-3. Complete the 3-step setup wizard:
-   - **Step 1:** Basic Details (name, type, contact info, address)
-   - **Step 2:** Facility Information (beds, staff, working hours, legal info)
-   - **Step 3:** Review and Submit
-
-### Step 3: Change Default Passwords
-
-1. Go to **User Management**
-2. For each default user, click **Reset Password**
-3. Set strong passwords for all accounts
-
-### Step 4: Create Staff Accounts
-
-1. Navigate to **Staff Directory**
-2. Click **Add Staff Member**
-3. Fill in staff details (Employee IDs are auto-generated)
-4. Assign appropriate roles and departments
-# Find and kill process using port 8000
-# Wpowershell
+```powershell
 # Find process using port 8000
 netstat -ano | findstr :8000
 
-# Kill the process (replace <PID> with actual process ID)
+# Kill it (replace PID with actual number)
 taskkill /PID <PID> /F
+```
 
-# Or change the port in backend startup:
-uvicorn app.main:app --reload --port 8001
-#### 3. Module Not Found (Backend)
+### psql Not Recognized
 
-**Error:** `ModuleNotFoundError: No module named 'fastapi'`
+Add PostgreSQL to your PATH:
 
-**Solution:**
-```bash
-# Epowershell
-# Ensure virtual environment is activated (look for (venv) in prompt)
+```powershell
+$env:PATH += ";C:\Program Files\PostgreSQL\15\bin"
+```
+
+Or add it permanently via **System Properties → Environment Variables → Path**.
+
+### Module Not Found (Backend)
+
+Make sure the virtual environment is activated:
+
+```powershell
+cd d:\HMS\v1\backend
 .\venv\Scripts\Activate.ps1
-
-# Verify pip is from venv
-where.exe pip
-
-# Reinstall requirements
 pip install -r requirements.txt
 ```
 
-#### 4. Module Not Found (Frontend)
+### CORS Errors in Browser
 
-**Error:** `Cannot find module 'react'`
+Ensure `CORS_ORIGINS` in `backend\.env` includes your frontend URL:
 
-**Solution:**
-```powershell
-# Delete node_modules and package-lock.json
-Remove-Item -Recurse -Force node_modules
-Remove-Item -Force package-lock.json
-
-# Clear npm cache
-npm cache clean --force
-
-# Reinstall all packages
+```env
+CORS_ORIGINS=["http://localhost:5173"]
 ```
 
-#### 5. CORS Error
+### Database Connection Refused
 
-**Error:** `Access to XMLHttpRequest blocked by CORS policy`
+1. Check PostgreSQL service is running:
+   ```powershell
+   Get-Service postgresql*
+   ```
+2. If stopped, start it:
+   ```powershell
+   Start-Service postgresql-x64-15
+   ```
+3. Verify connection:
+   ```powershell
+   psql -h localhost -U hospital_admin -d hospital_management -c "SELECT 1;"
+   ```
 
-**Solution:**
-- Verify `CORS_ORIGINS` in `backend/.env` includes your frontend URL
-- Restart backend server after changing .env
+### Permission Denied on Database Objects
 
-#### 6. Database Migration Errors
+If you see "permission denied for table/sequence" errors:
 
-**Error:** `relation "users" already exists`
-powershell
-# Check existing tables
-psql -h localhost -U hospital_admin -d hospital_management
-\dt
-
-# If you need to start fresh, drop and recreate database:
-# (Connect as postgres user first)
-psql -U postgres
-DROP DATABASE hospital_management;
-CREATE DATABASE hospital_management;
-GRANT ALL PRIVILEGES ON DATABASE hospital_management TO hospital_admin;
-\q🎉 Setup Complete!
-
-Your Hospital Management System is now ready to use.
-
-### Quick Start Checklist
-
-- ✅ PostgreSQL database created and configured
-- ✅ Backend server running on http://localhost:8000
-- ✅ Frontend application running on http://localhost:5173
-- ✅ Default users seeded (superadmin, admin, doctor1, nurse1)
-- ✅ Sample patients created
-
-### Next Steps
-
-1. **Login:** Use default credentials to access the system
-2. **Configure Hospital:** Complete the Hospital Setup wizard
-3. **Change Passwords:** Update all default passwords
-4. **Create Staff:** Add your staff members with auto-generated Employee IDs
-5. **Add Patients:** Start registering patients with auto-generated PRNs
-
-### Important URLs
-
-- **Application:** http://localhost:5173
-- **API Documentation:** http://localhost:8000/docs
-- **Interactive API Docs:** http://localhost:8000/redoc
-
-### For Production Deployment
-
-1. Generate new SECRET_KEY
-2. Change all default passwords
-3. Update CORS_ORIGINS to production domain
-4. Set DEBUG=False
-5. Enable HTTPS
-6. Set up automated database backups
+```sql
+\c hospital_management
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO hospital_admin;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO hospital_admin;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO hospital_admin;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO hospital_admin;
+```
 
 ---
 
-## 📚 Additional Resources
+## Useful Commands
 
-- **Project Documentation:** `PROJECT_DOCUMENTATION.md`
-- **API Integration Guide:** `API_FRONTEND_REFERENCE.md`
-- **Frontend-Backend Guide:** `FRONTEND_BACKEND_INTEGRATION_GUIDE.md`
-- **Database Scripts:** `database/scripts/`
-
-**For questions or issues, refer to the Troubleshooting section above.ration
-- ✅ ID Card Printing
-- ✅ CSV Export Functionality
-
-### Technology Stack
-- **Frontend:** React 19.2, TypeScript 5.9, Tailwind CSS 3.4, React Hook Form, Zod
-- **Backend:** FastAPI 0.109, Python 3.11, SQLAlchemy 2.0, Pydantic 2.6
-- **Database:** PostgreSQL 15+, pgcrypto extension
-- **Authentication:** JWT (access token + refresh token)
+| Command | Purpose |
+|---------|---------|
+| `uvicorn app.main:app --reload` | Start backend with hot reload |
+| `npm run dev` | Start frontend dev server |
+| `npm run build` | Build frontend for production |
+| `npm run preview` | Preview production build |
+| `pip freeze` | List installed Python packages |
 
 ---
 
-## 🎉 Setup Complete!
-
-Your Hospital Management System is now ready to use.
-
-**Next Steps:**
-1. Login with super admin credentials
-2. Configure hospital details
-3. Create staff accounts
-4. Start managing patients
-
-**Enjoy your HMS! 🏥**
+<p align="center">
+  <sub>For the main project documentation, see <a href="README.md">README.md</a></sub>
+</p>

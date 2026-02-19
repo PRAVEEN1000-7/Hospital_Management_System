@@ -908,7 +908,7 @@ seed_data.sql — Creates 4 default users + 4 sample patients (idempotent with O
 ```sql
 -- Connect to PostgreSQL as superuser
 CREATE DATABASE hospital_management;
-CREATE USER hospital_admin WITH PASSWORD 'HMS@2026';
+CREATE USER hospital_admin WITH PASSWORD '<YOUR_DB_PASSWORD>';
 GRANT ALL PRIVILEGES ON DATABASE hospital_management TO hospital_admin;
 
 -- Connect to hospital_management database

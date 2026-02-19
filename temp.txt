@@ -1,1 +1,0 @@
-also make sure that each user in this site should have the uinque identifaction number for each data finding to maintain the all functionality of that user in the entire website.first give the pros and cons about this idea for thr current db structure and function.based on  y approval implement this idea.

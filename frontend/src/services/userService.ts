@@ -29,6 +29,17 @@ export const userService = {
     await api.delete(`/users/${id}`);
   },
 
+  async uploadPhoto(id: number, file: File): Promise<{ message: string; photo_url: string; filename: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await api.post(`/users/${id}/upload-photo`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  },
+
   async resetPassword(id: number, data: PasswordResetData, sendEmail = false): Promise<{ message: string; email_sent: boolean }> {
     const response = await api.post(`/users/${id}/reset-password?send_email=${sendEmail}`, data);
     return response.data;

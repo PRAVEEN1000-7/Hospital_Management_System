@@ -68,8 +68,8 @@ const Register: React.FC = () => {
     }
   };
 
-  const inputClass = 'w-full bg-slate-50 border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors';
-  const selectClass = 'w-full bg-slate-50 border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors';
+  const inputClass = 'w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200';
+  const selectClass = 'w-full bg-white border border-slate-300 rounded-lg px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 cursor-pointer';
   const labelClass = 'text-sm font-medium text-slate-700 mb-1.5 block';
   const errorClass = 'mt-1 text-xs text-red-500';
 
@@ -131,11 +131,12 @@ const Register: React.FC = () => {
               {errors.date_of_birth && <p className={errorClass}>{errors.date_of_birth.message}</p>}
             </div>
             <div>
-              <label className={labelClass}>Blood Group</label>
+              <label className={labelClass}>Blood Group <span className="text-red-500">*</span></label>
               <select {...register('blood_group')} className={selectClass}>
                 <option value="">Select blood group</option>
                 {BLOOD_GROUP_OPTIONS.map(b => <option key={b} value={b}>{b}</option>)}
               </select>
+              {errors.blood_group && <p className={errorClass}>{errors.blood_group.message}</p>}
             </div>
             <div>
               <label className={labelClass}>Email</label>

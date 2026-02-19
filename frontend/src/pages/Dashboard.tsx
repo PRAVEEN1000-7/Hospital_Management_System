@@ -4,22 +4,71 @@ import { useAuth } from '../contexts/AuthContext';
 import { formatRole } from '../utils/constants';
 import patientService from '../services/patientService';
 import hospitalService from '../services/hospitalService';
+import userService from '../services/userService';
+import { useToast } from '../contexts/ToastContext';
 
 const Dashboard: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const toast = useToast();
   const [totalPatients, setTotalPatients] = useState<number>(0);
+  const [activeUsers, setActiveUsers] = useState<number>(0);
   const [hospitalName, setHospitalName] = useState<string>('HMS Core');
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    patientService.getPatients(1, 1).then(res => setTotalPatients(res.total)).catch(() => {});
-    hospitalService.getHospitalDetails().then(res => setHospitalName(res.hospital_name)).catch(() => {});
+    const fetchDashboardData = async () => {
+      setLoading(true);
+      try {
+        // Fetch total patients
+        const patientsRes = await patientService.getPatients(1, 1);
+        setTotalPatients(patientsRes.total);
+      } catch (err) {
+        // Silent fail - dashboard will show 0
+      }
+
+      try {
+        // Fetch hospital details
+        const hospitalRes = await hospitalService.getHospitalDetails();
+        setHospitalName(hospitalRes.hospital_name);
+      } catch (err) {
+        // Silent fail - will use default hospital name
+      }
+
+      try {
+        // Fetch active users count - Need to paginate since API limit is 100
+        const firstPage = await userService.getUsers(1, 100);
+        let allUsers = [...firstPage.data];
+        const totalPages = firstPage.total_pages;
+        
+        // Fetch remaining pages if needed
+        if (totalPages > 1) {
+          const remainingPages = [];
+          for (let page = 2; page <= totalPages; page++) {
+            remainingPages.push(userService.getUsers(page, 100));
+          }
+          const results = await Promise.all(remainingPages);
+          results.forEach(res => {
+            allUsers = [...allUsers, ...res.data];
+          });
+        }
+        
+        const activeCount = allUsers.filter((u: any) => u.is_active === true).length;
+        setActiveUsers(activeCount);
+      } catch (err: any) {
+        // Silent fail - dashboard will show 0
+      }
+
+      setLoading(false);
+    };
+
+    fetchDashboardData();
   }, []);
 
   // Stat cards matching the dashboard design
   const statCards = [
     { label: 'Total Patients', value: totalPatients.toLocaleString(), icon: 'person_add', iconColor: 'text-blue-500', trend: null },
-    { label: 'Active Today', value: '—', icon: 'calendar_today', iconColor: 'text-purple-500', trend: null },
+    { label: 'Active Staff', value: activeUsers.toLocaleString(), icon: 'badge', iconColor: 'text-purple-500', trend: null },
     { label: 'System Status', value: 'Online', icon: 'check_circle', iconColor: 'text-emerald-500', trend: null },
     { label: 'Pending Tasks', value: '—', icon: 'receipt_long', iconColor: 'text-amber-500', trend: null },
   ];

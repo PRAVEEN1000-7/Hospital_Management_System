@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import api from '../services/api';
 import { useToast } from '../contexts/ToastContext';
 import { COUNTRIES } from '../utils/constants';
@@ -241,12 +241,23 @@ const FormSelect = React.memo<{
 
 const HospitalSetup: React.FC = () => {
   const toast = useToast();
+  const topRef = useRef<HTMLDivElement>(null);
   const [currentStep, setCurrentStep] = useState(0);
   const [formData, setFormData] = useState<HospitalData>(INITIAL_DATA);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [isEditMode, setIsEditMode] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false); // Data exists in DB
+  const [isEditing, setIsEditing] = useState(false); // User is actively editing
+
+  // Scroll to top when step changes or when toggling edit mode
+  useEffect(() => {
+    // Use setTimeout to ensure scroll happens after React renders the new content
+    const timer = setTimeout(() => {
+      topRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [currentStep, isEditing]);
 
   // Load existing hospital data
   useEffect(() => {
@@ -290,7 +301,7 @@ const HospitalSetup: React.FC = () => {
       }
     } catch (err: any) {
       if (err.response?.status !== 404) {
-        console.error('Error loading hospital:', err);
+        // Silent fail for non-404 errors
       }
     } finally {
       setLoading(false);
@@ -435,9 +446,13 @@ const HospitalSetup: React.FC = () => {
       if (isEditMode) {
         await api.put('/hospital', payload);
         toast.success('Hospital details updated successfully!');
+        setIsEditing(false); // Exit editing mode
+        setCurrentStep(0); // Reset to first step
       } else {
         await api.post('/hospital', payload);
         setIsEditMode(true);
+        setIsEditing(false); // Exit editing mode after first save
+        setCurrentStep(0); // Reset to first step
         toast.success('Hospital setup completed successfully!');
       }
     } catch (err: any) {
@@ -452,6 +467,26 @@ const HospitalSetup: React.FC = () => {
   const StepTab: React.FC<{ index: number; label: string }> = ({ index, label }) => {
     const isCompleted = index < currentStep;
     const isActive = index === currentStep;
+    const isPending = index > currentStep;
+    
+    // For first-time setup: use blue color scheme
+    // For editing mode: use green/yellow/red color coding
+    const getStepColor = () => {
+      if (!isEditMode || !isEditing) {
+        // First-time setup or viewing mode - all blue
+        if (isCompleted) return { bg: 'bg-blue-100', text: 'text-blue-700', icon: 'text-blue-600', border: 'bg-blue-500' };
+        if (isActive) return { bg: 'bg-blue-50', text: 'text-blue-600', icon: 'text-blue-500', border: 'bg-blue-400' };
+        return { bg: 'bg-slate-50', text: 'text-slate-400', icon: 'text-slate-400', border: 'bg-slate-300' };
+      }
+      
+      // Edit mode - color coding: Completed = Green, Active = Yellow, Pending = Red
+      if (isCompleted) return { bg: 'bg-green-50', text: 'text-green-700', icon: 'text-green-600', border: 'bg-green-500' };
+      if (isActive) return { bg: 'bg-yellow-50', text: 'text-yellow-700', icon: 'text-yellow-600', border: 'bg-yellow-500' };
+      return { bg: 'bg-red-50/50', text: 'text-red-400', icon: 'text-red-400', border: 'bg-red-300' };
+    };
+    
+    const colors = getStepColor();
+    
     return (
       <button
         onClick={() => {
@@ -461,10 +496,23 @@ const HospitalSetup: React.FC = () => {
             }
           }
         }}
-        className={`flex-1 text-center pb-3 text-sm font-semibold border-b-2 transition-all
-          ${isActive ? 'border-blue-600 text-blue-600' : isCompleted ? 'border-blue-400 text-blue-500' : 'border-slate-200 text-slate-400'}`}
+        className={`flex-1 relative py-4 text-sm font-bold transition-all ${
+          isPending ? 'cursor-not-allowed' : 'hover:opacity-80'
+        } ${colors.bg}`}
       >
-        {label}
+        <div className="flex items-center justify-center gap-2">
+          {isCompleted && (
+            <span className={`material-symbols-outlined text-lg ${colors.icon}`}>check_circle</span>
+          )}
+          {isActive && (
+            <span className={`material-symbols-outlined text-lg ${colors.icon}`}>radio_button_checked</span>
+          )}
+          {isPending && (
+            <span className={`material-symbols-outlined text-lg ${colors.icon}`}>{isEditMode && isEditing ? 'cancel' : 'circle'}</span>
+          )}
+          <span className={colors.text}>{label}</span>
+        </div>
+        <div className={`absolute bottom-0 left-0 right-0 h-1 ${colors.border}`}></div>
       </button>
     );
   };
@@ -483,197 +531,446 @@ const HospitalSetup: React.FC = () => {
     );
   }
 
+  // Card Display View - Show when data exists and not editing
+  if (isEditMode && !isEditing) {
+    return (
+      <div ref={topRef} className="max-w-6xl mx-auto">
+        {/* Header */}
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+              <span className="material-symbols-outlined text-primary">local_hospital</span>
+              Hospital Details
+            </h1>
+            <p className="text-slate-500 text-sm mt-1">
+              View and manage your facility information
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 px-4 py-2 bg-green-50 text-green-700 rounded-lg border border-green-200">
+              <span className="material-symbols-outlined text-sm">check_circle</span>
+              <span className="text-sm font-semibold">Configured</span>
+            </div>
+            <button
+              onClick={() => setIsEditing(true)}
+              className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-lg hover:bg-primary/90 transition-all shadow-lg shadow-primary/25 font-semibold"
+            >
+              <span className="material-symbols-outlined text-sm">edit</span>
+              Edit Details
+            </button>
+          </div>
+        </div>
+
+        {/* Display Cards */}
+        <div className="space-y-6">
+          {/* Hospital Information Card */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="bg-gradient-to-r from-primary/10 to-primary/5 px-6 py-4 border-b border-slate-200">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <span className="material-symbols-outlined text-primary">apartment</span>
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">Hospital Information</h2>
+                  <p className="text-sm text-slate-500">Basic facility details</p>
+                </div>
+              </div>
+            </div>
+            <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <InfoField label="Hospital Name" value={formData.hospital_name} icon="home" />
+              <InfoField label="Hospital Code" value={formData.hospital_code} icon="qr_code" />
+              <InfoField label="Registration No." value={formData.registration_number} icon="badge" />
+              <InfoField label="Established Date" value={formData.established_date} icon="calendar_month" />
+              <InfoField label="Hospital Type" value={formData.hospital_type} icon="category" />
+              <InfoField label="Specialisation" value={formData.specialisation} icon="medical_services" />
+              <InfoField label="NABH Accreditation" value={formData.nabh_accreditation} icon="verified" />
+            </div>
+          </div>
+
+          {/* Contact Information Card */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="bg-gradient-to-r from-green-500/10 to-green-500/5 px-6 py-4 border-b border-slate-200">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-green-500/10 flex items-center justify-center">
+                  <span className="material-symbols-outlined text-green-600">contact_phone</span>
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">Contact Information</h2>
+                  <p className="text-sm text-slate-500">Communication details</p>
+                </div>
+              </div>
+            </div>
+            <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <InfoField label="Admin Name" value={formData.facility_admin_name} icon="person" />
+              <InfoField label="Admin Phone" value={formData.facility_admin_phone} icon="phone" />
+              <InfoField label="Primary Phone" value={`${formData.primary_phone_country_code} ${formData.primary_phone}`} icon="call" />
+              <InfoField label="Secondary Phone" value={formData.secondary_phone ? `${formData.secondary_phone_country_code} ${formData.secondary_phone}` : ''} icon="phone_forwarded" />
+              <InfoField label="Email" value={formData.email} icon="email" />
+              <InfoField label="Website" value={formData.website} icon="language" />
+              <InfoField label="Emergency Hotline" value={formData.emergency_hotline ? `${formData.emergency_hotline_country_code} ${formData.emergency_hotline}` : ''} icon="emergency" />
+            </div>
+          </div>
+
+          {/* Address Card */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="bg-gradient-to-r from-amber-500/10 to-amber-500/5 px-6 py-4 border-b border-slate-200">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center">
+                  <span className="material-symbols-outlined text-amber-600">location_on</span>
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">Address Details</h2>
+                  <p className="text-sm text-slate-500">Location information</p>
+                </div>
+              </div>
+            </div>
+            <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <InfoField label="Address Line 1" value={formData.address_line1} icon="home_pin" />
+              <InfoField label="Address Line 2" value={formData.address_line2} icon="signpost" />
+              <InfoField label="City" value={formData.city} icon="location_city" />
+              <InfoField label="State" value={formData.state} icon="map" />
+              <InfoField label="PIN Code" value={formData.pin_code} icon="pin_drop" />
+              <InfoField label="Country" value={formData.country} icon="public" />
+              <InfoField label="Location" value={formData.establishment_location} icon="location_searching" />
+            </div>
+          </div>
+
+          {/* Facility & Operations Card */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="bg-gradient-to-r from-purple-500/10 to-purple-500/5 px-6 py-4 border-b border-slate-200">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-purple-500/10 flex items-center justify-center">
+                  <span className="material-symbols-outlined text-purple-600">local_hospital</span>
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">Facility & Operations</h2>
+                  <p className="text-sm text-slate-500">Capacity and operational details</p>
+                </div>
+              </div>
+            </div>
+            <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <InfoField label="Number of Beds" value={String(formData.number_of_beds)} icon="bed" />
+              <InfoField label="Staff Strength" value={String(formData.staff_strength)} icon="groups" />
+              <InfoField label="Working Hours" value={`${formData.working_hours_start} - ${formData.working_hours_end}`} icon="schedule" />
+              <InfoField label="Working Days" value={formData.working_days.join(', ')} icon="calendar_today" full />
+              <InfoField label="24/7 Emergency" value={formData.emergency_24_7 ? 'Yes' : 'No'} icon="emergency" />
+            </div>
+          </div>
+
+          {/* Legal & Tax (India only) */}
+          {formData.country === 'India' && formData.gst_number && (
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="bg-gradient-to-r from-blue-500/10 to-blue-500/5 px-6 py-4 border-b border-slate-200">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
+                    <span className="material-symbols-outlined text-blue-600">gavel</span>
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-900">Legal & Tax Information</h2>
+                    <p className="text-sm text-slate-500">Compliance details</p>
+                  </div>
+                </div>
+              </div>
+              <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <InfoField label="GST Number" value={formData.gst_number} icon="receipt_long" />
+                <InfoField label="PAN Number" value={formData.pan_number} icon="credit_card" />
+                <InfoField label="Drug License" value={formData.drug_license_number} icon="medication" />
+                <InfoField label="Medical Registration" value={formData.medical_registration_number} icon="local_pharmacy" />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="max-w-5xl mx-auto">
+    <div ref={topRef} className="max-w-6xl mx-auto">
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900">Hospital Details</h1>
-        <p className="text-slate-500 text-sm mt-1">
-          {isEditMode ? 'Update your facility information' : 'Set up your facility for the first time'}
-        </p>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+            <span className="material-symbols-outlined text-blue-600">local_hospital</span>
+            Hospital Details
+          </h1>
+          <p className="text-slate-500 text-sm mt-1">
+            {isEditMode && isEditing ? 'Update your facility information' : 'Set up your facility for the first time'}
+          </p>
+        </div>
+        {isEditMode && isEditing && (
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 px-4 py-2 bg-green-50 text-green-700 rounded-lg border border-green-200">
+              <span className="material-symbols-outlined text-sm">check_circle</span>
+              <span className="text-sm font-semibold">Configured</span>
+            </div>
+            <button
+              onClick={() => {
+                setIsEditing(false);
+                setCurrentStep(0);
+              }}
+              className="flex items-center gap-2 px-4 py-2 text-slate-600 hover:text-primary hover:bg-slate-100 rounded-lg transition-all border border-slate-200"
+            >
+              <span className="material-symbols-outlined text-sm">close</span>
+              Cancel
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Main Card */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         {/* Step Tabs */}
-        <div className="flex border-b border-slate-100 px-6 pt-4">
+        <div className="flex border-b border-slate-200 bg-slate-50/50">
           {STEPS.map((label, i) => (
             <StepTab key={label} index={i} label={label} />
           ))}
         </div>
 
         {/* Content Area */}
-        <div className="flex min-h-[520px]">
-          {/* Left: Illustration + Step Info */}
-          {currentStep < 2 && (
-            <div className="hidden lg:flex w-[380px] bg-gradient-to-br from-slate-50 via-blue-50/40 to-slate-100 flex-col items-center justify-center p-10 border-r border-slate-100">
-              <div className="w-12 h-12 rounded-full bg-blue-600 text-white flex items-center justify-center text-lg font-bold mb-6 shadow-lg shadow-blue-200">
-                {currentStep + 1}
-              </div>
-              <h2 className="text-xl font-bold text-slate-800 text-center leading-snug mb-3">
-                {currentStep === 0
-                  ? 'Hey there, tell us a bit about your facility'
-                  : "We'd love to know a bit about your Facility strength"}
-              </h2>
-              <div className="mt-6">
-                <div className="w-48 h-48 bg-gradient-to-br from-blue-100 to-blue-200 rounded-2xl flex items-center justify-center shadow-inner">
-                  <span className="material-symbols-outlined text-blue-400" style={{ fontSize: '80px' }}>
-                    {currentStep === 0 ? 'apartment' : 'local_hospital'}
-                  </span>
-                </div>
-              </div>
+        <div className="p-6 lg:p-8">
+          {/* Progress Indicator */}
+          <div className="mb-6 flex items-center gap-3">
+            <div className="flex-1 bg-slate-100 h-3 rounded-full overflow-hidden flex">
+              {STEPS.map((_, i) => {
+                const isCompleted = i < currentStep;
+                const isActive = i === currentStep;
+                const stepWidth = `${100 / STEPS.length}%`;
+                
+                // First-time setup: blue gradient
+                // Edit mode: green/yellow/red color coding
+                const getBarColor = () => {
+                  if (!isEditMode || !isEditing) {
+                    if (isCompleted) return 'bg-blue-500';
+                    if (isActive) return 'bg-blue-400';
+                    return 'bg-slate-200';
+                  }
+                  
+                  if (isCompleted) return 'bg-green-500';
+                  if (isActive) return 'bg-yellow-500';
+                  return 'bg-red-300';
+                };
+                
+                return (
+                  <div
+                    key={i}
+                    className={`h-full transition-all duration-500 ${getBarColor()}`}
+                    style={{ width: stepWidth }}
+                  />
+                );
+              })}
             </div>
-          )}
+            <span className="text-sm font-semibold text-slate-600">
+              Step {currentStep + 1} of {STEPS.length}
+            </span>
+          </div>
+          
 
-          {/* Right: Form Fields */}
-          <div className="flex-1 p-6 lg:p-8 overflow-y-auto">
+          {/* Form Content */}
+          <div className="max-w-5xl mx-auto">
             {/* STEP 0: Basic Details */}
             {currentStep === 0 && (
-              <div className="space-y-5 max-w-lg">
-                <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3">Hospital Information</h3>
-                <FormInput label="Hospital Name" name="hospital_name" placeholder="e.g. Manipal Hospital" required value={formData.hospital_name} onChange={handleChange} error={errors.hospital_name} />
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <FormInput label="Hospital Code" name="hospital_code" placeholder="e.g. MH-BLR-01" helpText="Short code for internal use" value={formData.hospital_code} onChange={handleChange} error={errors.hospital_code} />
-                  <FormInput label="Registration Number" name="registration_number" placeholder="Registration no." value={formData.registration_number} onChange={handleChange} error={errors.registration_number} />
+              <div className="space-y-6">
+                {/* Hospital Information Card */}
+                <div className="bg-gradient-to-br from-green-50/50 to-transparent border border-green-100 rounded-xl p-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="material-symbols-outlined text-green-600">apartment</span>
+                    <h3 className="text-base font-bold text-slate-800">Hospital Information</h3>
+                  </div>
+                  <div className="space-y-4">
+                    <FormInput label="Hospital Name" name="hospital_name" placeholder="e.g. Manipal Hospital" required value={formData.hospital_name} onChange={handleChange} error={errors.hospital_name} />
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <FormInput label="Hospital Code" name="hospital_code" placeholder="e.g. MH-BLR-01" helpText="Short code for internal use" value={formData.hospital_code} onChange={handleChange} error={errors.hospital_code} />
+                      <FormInput label="Registration Number" name="registration_number" placeholder="Registration no." value={formData.registration_number} onChange={handleChange} error={errors.registration_number} />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <FormInput label="Established Date" name="established_date" type="date" value={formData.established_date} onChange={handleChange} error={errors.established_date} />
+                      <FormSelect label="Hospital Type" name="hospital_type" options={PRACTICE_TYPES} placeholder="-- Select type --" required value={formData.hospital_type} onChange={handleChange} error={errors.hospital_type} />
+                    </div>
+
+                    <FormSelect label="Specialisation" name="specialisation" options={SPECIALISATIONS} placeholder="-- Select specialisation --" required value={formData.specialisation} onChange={handleChange} error={errors.specialisation} />
+                    <FormInput label="NABH Accreditation" name="nabh_accreditation" placeholder="e.g. NABH-12345" helpText="Optional certification" value={formData.nabh_accreditation} onChange={handleChange} error={errors.nabh_accreditation} />
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <FormInput label="Established Date" name="established_date" type="date" value={formData.established_date} onChange={handleChange} error={errors.established_date} />
-                  <FormSelect label="Hospital Type" name="hospital_type" options={PRACTICE_TYPES} placeholder="-- Select type --" required value={formData.hospital_type} onChange={handleChange} error={errors.hospital_type} />
+                {/* Admin Contact Card */}
+                <div className="bg-gradient-to-br from-purple-50/50 to-transparent border border-purple-100 rounded-xl p-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="material-symbols-outlined text-purple-600">admin_panel_settings</span>
+                    <h3 className="text-base font-bold text-slate-800">Facility Admin Contact</h3>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <FormInput label="Admin Name" name="facility_admin_name" placeholder="e.g. Rakesh Kumar" required value={formData.facility_admin_name} onChange={handleChange} error={errors.facility_admin_name} />
+                    <FormInput label="Admin Phone" name="facility_admin_phone" placeholder="e.g. 9991828388" required value={formData.facility_admin_phone} onChange={handleChange} error={errors.facility_admin_phone} />
+                  </div>
                 </div>
 
-                <FormSelect label="Specialisation" name="specialisation" options={SPECIALISATIONS} placeholder="-- Select specialisation --" required value={formData.specialisation} onChange={handleChange} error={errors.specialisation} />
-                <FormInput label="NABH Accreditation" name="nabh_accreditation" placeholder="e.g. NABH-12345" helpText="Optional certification" value={formData.nabh_accreditation} onChange={handleChange} error={errors.nabh_accreditation} />
-
-                <hr className="border-slate-100 my-4" />
-                <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3">Facility Admin Contact</h3>
-                <FormInput label="Admin Name" name="facility_admin_name" placeholder="e.g. Rakesh Kumar" required value={formData.facility_admin_name} onChange={handleChange} error={errors.facility_admin_name} />
-                <FormInput label="Admin Phone" name="facility_admin_phone" placeholder="e.g. 9991828388" required value={formData.facility_admin_phone} onChange={handleChange} error={errors.facility_admin_phone} />
-
-                <hr className="border-slate-100 my-4" />
-                <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3">Contact Information</h3>
-                <PhoneInput label="Primary Phone" countryCodeName="primary_phone_country_code" phoneName="primary_phone" required countryCodeValue={formData.primary_phone_country_code} phoneValue={formData.primary_phone} onChange={handleChange} error={errors.primary_phone} />
-                <PhoneInput label="Secondary Phone" countryCodeName="secondary_phone_country_code" phoneName="secondary_phone" countryCodeValue={formData.secondary_phone_country_code} phoneValue={formData.secondary_phone} onChange={handleChange} error={errors.secondary_phone} />
-                <FormInput label="Email Address" name="email" placeholder="e.g. manipal@support.com" required type="email" value={formData.email} onChange={handleChange} error={errors.email} />
-                <FormInput label="Website" name="website" placeholder="e.g. www.hospital.com" value={formData.website} onChange={handleChange} error={errors.website} />
-                <PhoneInput label="Emergency Hotline" countryCodeName="emergency_hotline_country_code" phoneName="emergency_hotline" countryCodeValue={formData.emergency_hotline_country_code} phoneValue={formData.emergency_hotline} onChange={handleChange} error={errors.emergency_hotline} />
-
-                <hr className="border-slate-100 my-4" />
-                <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3">Address Details</h3>
-                <FormInput label="Address Line 1" name="address_line1" placeholder="Street address" required value={formData.address_line1} onChange={handleChange} error={errors.address_line1} />
-                <FormInput label="Address Line 2" name="address_line2" placeholder="Landmark, Area (optional)" value={formData.address_line2} onChange={handleChange} error={errors.address_line2} />
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <FormInput label="City" name="city" placeholder="e.g. Bangalore" required value={formData.city} onChange={handleChange} error={errors.city} />
-                  <FormSelect label="State" name="state" options={INDIAN_STATES} placeholder="-- Select state --" required value={formData.state} onChange={handleChange} error={errors.state} />
+                {/* Contact Information Card */}
+                <div className="bg-gradient-to-br from-green-50/50 to-transparent border border-green-100 rounded-xl p-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="material-symbols-outlined text-green-600">contact_phone</span>
+                    <h3 className="text-base font-bold text-slate-800">Contact Information</h3>
+                  </div>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <PhoneInput label="Primary Phone" countryCodeName="primary_phone_country_code" phoneName="primary_phone" required countryCodeValue={formData.primary_phone_country_code} phoneValue={formData.primary_phone} onChange={handleChange} error={errors.primary_phone} />
+                      <PhoneInput label="Secondary Phone" countryCodeName="secondary_phone_country_code" phoneName="secondary_phone" countryCodeValue={formData.secondary_phone_country_code} phoneValue={formData.secondary_phone} onChange={handleChange} error={errors.secondary_phone} />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <FormInput label="Email Address" name="email" placeholder="e.g. manipal@support.com" required type="email" value={formData.email} onChange={handleChange} error={errors.email} />
+                      <FormInput label="Website" name="website" placeholder="e.g. www.hospital.com" value={formData.website} onChange={handleChange} error={errors.website} />
+                    </div>
+                    <PhoneInput label="Emergency Hotline" countryCodeName="emergency_hotline_country_code" phoneName="emergency_hotline" countryCodeValue={formData.emergency_hotline_country_code} phoneValue={formData.emergency_hotline} onChange={handleChange} error={errors.emergency_hotline} />
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <FormInput label="PIN Code" name="pin_code" placeholder="e.g. 560001" required value={formData.pin_code} onChange={handleChange} error={errors.pin_code} />
-                  <FormInput label="Country" name="country" placeholder="e.g. India" required value={formData.country} onChange={handleChange} error={errors.country} />
-                </div>
+                {/* Address Card */}
+                <div className="bg-gradient-to-br from-amber-50/50 to-transparent border border-amber-100 rounded-xl p-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="material-symbols-outlined text-amber-600">location_on</span>
+                    <h3 className="text-base font-bold text-slate-800">Address Details</h3>
+                  </div>
+                  <div className="space-y-4">
+                    <FormInput label="Address Line 1" name="address_line1" placeholder="Street address" required value={formData.address_line1} onChange={handleChange} error={errors.address_line1} />
+                    <FormInput label="Address Line 2" name="address_line2" placeholder="Landmark, Area (optional)" value={formData.address_line2} onChange={handleChange} error={errors.address_line2} />
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <FormInput label="City" name="city" placeholder="e.g. Bangalore" required value={formData.city} onChange={handleChange} error={errors.city} />
+                      <FormSelect label="State" name="state" options={INDIAN_STATES} placeholder="-- Select state --" required value={formData.state} onChange={handleChange} error={errors.state} />
+                    </div>
 
-                <FormInput label="Establishment Location" name="establishment_location" placeholder="GPS coordinates or landmark" helpText="Optional location details" value={formData.establishment_location} onChange={handleChange} error={errors.establishment_location} />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <FormInput label="PIN Code" name="pin_code" placeholder="e.g. 560001" required value={formData.pin_code} onChange={handleChange} error={errors.pin_code} />
+                      <FormInput label="Country" name="country" placeholder="e.g. India" required value={formData.country} onChange={handleChange} error={errors.country} />
+                    </div>
+
+                    <FormInput label="Establishment Location" name="establishment_location" placeholder="GPS coordinates or landmark" helpText="Optional location details" value={formData.establishment_location} onChange={handleChange} error={errors.establishment_location} />
+                  </div>
+                </div>
               </div>
             )}
 
             {/* STEP 1: Facility Information */}
             {currentStep === 1 && (
-              <div className="space-y-5 max-w-lg">
-                <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3">Facility Strength</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <FormInput label="Number of Beds" name="number_of_beds" placeholder="e.g. 50" required type="number" value={formData.number_of_beds} onChange={handleChange} error={errors.number_of_beds} />
-                  <FormInput label="Staff Strength" name="staff_strength" placeholder="e.g. 100" required type="number" value={formData.staff_strength} onChange={handleChange} error={errors.staff_strength} />
-                </div>
-
-                <hr className="border-slate-100 my-4" />
-                <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3">Operating Hours</h3>
-                
-                {/* Working Hours */}
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                    Working Hours<span className="text-red-500">*</span>
-                  </label>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="time"
-                      name="working_hours_start"
-                      value={formData.working_hours_start}
-                      onChange={handleChange}
-                      className="flex-1 px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                    />
-                    <span className="text-slate-400 text-sm font-medium">to</span>
-                    <input
-                      type="time"
-                      name="working_hours_end"
-                      value={formData.working_hours_end}
-                      onChange={handleChange}
-                      className="flex-1 px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                    />
+              <div className="space-y-6">
+                {/* Facility Strength Card */}
+                <div className="bg-gradient-to-br from-blue-50/50 to-transparent border border-blue-100 rounded-xl p-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="material-symbols-outlined text-blue-600">grid_view</span>
+                    <h3 className="text-base font-bold text-slate-800">Facility Strength</h3>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <FormInput label="Number of Beds" name="number_of_beds" placeholder="e.g. 50" required type="number" value={formData.number_of_beds} onChange={handleChange} error={errors.number_of_beds} />
+                    <FormInput label="Staff Strength" name="staff_strength" placeholder="e.g. 100" required type="number" value={formData.staff_strength} onChange={handleChange} error={errors.staff_strength} />
                   </div>
                 </div>
 
-                {/* Working Days */}
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Working Days<span className="text-red-500">*</span>
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    {WEEKDAYS.map(day => (
-                      <button
-                        key={day}
-                        type="button"
-                        onClick={() => handleWorkingDayToggle(day)}
-                        className={`px-3 py-2 text-xs font-semibold rounded-lg border transition-all ${
-                          formData.working_days.includes(day)
-                            ? 'bg-blue-500 text-white border-blue-500'
-                            : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300'
-                        }`}
-                      >
-                        {day.substring(0, 3)}
-                      </button>
-                    ))}
+                {/* Operating Hours Card */}
+                <div className="bg-gradient-to-br from-purple-50/50 to-transparent border border-purple-100 rounded-xl p-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="material-symbols-outlined text-purple-600">schedule</span>
+                    <h3 className="text-base font-bold text-slate-800">Operating Hours</h3>
                   </div>
-                  <p className="text-xs text-slate-500 mt-1">Select all days when the hospital operates</p>
+                  <div className="space-y-4">
+                    {/* Working Hours */}
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">
+                        Working Hours<span className="text-red-500">*</span>
+                      </label>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="time"
+                          name="working_hours_start"
+                          value={formData.working_hours_start}
+                          onChange={handleChange}
+                          className="flex-1 px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                        />
+                        <span className="text-slate-400 text-sm font-medium">to</span>
+                        <input
+                          type="time"
+                          name="working_hours_end"
+                          value={formData.working_hours_end}
+                          onChange={handleChange}
+                          className="flex-1 px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Working Days */}
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">
+                        Working Days<span className="text-red-500">*</span>
+                      </label>
+                      <div className="grid grid-cols-4 md:grid-cols-7 gap-2">
+                        {WEEKDAYS.map(day => (
+                          <button
+                            key={day}
+                            type="button"
+                            onClick={() => handleWorkingDayToggle(day)}
+                            className={`px-3 py-2.5 text-xs font-bold rounded-lg border transition-all ${
+                              formData.working_days.includes(day)
+                                ? 'bg-blue-500 text-white border-blue-500 shadow-sm'
+                                : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300'
+                            }`}
+                          >
+                            {day.substring(0, 3)}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-xs text-slate-500 mt-2">Select all days when the hospital operates</p>
+                    </div>
+
+                    <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-lg border border-slate-200">
+                      <input
+                        type="checkbox"
+                        name="emergency_24_7"
+                        checked={formData.emergency_24_7}
+                        onChange={handleChange}
+                        className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <div className="flex-1">
+                        <label className="text-sm text-slate-800 font-semibold">24/7 Emergency Services Available</label>
+                        <p className="text-xs text-slate-500 mt-0.5">Enable if emergency services operate round the clock</p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
-                  <input
-                    type="checkbox"
-                    name="emergency_24_7"
-                    checked={formData.emergency_24_7}
-                    onChange={handleChange}
-                    className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <label className="text-sm text-slate-700 font-medium">24/7 Emergency Services Available</label>
-                </div>
-
+                {/* Legal & Tax Card (India only) */}
                 {formData.country === 'India' && (
-                  <>
-                    <hr className="border-slate-100 my-4" />
-                    <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-3">Legal & Tax Information (India)</h3>
-                    <FormInput 
-                      label="GST Number" 
-                      name="gst_number" 
-                      placeholder="e.g. 22AAAAA0000A1Z5" 
-                      helpText="15 characters - Format: 22AAAAA0000A1Z5"
-                      value={formData.gst_number}
-                      onChange={handleChange}
-                      error={errors.gst_number}
-                    />
-                    <FormInput 
-                      label="PAN Number" 
-                      name="pan_number" 
-                      placeholder="e.g. ABCDE1234F" 
-                      helpText="10 characters - Format: ABCDE1234F"
-                      value={formData.pan_number}
-                      onChange={handleChange}
-                      error={errors.pan_number}
-                    />
-                    <FormInput label="Drug License Number" name="drug_license_number" placeholder="Drug license number" value={formData.drug_license_number} onChange={handleChange} error={errors.drug_license_number} />
-                    <FormInput label="Medical Registration Number" name="medical_registration_number" placeholder="Medical registration number" value={formData.medical_registration_number} onChange={handleChange} error={errors.medical_registration_number} />
-                  </>
+                  <div className="bg-gradient-to-br from-green-50/50 to-transparent border border-green-100 rounded-xl p-6">
+                    <div className="flex items-center gap-2 mb-4">
+                      <span className="material-symbols-outlined text-green-600">gavel</span>
+                      <h3 className="text-base font-bold text-slate-800">Legal & Tax Information (India)</h3>
+                    </div>
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <FormInput 
+                          label="GST Number" 
+                          name="gst_number" 
+                          placeholder="e.g. 22AAAAA0000A1Z5" 
+                          helpText="15 characters - Format: 22AAAAA0000A1Z5"
+                          value={formData.gst_number}
+                          onChange={handleChange}
+                          error={errors.gst_number}
+                        />
+                        <FormInput 
+                          label="PAN Number" 
+                          name="pan_number" 
+                          placeholder="e.g. ABCDE1234F" 
+                          helpText="10 characters - Format: ABCDE1234F"
+                          value={formData.pan_number}
+                          onChange={handleChange}
+                          error={errors.pan_number}
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <FormInput label="Drug License Number" name="drug_license_number" placeholder="Drug license number" value={formData.drug_license_number} onChange={handleChange} error={errors.drug_license_number} />
+                        <FormInput label="Medical Registration Number" name="medical_registration_number" placeholder="Medical registration number" value={formData.medical_registration_number} onChange={handleChange} error={errors.medical_registration_number} />
+                      </div>
+                    </div>
+                  </div>
                 )}
               </div>
             )}
@@ -681,19 +978,23 @@ const HospitalSetup: React.FC = () => {
             {/* STEP 2: Verification / Review */}
             {currentStep === 2 && (
               <div className="space-y-6">
-                <div className="flex items-center gap-3 mb-2">
-                  <span className="material-symbols-outlined text-blue-500">fact_check</span>
-                  <h3 className="text-lg font-bold text-slate-800">Review & Confirm</h3>
+                <div className="flex items-center justify-center gap-3 mb-6 p-6 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl border border-blue-200">
+                  <span className="material-symbols-outlined text-blue-600 text-3xl">fact_check</span>
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-800">Review & Confirm</h3>
+                    <p className="text-sm text-slate-600">Please review all details before saving</p>
+                  </div>
                 </div>
-                <p className="text-sm text-slate-500">Please review all details before saving.</p>
 
                 {/* Hospital Information */}
-                <div className="bg-slate-50 rounded-lg border border-slate-200 p-5">
-                  <div className="flex items-center justify-between mb-4">
-                    <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider">Hospital Information</h4>
-                    <button onClick={() => setCurrentStep(0)} className="text-blue-500 text-xs font-semibold hover:underline">Edit</button>
+                <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+                  <div className="flex items-center bg-gradient-to-r from-blue-50 to-transparent px-5 py-3 border-b border-slate-200">
+                    <div className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-blue-600 text-lg">apartment</span>
+                      <h4 className="text-sm font-bold text-slate-800">Hospital Information</h4>
+                    </div>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 p-5">
                     <ReviewField label="Hospital Name" value={formData.hospital_name} />
                     <ReviewField label="Hospital Code" value={formData.hospital_code} />
                     <ReviewField label="Registration No." value={formData.registration_number} />
@@ -705,12 +1006,14 @@ const HospitalSetup: React.FC = () => {
                 </div>
 
                 {/* Contact Information */}
-                <div className="bg-slate-50 rounded-lg border border-slate-200 p-5">
-                  <div className="flex items-center justify-between mb-4">
-                    <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider">Contact Information</h4>
-                    <button onClick={() => setCurrentStep(0)} className="text-blue-500 text-xs font-semibold hover:underline">Edit</button>
+                <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+                  <div className="flex items-center bg-gradient-to-r from-green-50 to-transparent px-5 py-3 border-b border-slate-200">
+                    <div className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-green-600 text-lg">contact_phone</span>
+                      <h4 className="text-sm font-bold text-slate-800">Contact Information</h4>
+                    </div>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 p-5">
                     <ReviewField label="Admin Name" value={formData.facility_admin_name} />
                     <ReviewField label="Admin Phone" value={formData.facility_admin_phone} />
                     <ReviewField label="Primary Phone" value={`${formData.primary_phone_country_code} ${formData.primary_phone}`} />
@@ -722,12 +1025,14 @@ const HospitalSetup: React.FC = () => {
                 </div>
 
                 {/* Address Details */}
-                <div className="bg-slate-50 rounded-lg border border-slate-200 p-5">
-                  <div className="flex items-center justify-between mb-4">
-                    <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider">Address Details</h4>
-                    <button onClick={() => setCurrentStep(0)} className="text-blue-500 text-xs font-semibold hover:underline">Edit</button>
+                <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+                  <div className="flex items-center bg-gradient-to-r from-amber-50 to-transparent px-5 py-3 border-b border-slate-200">
+                    <div className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-amber-600 text-lg">location_on</span>
+                      <h4 className="text-sm font-bold text-slate-800">Address Details</h4>
+                    </div>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 p-5">
                     <ReviewField label="Address" value={[formData.address_line1, formData.address_line2].filter(Boolean).join(', ')} />
                     <ReviewField label="City" value={formData.city} />
                     <ReviewField label="State" value={formData.state} />
@@ -738,12 +1043,14 @@ const HospitalSetup: React.FC = () => {
                 </div>
 
                 {/* Facility Info */}
-                <div className="bg-slate-50 rounded-lg border border-slate-200 p-5">
-                  <div className="flex items-center justify-between mb-4">
-                    <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider">Facility & Operations</h4>
-                    <button onClick={() => setCurrentStep(1)} className="text-blue-500 text-xs font-semibold hover:underline">Edit</button>
+                <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+                  <div className="flex items-center bg-gradient-to-r from-purple-50 to-transparent px-5 py-3 border-b border-slate-200">
+                    <div className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-purple-600 text-lg">local_hospital</span>
+                      <h4 className="text-sm font-bold text-slate-800">Facility & Operations</h4>
+                    </div>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 p-5">
                     <ReviewField label="No. of Beds" value={String(formData.number_of_beds)} />
                     <ReviewField label="Staff Strength" value={String(formData.staff_strength)} />
                     <ReviewField label="Working Hours" value={formData.working_hours_start && formData.working_hours_end ? `${formData.working_hours_start} - ${formData.working_hours_end}` : ''} />
@@ -765,32 +1072,32 @@ const HospitalSetup: React.FC = () => {
         </div>
 
         {/* Footer with Back/Next/Submit */}
-        <div className="flex items-center justify-between px-6 lg:px-8 py-4 border-t border-slate-100 bg-slate-50/60">
+        <div className="flex items-center justify-between px-6 lg:px-8 py-5 border-t border-slate-200 bg-gradient-to-br from-slate-50 to-white">
           <div>
             {currentStep > 0 && (
               <button
                 onClick={handleBack}
-                className="flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-blue-600 transition-colors"
+                className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
               >
                 <span className="material-symbols-outlined text-lg">arrow_back</span>
                 Back
               </button>
             )}
           </div>
-          <div>
+          <div className="flex items-center gap-3">
             {currentStep < STEPS.length - 1 ? (
               <button
                 onClick={handleNext}
-                className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 shadow-sm transition-all"
+                className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white text-sm font-bold rounded-lg hover:from-blue-700 hover:to-blue-800 shadow-lg shadow-blue-500/30 transition-all active:scale-95"
               >
-                Next
+                Next Step
                 <span className="material-symbols-outlined text-lg">arrow_forward</span>
               </button>
             ) : (
               <button
                 onClick={handleSubmit}
                 disabled={saving}
-                className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 shadow-sm transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                className="flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white text-sm font-bold rounded-lg hover:from-green-700 hover:to-green-800 shadow-lg shadow-green-500/30 transition-all disabled:opacity-60 disabled:cursor-not-allowed active:scale-95"
               >
                 {saving ? (
                   <>
@@ -817,9 +1124,28 @@ const HospitalSetup: React.FC = () => {
 
 // Review field component
 const ReviewField: React.FC<{ label: string; value: string }> = ({ label, value }) => (
-  <div>
-    <span className="text-xs text-slate-400 font-medium">{label}</span>
-    <p className="text-sm font-medium text-slate-800 mt-0.5">{value || <span className="text-slate-300 italic">Not provided</span>}</p>
+  <div className="group">
+    <span className="text-xs text-slate-500 font-semibold uppercase tracking-wider">{label}</span>
+    <p className="text-sm font-medium text-slate-900 mt-1.5 group-hover:text-blue-600 transition-colors">
+      {value || <span className="text-slate-400 italic font-normal">Not provided</span>}
+    </p>
+  </div>
+);
+
+// Info field component for card display
+const InfoField: React.FC<{ label: string; value: string; icon: string; full?: boolean }> = ({ label, value, icon, full }) => (
+  <div className={`${full ? 'md:col-span-2 lg:col-span-3' : ''}`}>
+    <div className="flex items-start gap-3 p-4 rounded-lg bg-slate-50/50 border border-slate-100 hover:border-primary/30 hover:bg-primary/5 transition-all group">
+      <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center flex-shrink-0 group-hover:border-primary/40 group-hover:bg-primary/10 transition-all">
+        <span className="material-symbols-outlined text-slate-400 text-lg group-hover:text-primary transition-colors">{icon}</span>
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{label}</p>
+        <p className="text-sm font-medium text-slate-900 mt-1 break-words">
+          {value || <span className="text-slate-400 italic font-normal">Not provided</span>}
+        </p>
+      </div>
+    </div>
   </div>
 );
 

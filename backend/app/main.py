@@ -1,7 +1,9 @@
 import logging
+import os
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import SQLAlchemyError
 from .config import settings
 from .routers import auth, patients, users, hospital
@@ -23,6 +25,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount static files for uploads
+uploads_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
+if os.path.exists(uploads_dir):
+    app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
+    logger.info(f"Mounted uploads directory: {uploads_dir}")
+else:
+    logger.warning(f"Uploads directory not found: {uploads_dir}")
 
 
 # ---------- Global Exception Handlers ----------

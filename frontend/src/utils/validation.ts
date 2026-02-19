@@ -17,10 +17,9 @@ export const patientSchema = z.object({
   gender: z.enum(['Male', 'Female', 'Other'], {
     required_error: 'Gender is required',
   }),
-  blood_group: z.union([
-    z.enum(['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']),
-    z.literal(''),
-  ]).optional(),
+  blood_group: z.enum(['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'], {
+    required_error: 'Blood group is required',
+  }),
   country_code: z.string().regex(/^\+[0-9]{1,4}$/, 'Invalid country code').default('+91'),
   mobile_number: z.string().regex(/^\d{4,15}$/, 'Mobile number must be 4-15 digits'),
   email: z.union([z.string().email('Invalid email'), z.literal('')]).optional(),

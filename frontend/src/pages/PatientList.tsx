@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import patientService from '../services/patientService';
 import type { Patient } from '../types/patient';
@@ -13,31 +13,93 @@ const PatientList: React.FC = () => {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
+  const [sortBy, setSortBy] = useState('default');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [genderFilter, setGenderFilter] = useState('');
+  const [bloodGroupFilter, setBloodGroupFilter] = useState('');
+  const [cityFilter, setCityFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const limit = 10;
+  const searchTimeoutRef = useRef<number | null>(null);
 
   const fetchPatients = useCallback(async () => {
     setLoading(true);
     try {
       const response = await patientService.getPatients(page, limit, search);
-      setPatients(response.data);
+      let filteredData = [...response.data];
+      
+      // Apply filters
+      if (genderFilter) {
+        filteredData = filteredData.filter(p => p.gender?.toLowerCase() === genderFilter.toLowerCase());
+      }
+      if (bloodGroupFilter) {
+        filteredData = filteredData.filter(p => p.blood_group === bloodGroupFilter);
+      }
+      if (cityFilter) {
+        filteredData = filteredData.filter(p => p.city?.toLowerCase().includes(cityFilter.toLowerCase()));
+      }
+      if (statusFilter) {
+        const isActive = statusFilter === 'active';
+        filteredData = filteredData.filter(p => p.is_active === isActive);
+      }
+      
+      // Client-side sorting
+      let sortedData = [...filteredData];
+      if (sortBy !== 'default') {
+        sortedData.sort((a, b) => {
+          let aVal: any = a[sortBy as keyof Patient];
+          let bVal: any = b[sortBy as keyof Patient];
+          
+          // Handle null/undefined
+          if (aVal === null || aVal === undefined) return sortOrder === 'asc' ? 1 : -1;
+          if (bVal === null || bVal === undefined) return sortOrder === 'asc' ? -1 : 1;
+          
+          // Convert to comparable values
+          if (sortBy === 'date_of_birth' || sortBy === 'created_at' || sortBy === 'updated_at') {
+            aVal = new Date(aVal).getTime();
+            bVal = new Date(bVal).getTime();
+          } else if (typeof aVal === 'string') {
+            aVal = aVal.toLowerCase();
+            bVal = bVal.toLowerCase();
+          }
+          
+          if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1;
+          if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
+          return 0;
+        });
+      }
+      
+      setPatients(sortedData);
       setTotalPages(response.total_pages);
       setTotal(response.total);
     } catch (err) {
-      console.error('Failed to fetch patients:', err);
+      // Silent fail - patients list will remain empty
     } finally {
       setLoading(false);
     }
-  }, [page, search]);
+  }, [page, search, sortBy, sortOrder, genderFilter, bloodGroupFilter, cityFilter, statusFilter]);
 
   useEffect(() => {
     fetchPatients();
   }, [fetchPatients]);
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    setSearch(searchInput);
-    setPage(1);
-  };
+  // Dynamic search with debounce
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    
+    searchTimeoutRef.current = setTimeout(() => {
+      setSearch(searchInput);
+      setPage(1);
+    }, 500);
+    
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [searchInput]);
 
   const handleDelete = async (id: number, name: string) => {
     if (!window.confirm(`Are you sure you want to delete patient "${name}"?`)) return;
@@ -45,7 +107,7 @@ const PatientList: React.FC = () => {
       await patientService.deletePatient(id);
       fetchPatients();
     } catch (err) {
-      console.error('Failed to delete patient:', err);
+      // Silent fail - deletion error will not show
     }
   };
 
@@ -117,39 +179,170 @@ const PatientList: React.FC = () => {
         </div>
       </div>
 
-      {/* Search Toolbar */}
-      <form onSubmit={handleSearch} className="bg-white rounded-xl border border-slate-200 mb-6 p-4">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-          <div className="lg:col-span-6 relative">
-            <span className="material-icons absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">search</span>
-            <input
-              type="text"
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-background-light border-none rounded-lg focus:ring-2 focus:ring-primary/40 text-sm"
-              placeholder="Search by name, ID, or phone..."
-            />
-          </div>
-          <div className="lg:col-span-4"></div>
-          <div className="lg:col-span-2 flex justify-end gap-2">
-            <button
-              type="submit"
-              className="flex-1 lg:flex-none px-4 py-2 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors active:scale-95"
-            >
-              Search
-            </button>
-            {search && (
-              <button
-                type="button"
-                onClick={() => { setSearch(''); setSearchInput(''); setPage(1); }}
-                className="px-3 py-2 bg-slate-100 rounded-lg text-sm text-slate-600 hover:bg-slate-200 transition-colors"
+      {/* Search & Filter Toolbar */}
+      <div className="bg-white rounded-xl border border-slate-200 mb-6 p-4">
+        {/* Search Row */}
+        <div className="mb-4">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
+            <div className="lg:col-span-5 relative">
+              <span className="material-icons absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">search</span>
+              <input
+                type="text"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-background-light border-none rounded-lg focus:ring-2 focus:ring-primary/40 text-sm"
+                placeholder="Search by name, ID, or phone..."
+              />
+              {searchInput && (
+                <button
+                  onClick={() => { setSearch(''); setSearchInput(''); setPage(1); }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  <span className="material-icons text-lg">close</span>
+                </button>
+              )}
+            </div>
+            <div className="lg:col-span-4">
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="w-full px-3 py-2 bg-background-light border-none rounded-lg focus:ring-2 focus:ring-primary/40 text-sm font-medium text-slate-700"
               >
-                Clear
-              </button>
-            )}
+                <option value="default">Default Order</option>
+                <option value="created_at">Registration Date</option>
+                <option value="prn">Patient ID</option>
+                <option value="first_name">First Name</option>
+                <option value="last_name">Last Name</option>
+                <option value="date_of_birth">Date of Birth</option>
+                <option value="gender">Gender</option>
+                <option value="blood_group">Blood Group</option>
+                <option value="primary_phone">Phone</option>
+                <option value="email">Email</option>
+                <option value="city">City</option>
+                <option value="updated_at">Last Updated</option>
+              </select>
+            </div>
+            <div className="lg:col-span-3">
+              <select
+                value={sortOrder}
+                onChange={(e) => setSortOrder(e.target.value as 'asc' | 'desc')}
+                className="w-full px-3 py-2 bg-background-light border-none rounded-lg focus:ring-2 focus:ring-primary/40 text-sm font-medium text-slate-700"
+                disabled={sortBy === 'default'}
+              >
+                <option value="asc">↑ Ascending</option>
+                <option value="desc">↓ Descending</option>
+              </select>
+            </div>
           </div>
         </div>
-      </form>
+        
+        {/* Filter Row */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 pt-3 border-t border-slate-100">
+          <div>
+            <select
+              value={genderFilter}
+              onChange={(e) => { setGenderFilter(e.target.value); setPage(1); }}
+              className="w-full px-3 py-2 bg-background-light border-none rounded-lg focus:ring-2 focus:ring-primary/40 text-sm"
+            >
+              <option value="">All Genders</option>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div>
+            <select
+              value={bloodGroupFilter}
+              onChange={(e) => { setBloodGroupFilter(e.target.value); setPage(1); }}
+              className="w-full px-3 py-2 bg-background-light border-none rounded-lg focus:ring-2 focus:ring-primary/40 text-sm"
+            >
+              <option value="">All Blood Groups</option>
+              <option value="A+">A+</option>
+              <option value="A-">A-</option>
+              <option value="B+">B+</option>
+              <option value="B-">B-</option>
+              <option value="AB+">AB+</option>
+              <option value="AB-">AB-</option>
+              <option value="O+">O+</option>
+              <option value="O-">O-</option>
+            </select>
+          </div>
+          <div>
+            <input
+              type="text"
+              value={cityFilter}
+              onChange={(e) => { setCityFilter(e.target.value); setPage(1); }}
+              placeholder="Filter by City"
+              className="w-full px-3 py-2 bg-background-light border-none rounded-lg focus:ring-2 focus:ring-primary/40 text-sm"
+            />
+          </div>
+          <div>
+            <select
+              value={statusFilter}
+              onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+              className="w-full px-3 py-2 bg-background-light border-none rounded-lg focus:ring-2 focus:ring-primary/40 text-sm"
+            >
+              <option value="">All Status</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+          </div>
+        </div>
+        
+        {/* Active Filters Display */}
+        {(genderFilter || bloodGroupFilter || cityFilter || statusFilter) && (
+          <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-slate-100">
+            <span className="text-xs font-semibold text-slate-500">Active Filters:</span>
+            {genderFilter && (
+              <button
+                onClick={() => setGenderFilter('')}
+                className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium hover:bg-blue-200"
+              >
+                Gender: {genderFilter}
+                <span className="material-icons text-sm">close</span>
+              </button>
+            )}
+            {bloodGroupFilter && (
+              <button
+                onClick={() => setBloodGroupFilter('')}
+                className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-medium hover:bg-red-200"
+              >
+                Blood: {bloodGroupFilter}
+                <span className="material-icons text-sm">close</span>
+              </button>
+            )}
+            {cityFilter && (
+              <button
+                onClick={() => setCityFilter('')}
+                className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-medium hover:bg-green-200"
+              >
+                City: {cityFilter}
+                <span className="material-icons text-sm">close</span>
+              </button>
+            )}
+            {statusFilter && (
+              <button
+                onClick={() => setStatusFilter('')}
+                className="inline-flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-medium hover:bg-purple-200"
+              >
+                Status: {statusFilter}
+                <span className="material-icons text-sm">close</span>
+              </button>
+            )}
+            <button
+              onClick={() => {
+                setGenderFilter('');
+                setBloodGroupFilter('');
+                setCityFilter('');
+                setStatusFilter('');
+              }}
+              className="text-xs text-slate-500 hover:text-slate-700 font-medium underline"
+            >
+              Clear All Filters
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* Table */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -165,43 +358,43 @@ const PatientList: React.FC = () => {
           </div>
         ) : (
           <div className="overflow-x-auto custom-scrollbar">
-            <table className="w-full text-left border-collapse">
+            <table className="w-full min-w-[640px] text-left border-collapse">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Patient ID</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Name</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Gender</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider hidden sm:table-cell">Blood</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider hidden lg:table-cell">Registered</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Actions</th>
+                  <th className="px-4 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Patient ID</th>
+                  <th className="px-4 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Name</th>
+                  <th className="px-4 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Gender</th>
+                  <th className="px-4 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider hidden sm:table-cell">Blood</th>
+                  <th className="px-4 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider hidden lg:table-cell">Registered</th>
+                  <th className="px-4 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider w-24">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {patients.map((patient) => (
                   <tr key={patient.id} className="hover:bg-slate-50 transition-colors group">
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-4">
                       <span className="text-sm font-semibold font-mono text-slate-400">{patient.prn}</span>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm uppercase">
+                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm uppercase flex-shrink-0">
                           {getInitials(patient)}
                         </div>
-                        <div>
+                        <div className="min-w-0">
                           <p
-                            className="text-sm font-bold text-primary hover:underline cursor-pointer"
+                            className="text-sm font-bold text-primary hover:underline cursor-pointer truncate"
                             onClick={() => navigate(`/patients/${patient.id}`)}
                           >
                             {patient.full_name || `${patient.title} ${patient.first_name} ${patient.last_name}`}
                           </p>
-                          <p className="text-xs text-slate-500">{patient.email || `${patient.country_code} ${patient.mobile_number}`}</p>
+                          <p className="text-xs text-slate-500 truncate">{patient.email || `${patient.country_code} ${patient.mobile_number}`}</p>
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-4">
                       <span className="text-sm">{patient.gender}</span>
                     </td>
-                    <td className="px-6 py-4 hidden sm:table-cell">
+                    <td className="px-4 py-4 hidden sm:table-cell">
                       {patient.blood_group ? (
                         <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-red-100 text-red-700 uppercase tracking-wide">
                           {patient.blood_group}
@@ -210,24 +403,24 @@ const PatientList: React.FC = () => {
                         <span className="text-sm text-slate-400">—</span>
                       )}
                     </td>
-                    <td className="px-6 py-4 hidden lg:table-cell">
+                    <td className="px-4 py-4 hidden lg:table-cell">
                       <span className="text-sm">{format(new Date(patient.created_at), 'MMM dd, yyyy')}</span>
                     </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <td className="px-4 py-4">
+                      <div className="flex items-center justify-end gap-1">
                         <button
                           onClick={() => navigate(`/patients/${patient.id}`)}
                           className="p-1.5 hover:bg-primary/10 rounded-lg text-slate-400 hover:text-primary transition-colors"
                           title="View"
                         >
-                          <span className="material-icons text-lg">visibility</span>
+                          <span className="material-icons text-base">visibility</span>
                         </button>
                         <button
                           onClick={() => handleDelete(patient.id, patient.full_name || patient.first_name)}
                           className="p-1.5 hover:bg-red-50 rounded-lg text-slate-400 hover:text-red-600 transition-colors"
                           title="Delete"
                         >
-                          <span className="material-icons text-lg">delete</span>
+                          <span className="material-icons text-base">delete</span>
                         </button>
                       </div>
                     </td>

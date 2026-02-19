@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { format, formatDistanceToNow } from 'date-fns';
 import userService from '../services/userService';
 import type { UserData, UserCreateData, UserUpdateData } from '../types/user';
-import { ROLE_COLORS, ROLE_LABELS, COUNTRIES } from '../utils/constants';
+import { ROLE_TEXT_COLORS, ROLE_LABELS, COUNTRIES } from '../utils/constants';
 import { useToast } from '../contexts/ToastContext';
 
 // ---------- Schemas ----------
@@ -88,10 +88,17 @@ const StaffDirectory: React.FC = () => {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
+  const [sortBy, setSortBy] = useState('default');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   const [roleFilter, setRoleFilter] = useState('');
+  const [departmentFilter, setDepartmentFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const [selectedUsers, setSelectedUsers] = useState<Set<number>>(new Set());
   const [showBulkMenu, setShowBulkMenu] = useState(false);
+  const [bulkActionLoading, setBulkActionLoading] = useState(false);
+  const searchTimeoutRef = useRef<number | null>(null);
+  const bulkMenuRef = useRef<HTMLDivElement | null>(null);
 
   const [showCreate, setShowCreate] = useState(false);
   const [viewUser, setViewUser] = useState<UserData | null>(null);
@@ -104,9 +111,50 @@ const StaffDirectory: React.FC = () => {
     try {
       const res = await userService.getUsers(page, 10, search);
       let filtered = res.data;
+      
+      // Apply filters
       if (roleFilter) {
         filtered = filtered.filter(u => u.role === roleFilter);
       }
+      if (departmentFilter) {
+        filtered = filtered.filter(u => {
+          const dept = u.department || getDepartment(u.role);
+          return dept.toLowerCase() === departmentFilter.toLowerCase();
+        });
+      }
+      if (statusFilter) {
+        const isActive = statusFilter === 'active';
+        filtered = filtered.filter(u => u.is_active === isActive);
+      }
+      
+      // Client-side sorting
+      if (sortBy !== 'default') {
+        filtered.sort((a, b) => {
+          let aVal: any = a[sortBy as keyof UserData];
+          let bVal: any = b[sortBy as keyof UserData];
+          
+          // Handle null/undefined
+          if (aVal === null || aVal === undefined) return sortOrder === 'asc' ? 1 : -1;
+          if (bVal === null || bVal === undefined) return sortOrder === 'asc' ? -1 : 1;
+          
+          // Convert to comparable values
+          if (sortBy === 'created_at' || sortBy === 'updated_at' || sortBy === 'last_login') {
+            aVal = new Date(aVal).getTime();
+            bVal = new Date(bVal).getTime();
+          } else if (typeof aVal === 'string') {
+            aVal = aVal.toLowerCase();
+            bVal = bVal.toLowerCase();
+          } else if (typeof aVal === 'boolean') {
+            aVal = aVal ? 1 : 0;
+            bVal = bVal ? 1 : 0;
+          }
+          
+          if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1;
+          if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
+          return 0;
+        });
+      }
+      
       setUsers(filtered);
       setTotalPages(res.total_pages);
       setTotal(res.total);
@@ -115,15 +163,44 @@ const StaffDirectory: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [page, search, roleFilter, toast]);
+  }, [page, search, roleFilter, departmentFilter, statusFilter, sortBy, sortOrder, toast]);
 
   useEffect(() => { fetchUsers(); }, [fetchUsers]);
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    setSearch(searchInput);
-    setPage(1);
-  };
+  // Dynamic search with debounce
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    
+    searchTimeoutRef.current = setTimeout(() => {
+      setSearch(searchInput);
+      setPage(1);
+    }, 500);
+    
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [searchInput]);
+
+  // Close bulk menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (bulkMenuRef.current && !bulkMenuRef.current.contains(event.target as Node)) {
+        setShowBulkMenu(false);
+      }
+    };
+
+    if (showBulkMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showBulkMenu]);
 
   const handleDelete = async () => {
     if (!deleteConfirm) return;
@@ -137,10 +214,96 @@ const StaffDirectory: React.FC = () => {
     }
   };
 
+  const handleBulkActivate = async () => {
+    if (selectedUsers.size === 0) {
+      toast.error('No users selected');
+      return;
+    }
+    
+    setBulkActionLoading(true);
+    setShowBulkMenu(false);
+    
+    try {
+      const promises = Array.from(selectedUsers).map(userId => {
+        const user = users.find(u => u.id === userId);
+        if (user) {
+          return userService.updateUser(userId, { ...user, is_active: true });
+        }
+        return Promise.resolve();
+      });
+      
+      await Promise.all(promises);
+      toast.success(`${selectedUsers.size} user(s) activated successfully`);
+      setSelectedUsers(new Set());
+      fetchUsers();
+    } catch (err: any) {
+      toast.error('Failed to activate some users');
+    } finally {
+      setBulkActionLoading(false);
+    }
+  };
+
+  const handleBulkDeactivate = async () => {
+    if (selectedUsers.size === 0) {
+      toast.error('No users selected');
+      return;
+    }
+    
+    setBulkActionLoading(true);
+    setShowBulkMenu(false);
+    
+    try {
+      const promises = Array.from(selectedUsers).map(userId => {
+        const user = users.find(u => u.id === userId);
+        if (user) {
+          return userService.updateUser(userId, { ...user, is_active: false });
+        }
+        return Promise.resolve();
+      });
+      
+      await Promise.all(promises);
+      toast.success(`${selectedUsers.size} user(s) deactivated successfully`);
+      setSelectedUsers(new Set());
+      fetchUsers();
+    } catch (err: any) {
+      toast.error('Failed to deactivate some users');
+    } finally {
+      setBulkActionLoading(false);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedUsers.size === 0) {
+      toast.error('No users selected');
+      return;
+    }
+    
+    if (!window.confirm(`Are you sure you want to delete ${selectedUsers.size} user(s)? This action cannot be undone.`)) {
+      return;
+    }
+    
+    setBulkActionLoading(true);
+    setShowBulkMenu(false);
+    
+    try {
+      const promises = Array.from(selectedUsers).map(userId => {
+        return userService.deleteUser(userId);
+      });
+      await Promise.all(promises);
+      toast.success(`${selectedUsers.size} user(s) deleted successfully`);
+      setSelectedUsers(new Set());
+      fetchUsers();
+    } catch (err: any) {
+      toast.error('Failed to delete some users');
+    } finally {
+      setBulkActionLoading(false);
+    }
+  };
+
   const getRoleBadge = (role: string) => {
-    const colors = ROLE_COLORS[role] || 'bg-gray-100 text-gray-800';
+    const textColor = ROLE_TEXT_COLORS[role] || 'text-slate-700';
     const label = ROLE_LABELS[role] || role;
-    return <span className={`px-2.5 py-1 text-[11px] font-semibold rounded-full ${colors}`}>{label}</span>;
+    return <span className={`text-sm font-medium ${textColor}`}>{label}</span>;
   };
 
   const getInitials = (name: string) =>
@@ -243,18 +406,102 @@ const StaffDirectory: React.FC = () => {
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
         {/* Search & Filters */}
         <div className="p-5 border-b border-slate-200">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="relative flex-1 min-w-[280px]">
+          {/* Search and Action Row */}
+          <div className="flex flex-wrap items-center gap-3 mb-4">
+            <div className="relative flex-1 min-w-[200px]">
               <span className="material-icons absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xl">search</span>
               <input
                 type="text"
                 value={searchInput}
                 onChange={e => setSearchInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleSearch(e as any)}
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary text-sm"
+                className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary text-sm"
                 placeholder="Search by name, ID, or email..."
               />
+              {searchInput && (
+                <button
+                  onClick={() => { setSearch(''); setSearchInput(''); setPage(1); }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  <span className="material-icons text-lg">close</span>
+                </button>
+              )}
             </div>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary text-sm font-medium text-slate-700"
+            >
+              <option value="default">Default Order</option>
+              <option value="created_at">Registration Date</option>
+              <option value="employee_id">Employee ID</option>
+              <option value="first_name">First Name</option>
+              <option value="last_name">Last Name</option>
+              <option value="full_name">Full Name</option>
+              <option value="email">Email</option>
+              <option value="role">Role</option>
+              <option value="department">Department</option>
+              <option value="phone_number">Phone</option>
+              <option value="is_active">Status</option>
+              <option value="last_login">Last Login</option>
+              <option value="updated_at">Last Updated</option>
+            </select>
+            <select
+              value={sortOrder}
+              onChange={(e) => setSortOrder(e.target.value as 'asc' | 'desc')}
+              className="px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary text-sm font-medium text-slate-700"
+              disabled={sortBy === 'default'}
+            >
+              <option value="asc">↑ Ascending</option>
+              <option value="desc">↓ Descending</option>
+            </select>
+            <div className="relative" ref={bulkMenuRef}>
+              <button
+                onClick={() => {
+                  setShowBulkMenu(!showBulkMenu);
+                }}
+                disabled={selectedUsers.size === 0 || bulkActionLoading}
+                className={`inline-flex items-center gap-2 px-4 py-2.5 border rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                  selectedUsers.size > 0 
+                    ? 'bg-primary text-white hover:bg-primary/90 border-primary shadow-sm' 
+                    : 'bg-white text-slate-700 hover:bg-slate-50 border-slate-200'
+                }`}
+              >
+                <span className="material-icons text-base">more_horiz</span> 
+                Bulk Actions {selectedUsers.size > 0 && `(${selectedUsers.size})`}
+              </button>
+              {showBulkMenu && selectedUsers.size > 0 && (
+                <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg border border-slate-200 shadow-lg z-20">
+                  <button 
+                    onClick={handleBulkActivate}
+                    disabled={bulkActionLoading}
+                    className="w-full px-4 py-2.5 text-left text-sm hover:bg-slate-50 rounded-t-lg transition-colors flex items-center gap-2 disabled:opacity-50"
+                  >
+                    <span className="material-icons text-sm text-green-600">check_circle</span>
+                    Activate Selected
+                  </button>
+                  <button 
+                    onClick={handleBulkDeactivate}
+                    disabled={bulkActionLoading}
+                    className="w-full px-4 py-2.5 text-left text-sm hover:bg-slate-50 transition-colors flex items-center gap-2 disabled:opacity-50"
+                  >
+                    <span className="material-icons text-sm text-amber-600">block</span>
+                    Deactivate Selected
+                  </button>
+                  <button 
+                    onClick={handleBulkDelete}
+                    disabled={bulkActionLoading}
+                    className="w-full px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50 rounded-b-lg transition-colors flex items-center gap-2 disabled:opacity-50"
+                  >
+                    <span className="material-icons text-sm">delete</span>
+                    Delete Selected
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+          
+          {/* Filter Row */}
+          <div className="flex flex-wrap items-center gap-3">
             <select
               value={roleFilter}
               onChange={e => { setRoleFilter(e.target.value); setPage(1); }}
@@ -263,35 +510,75 @@ const StaffDirectory: React.FC = () => {
               <option value="">All Roles</option>
               {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>)}
             </select>
-            <select className="px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium text-slate-700">
-              <option>All Departments</option>
-              <option>Medical</option>
-              <option>Nursing</option>
-              <option>Pharmacy</option>
-              <option>Administration</option>
+            <select
+              value={departmentFilter}
+              onChange={e => { setDepartmentFilter(e.target.value); setPage(1); }}
+              className="px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary text-sm font-medium text-slate-700"
+            >
+              <option value="">All Departments</option>
+              <option value="Medical">Medical</option>
+              <option value="Nursing">Nursing</option>
+              <option value="Pharmacy">Pharmacy</option>
+              <option value="Administration">Administration</option>
+              <option value="Front Desk">Front Desk</option>
+              <option value="Finance">Finance</option>
+              <option value="Inventory">Inventory</option>
+              <option value="General">General</option>
             </select>
-            <div className="relative">
-              <button
-                onClick={() => setShowBulkMenu(!showBulkMenu)}
-                className="inline-flex items-center gap-2 px-4 py-2.5 hover:bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium text-slate-700 transition-colors"
-              >
-                <span className="material-icons text-base">more_horiz</span> Bulk Actions
-              </button>
-              {showBulkMenu && (
-                <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg border border-slate-200 shadow-lg z-10">
-                  <button className="w-full px-4 py-2.5 text-left text-sm hover:bg-slate-50 rounded-t-lg transition-colors">
-                    Activate Selected
-                  </button>
-                  <button className="w-full px-4 py-2.5 text-left text-sm hover:bg-slate-50 transition-colors">
-                    Deactivate Selected
-                  </button>
-                  <button className="w-full px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50 rounded-b-lg transition-colors">
-                    Delete Selected
-                  </button>
-                </div>
-              )}
-            </div>
+            <select
+              value={statusFilter}
+              onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
+              className="px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary text-sm font-medium text-slate-700"
+            >
+              <option value="">All Status</option>
+              <option value="active">Active Only</option>
+              <option value="inactive">Inactive Only</option>
+            </select>
           </div>
+          
+          {/* Active Filters Display */}
+          {(roleFilter || departmentFilter || statusFilter) && (
+            <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-slate-100">
+              <span className="text-xs font-semibold text-slate-500">Active Filters:</span>
+              {roleFilter && (
+                <button
+                  onClick={() => setRoleFilter('')}
+                  className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium hover:bg-blue-200"
+                >
+                  Role: {ROLE_LABELS[roleFilter] || roleFilter}
+                  <span className="material-icons text-sm">close</span>
+                </button>
+              )}
+              {departmentFilter && (
+                <button
+                  onClick={() => setDepartmentFilter('')}
+                  className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-medium hover:bg-green-200"
+                >
+                  Dept: {departmentFilter}
+                  <span className="material-icons text-sm">close</span>
+                </button>
+              )}
+              {statusFilter && (
+                <button
+                  onClick={() => setStatusFilter('')}
+                  className="inline-flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-medium hover:bg-purple-200"
+                >
+                  Status: {statusFilter}
+                  <span className="material-icons text-sm">close</span>
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  setRoleFilter('');
+                  setDepartmentFilter('');
+                  setStatusFilter('');
+                }}
+                className="text-xs text-slate-500 hover:text-slate-700 font-medium underline"
+              >
+                Clear All Filters
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Table */}
@@ -310,7 +597,7 @@ const StaffDirectory: React.FC = () => {
             <table className="w-full">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  <th className="w-12 px-5 py-3.5">
+                  <th className="w-12 px-3 py-3.5 sticky left-0 bg-slate-50 z-10">
                     <input
                       type="checkbox"
                       checked={selectedUsers.size === users.length && users.length > 0}
@@ -318,18 +605,18 @@ const StaffDirectory: React.FC = () => {
                       className="w-4 h-4 rounded border-slate-300 text-primary focus:ring-2 focus:ring-primary/30"
                     />
                   </th>
-                  <th className="px-5 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Employee ID</th>
-                  <th className="px-5 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Staff Name</th>
-                  <th className="px-5 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Role</th>
-                  <th className="px-5 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Department</th>
-                  <th className="px-5 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Contact Info</th>
-                  <th className="w-16 px-5 py-3.5"></th>
+                  <th className="px-3 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Employee ID</th>
+                  <th className="px-3 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Staff Name</th>
+                  <th className="px-3 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Role</th>
+                  <th className="px-3 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Department</th>
+                  <th className="px-3 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Contact Info</th>
+                  <th className="w-20 px-3 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap sticky right-0 bg-slate-50 z-10">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {users.map(user => (
                   <tr key={user.id} className="hover:bg-slate-50/50 transition-colors group">
-                    <td className="px-5 py-4">
+                    <td className="px-3 py-4 sticky left-0 bg-white group-hover:bg-slate-50/50 z-10">
                       <input
                         type="checkbox"
                         checked={selectedUsers.has(user.id)}
@@ -337,10 +624,10 @@ const StaffDirectory: React.FC = () => {
                         className="w-4 h-4 rounded border-slate-300 text-primary focus:ring-2 focus:ring-primary/30"
                       />
                     </td>
-                    <td className="px-5 py-4">
+                    <td className="px-3 py-4 whitespace-nowrap">
                       <span className="text-sm font-semibold font-mono text-slate-700">{user.employee_id || 'N/A'}</span>
                     </td>
-                    <td className="px-5 py-4">
+                    <td className="px-3 py-4">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs flex-shrink-0 overflow-hidden">
                           {user.photo_url ? (
@@ -349,39 +636,39 @@ const StaffDirectory: React.FC = () => {
                             getInitials(user.full_name)
                           )}
                         </div>
-                        <div>
-                          <p className="text-sm font-semibold text-slate-900">{user.full_name}</p>
-                          <p className="text-xs text-slate-500">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-slate-900 truncate">{user.full_name}</p>
+                          <p className="text-xs text-slate-500 truncate">
                             Last login: {getTimeAgo(user.last_login)}
                           </p>
                         </div>
                       </div>
                     </td>
-                    <td className="px-5 py-4">{getRoleBadge(user.role)}</td>
-                    <td className="px-5 py-4">
+                    <td className="px-3 py-4 whitespace-nowrap">{getRoleBadge(user.role)}</td>
+                    <td className="px-3 py-4 whitespace-nowrap">
                       <span className="text-sm text-slate-700">{user.department || getDepartment(user.role)}</span>
                     </td>
-                    <td className="px-5 py-4">
+                    <td className="px-3 py-4">
                       <div className="text-sm">
-                        <p className="text-slate-900">{user.email}</p>
-                        <p className="text-slate-500">{user.phone_number || 'No phone'}</p>
+                        <p className="text-slate-900 truncate">{user.email}</p>
+                        <p className="text-slate-500 truncate">{user.phone_number || 'No phone'}</p>
                       </div>
                     </td>
-                    <td className="px-5 py-4">
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <td className="px-3 py-4 sticky right-0 bg-white group-hover:bg-slate-50/50 z-10">
+                      <div className="flex items-center justify-end gap-1">
                         <button
                           onClick={() => setEditUser(user)}
                           className="p-1.5 hover:bg-slate-100 rounded transition-colors"
                           title="Edit"
                         >
-                          <span className="material-icons text-lg text-slate-600">edit</span>
+                          <span className="material-icons text-base text-slate-600">edit</span>
                         </button>
                         <button
                           onClick={() => setDeleteConfirm(user)}
                           className="p-1.5 hover:bg-red-50 rounded transition-colors"
                           title="Delete"
                         >
-                          <span className="material-icons text-lg text-red-500">delete</span>
+                          <span className="material-icons text-base text-red-500">delete</span>
                         </button>
                       </div>
                     </td>
@@ -604,6 +891,7 @@ const Field: React.FC<{ label: string; error?: string; children: React.ReactNode
 
 // ---------- Create Staff Modal ----------
 const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => void; onError: (msg: string) => void }> = ({ onClose, onSuccess, onError }) => {
+  const toast = useToast();
   const [showPassword, setShowPassword] = useState(false);
   const [photoPreview, setPhotoPreview] = useState<string>('');
   const [photoFile, setPhotoFile] = useState<File | null>(null);
@@ -720,14 +1008,19 @@ const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => void; o
         department: data.department,
       };
       
-      // TODO: Handle photo upload when backend endpoint is ready
-      // if (photoFile) {
-      //   const formData = new FormData();
-      //   formData.append('photo', photoFile);
-      //   await userService.uploadPhoto(user.id, formData);
-      // }
+      // Create user first
+      const createdUser = await userService.createUser(payload);
       
-      await userService.createUser(payload);
+      // Upload photo if selected
+      if (photoFile && createdUser.id) {
+        try {
+          await userService.uploadPhoto(createdUser.id, photoFile);
+        } catch (photoErr: any) {
+          // Don't fail the whole operation if photo upload fails
+          toast.error('User created but photo upload failed');
+        }
+      }
+      
       onSuccess();
     } catch (err: any) {
       onError(err?.response?.data?.detail || 'Failed to create staff member');
@@ -906,7 +1199,8 @@ const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => void; o
 
 // ---------- Edit Staff Modal ----------
 const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onSuccess: () => void; onError: (msg: string) => void }> = ({ user, onClose, onSuccess, onError }) => {
-  const [photoPreview, setPhotoPreview] = useState<string>('');
+  const toast = useToast();
+  const [photoPreview, setPhotoPreview] = useState<string>(user.photo_url ? userService.getPhotoUrl(user.photo_url) || '' : '');
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoError, setPhotoError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -985,6 +1279,17 @@ const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onSuccess:
         is_active: data.is_active,
       };
       await userService.updateUser(user.id, payload);
+      
+      // Upload photo if selected
+      if (photoFile) {
+        try {
+          await userService.uploadPhoto(user.id, photoFile);
+          toast.success('Staff member and photo updated successfully!');
+        } catch (photoErr: any) {
+          toast.warning('Staff updated, but photo upload failed');
+        }
+      }
+      
       onSuccess();
     } catch (err: any) {
       onError(err?.response?.data?.detail || 'Failed to update staff member');

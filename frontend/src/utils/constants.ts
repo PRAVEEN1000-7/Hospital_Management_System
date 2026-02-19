@@ -38,6 +38,18 @@ export const ROLE_COLORS: Record<string, string> = {
   inventory_manager: 'bg-indigo-100 text-indigo-700',
 };
 
+export const ROLE_TEXT_COLORS: Record<string, string> = {
+  super_admin: 'text-red-700',
+  admin: 'text-orange-700',
+  doctor: 'text-blue-700',
+  nurse: 'text-teal-700',
+  staff: 'text-gray-700',
+  receptionist: 'text-purple-700',
+  pharmacist: 'text-green-700',
+  cashier: 'text-yellow-700',
+  inventory_manager: 'text-indigo-700',
+};
+
 export interface CountryData {
   name: string;
   code: string;

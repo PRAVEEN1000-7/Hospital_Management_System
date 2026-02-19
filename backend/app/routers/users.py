@@ -1,5 +1,5 @@
 import logging
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
 from sqlalchemy.orm import Session
 from typing import Optional
 from ..database import get_db
@@ -18,6 +18,7 @@ from ..services.user_service import (
     reset_password,
     delete_user,
     list_users,
+    save_user_photo,
 )
 from ..services.email_service import send_password_email
 
@@ -233,6 +234,27 @@ async def delete_existing_user(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete user.",
+        )
+
+
+@router.post("/{user_id}/upload-photo", response_model=dict)
+async def upload_user_photo(
+    user_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_super_admin),
+):
+    """Upload user profile photo (Super Admin only)"""
+    try:
+        result = save_user_photo(db, user_id, file)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error uploading photo for user {user_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to upload photo.",
         )
 
 

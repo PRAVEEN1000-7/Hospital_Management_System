@@ -1,14 +1,28 @@
 import logging
+import os
+import shutil
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, text
 from math import ceil
 from typing import Optional
 from datetime import datetime
+from fastapi import UploadFile, HTTPException, status
 from ..models.user import User
 from ..models.hospital import HospitalDetails
 from ..utils.security import get_password_hash
 
 logger = logging.getLogger(__name__)
+
+# Upload directory configuration
+UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "uploads", "photos")
+ALLOWED_PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif"}
+MAX_PHOTO_SIZE_MB = 2
+
+
+def ensure_upload_directory():
+    """Create upload directory if it doesn't exist"""
+    if not os.path.exists(UPLOAD_DIR):
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
 def get_hospital_prefix(db: Session) -> str:
@@ -152,12 +166,19 @@ def reset_password(db: Session, user_id: int, new_password: str) -> Optional[Use
 
 
 def delete_user(db: Session, user_id: int) -> Optional[User]:
-    """Soft delete a user"""
+    """Permanently delete a user from database"""
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         return None
-    user.is_active = False
+    
+    # Store user info for logging before deletion
+    username = user.username
+    
+    # Hard delete from database
+    db.delete(user)
     db.commit()
+    
+    logger.info(f"Permanently deleted user: {username} (ID: {user_id})")
     return user
 
 
@@ -188,4 +209,73 @@ def list_users(
         "limit": limit,
         "total_pages": total_pages,
         "data": users,
+    }
+
+
+def save_user_photo(db: Session, user_id: int, file: UploadFile) -> dict:
+    """Save user photo file and update database"""
+    ensure_upload_directory()
+    
+    # Validate file extension
+    file_ext = os.path.splitext(file.filename)[1].lower()
+    if file_ext not in ALLOWED_PHOTO_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid file type. Allowed: {', '.join(ALLOWED_PHOTO_EXTENSIONS)}"
+        )
+    
+    # Check file size
+    file.file.seek(0, 2)  # Seek to end
+    file_size_bytes = file.file.tell()
+    file.file.seek(0)  # Reset to beginning
+    
+    file_size_mb = file_size_bytes / (1024 * 1024)
+    if file_size_mb > MAX_PHOTO_SIZE_MB:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File too large. Maximum size: {MAX_PHOTO_SIZE_MB}MB"
+        )
+    
+    # Get user record
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    # Delete old photo if exists
+    if user.photo_url:
+        old_photo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), user.photo_url.lstrip('/'))
+        if os.path.exists(old_photo_path):
+            try:
+                os.remove(old_photo_path)
+            except Exception:
+                pass  # Ignore deletion errors
+    
+    # Generate unique filename
+    filename = f"user_{user_id}_{int(datetime.now().timestamp())}{file_ext}"
+    file_path = os.path.join(UPLOAD_DIR, filename)
+    
+    # Save file
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to save photo: {str(e)}"
+        )
+    
+    # Update database - store relative path
+    user.photo_url = f"/uploads/photos/{filename}"
+    db.commit()
+    db.refresh(user)
+    
+    logger.info(f"Saved photo for user {user_id}: {filename}")
+    
+    return {
+        "message": "Photo uploaded successfully",
+        "photo_url": user.photo_url,
+        "filename": filename
     }

@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { format } from 'date-fns';
 import userService from '../services/userService';
 import type { UserData, UserCreateData, UserUpdateData } from '../types/user';
-import { ROLE_COLORS, ROLE_LABELS } from '../utils/constants';
+import { ROLE_TEXT_COLORS, ROLE_LABELS } from '../utils/constants';
 import { useToast } from '../contexts/ToastContext';
 
 const userCreateSchema = z.object({
@@ -105,9 +105,9 @@ const UserManagement: React.FC = () => {
   };
 
   const getRoleBadge = (role: string) => {
-    const colors = ROLE_COLORS[role] || 'bg-gray-100 text-gray-800';
+    const textColor = ROLE_TEXT_COLORS[role] || 'text-gray-700';
     const label = ROLE_LABELS[role] || role;
-    return <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${colors}`}>{label}</span>;
+    return <span className={`text-sm font-medium ${textColor}`}>{label}</span>;
   };
 
   return (
@@ -173,8 +173,23 @@ const UserManagement: React.FC = () => {
                   <tr key={user.id} className="hover:bg-slate-50 transition-colors group">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
-                          {user.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                        <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs overflow-hidden flex-shrink-0">
+                          {user.photo_url ? (
+                            <img 
+                              src={userService.getPhotoUrl(user.photo_url) || ''} 
+                              alt={user.full_name} 
+                              className="w-full h-full object-cover" 
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                                const parent = e.currentTarget.parentElement;
+                                if (parent) {
+                                  parent.innerHTML = user.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+                                }
+                              }}
+                            />
+                          ) : (
+                            user.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+                          )}
                         </div>
                         <span className="text-sm font-semibold text-slate-900">{user.username}</span>
                       </div>
@@ -191,7 +206,7 @@ const UserManagement: React.FC = () => {
                       {user.last_login ? format(new Date(user.last_login), 'dd MMM yyyy HH:mm') : '—'}
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="flex items-center justify-end gap-1 opacity-50 group-hover:opacity-100 transition-opacity">
                         <button
                           onClick={() => setEditUser(user)}
                           className="p-1.5 rounded-lg hover:bg-primary/10 text-slate-400 hover:text-primary transition-colors"
@@ -431,7 +446,13 @@ const CreateUserModal: React.FC<{ onClose: () => void; onSuccess: () => void; on
 
 // ---------- Edit User Modal ----------
 const EditUserModal: React.FC<{ user: UserData; onClose: () => void; onSuccess: () => void; onError: (msg: string) => void }> = ({ user, onClose, onSuccess, onError }) => {
-  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<EditFormData>({
+  const toast = useToast();
+  const [photoPreview, setPhotoPreview] = useState<string>(user.photo_url ? userService.getPhotoUrl(user.photo_url) || '' : '');
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoError, setPhotoError] = useState('');
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  
+  const { register, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm<EditFormData>({
     resolver: zodResolver(userEditSchema),
     defaultValues: {
       username: user.username,
@@ -445,6 +466,51 @@ const EditUserModal: React.FC<{ user: UserData; onClose: () => void; onSuccess: 
       is_active: user.is_active,
     },
   });
+  
+  const firstName = watch('first_name', user.first_name || '');
+  const lastName = watch('last_name', user.last_name || '');
+  const fullName = `${firstName} ${lastName}`.trim();
+  
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    setPhotoError('');
+
+    if (!file) return;
+
+    // Validate file type
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
+    if (!validTypes.includes(file.type)) {
+      setPhotoError('Please upload a JPG, PNG, or GIF image');
+      return;
+    }
+
+    // Validate file size (2MB max)
+    const maxSize = 2 * 1024 * 1024; // 2MB in bytes
+    if (file.size > maxSize) {
+      setPhotoError('Image size must be less than 2MB');
+      return;
+    }
+
+    setPhotoFile(file);
+
+    // Create preview
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setPhotoPreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handlePhotoClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const getInitials = (name: string) => {
+    if (!name) return '';
+    const parts = name.trim().split(' ');
+    if (parts.length === 1) return parts[0][0]?.toUpperCase() || '';
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  };
 
   const onSubmit = async (data: EditFormData) => {
     try {
@@ -460,6 +526,17 @@ const EditUserModal: React.FC<{ user: UserData; onClose: () => void; onSuccess: 
         is_active: data.is_active,
       };
       await userService.updateUser(user.id, payload);
+      
+      // Upload photo if selected
+      if (photoFile) {
+        try {
+          await userService.uploadPhoto(user.id, photoFile);
+          toast.success('User and photo updated successfully!');
+        } catch (photoErr: any) {
+          toast.warning('User updated, but photo upload failed');
+        }
+      }
+      
       onSuccess();
     } catch (err: any) {
       onError(err?.response?.data?.detail || 'Failed to update user');
@@ -469,6 +546,40 @@ const EditUserModal: React.FC<{ user: UserData; onClose: () => void; onSuccess: 
   return (
     <Modal title="Edit User" onClose={onClose}>
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        {/* Profile Photo */}
+        <section className="flex flex-col items-center">
+          <div className="relative">
+            <div className="w-24 h-24 rounded-full bg-slate-100 border-2 border-slate-200 overflow-hidden flex items-center justify-center">
+              {photoPreview ? (
+                <img src={photoPreview} alt="Profile" className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-3xl font-bold text-slate-400">
+                  {getInitials(fullName)}
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="mt-3 text-center">
+            <p className="text-sm font-semibold text-slate-700 mb-1">Profile Photo</p>
+            <p className="text-xs text-slate-500 mb-2">JPG, PNG or GIF. Max size 2MB.</p>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/jpg,image/png,image/gif"
+              onChange={handlePhotoChange}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={handlePhotoClick}
+              className="text-sm font-semibold text-primary hover:text-primary/80 transition-colors"
+            >
+              CHANGE PHOTO
+            </button>
+            {photoError && <p className="text-xs text-red-500 mt-2">{photoError}</p>}
+          </div>
+        </section>
+        
         <section className="space-y-4">
           <div className="flex items-center gap-2 mb-2">
             <span className="w-8 h-[2px] bg-primary/20 rounded-full"></span>

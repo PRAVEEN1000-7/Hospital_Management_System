@@ -2,15 +2,17 @@
 
 -- Create default users
 -- Passwords are hashed with bcrypt (rounds=12)
--- Passwords:
---   superadmin: <set your own strong password>
---   admin/doctor1/nurse1: <set your own strong password>
+-- Default Passwords (⚠️ CHANGE IN PRODUCTION):
+--   superadmin: superadmin123
+--   admin: admin123
+--   doctor1: doctor123
+--   nurse1: nurse123
 INSERT INTO users (username, email, password_hash, full_name, first_name, last_name, role, employee_id, department, phone_number)
 VALUES 
-    ('superadmin', 'superadmin@hms.com', '$2b$12$eXcJvdukvD3awfuhvmX0zuCdjxUhryfOw8rKiFWrX0bTYU8D7da.y', 'Super Administrator', 'Super', 'Administrator', 'super_admin', 'EMP-2024-001', 'Administration', '+1-555-0001'),
-    ('admin', 'admin@hms.com', '$2b$12$57j65e3svieVI8JtnNUiRe.Q0ejZZ3AW3LLCZWYJp0KKBw0fRMu56', 'System Administrator', 'System', 'Administrator', 'admin', 'EMP-2024-002', 'Administration', '+1-555-0002'),
-    ('doctor1', 'doctor1@hms.com', '$2b$12$57j65e3svieVI8JtnNUiRe.Q0ejZZ3AW3LLCZWYJp0KKBw0fRMu56', 'Dr. Sakthivel', 'Sakthivel', 'Kumar', 'doctor', 'EMP-2024-003', 'Cardiology', '+1-555-0003'),
-    ('nurse1', 'nurse1@hms.com', '$2b$12$57j65e3svieVI8JtnNUiRe.Q0ejZZ3AW3LLCZWYJp0KKBw0fRMu56', 'Nurse Sharumathi', 'Sharumathi', 'Devi', 'nurse', 'EMP-2024-004', 'General Ward', '+1-555-0004')
+    ('superadmin', 'superadmin@hms.com', '$2b$12$CvbB5ik7MBf1N7mmoDaah.RFkKhkfjKN5lFthKWIEhAnftS/d8wgi', 'Super Administrator', 'Super', 'Administrator', 'super_admin', 'EMP-2024-001', 'Administration', '+1-555-0001'),
+    ('admin', 'admin@hms.com', '$2b$12$R0GcmWMpiIlM52u3lOWJi.eDwe.RMo9oOOBu.82iyiv1HiOvIiFsa', 'System Administrator', 'System', 'Administrator', 'admin', 'EMP-2024-002', 'Administration', '+1-555-0002'),
+    ('doctor1', 'doctor1@hms.com', '$2b$12$vy5U..EarJPt1VHeXrehqeOPS8mfQl.nyJHa1FrM.vSxI8TNfNqDO', 'Dr. Sakthivel', 'Sakthivel', 'Kumar', 'doctor', 'EMP-2024-003', 'Cardiology', '+1-555-0003'),
+    ('nurse1', 'nurse1@hms.com', '$2b$12$DkJaAaj2H3DKq8iEWeR8juwYGr7F.nYV0KgQfCPcQWqliF0R2I/uC', 'Nurse Sharumathi', 'Sharumathi', 'Devi', 'nurse', 'EMP-2024-004', 'General Ward', '+1-555-0004')
 ON CONFLICT (username) DO NOTHING;
 
 -- Initialize PRN sequence (start from 1 if not already set)

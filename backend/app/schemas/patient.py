@@ -122,6 +122,7 @@ class PatientListItem(BaseModel):
     title: str
     first_name: str
     last_name: str
+    gender: str
     country_code: str = "+91"
     mobile_number: str
     email: Optional[str] = None

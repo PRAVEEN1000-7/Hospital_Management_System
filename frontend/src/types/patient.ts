@@ -36,6 +36,7 @@ export interface PatientListItem {
   first_name: string;
   last_name: string;
   full_name: string;
+  gender: string;
   country_code: string;
   mobile_number: string;
   email: string | null;

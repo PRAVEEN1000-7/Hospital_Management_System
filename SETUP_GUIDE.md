@@ -98,11 +98,11 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 Navigate to the project database directory:
 
-```bash
-cd d:\HMS\v1\database
-``` using PowerShell:
+Navigate to database directory and execute scripts using PowerShell:
 
 ```powershell
+cd d:\HMS\v1\database
+
 # Set environment variable for password
 $env:PGPASSWORD="HMS@2026"
 
@@ -128,26 +128,34 @@ psql -h localhost -U hospital_admin -d hospital_management -f migrations\002_add
 psql -h localhost -U hospital_admin -d hospital_management -f migrations\003_backfill_employee_ids.sql
 
 # 8. Seed initial data (creates default users and sample patients)
-psql -h localhost -U hospital_admin -d hospital_management -f seeds\
-# 8. Seed initial data
-psql -h localhost -U hospital_admin -d hospital_management -f seeds/seed_data.sql
+psql -h localhost -U hospital_admin -d hospital_management -f seeds\seed_data.sql
+
+# 9. Migrate to new ID format (removes hyphens, adds hospital prefix)
+psql -h localhost -U hospital_admin -d hospital_management -f migrations\004_migrate_to_new_id_format.sql
 ```
+
+**Note:** Step 9 creates the default hospital "HMS Core" and updates all IDs to the new format (e.g., `HMS-000001` → `HC2026000001`).
 
 ### Step 3: Verify Database Setup
 
-```bash
-# Cpowershell
+```powershell
 # Connect to database
 psql -h localhost -U hospital_admin -d hospital_management
 
 # Check tables
 \dt
 
-# Check users (should show 4 default users)
+# Check users (should show 4 default users with new ID format)
 SELECT id, username, email, role, employee_id FROM users;
+-- Expected employee_id format: HCSADM20240001, HCADM20240002, etc.
 
-# Check patients (should show 4 sample patients)
+# Check patients (should show 4 sample patients with new PRN format)
 SELECT prn, first_name, last_name, mobile_number FROM patients;
+-- Expected prn format: HC2026000001, HC2026000002, etc.
+
+# Check hospital (should show HMS Core)
+SELECT id, hospital_name, is_configured FROM hospital_details;
+
 # Exit
 \q
 ```
@@ -158,7 +166,7 @@ SELECT prn, first_name, last_name, mobile_number FROM patients;
 
 ### Step 1: Navigate to Backend Directory
 
-```bash
+```powershell
 cd d:\HMS\v1\backend
 ```
 
@@ -177,10 +185,7 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 
 ### Step 3: Install Dependencies
 
-```bash
-# Upgrade pip
-python -m pip install --upgrade pip
-powershell
+```powershell
 # Upgrade pip
 python -m pip install --upgrade pip
 
@@ -188,7 +193,10 @@ python -m pip install --upgrade pip
 pip install -r requirements.txt
 
 # Verify installation
-pip lisent Variables
+pip list
+```
+
+### Step 4: Configure Environment Variables
 
 Create `.env` file in `backend/` directory:
 

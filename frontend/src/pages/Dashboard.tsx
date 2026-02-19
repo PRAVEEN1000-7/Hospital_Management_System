@@ -3,14 +3,17 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { formatRole } from '../utils/constants';
 import patientService from '../services/patientService';
+import hospitalService from '../services/hospitalService';
 
 const Dashboard: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [totalPatients, setTotalPatients] = useState<number>(0);
+  const [hospitalName, setHospitalName] = useState<string>('HMS Core');
 
   useEffect(() => {
     patientService.getPatients(1, 1).then(res => setTotalPatients(res.total)).catch(() => {});
+    hospitalService.getHospitalDetails().then(res => setHospitalName(res.hospital_name)).catch(() => {});
   }, []);
 
   // Stat cards matching the dashboard design
@@ -186,7 +189,7 @@ const Dashboard: React.FC = () => {
               <div className="flex gap-3">
                 <span className="material-symbols-outlined text-blue-400 text-sm">info</span>
                 <div>
-                  <p className="text-[11px] text-white font-medium">HMS Core v1.0</p>
+                  <p className="text-[11px] text-white font-medium">{hospitalName} v1.0</p>
                   <p className="text-[10px] text-slate-400">Running latest stable release.</p>
                 </div>
               </div>

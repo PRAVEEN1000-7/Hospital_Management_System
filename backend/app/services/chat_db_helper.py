@@ -84,8 +84,12 @@ def _is_about_patients(msg: str) -> bool:
         "reference id", "reference number", "ref id", "ref no",
         "reference no", "ref number", "patient ref", "patient id",
     ]
-    # Also trigger if message contains a PRN-like pattern (HMS-000001, PRN 123, etc.)
-    if re.search(r'(?:hms[-\s]?\d+|prn[-\s:]*\d+|ref(?:erence)?[-\s]*(?:id|no|number|#)[-\s:]*\d+)', msg, re.IGNORECASE):
+    # Also trigger if message contains a PRN-like pattern
+    # Supports: HMS-000001 (old), H2026000001 (new), PRN 123, ref id 1, etc.
+    if re.search(
+        r'(?:hms[-\s]?\d+|[a-z]{1,5}\d{10,}|prn[-\s:]*\d+|ref(?:erence)?[-\s]*(?:id|no|number|#)[-\s:]*\d+)',
+        msg, re.IGNORECASE
+    ):
         return True
     return any(kw in msg for kw in keywords)
 
@@ -266,40 +270,50 @@ def _get_patient_data(db: Session, msg: str) -> str:
             blood_str = ", ".join([f"{b}: {c}" for b, c in blood_counts])
             parts.append(f"**By blood group:** {blood_str}")
 
-    # Search for specific patient by PRN (HMS-000001, HMS 000001, etc.)
-    prn_match = re.search(r'(hms[-\s]?\d+)', msg, re.IGNORECASE)
+    # Search for specific patient by PRN
+    # Supports new format (H2026000001) and old format (HMS-000001)
+    prn_match = re.search(r'\b([a-z]{1,5}\d{10,})\b', msg, re.IGNORECASE)  # New format: H2026000001
+    if not prn_match:
+        prn_match = re.search(r'(hms[-\s]?\d+)', msg, re.IGNORECASE)  # Old format fallback
+
     if prn_match:
-        prn_search = prn_match.group(1).upper().replace(" ", "-")
-        if "-" not in prn_search:
-            prn_search = prn_search[:3] + "-" + prn_search[3:]
+        prn_search = prn_match.group(1).upper().replace(" ", "").replace("-", "")
+        # Try exact match first
         patient = db.query(Patient).filter(Patient.prn == prn_search).first()
+        if not patient:
+            # Try with hyphen (old format HMS-000001)
+            if len(prn_search) > 3 and prn_search[:3] == "HMS":
+                prn_search_hyphen = prn_search[:3] + "-" + prn_search[3:]
+                patient = db.query(Patient).filter(Patient.prn == prn_search_hyphen).first()
         if patient:
             parts.append(_format_patient_detail(patient))
         else:
             parts.append(f"**No patient found with PRN {prn_search}**")
 
-    # Search by PRN number only (e.g., "PRN 000001", "prn:000001", "reference id 000001", "ref id 000001")
+    # Search by PRN number only (e.g., "PRN 1", "prn:000001", "reference id 2", "ref id 3")
     if not prn_match:
         ref_match = re.search(
             r'(?:prn|reference\s*(?:id|no\.?|number|#)|ref\s*(?:id|no\.?|number|#)|patient\s*(?:ref|reference)\s*(?:id|no\.?|number|#)?)[-\s:]*?(\d{1,6})',
             msg, re.IGNORECASE
         )
         if ref_match:
-            num = ref_match.group(1).zfill(6)  # Pad to 6 digits
-            prn_search = f"HMS-{num}"
-            patient = db.query(Patient).filter(Patient.prn == prn_search).first()
+            num_str = ref_match.group(1)
+            num_padded = num_str.zfill(6)
+            # Try matching by PRN suffix (works for both old HMS-000001 and new H2026000001)
+            patient = (
+                db.query(Patient)
+                .filter(Patient.is_active == True, Patient.prn.like(f"%{num_padded}"))
+                .first()
+            )
+            if not patient:
+                # Try matching by DB row id
+                patient = db.query(Patient).filter(Patient.id == int(num_str)).first()
             if patient:
                 parts.append(_format_patient_detail(patient))
-                prn_match = ref_match  # Prevent further searches
+                prn_match = ref_match
             else:
-                # Also try matching the raw number as DB id
-                patient = db.query(Patient).filter(Patient.id == int(ref_match.group(1))).first()
-                if patient:
-                    parts.append(_format_patient_detail(patient))
-                    prn_match = ref_match
-                else:
-                    parts.append(f"**No patient found with reference {prn_search} or ID #{ref_match.group(1)}**")
-                    prn_match = ref_match
+                parts.append(f"**No patient found with reference number {num_str}**")
+                prn_match = ref_match
 
     # Search by patient number/ID (e.g., "patient #3", "patient number 5", "patient id 12")
     if not prn_match:

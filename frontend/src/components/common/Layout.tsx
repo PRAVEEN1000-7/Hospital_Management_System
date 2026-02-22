@@ -30,8 +30,12 @@ const Layout: React.FC = () => {
   const navItems = [
     { to: '/dashboard', label: 'Dashboard', icon: 'dashboard' },
     { to: '/patients', label: 'Patient Directory', icon: 'group' },
-    { to: '/staff', label: 'Staff Directory', icon: 'badge' },
   ];
+
+  // Staff Directory - only for admin and super_admin
+  if (user?.role === 'super_admin' || user?.role === 'admin') {
+    navItems.push({ to: '/staff', label: 'Staff Directory', icon: 'badge' });
+  }
 
   if (user?.role === 'super_admin' ) {
     navItems.push({ to: '/hospital-setup', label: 'Hospital Setup', icon: 'local_hospital' });

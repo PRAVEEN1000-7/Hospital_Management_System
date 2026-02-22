@@ -79,6 +79,21 @@ const ROLES = [
   'pharmacist', 'cashier', 'inventory_manager', 'staff',
 ];
 
+// Helper function to get default department based on role
+const getDepartment = (role: string): string => {
+  const deptMap: Record<string, string> = {
+    doctor: 'Medical',
+    nurse: 'Nursing',
+    pharmacist: 'Pharmacy',
+    receptionist: 'Front Desk',
+    cashier: 'Finance',
+    inventory_manager: 'Inventory',
+    admin: 'Administration',
+    super_admin: 'Administration',
+  };
+  return deptMap[role] || 'General';
+};
+
 const StaffDirectory: React.FC = () => {
   const toast = useToast();
   const [users, setUsers] = useState<UserData[]>([]);
@@ -308,20 +323,6 @@ const StaffDirectory: React.FC = () => {
 
   const getInitials = (name: string) =>
     name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
-
-  const getDepartment = (role: string): string => {
-    const deptMap: Record<string, string> = {
-      doctor: 'Medical',
-      nurse: 'Nursing',
-      pharmacist: 'Pharmacy',
-      receptionist: 'Front Desk',
-      cashier: 'Finance',
-      inventory_manager: 'Inventory',
-      admin: 'Administration',
-      super_admin: 'Administration',
-    };
-    return deptMap[role] || 'General';
-  };
 
   const getTimeAgo = (lastLogin: string | null) => {
     if (!lastLogin) return 'Never';
@@ -910,6 +911,15 @@ const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => void; o
   const firstName = watch('first_name', '');
   const lastName = watch('last_name', '');
   const autoGenPassword = watch('auto_generate_password', false);
+  const selectedRole = watch('role', '');
+
+  // Auto-populate department based on role
+  React.useEffect(() => {
+    if (selectedRole) {
+      const defaultDept = getDepartment(selectedRole);
+      setValue('department', defaultDept);
+    }
+  }, [selectedRole, setValue]);
 
   // Auto-generate username from email
   React.useEffect(() => {
@@ -1104,7 +1114,7 @@ const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => void; o
             <h3 className="text-sm font-bold text-primary uppercase tracking-wider">Professional Info</h3>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Staff Role" error={errors.role?.message}>
+            <Field label="System Role (Job Function)" error={errors.role?.message}>
               <select {...register('role')} className="input-field">
                 <option value="">Select role</option>
                 {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>)}
@@ -1120,20 +1130,26 @@ const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => void; o
               <p className="text-xs text-slate-500 mt-1">Format: ROLE-YYYY-####</p>
             </Field>
           </div>
-          <Field label="Department" error={errors.department?.message}>
+          <Field label="Work Department (Auto-assigned based on role)" error={errors.department?.message}>
             <select {...register('department')} className="input-field">
-              <option value="">Select department</option>
+              <option value="Medical">Medical</option>
+              <option value="Nursing">Nursing</option>
+              <option value="Pharmacy">Pharmacy</option>
+              <option value="Front Desk">Front Desk</option>
+              <option value="Finance">Finance</option>
+              <option value="Inventory">Inventory</option>
+              <option value="Administration">Administration</option>
+              <option value="General">General</option>
               <option value="Cardiology">Cardiology</option>
               <option value="Emergency">Emergency (ER)</option>
-              <option value="Pharmacy">Main Pharmacy</option>
               <option value="Surgery">Surgery</option>
               <option value="Pediatrics">Pediatrics</option>
               <option value="Radiology">Radiology</option>
               <option value="Laboratory">Laboratory</option>
-              <option value="Administration">Administration</option>
               <option value="ICU">ICU</option>
               <option value="General Ward">General Ward</option>
             </select>
+            <p className="text-xs text-slate-500 mt-1">Department is auto-assigned based on role, but can be changed if needed</p>
           </Field>
         </section>
 
@@ -1205,7 +1221,7 @@ const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onSuccess:
   const [photoError, setPhotoError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { register, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm<EditFormData>({
+  const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm<EditFormData>({
     resolver: zodResolver(staffEditSchema),
     defaultValues: {
       email: user.email,
@@ -1222,7 +1238,16 @@ const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onSuccess:
 
   const firstName = watch('first_name', user.first_name || '');
   const lastName = watch('last_name', user.last_name || '');
+  const selectedRole = watch('role', user.role);
   const fullName = `${firstName} ${lastName}`.trim();
+
+  // Auto-populate department based on role when role changes
+  React.useEffect(() => {
+    if (selectedRole && selectedRole !== user.role) {
+      const defaultDept = getDepartment(selectedRole);
+      setValue('department', defaultDept);
+    }
+  }, [selectedRole, setValue]);
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1369,7 +1394,7 @@ const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onSuccess:
             <h3 className="text-sm font-bold text-primary uppercase tracking-wider">Professional Info</h3>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Role" error={errors.role?.message}>
+            <Field label="System Role (Job Function)" error={errors.role?.message}>
               <select {...register('role')} className="input-field">
                 {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>)}
               </select>
@@ -1383,20 +1408,26 @@ const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onSuccess:
               <p className="text-xs text-slate-500 mt-1">Auto-generated, cannot be changed</p>
             </Field>
           </div>
-          <Field label="Department" error={errors.department?.message}>
+          <Field label="Work Department (Auto-assigned based on role)" error={errors.department?.message}>
             <select {...register('department')} className="input-field">
-              <option value="">Select department</option>
+              <option value="Medical">Medical</option>
+              <option value="Nursing">Nursing</option>
+              <option value="Pharmacy">Pharmacy</option>
+              <option value="Front Desk">Front Desk</option>
+              <option value="Finance">Finance</option>
+              <option value="Inventory">Inventory</option>
+              <option value="Administration">Administration</option>
+              <option value="General">General</option>
               <option value="Cardiology">Cardiology</option>
               <option value="Emergency">Emergency (ER)</option>
-              <option value="Pharmacy">Main Pharmacy</option>
               <option value="Surgery">Surgery</option>
               <option value="Pediatrics">Pediatrics</option>
               <option value="Radiology">Radiology</option>
               <option value="Laboratory">Laboratory</option>
-              <option value="Administration">Administration</option>
               <option value="ICU">ICU</option>
               <option value="General Ward">General Ward</option>
             </select>
+            <p className="text-xs text-slate-500 mt-1">Department is auto-assigned based on role, but can be changed if needed</p>
           </Field>
         </section>
 

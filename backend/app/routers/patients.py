@@ -12,15 +12,42 @@ from ..schemas.patient import (
     PatientListItem,
     PaginatedPatientResponse,
 )
-from ..models.patient import Patient, prn_sequence
+from ..models.patient import Patient
 from ..models.user import User
 from ..dependencies import get_current_active_user
 from ..config import settings
 from ..services.patient_service import generate_prn
+from ..services.patient_id_service import validate_checksum, parse_patient_id
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/patients", tags=["Patients"])
+
+
+@router.get("/validate-id/{patient_id_str}")
+async def validate_patient_id(
+    patient_id_str: str,
+    current_user: User = Depends(get_current_active_user),
+):
+    """Validate a 12-digit Patient ID checksum and parse its components"""
+    if len(patient_id_str) != 12:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Patient ID must be exactly 12 characters",
+        )
+
+    parsed = parse_patient_id(patient_id_str)
+    if not parsed:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid Patient ID format",
+        )
+
+    return {
+        "patient_id": patient_id_str,
+        "valid": parsed["checksum_valid"],
+        "components": parsed,
+    }
 
 
 @router.post("", response_model=PatientResponse, status_code=status.HTTP_201_CREATED)
@@ -54,8 +81,8 @@ async def create_patient(
                     detail="A patient with this email already exists",
                 )
 
-        # Generate PRN
-        prn = generate_prn(db)
+        # Generate 12-digit Patient ID
+        prn = generate_prn(db, gender=patient.gender)
 
         # Create patient
         db_patient = Patient(

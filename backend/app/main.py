@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import SQLAlchemyError
 from .config import settings
 from .routers import auth, patients, users, hospital
+from .routers import schedules, appointments, walk_ins, waitlist, appointment_settings, appointment_reports
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,12 @@ app.include_router(auth.router, prefix="/api/v1")
 app.include_router(patients.router, prefix="/api/v1")
 app.include_router(users.router, prefix="/api/v1")
 app.include_router(hospital.router, prefix="/api/v1")
+app.include_router(schedules.router, prefix="/api/v1")
+app.include_router(appointments.router, prefix="/api/v1")
+app.include_router(walk_ins.router, prefix="/api/v1")
+app.include_router(waitlist.router, prefix="/api/v1")
+app.include_router(appointment_settings.router, prefix="/api/v1")
+app.include_router(appointment_reports.router, prefix="/api/v1")
 
 
 @app.get("/")

@@ -17,7 +17,7 @@ class PatientBase(BaseModel):
     first_name: str = Field(..., min_length=1, max_length=100)
     last_name: str = Field(..., min_length=1, max_length=100)
     date_of_birth: date
-    gender: str = Field(..., pattern="^(Male|Female|Other)$")
+    gender: str = Field(..., pattern="^(Male|Female|Other|Not Disclosed|Unknown)$")
     blood_group: Optional[str] = None
     country_code: str = Field(default="+91", pattern=r"^\+[0-9]{1,4}$")
     mobile_number: str = Field(..., pattern=r"^\d{4,15}$",

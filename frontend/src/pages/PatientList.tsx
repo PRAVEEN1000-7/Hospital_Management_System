@@ -210,7 +210,7 @@ const PatientList: React.FC = () => {
               >
                 <option value="default">Default Order</option>
                 <option value="created_at">Registration Date</option>
-                <option value="prn">Patient ID</option>
+                <option value="prn">PRN</option>
                 <option value="first_name">First Name</option>
                 <option value="last_name">Last Name</option>
                 <option value="date_of_birth">Date of Birth</option>
@@ -361,7 +361,7 @@ const PatientList: React.FC = () => {
             <table className="w-full min-w-[640px] text-left border-collapse">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  <th className="px-4 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Patient ID</th>
+                  <th className="px-4 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">PRN</th>
                   <th className="px-4 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Name</th>
                   <th className="px-4 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Gender</th>
                   <th className="px-4 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider hidden sm:table-cell">Blood</th>

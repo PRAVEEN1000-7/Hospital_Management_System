@@ -10,6 +10,9 @@ const Layout: React.FC = () => {
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [hospitalName, setHospitalName] = useState('HMS Core');
+  const [appointmentsOpen, setAppointmentsOpen] = useState(
+    () => location.pathname.startsWith('/appointments')
+  );
 
   useEffect(() => {
     hospitalService.getHospitalDetails()
@@ -21,6 +24,13 @@ const Layout: React.FC = () => {
         // Keep default on error
       });
   }, []);
+
+  // Auto-expand appointments section when navigating to an appointment route
+  useEffect(() => {
+    if (location.pathname.startsWith('/appointments')) {
+      setAppointmentsOpen(true);
+    }
+  }, [location.pathname]);
 
   const handleLogout = async () => {
     await logout();
@@ -35,6 +45,37 @@ const Layout: React.FC = () => {
   // Staff Directory - only for admin and super_admin
   if (user?.role === 'super_admin' || user?.role === 'admin') {
     navItems.push({ to: '/staff', label: 'Staff Directory', icon: 'badge' });
+  }
+
+  // Appointment nav items (role-based)
+  const appointmentItems: { to: string; label: string; icon: string }[] = [];
+  const role = user?.role;
+  if (role === 'receptionist' || role === 'admin' || role === 'super_admin') {
+    appointmentItems.push({ to: '/appointments/book', label: 'Book Appointment', icon: 'event' });
+  }
+  if (role === 'receptionist' || role === 'admin' || role === 'super_admin') {
+    appointmentItems.push({ to: '/appointments/walk-in', label: 'Walk-in Registration', icon: 'directions_walk' });
+  }
+  if (role === 'receptionist' || role === 'admin' || role === 'super_admin' || role === 'doctor' || role === 'nurse') {
+    appointmentItems.push({ to: '/appointments/queue', label: 'Walk-in Queue', icon: 'queue' });
+  }
+  if (role === 'doctor') {
+    appointmentItems.push({ to: '/appointments/my-schedule', label: 'My Appointments', icon: 'clinical_notes' });
+  }
+  if (role === 'admin' || role === 'super_admin' || role === 'doctor') {
+    appointmentItems.push({ to: '/appointments/doctor-schedule', label: 'Doctor Schedule', icon: 'calendar_month' });
+  }
+  if (role === 'admin' || role === 'super_admin') {
+    appointmentItems.push({ to: '/appointments/manage', label: 'Manage Appointments', icon: 'event_note' });
+  }
+  if (role === 'admin' || role === 'super_admin' || role === 'doctor') {
+    appointmentItems.push({ to: '/appointments/waitlist', label: 'Waitlist', icon: 'playlist_add' });
+  }
+  if (role === 'admin' || role === 'super_admin' || role === 'doctor') {
+    appointmentItems.push({ to: '/appointments/reports', label: 'Appointment Reports', icon: 'analytics' });
+  }
+  if (role === 'admin' || role === 'super_admin') {
+    appointmentItems.push({ to: '/appointments/settings', label: 'Appointment Settings', icon: 'tune' });
   }
 
   if (user?.role === 'super_admin' ) {
@@ -86,6 +127,45 @@ const Layout: React.FC = () => {
               {item.label}
             </NavLink>
           ))}
+
+          {/* Appointments Section — collapsible */}
+          {appointmentItems.length > 0 && (
+            <div className="mt-2">
+              <button
+                onClick={() => setAppointmentsOpen(!appointmentsOpen)}
+                className={`w-full flex items-center justify-between px-6 py-3 text-sm font-medium transition-all ${
+                  location.pathname.startsWith('/appointments')
+                    ? 'text-primary bg-primary/5'
+                    : 'text-slate-500 hover:text-primary hover:bg-slate-50'
+                }`}
+              >
+                <div className="flex items-center">
+                  <span className="material-symbols-outlined mr-3 text-[20px]">calendar_month</span>
+                  Appointments
+                </div>
+                <span className={`material-symbols-outlined text-[18px] transition-transform duration-200 ${appointmentsOpen ? 'rotate-180' : ''}`}>
+                  expand_more
+                </span>
+              </button>
+              <div className={`overflow-hidden transition-all duration-200 ${appointmentsOpen ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'}`}>
+                {appointmentItems.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    onClick={() => setSidebarOpen(false)}
+                    className={`flex items-center pl-10 pr-6 py-2.5 text-[13px] font-medium transition-all ${
+                      isActive(item.to)
+                        ? 'sidebar-item-active'
+                        : 'text-slate-400 hover:text-primary hover:bg-slate-50'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined mr-3 text-[18px]">{item.icon}</span>
+                    {item.label}
+                  </NavLink>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="px-6 mt-8 mb-2">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Account</span>
@@ -145,7 +225,7 @@ const Layout: React.FC = () => {
               <span className="material-icons">{sidebarOpen ? 'close' : 'menu'}</span>
             </button>
             <h1 className="text-lg font-bold text-slate-900 hidden sm:block">
-              {navItems.find(i => isActive(i.to))?.label || 'HMS'}
+              {navItems.find(i => isActive(i.to))?.label || appointmentItems.find(i => isActive(i.to))?.label || 'HMS'}
             </h1>
           </div>
           <div className="flex items-center gap-4">

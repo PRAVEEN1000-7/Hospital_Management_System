@@ -3,42 +3,24 @@ from sqlalchemy import or_
 from math import ceil
 from typing import Optional
 from ..config import settings
-from ..models.patient import Patient, prn_sequence
+from ..models.patient import Patient
 from ..models.hospital import HospitalDetails
 from ..schemas.patient import PatientCreate, PatientUpdate, PaginatedPatientResponse, PatientListItem
+from ..services.patient_id_service import generate_patient_id, validate_checksum, parse_patient_id
 
 
-def get_hospital_prefix(db: Session) -> str:
+def generate_prn(db: Session, gender: str = "Unknown") -> str:
     """
-    Get hospital prefix from hospital name by taking first letter of each word.
-    Examples:
-    - "HMS Core" -> "HC"
-    - "Apollo Hospital" -> "AH"
-    - "Max Super Speciality Hospital" -> "MSSH"
+    Generate a 12-digit Patient ID.
+    Format: [HOSPITAL 2][GENDER 1][YY 2][MONTH 1][CHECK 1][SEQUENCE 5]
+    Example: HCM262K00147
     """
-    hospital = db.query(HospitalDetails).first()
-    if hospital and hospital.hospital_name:
-        # Extract first letter of each word and convert to uppercase
-        words = hospital.hospital_name.strip().split()
-        prefix = ''.join(word[0].upper() for word in words if word)
-        return prefix if prefix else 'HC'  # Default to HC if empty
-    return 'HC'  # Default for "HMS Core"
-
-
-def generate_prn(db: Session) -> str:
-    """
-    Generate a unique Patient Reference Number in format: [HOSPITAL_PREFIX][YEAR][NUMBER]
-    Examples: HC2026000001, AH2026000042, MSSH2026000123
-    """
-    hospital_prefix = get_hospital_prefix(db)
-    year = 2026  # Current year
-    next_val = db.execute(prn_sequence.next_value()).scalar()
-    return f"{hospital_prefix}{year}{next_val:06d}"
+    return generate_patient_id(db, gender)
 
 
 def create_patient(db: Session, patient_data: PatientCreate, user_id: int) -> Patient:
-    """Create a new patient record with auto-generated PRN"""
-    prn = generate_prn(db)
+    """Create a new patient record with auto-generated 12-digit Patient ID"""
+    prn = generate_prn(db, gender=patient_data.gender)
     db_patient = Patient(
         prn=prn,
         **patient_data.model_dump(),

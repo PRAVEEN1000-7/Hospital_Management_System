@@ -8,6 +8,8 @@ class Gender(str, enum.Enum):
     MALE = "Male"
     FEMALE = "Female"
     OTHER = "Other"
+    NOT_DISCLOSED = "Not Disclosed"
+    UNKNOWN = "Unknown"
 
 
 class Title(str, enum.Enum):
@@ -57,7 +59,7 @@ class Patient(Base):
     first_name = Column(String(100), nullable=False)
     last_name = Column(String(100), nullable=False)
     date_of_birth = Column(Date, nullable=False)
-    gender = Column(String(10), nullable=False)
+    gender = Column(String(20), nullable=False)
     blood_group = Column(String(5), nullable=True)
     country_code = Column(String(5), nullable=False, default="+91")
     mobile_number = Column(String(15), unique=True, nullable=False, index=True)

@@ -61,6 +61,37 @@ const ROLES = [
   'pharmacist', 'cashier', 'inventory_manager', 'staff',
 ];
 
+// Departments available per role. Empty array = department field hidden.
+const ALL_DEPARTMENTS = [
+  { value: 'Cardiology', label: 'Cardiology' },
+  { value: 'Emergency', label: 'Emergency (ER)' },
+  { value: 'Surgery', label: 'Surgery' },
+  { value: 'Pediatrics', label: 'Pediatrics' },
+  { value: 'Radiology', label: 'Radiology' },
+  { value: 'Laboratory', label: 'Laboratory' },
+  { value: 'ICU', label: 'ICU' },
+  { value: 'General Ward', label: 'General Ward' },
+  { value: 'Pharmacy', label: 'Main Pharmacy' },
+  { value: 'Administration', label: 'Administration' },
+  { value: 'OP Reception', label: 'OP Reception' },
+];
+
+const CLINICAL_DEPTS = ALL_DEPARTMENTS.filter(d =>
+  !['Pharmacy', 'Administration'].includes(d.value)
+);
+
+const ROLE_DEPARTMENT_MAP: Record<string, { depts: typeof ALL_DEPARTMENTS; required: boolean }> = {
+  super_admin:       { depts: [], required: false },
+  admin:             { depts: [], required: false },
+  cashier:           { depts: [], required: false },
+  inventory_manager: { depts: [], required: false },
+  pharmacist:        { depts: [{ value: 'Pharmacy', label: 'Main Pharmacy' }], required: true },
+  doctor:            { depts: CLINICAL_DEPTS, required: true },
+  nurse:             { depts: CLINICAL_DEPTS, required: true },
+  receptionist:      { depts: ALL_DEPARTMENTS, required: false },
+  staff:             { depts: ALL_DEPARTMENTS, required: false },
+};
+
 const UserManagement: React.FC = () => {
   const toast = useToast();
   const [users, setUsers] = useState<UserData[]>([]);
@@ -324,9 +355,59 @@ const Modal: React.FC<{ title: string; onClose: () => void; children: React.Reac
 
 // ---------- Create User Modal ----------
 const CreateUserModal: React.FC<{ onClose: () => void; onSuccess: () => void; onError: (msg: string) => void }> = ({ onClose, onSuccess, onError }) => {
-  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<CreateFormData>({
+  const [photoPreview, setPhotoPreview] = useState<string>('');
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoError, setPhotoError] = useState('');
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm<CreateFormData>({
     resolver: zodResolver(userCreateSchema),
   });
+
+  const firstName = watch('first_name', '');
+  const lastName = watch('last_name', '');
+  const fullName = `${firstName} ${lastName}`.trim();
+
+  const getInitials = (name: string) => {
+    if (!name) return '';
+    const parts = name.trim().split(' ');
+    if (parts.length === 1) return parts[0][0]?.toUpperCase() || '';
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  };
+
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    setPhotoError('');
+    if (!file) return;
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
+    if (!validTypes.includes(file.type)) {
+      setPhotoError('Please upload a JPG, PNG, or GIF image');
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setPhotoError('Image size must be less than 2MB');
+      return;
+    }
+    setPhotoFile(file);
+    const reader = new FileReader();
+    reader.onloadend = () => setPhotoPreview(reader.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const handlePhotoClick = () => fileInputRef.current?.click();
+
+  const selectedRole = watch('role', '');
+  const roleDeptConfig = ROLE_DEPARTMENT_MAP[selectedRole] ?? { depts: ALL_DEPARTMENTS, required: false };
+  const showDepartment = roleDeptConfig.depts.length > 0;
+
+  // Auto-select when only one dept option
+  React.useEffect(() => {
+    if (roleDeptConfig.depts.length === 1) {
+      setValue('department', roleDeptConfig.depts[0].value);
+    } else {
+      setValue('department', '');
+    }
+  }, [selectedRole]); // eslint-disable-line
 
   const onSubmit = async (data: CreateFormData) => {
     try {
@@ -342,7 +423,14 @@ const CreateUserModal: React.FC<{ onClose: () => void; onSuccess: () => void; on
         role: data.role,
         password: data.password,
       };
-      await userService.createUser(payload);
+      const newUser = await userService.createUser(payload);
+      if (photoFile && newUser?.id) {
+        try {
+          await userService.uploadPhoto(newUser.id, photoFile);
+        } catch {
+          // photo upload failure is non-fatal
+        }
+      }
       onSuccess();
     } catch (err: any) {
       onError(err?.response?.data?.detail || 'Failed to create user');
@@ -353,6 +441,38 @@ const CreateUserModal: React.FC<{ onClose: () => void; onSuccess: () => void; on
     <Modal title="Add New Staff Member" onClose={onClose}>
       <p className="text-sm text-slate-500 mb-6">Fill in the details to create a staff account.</p>
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        {/* Profile Photo */}
+        <section className="flex flex-col items-center">
+          <div className="relative">
+            <div className="w-24 h-24 rounded-full bg-slate-100 border-2 border-slate-200 overflow-hidden flex items-center justify-center">
+              {photoPreview ? (
+                <img src={photoPreview} alt="Profile" className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-3xl font-bold text-slate-400">{getInitials(fullName) || '?'}</span>
+              )}
+            </div>
+          </div>
+          <div className="mt-3 text-center">
+            <p className="text-sm font-semibold text-slate-700 mb-1">Profile Photo</p>
+            <p className="text-xs text-slate-500 mb-2">JPG, PNG or GIF. Max size 2MB.</p>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/jpg,image/png,image/gif"
+              onChange={handlePhotoChange}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={handlePhotoClick}
+              className="text-sm font-semibold text-primary hover:text-primary/80 transition-colors"
+            >
+              UPLOAD PHOTO
+            </button>
+            {photoError && <p className="text-xs text-red-500 mt-2">{photoError}</p>}
+          </div>
+        </section>
+
         {/* Personal Info Section */}
         <section className="space-y-4">
           <div className="flex items-center gap-2 mb-2">
@@ -401,21 +521,21 @@ const CreateUserModal: React.FC<{ onClose: () => void; onSuccess: () => void; on
               <p className="text-xs text-slate-500 mt-1">Format: ROLE-YYYY-####</p>
             </Field>
           </div>
-          <Field label="Department" error={errors.department?.message}>
-            <select {...register('department')} className="input-field">
-              <option value="">Select department</option>
-              <option value="Cardiology">Cardiology</option>
-              <option value="Emergency">Emergency (ER)</option>
-              <option value="Pharmacy">Main Pharmacy</option>
-              <option value="Surgery">Surgery</option>
-              <option value="Pediatrics">Pediatrics</option>
-              <option value="Radiology">Radiology</option>
-              <option value="Laboratory">Laboratory</option>
-              <option value="Administration">Administration</option>
-              <option value="ICU">ICU</option>
-              <option value="General Ward">General Ward</option>
-            </select>
-          </Field>
+          {showDepartment ? (
+            <Field label={`Department${roleDeptConfig.required ? ' *' : ''}`} error={errors.department?.message}>
+              <select {...register('department')} className="input-field">
+                {roleDeptConfig.depts.length > 1 && <option value="">Select department</option>}
+                {roleDeptConfig.depts.map(d => (
+                  <option key={d.value} value={d.value}>{d.label}</option>
+                ))}
+              </select>
+            </Field>
+          ) : selectedRole ? (
+            <div className="flex items-center gap-2 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-400">
+              <span className="material-icons text-base">info</span>
+              Department not applicable for this role
+            </div>
+          ) : null}
         </section>
 
         {/* Security Section */}
@@ -452,7 +572,7 @@ const EditUserModal: React.FC<{ user: UserData; onClose: () => void; onSuccess: 
   const [photoError, setPhotoError] = useState('');
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   
-  const { register, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm<EditFormData>({
+  const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm<EditFormData>({
     resolver: zodResolver(userEditSchema),
     defaultValues: {
       username: user.username,
@@ -470,6 +590,19 @@ const EditUserModal: React.FC<{ user: UserData; onClose: () => void; onSuccess: 
   const firstName = watch('first_name', user.first_name || '');
   const lastName = watch('last_name', user.last_name || '');
   const fullName = `${firstName} ${lastName}`.trim();
+
+  const selectedRole = watch('role', user.role);
+  const roleDeptConfig = ROLE_DEPARTMENT_MAP[selectedRole] ?? { depts: ALL_DEPARTMENTS, required: false };
+  const showDepartment = roleDeptConfig.depts.length > 0;
+
+  // When role changes, reset department if current dept is not in allowed list
+  React.useEffect(() => {
+    if (roleDeptConfig.depts.length === 1) {
+      setValue('department', roleDeptConfig.depts[0].value);
+    } else if (roleDeptConfig.depts.length === 0) {
+      setValue('department', '');
+    }
+  }, [selectedRole]); // eslint-disable-line
   
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -624,21 +757,21 @@ const EditUserModal: React.FC<{ user: UserData; onClose: () => void; onSuccess: 
               <p className="text-xs text-slate-500 mt-1">Auto-generated, cannot be changed</p>
             </Field>
           </div>
-          <Field label="Department" error={errors.department?.message}>
-            <select {...register('department')} className="input-field">
-              <option value="">Select department</option>
-              <option value="Cardiology">Cardiology</option>
-              <option value="Emergency">Emergency (ER)</option>
-              <option value="Pharmacy">Main Pharmacy</option>
-              <option value="Surgery">Surgery</option>
-              <option value="Pediatrics">Pediatrics</option>
-              <option value="Radiology">Radiology</option>
-              <option value="Laboratory">Laboratory</option>
-              <option value="Administration">Administration</option>
-              <option value="ICU">ICU</option>
-              <option value="General Ward">General Ward</option>
-            </select>
-          </Field>
+          {showDepartment ? (
+            <Field label={`Department${roleDeptConfig.required ? ' *' : ''}`} error={errors.department?.message}>
+              <select {...register('department')} className="input-field">
+                {roleDeptConfig.depts.length > 1 && <option value="">Select department</option>}
+                {roleDeptConfig.depts.map(d => (
+                  <option key={d.value} value={d.value}>{d.label}</option>
+                ))}
+              </select>
+            </Field>
+          ) : selectedRole ? (
+            <div className="flex items-center gap-2 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-400">
+              <span className="material-icons text-base">info</span>
+              Department not applicable for this role
+            </div>
+          ) : null}
         </section>
 
         {/* Status Toggle */}

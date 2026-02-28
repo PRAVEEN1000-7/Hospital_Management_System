@@ -1,170 +1,151 @@
 // ── Enums / Literals ──────────────────────────────────────────────────────
 
-export type AppointmentType = 'scheduled' | 'walk-in';
-export type ConsultationType = 'online' | 'offline' | 'both';
-export type AppointmentStatus = 'pending' | 'confirmed' | 'in-progress' | 'completed' | 'cancelled' | 'no-show' | 'rescheduled';
-export type UrgencyLevel = 'routine' | 'urgent' | 'emergency';
-export type WaitlistStatus = 'waiting' | 'notified' | 'confirmed' | 'expired' | 'cancelled';
-export type PaymentStatus = 'pending' | 'paid' | 'partial' | 'waived';
-export type BlockType = 'leave' | 'holiday' | 'emergency' | 'other';
+export type AppointmentType = 'scheduled' | 'walk-in' | 'emergency' | 'follow_up';
+export type VisitType = 'new_visit' | 'follow_up' | 'referral' | 'emergency';
+export type AppointmentStatus = 'scheduled' | 'pending' | 'confirmed' | 'in-progress' | 'completed' | 'cancelled' | 'no-show' | 'rescheduled';
+export type Priority = 'normal' | 'urgent' | 'emergency';
 
 // ── Doctor Schedule ──────────────────────────────────────────────────────
 
 export interface DoctorSchedule {
-  id: number;
-  doctor_id: number;
-  weekday: number;
+  id: string;
+  doctor_id: string;
+  day_of_week: number;  // 0=Sun
   start_time: string;
   end_time: string;
-  slot_duration: number;
-  consultation_type: ConsultationType;
-  max_patients_per_slot: number;
+  slot_duration_minutes: number;
+  max_patients: number | null;
+  break_start_time: string | null;
+  break_end_time: string | null;
   is_active: boolean;
+  effective_from: string | null;
+  effective_to: string | null;
   created_at: string;
   updated_at: string;
 }
 
 export interface DoctorScheduleCreate {
-  weekday: number;
+  day_of_week: number;
   start_time: string;
   end_time: string;
-  slot_duration?: number;
-  consultation_type?: string;
-  max_patients_per_slot?: number;
+  slot_duration_minutes?: number;
+  max_patients?: number;
+  break_start_time?: string;
+  break_end_time?: string;
   is_active?: boolean;
 }
 
-// ── Blocked Period ───────────────────────────────────────────────────────
+// ── Doctor Leave (replaces Blocked Period) ───────────────────────────────
 
-export interface BlockedPeriod {
-  id: number;
-  doctor_id: number | null;
-  start_date: string;
-  end_date: string;
+export interface DoctorLeave {
+  id: string;
+  doctor_id: string;
+  leave_date: string;
+  leave_type: string;
   reason: string | null;
-  block_type: string;
-  created_by: number | null;
+  is_half_day: boolean;
+  half_day_period: string | null;
+  approved_by: string | null;
   created_at: string;
 }
 
-export interface BlockedPeriodCreate {
-  doctor_id?: number | null;
-  start_date: string;
-  end_date: string;
+export interface DoctorLeaveCreate {
+  doctor_id: string;
+  leave_date: string;
+  leave_type?: string;
   reason?: string;
-  block_type?: string;
+  is_half_day?: boolean;
+  half_day_period?: string;
 }
 
 // ── Appointment ──────────────────────────────────────────────────────────
 
 export interface Appointment {
-  id: number;
+  id: string;
+  hospital_id: string | null;
   appointment_number: string;
-  patient_id: number;
-  doctor_id: number | null;
+  patient_id: string;
+  doctor_id: string | null;
+  department_id: string | null;
   appointment_type: AppointmentType;
-  consultation_type: string;
+  visit_type: string | null;
   appointment_date: string;
-  appointment_time: string | null;
-  slot_duration: number;
+  start_time: string | null;
+  end_time: string | null;
   status: AppointmentStatus;
-  queue_number: string | null;
-  queue_position: number | null;
-  estimated_wait_time: number | null;
-  walk_in_registered_at: string | null;
-  urgency_level: string | null;
-  zoom_meeting_link: string | null;
-  reason_for_visit: string | null;
-  doctor_notes: string | null;
-  diagnosis: string | null;
-  prescription: string | null;
-  fees: number | null;
-  payment_status: string | null;
-  confirmation_sent: boolean;
-  reminder_sent: boolean;
-  booked_by: number | null;
-  cancelled_by: number | null;
-  cancellation_reason: string | null;
-  cancelled_at: string | null;
+  priority: string | null;
+  chief_complaint: string | null;
+  consultation_fee: number | null;
+  cancel_reason: string | null;
+  reschedule_reason: string | null;
+  reschedule_count: number;
+  check_in_at: string | null;
+  consultation_start_at: string | null;
+  consultation_end_at: string | null;
+  notes: string | null;
+  created_by: string | null;
+  is_deleted: boolean;
   created_at: string;
   updated_at: string;
-  // Enriched
+  // Enriched fields
   patient_name?: string | null;
   doctor_name?: string | null;
+  department_name?: string | null;
+  patient_reference_number?: string | null;
+  doctor_specialization?: string | null;
 }
 
 export interface AppointmentCreate {
-  patient_id: number;
-  doctor_id?: number | null;
+  patient_id: string;
+  doctor_id?: string | null;
+  department_id?: string | null;
   appointment_type?: string;
-  consultation_type?: string;
+  visit_type?: string;
   appointment_date: string;
-  appointment_time?: string | null;
-  reason_for_visit?: string;
-  urgency_level?: string;
-  fees?: number | null;
+  start_time?: string | null;
+  chief_complaint?: string;
+  priority?: string;
+  consultation_fee?: number | null;
 }
 
 export interface AppointmentUpdate {
-  doctor_id?: number | null;
+  doctor_id?: string | null;
+  department_id?: string | null;
   appointment_date?: string;
-  appointment_time?: string | null;
-  consultation_type?: string;
-  reason_for_visit?: string;
-  doctor_notes?: string;
-  diagnosis?: string;
-  prescription?: string;
-  fees?: number;
-  payment_status?: string;
-  urgency_level?: string;
+  start_time?: string | null;
+  visit_type?: string;
+  chief_complaint?: string;
+  priority?: string;
+  consultation_fee?: number;
 }
 
 // ── Walk-in ──────────────────────────────────────────────────────────────
 
 export interface WalkInRegister {
-  patient_id: number;
-  doctor_id?: number | null;
-  reason_for_visit?: string;
-  urgency_level?: string;
-  fees?: number | null;
+  patient_id: string;
+  doctor_id: string;
+  department_id?: string | null;
+  chief_complaint?: string;
+  priority?: string;
+  consultation_fee?: number | null;
+}
+
+export interface QueueItem {
+  queue_id: string;
+  appointment_id: string;
+  queue_number: number;
+  position: number;
+  status: string;
+  patient_name: string | null;
+  called_at: string | null;
 }
 
 export interface QueueStatus {
-  total_waiting: number;
-  total_in_progress: number;
-  total_completed_today: number;
-  average_wait_time: number;
-  queue: Appointment[];
-}
-
-// ── Waitlist ─────────────────────────────────────────────────────────────
-
-export interface WaitlistEntry {
-  id: number;
-  patient_id: number;
-  doctor_id: number;
-  preferred_date: string;
-  preferred_time: string | null;
-  consultation_type: string;
-  reason_for_visit: string | null;
-  status: WaitlistStatus;
-  priority: number;
-  notified_at: string | null;
-  expires_at: string | null;
-  joined_at: string | null;
-  confirmed_at: string | null;
-  created_at: string;
-  patient_name?: string | null;
-  doctor_name?: string | null;
-}
-
-export interface WaitlistCreate {
-  patient_id: number;
-  doctor_id: number;
-  preferred_date: string;
-  preferred_time?: string | null;
-  consultation_type?: string;
-  reason_for_visit?: string;
+  doctor_id: string | null;
+  queue_date: string;
+  total_in_queue: number;
+  current_position: number;
+  items: QueueItem[];
 }
 
 // ── Time Slot ────────────────────────────────────────────────────────────
@@ -174,26 +155,12 @@ export interface TimeSlot {
   available: boolean;
   current_bookings: number;
   max_bookings: number;
-  consultation_type: string;
 }
 
 export interface AvailableSlots {
-  doctor_id: number;
+  doctor_id: string;
   date: string;
   slots: TimeSlot[];
-}
-
-// ── Settings ─────────────────────────────────────────────────────────────
-
-export interface AppointmentSetting {
-  id: number;
-  setting_key: string;
-  setting_value: string;
-  value_type: string;
-  description: string | null;
-  is_global: boolean;
-  doctor_id: number | null;
-  updated_at: string;
 }
 
 // ── Stats ────────────────────────────────────────────────────────────────
@@ -215,10 +182,12 @@ export interface AppointmentStats {
 // ── Doctor (for dropdowns) ───────────────────────────────────────────────
 
 export interface DoctorOption {
-  id: number;
-  full_name: string;
-  department: string | null;
-  employee_id: string | null;
+  doctor_id: string;
+  user_id: string;
+  name: string;
+  specialization: string | null;
+  department_id: string | null;
+  consultation_fee: number | null;
 }
 
 // ── Generic Paginated ────────────────────────────────────────────────────
@@ -229,4 +198,52 @@ export interface PaginatedResponse<T> {
   limit: number;
   total_pages: number;
   data: T[];
+}
+
+// ── Enhanced Stats ───────────────────────────────────────────────────────
+
+export interface DoctorUtilization {
+  doctor_id: string;
+  doctor_name: string;
+  department: string | null;
+  total_appointments: number;
+  completed: number;
+  cancelled: number;
+  no_shows: number;
+  utilization_rate: number;
+}
+
+export interface DepartmentBreakdown {
+  department: string;
+  total: number;
+  completed: number;
+  cancelled: number;
+  no_shows: number;
+}
+
+export interface TrendDataPoint {
+  date: string;
+  total: number;
+  completed: number;
+  cancelled: number;
+  no_shows: number;
+}
+
+export interface PeakTimeSlot {
+  hour: number;
+  count: number;
+  label: string;
+}
+
+export interface CancellationReason {
+  reason: string;
+  count: number;
+}
+
+export interface EnhancedAppointmentStats extends AppointmentStats {
+  doctor_utilization: DoctorUtilization[];
+  department_breakdown: DepartmentBreakdown[];
+  trends: TrendDataPoint[];
+  peak_times: PeakTimeSlot[];
+  cancellation_reasons: CancellationReason[];
 }

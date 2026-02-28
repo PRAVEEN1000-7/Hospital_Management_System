@@ -1,0 +1,417 @@
+// =============================================================================
+// HMS — PHASE 2: CLINICAL & PHARMACY (Week 7-9)
+// =============================================================================
+// Tables: prescriptions, prescription_items, prescription_templates,
+//         prescription_versions, lab_orders,
+//         medicines, medicine_batches, pharmacy_dispensing,
+//         pharmacy_dispensing_items, pharmacy_returns, pharmacy_return_items,
+//         optical_products, optical_prescriptions, optical_orders,
+//         optical_order_items, optical_repairs
+// Focus:  Prescription Management, Pharmacy Dispensing, Optical Store
+// =============================================================================
+// Dependencies: Phase 0 (hospitals, users), Phase 1 (patients, doctors, appointments)
+// =============================================================================
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PHASE 0-1 REFERENCE TABLES (abbreviated)
+// ─────────────────────────────────────────────────────────────────────────────
+
+hospitals [icon: home, color: blue] {
+  id uuid pk
+  name varchar
+  code varchar
+}
+
+users [icon: user, color: blue] {
+  id uuid pk
+  hospital_id uuid fk
+  reference_number varchar(12)
+}
+
+patients [icon: heart, color: blue] {
+  id uuid pk
+  hospital_id uuid fk
+  patient_reference_number varchar(12)
+}
+
+doctors [icon: stethoscope, color: blue] {
+  id uuid pk
+  user_id uuid fk
+  hospital_id uuid fk
+  department_id uuid fk
+}
+
+appointments [icon: clock, color: blue] {
+  id uuid pk
+  hospital_id uuid fk
+  patient_id uuid fk
+  doctor_id uuid fk
+}
+
+tax_configurations [icon: percent, color: blue] {
+  id uuid pk
+  hospital_id uuid fk
+  rate_percentage decimal
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PRESCRIPTIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
+prescriptions [icon: file-text, color: teal] {
+  id uuid pk
+  hospital_id uuid fk
+  prescription_number varchar unique "RX-2026-00001"
+  appointment_id uuid fk
+  patient_id uuid fk
+  doctor_id uuid fk
+  diagnosis text
+  clinical_notes text
+  advice text "Doctor's advice"
+  version integer "Increments on edit"
+  status varchar "draft, finalized, dispensed, partially_dispensed"
+  is_finalized boolean "Once true, cannot be edited"
+  finalized_at timestamptz
+  valid_until date
+  created_at timestamptz
+  updated_at timestamptz
+  created_by uuid fk
+  is_deleted boolean
+}
+
+prescription_items [icon: pill, color: teal] {
+  id uuid pk
+  prescription_id uuid fk
+  medicine_id uuid fk "Links to formulary"
+  medicine_name varchar "Free text (if not in formulary)"
+  generic_name varchar
+  dosage varchar "e.g. 500mg"
+  frequency varchar "e.g. 1-0-1"
+  duration_value integer "e.g. 7"
+  duration_unit varchar "days, weeks, months"
+  route varchar "oral, topical, injection, inhalation"
+  instructions text "e.g. After food"
+  quantity integer "Calculated from dosage × duration"
+  allow_substitution boolean "Allow generic"
+  is_dispensed boolean
+  dispensed_quantity integer
+  display_order integer
+  created_at timestamptz
+}
+
+prescription_templates [icon: copy, color: teal] {
+  id uuid pk
+  doctor_id uuid fk
+  name varchar
+  diagnosis varchar
+  items jsonb "Array of item definitions"
+  advice text
+  is_active boolean
+  usage_count integer
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+prescription_versions [icon: git-branch, color: teal] {
+  id uuid pk
+  prescription_id uuid fk
+  version integer
+  snapshot jsonb "Full Rx state at this version"
+  changed_by uuid fk "FK → users"
+  change_reason text
+  created_at timestamptz
+}
+
+lab_orders [icon: activity, color: teal] {
+  id uuid pk
+  prescription_id uuid fk
+  patient_id uuid fk
+  doctor_id uuid fk
+  test_name varchar
+  test_code varchar
+  instructions text
+  urgency varchar "routine, urgent, stat"
+  status varchar "ordered, collected, processing, completed"
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PHARMACY / MEDICINES
+// ─────────────────────────────────────────────────────────────────────────────
+
+medicines [icon: package, color: cyan] {
+  id uuid pk
+  hospital_id uuid fk
+  name varchar "Brand name"
+  generic_name varchar
+  category varchar "tablet, capsule, syrup, injection, cream, drops"
+  manufacturer varchar
+  composition text "Active ingredients"
+  strength varchar "e.g. 500mg, 250mg/5ml"
+  unit_of_measure varchar "strip, bottle, tube, vial, box"
+  units_per_pack integer "e.g. 10 per strip"
+  hsn_code varchar "Harmonized System code"
+  sku varchar
+  barcode varchar "EAN/UPC"
+  requires_prescription boolean "OTC = false"
+  is_controlled boolean "Controlled substance"
+  selling_price decimal "MRP / retail"
+  purchase_price decimal
+  tax_config_id uuid fk
+  reorder_level integer "Default: 10"
+  max_stock_level integer
+  storage_instructions varchar
+  is_active boolean
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+medicine_batches [icon: box, color: cyan] {
+  id uuid pk
+  medicine_id uuid fk
+  batch_number varchar
+  grn_id uuid fk "FK → goods_receipt_notes (Phase 3)"
+  manufactured_date date
+  expiry_date date
+  purchase_price decimal "Cost per unit"
+  selling_price decimal "May differ from default"
+  initial_quantity integer "Received qty"
+  current_quantity integer "Available stock"
+  is_expired boolean
+  is_active boolean
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+pharmacy_dispensing [icon: shopping-cart, color: cyan] {
+  id uuid pk
+  hospital_id uuid fk
+  dispensing_number varchar unique
+  prescription_id uuid fk "NULL for OTC counter sale"
+  patient_id uuid fk "NULL for walk-in OTC"
+  sale_type varchar "prescription, counter_sale"
+  invoice_id uuid fk "FK → invoices (Phase 3)"
+  status varchar "pending, dispensed, partial, cancelled"
+  total_amount decimal
+  discount_amount decimal
+  tax_amount decimal
+  net_amount decimal
+  dispensed_by uuid fk "FK → users"
+  dispensed_at timestamptz
+  notes text
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+pharmacy_dispensing_items [icon: list, color: cyan] {
+  id uuid pk
+  dispensing_id uuid fk
+  prescription_item_id uuid fk "FK → prescription_items"
+  medicine_id uuid fk
+  medicine_batch_id uuid fk
+  quantity integer
+  unit_price decimal
+  discount_percent decimal
+  tax_amount decimal
+  total_price decimal
+  substituted boolean "Generic substitution"
+  original_medicine_name varchar "If substituted"
+  created_at timestamptz
+}
+
+pharmacy_returns [icon: rotate-ccw, color: cyan] {
+  id uuid pk
+  hospital_id uuid fk
+  return_number varchar unique
+  dispensing_id uuid fk
+  patient_id uuid fk
+  reason varchar
+  total_refund decimal
+  status varchar "pending, approved, processed, rejected"
+  approved_by uuid fk "FK → users"
+  restock boolean "Return to inventory?"
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+pharmacy_return_items [icon: x-circle, color: cyan] {
+  id uuid pk
+  return_id uuid fk
+  dispensing_item_id uuid fk
+  medicine_id uuid fk
+  batch_id uuid fk
+  quantity integer
+  refund_amount decimal
+  restocked boolean
+  created_at timestamptz
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OPTICAL STORE
+// ─────────────────────────────────────────────────────────────────────────────
+
+optical_products [icon: eye, color: indigo] {
+  id uuid pk
+  hospital_id uuid fk
+  name varchar
+  category varchar "frame, lens, contact_lens, accessory, solution"
+  brand varchar
+  model_number varchar
+  color varchar
+  material varchar "titanium, plastic, acetate"
+  size varchar "Frame size"
+  gender varchar "unisex, male, female, kids"
+  sku varchar
+  barcode varchar
+  selling_price decimal
+  purchase_price decimal
+  tax_config_id uuid fk
+  current_stock integer
+  reorder_level integer
+  lens_type varchar "single_vision, bifocal, progressive, tinted"
+  lens_index varchar "1.5, 1.56, 1.6, 1.67, 1.74"
+  lens_coating varchar "anti_reflective, blue_cut, photochromic"
+  image_url varchar
+  is_active boolean
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+optical_prescriptions [icon: eye, color: indigo] {
+  id uuid pk
+  hospital_id uuid fk
+  prescription_number varchar unique
+  patient_id uuid fk
+  doctor_id uuid fk
+  appointment_id uuid fk
+  right_sph decimal "Sphere (±)"
+  right_cyl decimal "Cylinder (±)"
+  right_axis integer "0-180 degrees"
+  right_add decimal "Addition for reading"
+  right_va varchar "Visual acuity (6/6)"
+  left_sph decimal
+  left_cyl decimal
+  left_axis integer
+  left_add decimal
+  left_va varchar
+  pd_distance decimal "Pupillary distance (mm)"
+  pd_near decimal
+  pd_right decimal "Monocular PD"
+  pd_left decimal
+  notes text
+  is_finalized boolean
+  valid_until date
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+optical_orders [icon: shopping-bag, color: indigo] {
+  id uuid pk
+  hospital_id uuid fk
+  order_number varchar unique
+  patient_id uuid fk
+  optical_prescription_id uuid fk
+  invoice_id uuid fk "FK → invoices (Phase 3)"
+  order_type varchar "new, replacement, repair_order"
+  status varchar "placed → in_progress → quality_check → ready → delivered"
+  frame_product_id uuid fk
+  right_lens_product_id uuid fk
+  left_lens_product_id uuid fk
+  fitting_measurements jsonb "Segment height, vertex distance, etc."
+  total_amount decimal
+  discount_amount decimal
+  tax_amount decimal
+  net_amount decimal
+  estimated_delivery_date date
+  delivered_at timestamptz
+  notes text
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+optical_order_items [icon: list, color: indigo] {
+  id uuid pk
+  order_id uuid fk
+  product_id uuid fk
+  quantity integer
+  unit_price decimal
+  discount_percent decimal
+  tax_amount decimal
+  total_price decimal
+  created_at timestamptz
+}
+
+optical_repairs [icon: tool, color: indigo] {
+  id uuid pk
+  hospital_id uuid fk
+  repair_number varchar unique
+  patient_id uuid fk
+  item_description varchar "What is being repaired"
+  issue_description text "Problem description"
+  status varchar "received, in_progress, completed, delivered, cancelled"
+  estimated_cost decimal
+  actual_cost decimal
+  invoice_id uuid fk "FK → invoices (Phase 3)"
+  estimated_completion date
+  completed_at timestamptz
+  delivered_at timestamptz
+  notes text
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+// =============================================================================
+// RELATIONSHIPS
+// =============================================================================
+
+// ── Prescriptions ──
+hospitals.id < prescriptions.hospital_id
+appointments.id < prescriptions.appointment_id
+patients.id < prescriptions.patient_id
+doctors.id < prescriptions.doctor_id
+prescriptions.id < prescription_items.prescription_id
+medicines.id < prescription_items.medicine_id
+doctors.id < prescription_templates.doctor_id
+prescriptions.id < prescription_versions.prescription_id
+prescriptions.id < lab_orders.prescription_id
+patients.id < lab_orders.patient_id
+doctors.id < lab_orders.doctor_id
+
+// ── Pharmacy ──
+hospitals.id < medicines.hospital_id
+tax_configurations.id < medicines.tax_config_id
+medicines.id < medicine_batches.medicine_id
+hospitals.id < pharmacy_dispensing.hospital_id
+prescriptions.id < pharmacy_dispensing.prescription_id
+patients.id < pharmacy_dispensing.patient_id
+users.id < pharmacy_dispensing.dispensed_by
+pharmacy_dispensing.id < pharmacy_dispensing_items.dispensing_id
+prescription_items.id < pharmacy_dispensing_items.prescription_item_id
+medicines.id < pharmacy_dispensing_items.medicine_id
+medicine_batches.id < pharmacy_dispensing_items.medicine_batch_id
+hospitals.id < pharmacy_returns.hospital_id
+pharmacy_dispensing.id < pharmacy_returns.dispensing_id
+patients.id < pharmacy_returns.patient_id
+pharmacy_returns.id < pharmacy_return_items.return_id
+pharmacy_dispensing_items.id < pharmacy_return_items.dispensing_item_id
+medicines.id < pharmacy_return_items.medicine_id
+medicine_batches.id < pharmacy_return_items.batch_id
+
+// ── Optical ──
+hospitals.id < optical_products.hospital_id
+tax_configurations.id < optical_products.tax_config_id
+hospitals.id < optical_prescriptions.hospital_id
+patients.id < optical_prescriptions.patient_id
+doctors.id < optical_prescriptions.doctor_id
+appointments.id < optical_prescriptions.appointment_id
+hospitals.id < optical_orders.hospital_id
+patients.id < optical_orders.patient_id
+optical_prescriptions.id < optical_orders.optical_prescription_id
+optical_products.id < optical_orders.frame_product_id
+optical_products.id < optical_orders.right_lens_product_id
+optical_products.id < optical_orders.left_lens_product_id
+optical_orders.id < optical_order_items.order_id
+optical_products.id < optical_order_items.product_id
+hospitals.id < optical_repairs.hospital_id
+patients.id < optical_repairs.patient_id

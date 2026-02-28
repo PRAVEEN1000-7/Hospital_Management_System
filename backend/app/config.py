@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     DEBUG: bool = True
 
     # Database
-    DATABASE_URL: str = "postgresql://user:password@localhost:5432/hospital_management"
+    DATABASE_URL: str = "postgresql://hms_user:HMS%402026@localhost:5432/hms_db"
     DB_ECHO: bool = False
 
     # Security — MUST be overridden via backend/.env (never commit real keys)

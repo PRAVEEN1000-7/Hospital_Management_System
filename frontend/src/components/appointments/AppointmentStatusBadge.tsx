@@ -2,13 +2,14 @@ import React from 'react';
 import type { AppointmentStatus } from '../../types/appointment';
 
 const STATUS_CONFIG: Record<string, { label: string; bg: string; text: string; icon: string }> = {
-  pending:       { label: 'Pending',     bg: 'bg-amber-50',   text: 'text-amber-700',   icon: 'schedule' },
-  confirmed:     { label: 'Confirmed',   bg: 'bg-blue-50',    text: 'text-blue-700',    icon: 'check_circle' },
-  'in-progress': { label: 'In Progress', bg: 'bg-purple-50',  text: 'text-purple-700',  icon: 'pending' },
-  completed:     { label: 'Completed',   bg: 'bg-emerald-50', text: 'text-emerald-700', icon: 'task_alt' },
-  cancelled:     { label: 'Cancelled',   bg: 'bg-red-50',     text: 'text-red-700',     icon: 'cancel' },
-  'no-show':     { label: 'No Show',     bg: 'bg-slate-100',  text: 'text-slate-600',   icon: 'person_off' },
-  rescheduled:   { label: 'Rescheduled', bg: 'bg-orange-50',  text: 'text-orange-700',  icon: 'event_repeat' },
+  scheduled:     { label: 'Scheduled',   bg: 'bg-sky-50',     text: 'text-sky-700',    icon: 'event_available' },
+  pending:       { label: 'Pending',     bg: 'bg-amber-50',   text: 'text-amber-700',  icon: 'schedule' },
+  confirmed:     { label: 'Confirmed',   bg: 'bg-blue-50',    text: 'text-blue-700',   icon: 'check_circle' },
+  'in-progress': { label: 'In Progress', bg: 'bg-purple-50',  text: 'text-purple-700', icon: 'pending' },
+  completed:     { label: 'Completed',   bg: 'bg-emerald-50', text: 'text-emerald-700',icon: 'task_alt' },
+  cancelled:     { label: 'Cancelled',   bg: 'bg-red-50',     text: 'text-red-700',    icon: 'cancel' },
+  'no-show':     { label: 'No Show',     bg: 'bg-slate-100',  text: 'text-slate-600',  icon: 'person_off' },
+  rescheduled:   { label: 'Rescheduled', bg: 'bg-orange-50',  text: 'text-orange-700', icon: 'event_repeat' },
 };
 
 interface Props {

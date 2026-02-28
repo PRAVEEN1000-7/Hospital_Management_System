@@ -2,19 +2,19 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import scheduleService from '../services/scheduleService';
-import type { DoctorSchedule, DoctorScheduleCreate, BlockedPeriod, DoctorOption } from '../types/appointment';
+import type { DoctorSchedule, DoctorScheduleCreate, DoctorLeave, DoctorLeaveCreate, DoctorOption } from '../types/appointment';
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 const DoctorSchedulePage: React.FC = () => {
   const { user } = useAuth();
   const toast = useToast();
-  const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
+  const isAdmin = user?.roles?.includes('admin') || user?.roles?.includes('super_admin');
 
   const [doctors, setDoctors] = useState<DoctorOption[]>([]);
-  const [selectedDoctorId, setSelectedDoctorId] = useState<number | null>(null);
+  const [selectedDoctorId, setSelectedDoctorId] = useState<string | null>(null);
   const [schedules, setSchedules] = useState<DoctorSchedule[]>([]);
-  const [blockedPeriods, setBlockedPeriods] = useState<BlockedPeriod[]>([]);
+  const [doctorLeaves, setDoctorLeaves] = useState<DoctorLeave[]>([]);
   const [loading, setLoading] = useState(false);
 
   // Form state
@@ -23,21 +23,21 @@ const DoctorSchedulePage: React.FC = () => {
   const [formStartTime, setFormStartTime] = useState('09:00');
   const [formEndTime, setFormEndTime] = useState('17:00');
   const [formSlotDuration, setFormSlotDuration] = useState(30);
-  const [formConsType, setFormConsType] = useState('both');
   const [formMaxPatients, setFormMaxPatients] = useState(1);
 
-  // Block form
-  const [showBlockForm, setShowBlockForm] = useState(false);
-  const [blockStartDate, setBlockStartDate] = useState('');
-  const [blockEndDate, setBlockEndDate] = useState('');
-  const [blockReason, setBlockReason] = useState('');
-  const [blockType, setBlockType] = useState('leave');
+  // Leave form
+  const [showLeaveForm, setShowLeaveForm] = useState(false);
+  const [leaveDate, setLeaveDate] = useState('');
+  const [leaveType, setLeaveType] = useState('personal');
+  const [leaveReason, setLeaveReason] = useState('');
+  const [leaveIsHalfDay, setLeaveIsHalfDay] = useState(false);
+  const [leaveHalfDayPeriod, setLeaveHalfDayPeriod] = useState('morning');
 
   useEffect(() => {
     if (isAdmin) {
       scheduleService.getDoctors().then(setDoctors).catch(() => {});
-    } else if (user?.role === 'doctor') {
-      setSelectedDoctorId(user.id);
+    } else if (user?.roles?.includes('doctor')) {
+      setSelectedDoctorId(String(user.id));
     }
   }, [isAdmin, user]);
 
@@ -45,12 +45,12 @@ const DoctorSchedulePage: React.FC = () => {
     if (!selectedDoctorId) return;
     setLoading(true);
     try {
-      const [sched, blocks] = await Promise.all([
+      const [sched, leaves] = await Promise.all([
         scheduleService.getSchedules(selectedDoctorId),
-        scheduleService.getBlockedPeriods(selectedDoctorId),
+        scheduleService.getDoctorLeaves(selectedDoctorId),
       ]);
       setSchedules(sched);
-      setBlockedPeriods(blocks);
+      setDoctorLeaves(leaves);
     } catch {
       toast.error('Failed to load schedule data');
     }
@@ -63,12 +63,11 @@ const DoctorSchedulePage: React.FC = () => {
     if (!selectedDoctorId) return;
     try {
       const data: DoctorScheduleCreate = {
-        weekday: formWeekday,
+        day_of_week: formWeekday,
         start_time: formStartTime,
         end_time: formEndTime,
-        slot_duration: formSlotDuration,
-        consultation_type: formConsType,
-        max_patients_per_slot: formMaxPatients,
+        slot_duration_minutes: formSlotDuration,
+        max_patients: formMaxPatients,
       };
       await scheduleService.createSchedule(selectedDoctorId, data);
       toast.success('Schedule slot added');
@@ -79,7 +78,7 @@ const DoctorSchedulePage: React.FC = () => {
     }
   };
 
-  const handleDeleteSchedule = async (id: number) => {
+  const handleDeleteSchedule = async (id: string) => {
     try {
       await scheduleService.deleteSchedule(id);
       toast.success('Schedule slot removed');
@@ -90,38 +89,39 @@ const DoctorSchedulePage: React.FC = () => {
   };
 
   const handleAddBlock = async () => {
-    if (!blockStartDate || !blockEndDate) return;
+    if (!leaveDate || !selectedDoctorId) return;
     try {
-      await scheduleService.createBlockedPeriod({
+      await scheduleService.createDoctorLeave({
         doctor_id: selectedDoctorId,
-        start_date: blockStartDate,
-        end_date: blockEndDate,
-        reason: blockReason || undefined,
-        block_type: blockType,
+        leave_date: leaveDate,
+        leave_type: leaveType,
+        reason: leaveReason || undefined,
+        is_half_day: leaveIsHalfDay,
+        half_day_period: leaveIsHalfDay ? leaveHalfDayPeriod : undefined,
       });
-      toast.success('Period blocked');
-      setShowBlockForm(false);
-      setBlockStartDate(''); setBlockEndDate(''); setBlockReason('');
+      toast.success('Leave added');
+      setShowLeaveForm(false);
+      setLeaveDate(''); setLeaveReason('');
       fetchData();
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail || 'Failed to block period');
+      toast.error(err?.response?.data?.detail || 'Failed to add leave');
     }
   };
 
-  const handleDeleteBlock = async (id: number) => {
+  const handleDeleteBlock = async (id: string) => {
     try {
-      await scheduleService.deleteBlockedPeriod(id);
-      toast.success('Block removed');
+      await scheduleService.deleteDoctorLeave(id);
+      toast.success('Leave removed');
       fetchData();
     } catch {
-      toast.error('Failed to remove block');
+      toast.error('Failed to remove leave');
     }
   };
 
   // Group schedules by weekday
   const grouped = WEEKDAYS.map((day, i) => ({
     day,
-    items: schedules.filter(s => s.weekday === i),
+    items: schedules.filter(s => s.day_of_week === i),
   }));
 
   return (
@@ -137,9 +137,9 @@ const DoctorSchedulePage: React.FC = () => {
             className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors shadow-sm">
             <span className="material-symbols-outlined text-lg">add</span> Add Slot
           </button>
-          <button onClick={() => setShowBlockForm(true)}
+          <button onClick={() => setShowLeaveForm(true)}
             className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg text-sm font-semibold hover:bg-slate-50 transition-colors">
-            <span className="material-symbols-outlined text-lg">block</span> Block Period
+            <span className="material-symbols-outlined text-lg">event_busy</span> Add Leave
           </button>
         </div>
       </div>
@@ -147,10 +147,10 @@ const DoctorSchedulePage: React.FC = () => {
       {/* Doctor Selector (admin) */}
       {isAdmin && (
         <div className="mb-6">
-          <select value={selectedDoctorId || ''} onChange={(e) => setSelectedDoctorId(Number(e.target.value))}
+          <select value={selectedDoctorId || ''} onChange={(e) => setSelectedDoctorId(e.target.value || null)}
             className="w-full sm:w-80 px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none bg-white">
             <option value="">Select a doctor...</option>
-            {doctors.map(d => <option key={d.id} value={d.id}>{d.full_name} — {d.department || 'N/A'}</option>)}
+            {doctors.map(d => <option key={d.doctor_id} value={d.doctor_id}>{d.name} — {d.specialization || 'N/A'}</option>)}
           </select>
         </div>
       )}
@@ -163,6 +163,7 @@ const DoctorSchedulePage: React.FC = () => {
           <p className="text-sm">Select a doctor to manage their schedule</p>
         </div>
       ) : (
+        <>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Weekly Schedule */}
           <div className="lg:col-span-2 space-y-3">
@@ -184,9 +185,8 @@ const DoctorSchedulePage: React.FC = () => {
                           <div>
                             <span className="text-sm font-semibold text-slate-700">{formatTimeStr(s.start_time)} – {formatTimeStr(s.end_time)}</span>
                             <div className="flex gap-2 mt-0.5">
-                              <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-semibold">{s.slot_duration} min</span>
-                              <span className="text-[10px] bg-purple-50 text-purple-600 px-1.5 py-0.5 rounded font-semibold capitalize">{s.consultation_type}</span>
-                              <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-semibold">Max {s.max_patients_per_slot}</span>
+                              <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-semibold">{s.slot_duration_minutes} min</span>
+                              <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-semibold">Max {s.max_patients}</span>
                             </div>
                           </div>
                         </div>
@@ -204,22 +204,23 @@ const DoctorSchedulePage: React.FC = () => {
 
           {/* Blocked Periods */}
           <div>
-            <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">Blocked Periods</h2>
-            {blockedPeriods.length === 0 ? (
+            <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">Doctor Leaves</h2>
+            {doctorLeaves.length === 0 ? (
               <div className="bg-white rounded-xl border border-slate-200 p-6 text-center text-slate-400">
                 <span className="material-symbols-outlined text-3xl mb-2 block">event_available</span>
-                <p className="text-xs">No blocked periods</p>
+                <p className="text-xs">No leaves scheduled</p>
               </div>
             ) : (
               <div className="space-y-2">
-                {blockedPeriods.map(bp => (
-                  <div key={bp.id} className="bg-white rounded-xl border border-slate-200 p-4 flex items-start justify-between">
+                {doctorLeaves.map(lv => (
+                  <div key={lv.id} className="bg-white rounded-xl border border-slate-200 p-4 flex items-start justify-between">
                     <div>
-                      <span className="text-xs font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full uppercase">{bp.block_type}</span>
-                      <p className="text-sm font-semibold text-slate-700 mt-1">{bp.start_date} → {bp.end_date}</p>
-                      {bp.reason && <p className="text-xs text-slate-400 mt-0.5">{bp.reason}</p>}
+                      <span className="text-xs font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full uppercase">{lv.leave_type}</span>
+                      {lv.is_half_day && <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full uppercase ml-1">{lv.half_day_period}</span>}
+                      <p className="text-sm font-semibold text-slate-700 mt-1">{lv.leave_date}</p>
+                      {lv.reason && <p className="text-xs text-slate-400 mt-0.5">{lv.reason}</p>}
                     </div>
-                    <button onClick={() => handleDeleteBlock(bp.id)}
+                    <button onClick={() => handleDeleteBlock(lv.id)}
                       className="text-slate-400 hover:text-red-500 transition-colors p-1">
                       <span className="material-symbols-outlined text-lg">delete</span>
                     </button>
@@ -229,6 +230,8 @@ const DoctorSchedulePage: React.FC = () => {
             )}
           </div>
         </div>
+
+        </>
       )}
 
       {/* Add Schedule Modal */}
@@ -270,15 +273,6 @@ const DoctorSchedulePage: React.FC = () => {
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
                 </div>
               </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1">Consultation Type</label>
-                <select value={formConsType} onChange={(e) => setFormConsType(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none">
-                  <option value="both">Both (Online & Offline)</option>
-                  <option value="online">Online Only</option>
-                  <option value="offline">Offline Only</option>
-                </select>
-              </div>
             </div>
             <div className="flex justify-end gap-3 mt-6">
               <button onClick={() => setShowForm(false)}
@@ -290,46 +284,58 @@ const DoctorSchedulePage: React.FC = () => {
         </div>
       )}
 
-      {/* Block Period Modal */}
-      {showBlockForm && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowBlockForm(false)}>
+      {/* Add Leave Modal */}
+      {showLeaveForm && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowLeaveForm(false)}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold text-slate-900 mb-4">Block Period</h3>
+            <h3 className="text-lg font-bold text-slate-900 mb-4">Add Doctor Leave</h3>
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 mb-1">Start Date</label>
-                  <input type="date" value={blockStartDate} onChange={(e) => setBlockStartDate(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 mb-1">End Date</label>
-                  <input type="date" value={blockEndDate} onChange={(e) => setBlockEndDate(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
-                </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">Leave Date</label>
+                <input type="date" value={leaveDate} onChange={(e) => setLeaveDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
               </div>
               <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1">Block Type</label>
-                <select value={blockType} onChange={(e) => setBlockType(e.target.value)}
+                <label className="block text-xs font-bold text-slate-500 mb-1">Leave Type</label>
+                <select value={leaveType} onChange={(e) => setLeaveType(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none">
-                  <option value="leave">Leave</option>
+                  <option value="personal">Personal</option>
+                  <option value="sick">Sick</option>
                   <option value="holiday">Holiday</option>
+                  <option value="conference">Conference</option>
                   <option value="emergency">Emergency</option>
                   <option value="other">Other</option>
                 </select>
               </div>
+              <div className="flex items-center gap-3">
+                <label className="text-xs font-bold text-slate-500">Half Day?</label>
+                <button onClick={() => setLeaveIsHalfDay(!leaveIsHalfDay)}
+                  className={`relative w-12 h-6 rounded-full transition-colors ${leaveIsHalfDay ? 'bg-primary' : 'bg-slate-200'}`}>
+                  <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${leaveIsHalfDay ? 'left-[26px]' : 'left-0.5'}`} />
+                </button>
+              </div>
+              {leaveIsHalfDay && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">Half Day Period</label>
+                  <select value={leaveHalfDayPeriod} onChange={(e) => setLeaveHalfDayPeriod(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none">
+                    <option value="morning">Morning</option>
+                    <option value="afternoon">Afternoon</option>
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="block text-xs font-bold text-slate-500 mb-1">Reason (optional)</label>
-                <input type="text" value={blockReason} onChange={(e) => setBlockReason(e.target.value)}
+                <input type="text" value={leaveReason} onChange={(e) => setLeaveReason(e.target.value)}
                   placeholder="e.g. Annual leave"
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
               </div>
             </div>
             <div className="flex justify-end gap-3 mt-6">
-              <button onClick={() => setShowBlockForm(false)}
+              <button onClick={() => setShowLeaveForm(false)}
                 className="px-4 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-100 rounded-lg transition-colors">Cancel</button>
-              <button onClick={handleAddBlock}
-                className="px-4 py-2 text-sm font-semibold text-white bg-red-500 rounded-lg hover:bg-red-600 transition-colors shadow-sm">Block Period</button>
+              <button onClick={handleAddBlock} disabled={!leaveDate}
+                className="px-4 py-2 text-sm font-semibold text-white bg-red-500 rounded-lg hover:bg-red-600 transition-colors shadow-sm disabled:opacity-50">Add Leave</button>
             </div>
           </div>
         </div>

@@ -20,11 +20,11 @@ export const patientSchema = z.object({
   blood_group: z.enum(['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'], {
     required_error: 'Blood group is required',
   }),
-  country_code: z.string().regex(/^\+[0-9]{1,4}$/, 'Invalid country code').default('+91'),
-  mobile_number: z.string().regex(/^\d{4,15}$/, 'Mobile number must be 4-15 digits'),
+  phone_country_code: z.string().regex(/^\+[0-9]{1,4}$/, 'Invalid country code').default('+91'),
+  phone_number: z.string().regex(/^\d{4,15}$/, 'Phone number must be 4-15 digits'),
   email: z.union([z.string().email('Invalid email'), z.literal('')]).optional(),
-  address_line1: z.string().min(5, 'Address must be at least 5 characters'),
-  address_line2: z.string().optional().or(z.literal('')),
+  address_line_1: z.string().min(5, 'Address must be at least 5 characters'),
+  address_line_2: z.string().optional().or(z.literal('')),
   city: z.string().optional().or(z.literal('')),
   state: z.string().optional().or(z.literal('')),
   pin_code: z.union([
@@ -33,15 +33,11 @@ export const patientSchema = z.object({
   ]).optional(),
   country: z.string().optional().default('India'),
   emergency_contact_name: z.string().optional().or(z.literal('')),
-  emergency_contact_country_code: z.union([
-    z.string().regex(/^\+[0-9]{1,4}$/),
+  emergency_contact_phone: z.union([
+    z.string().regex(/^\d{4,15}$/, 'Emergency phone must be 4-15 digits'),
     z.literal(''),
   ]).optional(),
-  emergency_contact_mobile: z.union([
-    z.string().regex(/^\d{4,15}$/, 'Emergency mobile must be 4-15 digits'),
-    z.literal(''),
-  ]).optional(),
-  emergency_contact_relationship: z.union([
+  emergency_contact_relation: z.union([
     z.enum(['Father', 'Mother', 'Husband', 'Wife', 'Son', 'Daughter', 'Brother', 'Sister', 'Friend', 'Guardian', 'Other']),
     z.literal(''),
   ]).optional(),

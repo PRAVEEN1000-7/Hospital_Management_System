@@ -1,6 +1,6 @@
 import api from './api';
 import type {
-  DoctorSchedule, DoctorScheduleCreate, BlockedPeriod, BlockedPeriodCreate,
+  DoctorSchedule, DoctorScheduleCreate, DoctorLeave, DoctorLeaveCreate,
   AvailableSlots, DoctorOption,
 } from '../types/appointment';
 
@@ -12,17 +12,17 @@ const scheduleService = {
   },
 
   // ── Doctor schedules ─────────────────────────────────────────────────
-  async getSchedules(doctorId: number): Promise<DoctorSchedule[]> {
+  async getSchedules(doctorId: string): Promise<DoctorSchedule[]> {
     const res = await api.get<DoctorSchedule[]>(`/schedules/doctors/${doctorId}`);
     return res.data;
   },
 
-  async createSchedule(doctorId: number, data: DoctorScheduleCreate): Promise<DoctorSchedule> {
+  async createSchedule(doctorId: string, data: DoctorScheduleCreate): Promise<DoctorSchedule> {
     const res = await api.post<DoctorSchedule>(`/schedules/doctors/${doctorId}`, data);
     return res.data;
   },
 
-  async bulkCreateSchedules(doctorId: number, schedules: DoctorScheduleCreate[]): Promise<DoctorSchedule[]> {
+  async bulkCreateSchedules(doctorId: string, schedules: DoctorScheduleCreate[]): Promise<DoctorSchedule[]> {
     const res = await api.post<DoctorSchedule[]>(`/schedules/doctors/${doctorId}/bulk`, {
       doctor_id: doctorId,
       schedules,
@@ -30,38 +30,40 @@ const scheduleService = {
     return res.data;
   },
 
-  async updateSchedule(scheduleId: number, data: Partial<DoctorScheduleCreate>): Promise<DoctorSchedule> {
+  async updateSchedule(scheduleId: string, data: Partial<DoctorScheduleCreate>): Promise<DoctorSchedule> {
     const res = await api.put<DoctorSchedule>(`/schedules/${scheduleId}`, data);
     return res.data;
   },
 
-  async deleteSchedule(scheduleId: number): Promise<void> {
+  async deleteSchedule(scheduleId: string): Promise<void> {
     await api.delete(`/schedules/${scheduleId}`);
   },
 
   // ── Available slots ──────────────────────────────────────────────────
-  async getAvailableSlots(doctorId: number, date: string): Promise<AvailableSlots> {
+  async getAvailableSlots(doctorId: string, date: string): Promise<AvailableSlots> {
     const res = await api.get<AvailableSlots>('/schedules/available-slots', {
       params: { doctor_id: doctorId, date },
     });
     return res.data;
   },
 
-  // ── Blocked periods ──────────────────────────────────────────────────
-  async getBlockedPeriods(doctorId?: number): Promise<BlockedPeriod[]> {
-    const res = await api.get<BlockedPeriod[]>('/schedules/blocked-periods', {
-      params: doctorId ? { doctor_id: doctorId } : {},
-    });
+  // ── Doctor leaves (replaces blocked periods) ─────────────────────────
+  async getDoctorLeaves(doctorId?: string, dateFrom?: string, dateTo?: string): Promise<DoctorLeave[]> {
+    const params: Record<string, string> = {};
+    if (doctorId) params.doctor_id = doctorId;
+    if (dateFrom) params.date_from = dateFrom;
+    if (dateTo) params.date_to = dateTo;
+    const res = await api.get<DoctorLeave[]>('/schedules/doctor-leaves', { params });
     return res.data;
   },
 
-  async createBlockedPeriod(data: BlockedPeriodCreate): Promise<BlockedPeriod> {
-    const res = await api.post<BlockedPeriod>('/schedules/block-period', data);
+  async createDoctorLeave(data: DoctorLeaveCreate): Promise<DoctorLeave> {
+    const res = await api.post<DoctorLeave>('/schedules/doctor-leave', data);
     return res.data;
   },
 
-  async deleteBlockedPeriod(periodId: number): Promise<void> {
-    await api.delete(`/schedules/blocked-periods/${periodId}`);
+  async deleteDoctorLeave(leaveId: string): Promise<void> {
+    await api.delete(`/schedules/doctor-leaves/${leaveId}`);
   },
 };
 

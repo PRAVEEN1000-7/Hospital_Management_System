@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr
-from typing import Optional
+from typing import Optional, List
 
 
 class LoginRequest(BaseModel):
@@ -8,11 +8,16 @@ class LoginRequest(BaseModel):
 
 
 class UserResponse(BaseModel):
-    id: int
+    id: str
     username: str
     email: EmailStr
-    full_name: str
-    role: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    roles: List[str] = []
+    hospital_id: Optional[str] = None
+    hospital_name: Optional[str] = None
+    reference_number: Optional[str] = None
+    avatar_url: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -26,6 +31,7 @@ class TokenResponse(BaseModel):
 
 
 class TokenData(BaseModel):
-    user_id: Optional[int] = None
+    user_id: Optional[str] = None
     username: Optional[str] = None
-    role: Optional[str] = None
+    roles: Optional[List[str]] = None
+    hospital_id: Optional[str] = None

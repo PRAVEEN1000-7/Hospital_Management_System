@@ -1,12 +1,12 @@
 import api from './api';
 import type {
   Appointment, AppointmentCreate, AppointmentUpdate,
-  PaginatedResponse, AppointmentStats,
+  PaginatedResponse, AppointmentStats, EnhancedAppointmentStats,
 } from '../types/appointment';
 
 interface AppointmentFilters {
-  doctor_id?: number;
-  patient_id?: number;
+  doctor_id?: string;
+  patient_id?: string;
   status?: string;
   appointment_type?: string;
   date_from?: string;
@@ -35,12 +35,12 @@ const appointmentService = {
     return res.data;
   },
 
-  async getDoctorToday(doctorId: number): Promise<Appointment[]> {
+  async getDoctorToday(doctorId: string): Promise<Appointment[]> {
     const res = await api.get<Appointment[]>(`/appointments/doctor/${doctorId}/today`);
     return res.data;
   },
 
-  async getAppointment(id: number): Promise<Appointment> {
+  async getAppointment(id: string): Promise<Appointment> {
     const res = await api.get<Appointment>(`/appointments/${id}`);
     return res.data;
   },
@@ -54,7 +54,7 @@ const appointmentService = {
     return res.data;
   },
 
-  async updateAppointment(id: number, data: AppointmentUpdate): Promise<Appointment> {
+  async updateAppointment(id: string, data: AppointmentUpdate): Promise<Appointment> {
     const cleaned: Record<string, unknown> = {};
     Object.entries(data).forEach(([k, v]) => {
       if (v !== undefined) cleaned[k] = v === '' ? undefined : v;
@@ -63,13 +63,13 @@ const appointmentService = {
     return res.data;
   },
 
-  async cancelAppointment(id: number, reason?: string): Promise<void> {
+  async cancelAppointment(id: string, reason?: string): Promise<void> {
     const params: Record<string, string> = {};
     if (reason) params.reason = reason;
     await api.delete(`/appointments/${id}`, { params });
   },
 
-  async rescheduleAppointment(id: number, newDate: string, newTime?: string, reason?: string): Promise<Appointment> {
+  async rescheduleAppointment(id: string, newDate: string, newTime?: string, reason?: string): Promise<Appointment> {
     const res = await api.post<Appointment>(`/appointments/${id}/reschedule`, {
       new_date: newDate,
       new_time: newTime || null,
@@ -78,7 +78,7 @@ const appointmentService = {
     return res.data;
   },
 
-  async updateStatus(id: number, status: string): Promise<Appointment> {
+  async updateStatus(id: string, status: string): Promise<Appointment> {
     const res = await api.patch<Appointment>(`/appointments/${id}/status`, { status });
     return res.data;
   },
@@ -89,6 +89,19 @@ const appointmentService = {
     if (dateTo) params.date_to = dateTo;
     if (doctorId) params.doctor_id = doctorId;
     const res = await api.get<AppointmentStats>('/reports/appointments/statistics', { params });
+    return res.data;
+  },
+
+  async getEnhancedStats(dateFrom?: string, dateTo?: string): Promise<EnhancedAppointmentStats> {
+    const params: Record<string, string> = {};
+    if (dateFrom) params.date_from = dateFrom;
+    if (dateTo) params.date_to = dateTo;
+    const res = await api.get<EnhancedAppointmentStats>('/reports/appointments/enhanced-statistics', { params });
+    return res.data;
+  },
+
+  async getAppointmentPdfUrl(id: string): Promise<string> {
+    const res = await api.get(`/appointments/${id}/pdf`, { responseType: 'text' });
     return res.data;
   },
 };

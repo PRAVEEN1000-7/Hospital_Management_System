@@ -15,12 +15,12 @@ const AppointmentManagement: React.FC = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
-  const [filterDoctor, setFilterDoctor] = useState<number | ''>('');
+  const [filterDoctor, setFilterDoctor] = useState<string>('');
   const [filterDate, setFilterDate] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('');
   const [filterType, setFilterType] = useState<string>('');
   const [detailAppt, setDetailAppt] = useState<Appointment | null>(null);
-  const [cancelId, setCancelId] = useState<number | null>(null);
+  const [cancelId, setCancelId] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState('');
   const limit = 15;
 
@@ -29,7 +29,7 @@ const AppointmentManagement: React.FC = () => {
     try {
       const data = await appointmentService.getAppointments(page, limit, {
         ...(search && { search }),
-        ...(filterDoctor && { doctor_id: Number(filterDoctor) }),
+        ...(filterDoctor && { doctor_id: filterDoctor }),
         ...(filterDate && { date_from: filterDate, date_to: filterDate }),
         ...(filterStatus && { status: filterStatus }),
         ...(filterType && { appointment_type: filterType }),
@@ -48,7 +48,7 @@ const AppointmentManagement: React.FC = () => {
   const handleSearch = () => { setPage(1); setSearch(searchInput); };
   const handleKeyDown = (e: React.KeyboardEvent) => { if (e.key === 'Enter') handleSearch(); };
 
-  const handleStatusChange = async (id: number, status: string) => {
+  const handleStatusChange = async (id: string, status: string) => {
     try {
       await appointmentService.updateStatus(id, status);
       toast.success(`Status updated`);
@@ -77,7 +77,7 @@ const AppointmentManagement: React.FC = () => {
     return `${h % 12 || 12}:${m.toString().padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
   };
 
-  const statuses: AppointmentStatus[] = ['pending', 'confirmed', 'in-progress', 'completed', 'cancelled', 'no-show', 'rescheduled'];
+  const statuses: AppointmentStatus[] = ['scheduled', 'pending', 'confirmed', 'in-progress', 'completed', 'cancelled', 'no-show', 'rescheduled'];
 
   return (
     <div className="max-w-7xl mx-auto">
@@ -98,7 +98,7 @@ const AppointmentManagement: React.FC = () => {
           <select value={filterDoctor} onChange={(e) => { setFilterDoctor(e.target.value as any); setPage(1); }}
             className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none">
             <option value="">All Doctors</option>
-            {doctors.map(d => <option key={d.id} value={d.id}>{d.full_name}</option>)}
+            {doctors.map(d => <option key={d.doctor_id} value={d.doctor_id}>{d.name}</option>)}
           </select>
           <select value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value); setPage(1); }}
             className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none">
@@ -150,7 +150,7 @@ const AppointmentManagement: React.FC = () => {
                       <td className="px-4 py-3 text-slate-600">
                         {new Date(appt.appointment_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                         <span className="text-slate-300 mx-1">·</span>
-                        {formatTime(appt.appointment_time || undefined)}
+                        {formatTime(appt.start_time || undefined)}
                       </td>
                       <td className="px-4 py-3">
                         <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${appt.appointment_type === 'walk-in' ? 'bg-orange-50 text-orange-600' : 'bg-blue-50 text-blue-600'}`}>
@@ -165,9 +165,19 @@ const AppointmentManagement: React.FC = () => {
                           </button>
                           {appt.status !== 'cancelled' && appt.status !== 'completed' && (
                             <>
-                              {appt.status !== 'in-progress' && (
+                              {(appt.status === 'scheduled' || appt.status === 'pending') && (
                                 <button onClick={() => handleStatusChange(appt.id, 'confirmed')} className="p-1.5 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Confirm">
                                   <span className="material-symbols-outlined text-lg">check_circle</span>
+                                </button>
+                              )}
+                              {appt.status === 'confirmed' && (
+                                <button onClick={() => handleStatusChange(appt.id, 'in-progress')} className="p-1.5 text-purple-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg" title="Start Consultation">
+                                  <span className="material-symbols-outlined text-lg">play_circle</span>
+                                </button>
+                              )}
+                              {appt.status === 'in-progress' && (
+                                <button onClick={() => handleStatusChange(appt.id, 'completed')} className="p-1.5 text-emerald-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg" title="Complete">
+                                  <span className="material-symbols-outlined text-lg">task_alt</span>
                                 </button>
                               )}
                               <button onClick={() => { setCancelId(appt.id); setCancelReason(''); }} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Cancel">
@@ -213,12 +223,12 @@ const AppointmentManagement: React.FC = () => {
                 ['Patient', detailAppt.patient_name || '—'],
                 ['Doctor', detailAppt.doctor_name || '—'],
                 ['Date', new Date(detailAppt.appointment_date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })],
-                ['Time', `${formatTime(detailAppt.appointment_time || undefined)}`],
+                ['Time', `${formatTime(detailAppt.start_time || undefined)}`],
                 ['Type', detailAppt.appointment_type],
-                ['Consultation', detailAppt.consultation_type || '—'],
-                ['Urgency', detailAppt.urgency_level || 'routine'],
-                ['Reason', detailAppt.reason_for_visit || '—'],
-                ['Notes', detailAppt.doctor_notes || '—'],
+                ['Consultation', detailAppt.visit_type || '—'],
+                ['Urgency', detailAppt.priority || 'normal'],
+                ['Reason', detailAppt.chief_complaint || '—'],
+                ['Notes', detailAppt.notes || '—'],
               ].map(([label, value]) => (
                 <div key={label} className="flex items-start justify-between gap-4">
                   <span className="text-slate-400 font-medium whitespace-nowrap">{label}</span>

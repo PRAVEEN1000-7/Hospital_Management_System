@@ -1,4 +1,8 @@
+"""
+Patients router — works with new hms_db UUID schema.
+"""
 import logging
+import uuid
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
@@ -15,88 +19,43 @@ from ..schemas.patient import (
 from ..models.patient import Patient
 from ..models.user import User
 from ..dependencies import get_current_active_user
-from ..config import settings
-from ..services.patient_service import generate_prn
-from ..services.patient_id_service import validate_checksum, parse_patient_id
+from ..services.patient_service import (
+    create_patient,
+    get_patient_by_id,
+    get_patient_by_mobile,
+    update_patient,
+    soft_delete_patient,
+    list_patients as list_patients_service,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/patients", tags=["Patients"])
 
 
-@router.get("/validate-id/{patient_id_str}")
-async def validate_patient_id(
-    patient_id_str: str,
-    current_user: User = Depends(get_current_active_user),
-):
-    """Validate a 12-digit Patient ID checksum and parse its components"""
-    if len(patient_id_str) != 12:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Patient ID must be exactly 12 characters",
-        )
-
-    parsed = parse_patient_id(patient_id_str)
-    if not parsed:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid Patient ID format",
-        )
-
-    return {
-        "patient_id": patient_id_str,
-        "valid": parsed["checksum_valid"],
-        "components": parsed,
-    }
-
-
 @router.post("", response_model=PatientResponse, status_code=status.HTTP_201_CREATED)
-async def create_patient(
+async def create_new_patient(
     patient: PatientCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
     """Create a new patient with auto-generated PRN"""
     try:
-        # Check if mobile number already exists (including soft-deleted)
-        existing_patient = db.query(Patient).filter(
-            Patient.mobile_number == patient.mobile_number
-        ).first()
-
+        # Check if phone number already exists
+        existing_patient = get_patient_by_mobile(db, patient.phone_number)
         if existing_patient:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="A patient with this mobile number already exists",
+                detail="A patient with this phone number already exists",
             )
 
-        # Check if email already exists (if provided)
-        if patient.email:
-            existing_email = db.query(Patient).filter(
-                Patient.email == patient.email
-            ).first()
-
-            if existing_email:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="A patient with this email already exists",
-                )
-
-        # Generate 12-digit Patient ID
-        prn = generate_prn(db, gender=patient.gender)
-
-        # Create patient
-        db_patient = Patient(
-            prn=prn,
-            **patient.model_dump(),
-            created_by=current_user.id,
-            updated_by=current_user.id,
+        db_patient = create_patient(
+            db,
+            patient,
+            user_id=current_user.id,
+            hospital_id=current_user.hospital_id,
         )
-
-        db.add(db_patient)
-        db.commit()
-        db.refresh(db_patient)
-
-        return db_patient
+        return PatientResponse.model_validate(db_patient)
     except HTTPException:
         raise
     except Exception as e:
@@ -110,67 +69,32 @@ async def create_patient(
 
 @router.get("/{patient_id}", response_model=PatientResponse)
 async def get_patient(
-    patient_id: int,
+    patient_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
     """Get patient by ID"""
-    patient = db.query(Patient).filter(
-        Patient.id == patient_id,
-        Patient.is_active == True,
-    ).first()
-
+    patient = get_patient_by_id(db, patient_id)
     if not patient:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Patient not found",
         )
-
-    return patient
+    return PatientResponse.model_validate(patient)
 
 
 @router.get("", response_model=PaginatedPatientResponse)
 async def list_patients(
     page: int = Query(1, ge=1),
-    limit: int = Query(default=settings.DEFAULT_PAGE_SIZE, ge=1, le=settings.MAX_PAGE_SIZE),
+    limit: int = Query(10, ge=1, le=100),
     search: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
     """List all patients with pagination and search"""
     try:
-        query = db.query(Patient).filter(Patient.is_active == True)
-
-        # Apply search filter
-        if search:
-            search_term = search.strip()
-            if search_term:
-                search_filter = or_(
-                    Patient.first_name.ilike(f"%{search_term}%"),
-                    Patient.last_name.ilike(f"%{search_term}%"),
-                    Patient.mobile_number.ilike(f"%{search_term}%"),
-                    Patient.email.ilike(f"%{search_term}%"),
-                    Patient.prn.ilike(f"%{search_term}%"),
-                )
-                query = query.filter(search_filter)
-
-        # Get total count
-        total = query.count()
-
-        # Apply pagination
-        offset = (page - 1) * limit
-        patients = query.order_by(Patient.created_at.desc()).offset(offset).limit(limit).all()
-
-        # Calculate total pages
-        total_pages = ceil(total / limit) if total > 0 else 0
-
-        return PaginatedPatientResponse(
-            total=total,
-            page=page,
-            limit=limit,
-            total_pages=total_pages,
-            data=[PatientListItem.model_validate(p) for p in patients],
-        )
+        result = list_patients_service(db, page, limit, search, hospital_id=current_user.hospital_id)
+        return result
     except Exception as e:
         logger.error(f"Error listing patients: {e}", exc_info=True)
         raise HTTPException(
@@ -180,61 +104,32 @@ async def list_patients(
 
 
 @router.put("/{patient_id}", response_model=PatientResponse)
-async def update_patient(
-    patient_id: int,
-    patient_update: PatientUpdate,
+async def update_existing_patient(
+    patient_id: str,
+    patient_data: PatientUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
     """Update patient information"""
     try:
-        db_patient = db.query(Patient).filter(
-            Patient.id == patient_id,
-            Patient.is_active == True,
-        ).first()
-
+        db_patient = get_patient_by_id(db, patient_id)
         if not db_patient:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Patient not found",
             )
 
-        # Check mobile number uniqueness (if changed)
-        if patient_update.mobile_number != db_patient.mobile_number:
-            existing = db.query(Patient).filter(
-                Patient.mobile_number == patient_update.mobile_number,
-                Patient.id != patient_id,
-            ).first()
-
-            if existing:
+        # Check phone number uniqueness (if changed)
+        if patient_data.phone_number != db_patient.phone_number:
+            existing = get_patient_by_mobile(db, patient_data.phone_number)
+            if existing and str(existing.id) != patient_id:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Mobile number already exists",
+                    detail="Phone number already exists",
                 )
 
-        # Check email uniqueness (if changed and provided)
-        if patient_update.email and patient_update.email != db_patient.email:
-            existing_email = db.query(Patient).filter(
-                Patient.email == patient_update.email,
-                Patient.id != patient_id,
-            ).first()
-
-            if existing_email:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Email already exists",
-                )
-
-        # Update fields
-        for field, value in patient_update.model_dump(exclude_unset=True).items():
-            setattr(db_patient, field, value)
-
-        db_patient.updated_by = current_user.id
-
-        db.commit()
-        db.refresh(db_patient)
-
-        return db_patient
+        updated = update_patient(db, patient_id, patient_data, current_user.id)
+        return PatientResponse.model_validate(updated)
     except HTTPException:
         raise
     except Exception as e:
@@ -248,29 +143,20 @@ async def update_patient(
 
 @router.delete("/{patient_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_patient(
-    patient_id: int,
+    patient_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
     """Soft delete a patient"""
     try:
-        patient = db.query(Patient).filter(
-            Patient.id == patient_id,
-            Patient.is_active == True,
-        ).first()
-
+        patient = get_patient_by_id(db, patient_id)
         if not patient:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Patient not found",
             )
 
-        # Soft delete
-        patient.is_active = False
-        patient.updated_by = current_user.id
-
-        db.commit()
-
+        soft_delete_patient(db, patient_id, current_user.id)
         return None
     except HTTPException:
         raise
@@ -282,57 +168,3 @@ async def delete_patient(
             detail="Failed to delete patient.",
         )
 
-
-@router.post("/{patient_id}/email-id-card")
-async def email_patient_id_card(
-    patient_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
-):
-    """Email the patient's ID card to their email address"""
-    try:
-        patient = db.query(Patient).filter(
-            Patient.id == patient_id,
-            Patient.is_active == True,
-        ).first()
-
-        if not patient:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Patient not found",
-            )
-
-        if not patient.email:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Patient does not have an email address",
-            )
-
-        # Generate ID card HTML and send email
-        from ..services.email_service import (
-            generate_patient_id_card_html,
-            send_patient_id_card_email,
-        )
-
-        id_card_html = generate_patient_id_card_html(patient)
-        email_sent = send_patient_id_card_email(
-            to_email=patient.email,
-            patient_name=patient.full_name,
-            id_card_html=id_card_html,
-        )
-
-        if not email_sent:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to send email. SMTP may not be configured.",
-            )
-
-        return {"message": f"ID card sent to {patient.email}"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error emailing ID card for patient {patient_id}: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to send ID card email.",
-        )

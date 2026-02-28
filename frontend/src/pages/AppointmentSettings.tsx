@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useToast } from '../contexts/ToastContext';
 import appointmentSettingsService from '../services/appointmentSettingsService';
-import type { AppointmentSetting } from '../types/appointment';
+import type { HospitalSettings } from '../services/hospitalService';
 
 const settingLabels: Record<string, { label: string; description: string; icon: string; type: 'number' | 'text' | 'boolean' }> = {
   default_slot_duration: { label: 'Default Slot Duration (min)', description: 'Default duration for appointment time slots', icon: 'timer', type: 'number' },
-  max_patients_per_slot: { label: 'Max Patients Per Slot', description: 'Maximum number of patients per time slot', icon: 'group', type: 'number' },
+  max_patients: { label: 'Max Patients Per Slot', description: 'Maximum number of patients per time slot', icon: 'group', type: 'number' },
   auto_confirm_appointments: { label: 'Auto-Confirm Appointments', description: 'Automatically confirm new appointment bookings', icon: 'check_circle', type: 'boolean' },
   allow_walk_ins: { label: 'Allow Walk-ins', description: 'Enable walk-in patient registration', icon: 'directions_walk', type: 'boolean' },
   walk_in_queue_enabled: { label: 'Walk-in Queue', description: 'Enable queue management for walk-in patients', icon: 'queue', type: 'boolean' },
@@ -14,12 +14,23 @@ const settingLabels: Record<string, { label: string; description: string; icon: 
   default_consultation_fee: { label: 'Default Consultation Fee', description: 'Default fee for consultations', icon: 'payments', type: 'number' },
   waitlist_enabled: { label: 'Enable Waitlist', description: 'Allow patients to join waitlist for full slots', icon: 'playlist_add', type: 'boolean' },
   reminder_hours_before: { label: 'Reminder Hours Before', description: 'Hours before appointment to send reminder', icon: 'notifications', type: 'number' },
+  walk_in_enabled: { label: 'Walk-in Enabled', description: 'Master toggle for walk-in functionality', icon: 'directions_walk', type: 'boolean' },
+  max_queue_length: { label: 'Max Queue Length', description: 'Maximum number of patients in walk-in queue', icon: 'format_list_numbered', type: 'number' },
+  max_walk_ins_per_doctor_per_day: { label: 'Max Walk-ins Per Doctor/Day', description: 'Daily walk-in limit per doctor', icon: 'person', type: 'number' },
+  walk_in_priority: { label: 'Walk-in Priority Mode', description: 'Queue priority: "fifo" or "urgent-first"', icon: 'sort', type: 'text' },
+  buffer_time_minutes: { label: 'Buffer Time (min)', description: 'Buffer minutes between appointment slots', icon: 'more_time', type: 'number' },
+  cancellation_deadline_hours: { label: 'Cancel Deadline (hrs)', description: 'Minimum hours before appointment to allow cancellation', icon: 'event_busy', type: 'number' },
+  walk_in_wait_estimate_enabled: { label: 'Show Wait Estimate', description: 'Display estimated wait time for walk-in patients', icon: 'timer', type: 'boolean' },
+  default_waiting_area: { label: 'Default Waiting Area', description: 'Default waiting area name for appointments', icon: 'meeting_room', type: 'text' },
+  per_doctor_walk_in_enabled: { label: 'Per-Doctor Walk-in Toggle', description: 'Allow enabling/disabling walk-ins per doctor', icon: 'toggle_on', type: 'boolean' },
+  email_notifications_enabled: { label: 'Email Notifications', description: 'Send email notifications for appointments', icon: 'mail', type: 'boolean' },
+  appointment_pdf_enabled: { label: 'Appointment PDF', description: 'Enable printable appointment documents', icon: 'picture_as_pdf', type: 'boolean' },
 };
 
 const AppointmentSettings: React.FC = () => {
   const toast = useToast();
 
-  const [settings, setSettings] = useState<AppointmentSetting[]>([]);
+  const [settings, setSettings] = useState<HospitalSettings[]>([]);
   const [loading, setLoading] = useState(true);
   const [editValues, setEditValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<string | null>(null);

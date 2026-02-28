@@ -5,10 +5,10 @@ import { COUNTRIES } from '../utils/constants';
 
 // Types
 interface HospitalData {
-  id?: number;
+  id?: string;
   // Basic Details
-  hospital_name: string;
-  hospital_code: string;
+  name: string;
+  code: string;
   registration_number: string;
   established_date: string;
   hospital_type: string;
@@ -17,21 +17,21 @@ interface HospitalData {
   nabh_accreditation: string;
   specialisation: string;
   // Contact
-  primary_phone_country_code: string;
-  primary_phone: string;
+  phone_country_code: string;
+  phone: string;
   secondary_phone_country_code: string;
   secondary_phone: string;
   email: string;
   website: string;
-  emergency_hotline_country_code: string;
+  emergency_hotline_phone_country_code: string;
   emergency_hotline: string;
   // Address
-  address_line1: string;
-  address_line2: string;
+  address_line_1: string;
+  address_line_2: string;
   city: string;
-  state: string;
+  state_province: string;
   country: string;
-  pin_code: string;
+  postal_code: string;
   establishment_location: string;
   // Facility Strength
   number_of_beds: number | string;
@@ -46,13 +46,11 @@ interface HospitalData {
   working_hours_end: string;
   working_days: string[];
   emergency_24_7: boolean;
-  // Metadata
-  is_configured?: boolean;
 }
 
 const INITIAL_DATA: HospitalData = {
-  hospital_name: 'HMS Core',
-  hospital_code: '',
+  name: 'HMS Core',
+  code: '',
   registration_number: '',
   established_date: '',
   hospital_type: '',
@@ -60,20 +58,20 @@ const INITIAL_DATA: HospitalData = {
   facility_admin_phone: '',
   nabh_accreditation: '',
   specialisation: '',
-  primary_phone_country_code: '+91',
-  primary_phone: '',
+  phone_country_code: '+91',
+  phone: '',
   secondary_phone_country_code: '+91',
   secondary_phone: '',
   email: '',
   website: '',
-  emergency_hotline_country_code: '+91',
+  emergency_hotline_phone_country_code: '+91',
   emergency_hotline: '',
-  address_line1: '',
-  address_line2: '',
+  address_line_1: '',
+  address_line_2: '',
   city: '',
-  state: '',
+  state_province: '',
   country: 'India',
-  pin_code: '',
+  postal_code: '',
   establishment_location: '',
   number_of_beds: '',
   staff_strength: '',
@@ -278,7 +276,7 @@ const HospitalSetup: React.FC = () => {
           established_date: d.established_date || '',
           number_of_beds: d.number_of_beds ?? '',
           staff_strength: d.staff_strength ?? '',
-          hospital_code: d.hospital_code || '',
+          code: d.code || '',
           registration_number: d.registration_number || '',
           facility_admin_name: d.facility_admin_name || '',
           facility_admin_phone: d.facility_admin_phone || '',
@@ -293,8 +291,8 @@ const HospitalSetup: React.FC = () => {
           drug_license_number: d.drug_license_number || '',
           medical_registration_number: d.medical_registration_number || '',
           emergency_hotline: d.emergency_hotline || '',
-          emergency_hotline_country_code: d.emergency_hotline_country_code || '+91',
-          address_line2: d.address_line2 || '',
+          emergency_hotline_phone_country_code: d.emergency_hotline_phone_country_code || '+91',
+          address_line_2: d.address_line_2 || '',
           working_days: d.working_days || ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
         });
         setIsEditMode(true);
@@ -344,25 +342,25 @@ const HospitalSetup: React.FC = () => {
 
     if (step === 0) {
       // Required fields
-      if (!formData.hospital_name.trim()) newErrors.hospital_name = 'Hospital name is required';
+      if (!formData.name.trim()) newErrors.name = 'Hospital name is required';
       if (!formData.hospital_type) newErrors.hospital_type = 'Hospital type is required';
       if (!formData.specialisation) newErrors.specialisation = 'Specialisation is required';
       if (!formData.facility_admin_name.trim()) newErrors.facility_admin_name = 'Admin name is required';
       if (!formData.facility_admin_phone.trim()) newErrors.facility_admin_phone = 'Admin phone is required';
-      if (!formData.primary_phone.trim()) newErrors.primary_phone = 'Phone number is required';
+      if (!formData.phone.trim()) newErrors.phone = 'Phone number is required';
       if (!formData.email.trim()) newErrors.email = 'Email is required';
-      if (!formData.address_line1.trim()) newErrors.address_line1 = 'Address is required';
+      if (!formData.address_line_1.trim()) newErrors.address_line_1 = 'Address is required';
       if (!formData.city.trim()) newErrors.city = 'City is required';
-      if (!formData.state) newErrors.state = 'State is required';
+      if (!formData.state_province) newErrors.state_province = 'State is required';
       if (!formData.country.trim()) newErrors.country = 'Country is required';
-      if (!formData.pin_code.trim()) newErrors.pin_code = 'PIN code is required';
+      if (!formData.postal_code.trim()) newErrors.postal_code = 'PIN code is required';
 
       // Format validation
       if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
         newErrors.email = 'Invalid email format';
       }
-      if (formData.primary_phone && !/^\d{4,15}$/.test(formData.primary_phone)) {
-        newErrors.primary_phone = 'Enter 4-15 digits only';
+      if (formData.phone && !/^\d{4,15}$/.test(formData.phone)) {
+        newErrors.phone = 'Enter 4-15 digits only';
       }
       if (formData.secondary_phone && !/^\d{4,15}$/.test(formData.secondary_phone)) {
         newErrors.secondary_phone = 'Enter 4-15 digits only';
@@ -407,8 +405,8 @@ const HospitalSetup: React.FC = () => {
 
     try {
       const payload: any = {
-        hospital_name: formData.hospital_name,
-        hospital_code: formData.hospital_code || null,
+        name: formData.name,
+        code: formData.code || null,
         registration_number: formData.registration_number || null,
         established_date: formData.established_date || null,
         hospital_type: formData.hospital_type,
@@ -419,20 +417,20 @@ const HospitalSetup: React.FC = () => {
         number_of_beds: formData.number_of_beds ? Number(formData.number_of_beds) : null,
         staff_strength: formData.staff_strength ? Number(formData.staff_strength) : null,
         establishment_location: formData.establishment_location || null,
-        primary_phone_country_code: formData.primary_phone_country_code,
-        primary_phone: formData.primary_phone,
+        phone_country_code: formData.phone_country_code,
+        phone: formData.phone,
         secondary_phone_country_code: formData.secondary_phone_country_code || null,
         secondary_phone: formData.secondary_phone || null,
         email: formData.email,
         website: formData.website || null,
-        emergency_hotline_country_code: formData.emergency_hotline_country_code || null,
+        emergency_hotline_phone_country_code: formData.emergency_hotline_phone_country_code || null,
         emergency_hotline: formData.emergency_hotline || null,
-        address_line1: formData.address_line1,
-        address_line2: formData.address_line2 || null,
+        address_line_1: formData.address_line_1,
+        address_line_2: formData.address_line_2 || null,
         city: formData.city,
-        state: formData.state,
+        state_province: formData.state_province,
         country: formData.country,
-        pin_code: formData.pin_code,
+        postal_code: formData.postal_code,
         gst_number: formData.gst_number || null,
         pan_number: formData.pan_number || null,
         drug_license_number: formData.drug_license_number || null,
@@ -577,8 +575,8 @@ const HospitalSetup: React.FC = () => {
               </div>
             </div>
             <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <InfoField label="Hospital Name" value={formData.hospital_name} icon="home" />
-              <InfoField label="Hospital Code" value={formData.hospital_code} icon="qr_code" />
+              <InfoField label="Hospital Name" value={formData.name} icon="home" />
+              <InfoField label="Hospital Code" value={formData.code} icon="qr_code" />
               <InfoField label="Registration No." value={formData.registration_number} icon="badge" />
               <InfoField label="Established Date" value={formData.established_date} icon="calendar_month" />
               <InfoField label="Hospital Type" value={formData.hospital_type} icon="category" />
@@ -603,11 +601,11 @@ const HospitalSetup: React.FC = () => {
             <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               <InfoField label="Admin Name" value={formData.facility_admin_name} icon="person" />
               <InfoField label="Admin Phone" value={formData.facility_admin_phone} icon="phone" />
-              <InfoField label="Primary Phone" value={`${formData.primary_phone_country_code} ${formData.primary_phone}`} icon="call" />
+              <InfoField label="Primary Phone" value={`${formData.phone_country_code} ${formData.phone}`} icon="call" />
               <InfoField label="Secondary Phone" value={formData.secondary_phone ? `${formData.secondary_phone_country_code} ${formData.secondary_phone}` : ''} icon="phone_forwarded" />
               <InfoField label="Email" value={formData.email} icon="email" />
               <InfoField label="Website" value={formData.website} icon="language" />
-              <InfoField label="Emergency Hotline" value={formData.emergency_hotline ? `${formData.emergency_hotline_country_code} ${formData.emergency_hotline}` : ''} icon="emergency" />
+              <InfoField label="Emergency Hotline" value={formData.emergency_hotline ? `${formData.emergency_hotline_phone_country_code} ${formData.emergency_hotline}` : ''} icon="emergency" />
             </div>
           </div>
 
@@ -625,11 +623,11 @@ const HospitalSetup: React.FC = () => {
               </div>
             </div>
             <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <InfoField label="Address Line 1" value={formData.address_line1} icon="home_pin" />
-              <InfoField label="Address Line 2" value={formData.address_line2} icon="signpost" />
+              <InfoField label="Address Line 1" value={formData.address_line_1} icon="home_pin" />
+              <InfoField label="Address Line 2" value={formData.address_line_2} icon="signpost" />
               <InfoField label="City" value={formData.city} icon="location_city" />
-              <InfoField label="State" value={formData.state} icon="map" />
-              <InfoField label="PIN Code" value={formData.pin_code} icon="pin_drop" />
+              <InfoField label="State" value={formData.state_province} icon="map" />
+              <InfoField label="PIN Code" value={formData.postal_code} icon="pin_drop" />
               <InfoField label="Country" value={formData.country} icon="public" />
               <InfoField label="Location" value={formData.establishment_location} icon="location_searching" />
             </div>
@@ -777,10 +775,10 @@ const HospitalSetup: React.FC = () => {
                     <h3 className="text-base font-bold text-slate-800">Hospital Information</h3>
                   </div>
                   <div className="space-y-4">
-                    <FormInput label="Hospital Name" name="hospital_name" placeholder="e.g. Manipal Hospital" required value={formData.hospital_name} onChange={handleChange} error={errors.hospital_name} />
+                    <FormInput label="Hospital Name" name="name" placeholder="e.g. Manipal Hospital" required value={formData.name} onChange={handleChange} error={errors.name} />
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <FormInput label="Hospital Code" name="hospital_code" placeholder="e.g. MH-BLR-01" helpText="Short code for internal use" value={formData.hospital_code} onChange={handleChange} error={errors.hospital_code} />
+                      <FormInput label="Hospital Code" name="code" placeholder="e.g. MH-BLR-01" helpText="Short code for internal use" value={formData.code} onChange={handleChange} error={errors.code} />
                       <FormInput label="Registration Number" name="registration_number" placeholder="Registration no." value={formData.registration_number} onChange={handleChange} error={errors.registration_number} />
                     </div>
 
@@ -814,14 +812,14 @@ const HospitalSetup: React.FC = () => {
                   </div>
                   <div className="space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <PhoneInput label="Primary Phone" countryCodeName="primary_phone_country_code" phoneName="primary_phone" required countryCodeValue={formData.primary_phone_country_code} phoneValue={formData.primary_phone} onChange={handleChange} error={errors.primary_phone} />
+                      <PhoneInput label="Primary Phone" countryCodeName="phone_country_code" phoneName="phone" required countryCodeValue={formData.phone_country_code} phoneValue={formData.phone} onChange={handleChange} error={errors.phone} />
                       <PhoneInput label="Secondary Phone" countryCodeName="secondary_phone_country_code" phoneName="secondary_phone" countryCodeValue={formData.secondary_phone_country_code} phoneValue={formData.secondary_phone} onChange={handleChange} error={errors.secondary_phone} />
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <FormInput label="Email Address" name="email" placeholder="e.g. manipal@support.com" required type="email" value={formData.email} onChange={handleChange} error={errors.email} />
                       <FormInput label="Website" name="website" placeholder="e.g. www.hospital.com" value={formData.website} onChange={handleChange} error={errors.website} />
                     </div>
-                    <PhoneInput label="Emergency Hotline" countryCodeName="emergency_hotline_country_code" phoneName="emergency_hotline" countryCodeValue={formData.emergency_hotline_country_code} phoneValue={formData.emergency_hotline} onChange={handleChange} error={errors.emergency_hotline} />
+                    <PhoneInput label="Emergency Hotline" countryCodeName="emergency_hotline_phone_country_code" phoneName="emergency_hotline" countryCodeValue={formData.emergency_hotline_phone_country_code} phoneValue={formData.emergency_hotline} onChange={handleChange} error={errors.emergency_hotline} />
                   </div>
                 </div>
 
@@ -832,16 +830,16 @@ const HospitalSetup: React.FC = () => {
                     <h3 className="text-base font-bold text-slate-800">Address Details</h3>
                   </div>
                   <div className="space-y-4">
-                    <FormInput label="Address Line 1" name="address_line1" placeholder="Street address" required value={formData.address_line1} onChange={handleChange} error={errors.address_line1} />
-                    <FormInput label="Address Line 2" name="address_line2" placeholder="Landmark, Area (optional)" value={formData.address_line2} onChange={handleChange} error={errors.address_line2} />
+                    <FormInput label="Address Line 1" name="address_line_1" placeholder="Street address" required value={formData.address_line_1} onChange={handleChange} error={errors.address_line_1} />
+                    <FormInput label="Address Line 2" name="address_line_2" placeholder="Landmark, Area (optional)" value={formData.address_line_2} onChange={handleChange} error={errors.address_line_2} />
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <FormInput label="City" name="city" placeholder="e.g. Bangalore" required value={formData.city} onChange={handleChange} error={errors.city} />
-                      <FormSelect label="State" name="state" options={INDIAN_STATES} placeholder="-- Select state --" required value={formData.state} onChange={handleChange} error={errors.state} />
+                      <FormSelect label="State" name="state_province" options={INDIAN_STATES} placeholder="-- Select state --" required value={formData.state_province} onChange={handleChange} error={errors.state_province} />
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <FormInput label="PIN Code" name="pin_code" placeholder="e.g. 560001" required value={formData.pin_code} onChange={handleChange} error={errors.pin_code} />
+                      <FormInput label="PIN Code" name="postal_code" placeholder="e.g. 560001" required value={formData.postal_code} onChange={handleChange} error={errors.postal_code} />
                       <FormInput label="Country" name="country" placeholder="e.g. India" required value={formData.country} onChange={handleChange} error={errors.country} />
                     </div>
 
@@ -995,8 +993,8 @@ const HospitalSetup: React.FC = () => {
                     </div>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 p-5">
-                    <ReviewField label="Hospital Name" value={formData.hospital_name} />
-                    <ReviewField label="Hospital Code" value={formData.hospital_code} />
+                    <ReviewField label="Hospital Name" value={formData.name} />
+                    <ReviewField label="Hospital Code" value={formData.code} />
                     <ReviewField label="Registration No." value={formData.registration_number} />
                     <ReviewField label="Established Date" value={formData.established_date} />
                     <ReviewField label="Hospital Type" value={formData.hospital_type} />
@@ -1016,11 +1014,11 @@ const HospitalSetup: React.FC = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 p-5">
                     <ReviewField label="Admin Name" value={formData.facility_admin_name} />
                     <ReviewField label="Admin Phone" value={formData.facility_admin_phone} />
-                    <ReviewField label="Primary Phone" value={`${formData.primary_phone_country_code} ${formData.primary_phone}`} />
+                    <ReviewField label="Primary Phone" value={`${formData.phone_country_code} ${formData.phone}`} />
                     <ReviewField label="Secondary Phone" value={formData.secondary_phone ? `${formData.secondary_phone_country_code} ${formData.secondary_phone}` : ''} />
                     <ReviewField label="Email" value={formData.email} />
                     <ReviewField label="Website" value={formData.website} />
-                    <ReviewField label="Emergency Hotline" value={formData.emergency_hotline ? `${formData.emergency_hotline_country_code} ${formData.emergency_hotline}` : ''} />
+                    <ReviewField label="Emergency Hotline" value={formData.emergency_hotline ? `${formData.emergency_hotline_phone_country_code} ${formData.emergency_hotline}` : ''} />
                   </div>
                 </div>
 
@@ -1033,10 +1031,10 @@ const HospitalSetup: React.FC = () => {
                     </div>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 p-5">
-                    <ReviewField label="Address" value={[formData.address_line1, formData.address_line2].filter(Boolean).join(', ')} />
+                    <ReviewField label="Address" value={[formData.address_line_1, formData.address_line_2].filter(Boolean).join(', ')} />
                     <ReviewField label="City" value={formData.city} />
-                    <ReviewField label="State" value={formData.state} />
-                    <ReviewField label="PIN Code" value={formData.pin_code} />
+                    <ReviewField label="State" value={formData.state_province} />
+                    <ReviewField label="PIN Code" value={formData.postal_code} />
                     <ReviewField label="Country" value={formData.country} />
                     <ReviewField label="Location" value={formData.establishment_location} />
                   </div>

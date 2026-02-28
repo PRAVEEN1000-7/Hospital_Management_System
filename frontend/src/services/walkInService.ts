@@ -7,22 +7,22 @@ const walkInService = {
     return res.data;
   },
 
-  async getQueueStatus(doctorId?: number): Promise<QueueStatus> {
-    const params: Record<string, number> = {};
+  async getQueueStatus(doctorId?: string): Promise<QueueStatus> {
+    const params: Record<string, string> = {};
     if (doctorId) params.doctor_id = doctorId;
     const res = await api.get<QueueStatus>('/walk-ins/queue', { params });
     return res.data;
   },
 
-  async assignDoctor(appointmentId: number, doctorId: number): Promise<Appointment> {
+  async assignDoctor(appointmentId: string, doctorId: string): Promise<Appointment> {
     const res = await api.post<Appointment>(`/walk-ins/${appointmentId}/assign-doctor`, {
       doctor_id: doctorId,
     });
     return res.data;
   },
 
-  async getTodayWalkIns(doctorId?: number): Promise<Appointment[]> {
-    const params: Record<string, number> = {};
+  async getTodayWalkIns(doctorId?: string): Promise<Appointment[]> {
+    const params: Record<string, string> = {};
     if (doctorId) params.doctor_id = doctorId;
     const res = await api.get<Appointment[]>('/walk-ins/today', { params });
     return res.data;

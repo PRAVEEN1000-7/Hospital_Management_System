@@ -1,9 +1,13 @@
+"""
+Users router — works with new hms_db UUID/RBAC schema.
+"""
 import logging
+import uuid
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import Optional
 from ..database import get_db
-from ..models.user import User
+from ..models.user import User, UserRole
 from ..dependencies import get_current_active_user, require_super_admin
 from ..schemas.user import (
     UserCreate,
@@ -19,12 +23,74 @@ from ..services.user_service import (
     delete_user,
     list_users,
     save_user_photo,
+    get_user_by_id,
 )
-from ..services.email_service import send_password_email
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/users", tags=["User Management"])
+
+
+@router.post("", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+async def create_new_user(
+    user_data: UserCreate,
+    send_email: bool = Query(False),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_super_admin),
+):
+    """Create a new user (Super Admin only)"""
+    try:
+        # Check username uniqueness
+        existing = db.query(User).filter(User.username == user_data.username.lower()).first()
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Username already exists",
+            )
+
+        # Check email uniqueness
+        existing = db.query(User).filter(User.email == user_data.email).first()
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already exists",
+            )
+
+        user = create_user(
+            db,
+            username=user_data.username,
+            email=user_data.email,
+            password=user_data.password,
+            first_name=user_data.first_name,
+            last_name=user_data.last_name,
+            role_name=user_data.role,
+            hospital_id=str(current_user.hospital_id),
+            phone=user_data.phone_number,
+        )
+
+        # Send welcome email if requested
+        if send_email:
+            try:
+                from ..services.email_service import send_welcome_email
+                send_welcome_email(
+                    to_email=user.email,
+                    username=user.username,
+                    password=user_data.password,
+                    full_name=f"{user.first_name} {user.last_name}".strip(),
+                )
+            except Exception as email_err:
+                logger.warning(f"Failed to send welcome email: {email_err}")
+
+        return UserResponse.model_validate(user)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating user: {e}", exc_info=True)
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create user: {str(e)}",
+        )
 
 
 @router.get("", response_model=UserListResponse)
@@ -53,91 +119,14 @@ async def get_users(
         )
 
 
-@router.post("", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-async def create_new_user(
-    user_data: UserCreate,
-    send_email: bool = Query(False, description="Send credentials via email"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_super_admin),
-):
-    """Create a new user (Super Admin only)"""
-    try:
-        # Check username uniqueness
-        existing = (
-            db.query(User)
-            .filter(User.username == user_data.username.lower())
-            .first()
-        )
-        if existing:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Username already exists",
-            )
-
-        # Check email uniqueness
-        existing_email = (
-            db.query(User).filter(User.email == user_data.email).first()
-        )
-        if existing_email:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email already exists",
-            )
-
-        # Check employee_id uniqueness if provided
-        if user_data.employee_id:
-            existing_emp_id = (
-                db.query(User).filter(User.employee_id == user_data.employee_id).first()
-            )
-            if existing_emp_id:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Employee ID already exists",
-                )
-
-        user = create_user(
-            db=db,
-            username=user_data.username.lower(),
-            email=user_data.email,
-            password=user_data.password,
-            first_name=user_data.first_name,
-            last_name=user_data.last_name,
-            full_name=user_data.full_name,
-            role=user_data.role,
-            employee_id=user_data.employee_id,
-            department=user_data.department,
-            phone_number=user_data.phone_number,
-        )
-
-        # Send password via email if requested
-        if send_email:
-            send_password_email(
-                to_email=user_data.email,
-                username=user_data.username.lower(),
-                password=user_data.password,
-                full_name=user.full_name,
-            )
-
-        return UserResponse.model_validate(user)
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error creating user: {e}", exc_info=True)
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create user.",
-        )
-
-
 @router.get("/{user_id}", response_model=UserResponse)
 async def get_user(
-    user_id: int,
+    user_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_super_admin),
 ):
     """Get user by ID (Super Admin only)"""
-    user = db.query(User).filter(User.id == user_id).first()
+    user = get_user_by_id(db, user_id)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -148,14 +137,14 @@ async def get_user(
 
 @router.put("/{user_id}", response_model=UserResponse)
 async def update_existing_user(
-    user_id: int,
+    user_id: str,
     user_data: UserUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_super_admin),
 ):
     """Update user (Super Admin only)"""
     try:
-        target_user = db.query(User).filter(User.id == user_id).first()
+        target_user = get_user_by_id(db, user_id)
         if not target_user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -166,7 +155,7 @@ async def update_existing_user(
         if user_data.email and user_data.email != target_user.email:
             existing = (
                 db.query(User)
-                .filter(User.email == user_data.email, User.id != user_id)
+                .filter(User.email == user_data.email, User.id != target_user.id)
                 .first()
             )
             if existing:
@@ -192,30 +181,31 @@ async def update_existing_user(
 
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_existing_user(
-    user_id: int,
+    user_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_super_admin),
 ):
     """Soft delete user (Super Admin only)"""
     try:
-        if user_id == current_user.id:
+        if str(current_user.id) == user_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Cannot delete your own account",
             )
 
-        target_user = db.query(User).filter(User.id == user_id).first()
+        target_user = get_user_by_id(db, user_id)
         if not target_user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found",
             )
 
-        if target_user.role == "super_admin":
-            # Prevent deleting the last super admin
+        # Prevent deleting the last super admin
+        if "super_admin" in target_user.roles:
             super_admin_count = (
                 db.query(User)
-                .filter(User.role == "super_admin", User.is_active == True)
+                .join(UserRole)
+                .filter(UserRole.role.has(name="super_admin"), User.is_deleted == False)
                 .count()
             )
             if super_admin_count <= 1:
@@ -224,7 +214,7 @@ async def delete_existing_user(
                     detail="Cannot delete the last Super Admin account",
                 )
 
-        user = delete_user(db, user_id)
+        delete_user(db, user_id)
         return None
     except HTTPException:
         raise
@@ -239,7 +229,7 @@ async def delete_existing_user(
 
 @router.post("/{user_id}/upload-photo", response_model=dict)
 async def upload_user_photo(
-    user_id: int,
+    user_id: str,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_super_admin),
@@ -260,17 +250,14 @@ async def upload_user_photo(
 
 @router.post("/{user_id}/reset-password", response_model=dict)
 async def reset_user_password(
-    user_id: int,
+    user_id: str,
     password_data: PasswordReset,
-    send_email_flag: bool = Query(
-        False, alias="send_email", description="Send new password via email"
-    ),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_super_admin),
 ):
     """Reset user password (Super Admin only)"""
     try:
-        target_user = db.query(User).filter(User.id == user_id).first()
+        target_user = get_user_by_id(db, user_id)
         if not target_user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -279,19 +266,7 @@ async def reset_user_password(
 
         reset_password(db, user_id, password_data.new_password)
 
-        email_sent = False
-        if send_email_flag:
-            email_sent = send_password_email(
-                to_email=target_user.email,
-                username=target_user.username,
-                password=password_data.new_password,
-                full_name=target_user.full_name,
-            )
-
-        return {
-            "message": "Password reset successfully",
-            "email_sent": email_sent,
-        }
+        return {"message": "Password reset successfully"}
     except HTTPException:
         raise
     except Exception as e:
@@ -302,47 +277,3 @@ async def reset_user_password(
             detail="Failed to reset password.",
         )
 
-
-@router.post("/{user_id}/send-password", response_model=dict)
-async def send_password_to_user(
-    user_id: int,
-    password_data: PasswordReset,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_super_admin),
-):
-    """Set a new password and send it via email (Super Admin only)"""
-    try:
-        target_user = db.query(User).filter(User.id == user_id).first()
-        if not target_user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found",
-            )
-
-        # Reset the password
-        reset_password(db, user_id, password_data.new_password)
-
-        # Send email
-        email_sent = send_password_email(
-            to_email=target_user.email,
-            username=target_user.username,
-            password=password_data.new_password,
-            full_name=target_user.full_name,
-        )
-
-        if not email_sent:
-            return {
-                "message": "Password updated but email could not be sent. SMTP may not be configured.",
-                "email_sent": False,
-            }
-
-        return {"message": "Password updated and sent via email", "email_sent": True}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error sending password for user {user_id}: {e}", exc_info=True)
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to send password.",
-        )

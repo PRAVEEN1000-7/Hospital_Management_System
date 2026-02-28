@@ -13,7 +13,7 @@ const DoctorAppointments: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [statusFilter, setStatusFilter] = useState<string>('');
-  const [notesModal, setNotesModal] = useState<{ id: number; notes: string } | null>(null);
+  const [notesModal, setNotesModal] = useState<{ id: string; notes: string } | null>(null);
 
   const fetchAppointments = useCallback(async () => {
     if (!user?.id) return;
@@ -40,7 +40,7 @@ const DoctorAppointments: React.FC = () => {
     completed: appointments.filter(a => a.status === 'completed').length,
   };
 
-  const handleStatusChange = async (id: number, status: string) => {
+  const handleStatusChange = async (id: string, status: string) => {
     try {
       await appointmentService.updateStatus(id, status);
       toast.success(`Status updated to ${status}`);
@@ -114,7 +114,7 @@ const DoctorAppointments: React.FC = () => {
       ) : filtered.length === 0 ? (
         <div className="text-center py-20 text-slate-400 bg-white rounded-xl border border-slate-200">
           <span className="material-symbols-outlined text-5xl mb-3 block">event_available</span>
-          <p className="text-sm font-medium">No appointments for {new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+          <p className="text-sm font-medium">No appointments for {new Date(selectedDate).toLocaleDateString('en-US', { day_of_week: 'long', month: 'long', day: 'numeric' })}</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -123,8 +123,8 @@ const DoctorAppointments: React.FC = () => {
               <div className="flex flex-col lg:flex-row lg:items-center gap-4">
                 {/* Time Block */}
                 <div className="flex-shrink-0 w-24">
-                  <p className="text-lg font-bold text-slate-900">{formatTime(appt.appointment_time || undefined)}</p>
-                  <p className="text-xs text-slate-400">{appt.consultation_type}</p>
+                  <p className="text-lg font-bold text-slate-900">{formatTime(appt.start_time || undefined)}</p>
+                  <p className="text-xs text-slate-400">{appt.visit_type}</p>
                 </div>
                 {/* Patient Info */}
                 <div className="flex-1 min-w-0">
@@ -134,12 +134,12 @@ const DoctorAppointments: React.FC = () => {
                     {appt.appointment_type === 'walk-in' && (
                       <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-orange-50 text-orange-600 rounded-full">Walk-in</span>
                     )}
-                    {appt.urgency_level && appt.urgency_level !== 'routine' && (
-                      <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${appt.urgency_level === 'emergency' ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'}`}>{appt.urgency_level}</span>
+                    {appt.priority && appt.priority !== 'routine' && (
+                      <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${appt.priority === 'emergency' ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'}`}>{appt.priority}</span>
                     )}
                   </div>
-                  <p className="text-sm text-slate-500">{appt.appointment_number} · {appt.consultation_type || 'General'}</p>
-                  {appt.reason_for_visit && <p className="text-xs text-slate-400 mt-1">{appt.reason_for_visit}</p>}
+                  <p className="text-sm text-slate-500">{appt.appointment_id} · {appt.visit_type || 'General'}</p>
+                  {appt.chief_complaint && <p className="text-xs text-slate-400 mt-1">{appt.chief_complaint}</p>}
                   {appt.doctor_notes && <p className="text-xs text-blue-500 mt-1 italic"><span className="material-symbols-outlined text-xs align-text-bottom mr-0.5">note</span>{appt.doctor_notes}</p>}
                 </div>
                 {/* Actions */}

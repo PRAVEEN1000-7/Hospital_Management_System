@@ -1,0 +1,152 @@
+// =============================================================================
+// HMS — PHASE 4: REPORTS, ADMIN & SUPPORT (Week 13-14)
+// =============================================================================
+// Tables: notifications, notification_templates, notification_queue,
+//         audit_logs
+// Focus:  Notifications System, Audit Logging, Reporting Infrastructure
+// =============================================================================
+// Dependencies: Phase 0-3 (all core tables)
+// Note:  Phase 4 primarily adds cross-cutting support tables and builds
+//        report services on top of existing data. These tables support
+//        every module in the system.
+// =============================================================================
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PHASE 0-3 REFERENCE TABLES (abbreviated)
+// ─────────────────────────────────────────────────────────────────────────────
+
+hospitals [icon: home, color: blue] {
+  id uuid pk
+  name varchar
+  code varchar
+}
+
+users [icon: user, color: blue] {
+  id uuid pk
+  hospital_id uuid fk
+  reference_number varchar(12)
+  first_name varchar
+  last_name varchar
+}
+
+patients [icon: heart, color: blue] {
+  id uuid pk
+  hospital_id uuid fk
+  patient_reference_number varchar(12)
+}
+
+appointments [icon: clock, color: blue] {
+  id uuid pk
+  hospital_id uuid fk
+  appointment_number varchar
+  status varchar
+}
+
+prescriptions [icon: file-text, color: blue] {
+  id uuid pk
+  prescription_number varchar
+  status varchar
+}
+
+invoices [icon: file-text, color: blue] {
+  id uuid pk
+  invoice_number varchar
+  status varchar
+  total_amount decimal
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NOTIFICATIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
+notifications [icon: bell, color: gray] {
+  id uuid pk
+  hospital_id uuid fk
+  user_id uuid fk "Target user"
+  title varchar
+  message text
+  type varchar "appointment, prescription, billing, inventory, system"
+  priority varchar "low, normal, high, urgent"
+  reference_type varchar "Entity type (appointment, invoice, etc.)"
+  reference_id uuid "Entity ID for navigation"
+  is_read boolean "Default: false"
+  read_at timestamptz
+  created_at timestamptz
+}
+
+notification_templates [icon: mail, color: gray] {
+  id uuid pk
+  hospital_id uuid fk
+  code varchar "e.g. appointment_reminder, prescription_ready"
+  channel varchar "sms, email, whatsapp, in_app"
+  locale varchar "Default: en"
+  subject varchar "For email"
+  body_template text "Template with {{variables}}"
+  is_active boolean
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+notification_queue [icon: send, color: gray] {
+  id uuid pk
+  hospital_id uuid fk
+  channel varchar "sms, email, whatsapp"
+  recipient varchar "Phone or email"
+  subject varchar
+  body text
+  status varchar "pending, sent, failed, cancelled"
+  attempts integer "Default: 0"
+  last_attempt_at timestamptz
+  error_message text
+  scheduled_at timestamptz
+  sent_at timestamptz
+  created_at timestamptz
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AUDIT LOG
+// ─────────────────────────────────────────────────────────────────────────────
+
+audit_logs [icon: eye, color: gray] {
+  id uuid pk
+  hospital_id uuid fk
+  user_id uuid fk "NULL for system actions"
+  action varchar "create, update, delete, login, logout, export, print"
+  entity_type varchar "patient, invoice, prescription, etc."
+  entity_id uuid
+  entity_name varchar "Human-readable identifier"
+  old_values jsonb "Previous state (for updates)"
+  new_values jsonb "New state (for creates/updates)"
+  ip_address varchar
+  user_agent varchar
+  request_path varchar "API endpoint"
+  created_at timestamptz
+}
+
+// =============================================================================
+// RELATIONSHIPS
+// =============================================================================
+
+// Notifications → Hospital & Users
+hospitals.id < notifications.hospital_id
+users.id < notifications.user_id
+hospitals.id < notification_templates.hospital_id
+hospitals.id < notification_queue.hospital_id
+
+// Audit → Hospital & Users
+hospitals.id < audit_logs.hospital_id
+users.id < audit_logs.user_id
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CROSS-MODULE NOTIFICATION REFERENCES (logical, not FK constraints)
+// ─────────────────────────────────────────────────────────────────────────────
+// notifications.reference_type + reference_id can point to:
+//   - appointments.id  (type = 'appointment')
+//   - prescriptions.id (type = 'prescription')
+//   - invoices.id      (type = 'billing')
+//   - medicines.id     (type = 'inventory')
+//
+// audit_logs.entity_type + entity_id can point to any table:
+//   - patients, users, invoices, prescriptions, etc.
+// These are polymorphic references, not enforced by FK constraints.
+// ─────────────────────────────────────────────────────────────────────────────

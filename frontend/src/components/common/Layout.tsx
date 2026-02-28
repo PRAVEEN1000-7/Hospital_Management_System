@@ -64,11 +64,10 @@ const Layout: React.FC = () => {
     );
   } else if (role === 'doctor') {
     appointmentItems.push(
-      { to: '/appointments/my-schedule',     label: "Today's Queue",       icon: 'clinical_notes' },
+      { to: '/appointments/queue',           label: 'My Queue',            icon: 'queue' },
+      { to: '/appointments/my-schedule',     label: 'Scheduled Appts',     icon: 'clinical_notes' },
       { to: '/appointments/doctor-schedule', label: 'Manage My Schedule',  icon: 'edit_calendar' },
-      { to: '/appointments/queue',           label: 'Walk-in Queue',       icon: 'queue' },
       { to: '/appointments/waitlist',        label: 'Waitlist',            icon: 'playlist_add' },
-      { to: '/appointments/reports',         label: 'Reports',             icon: 'analytics' },
     );
   } else if (role === 'nurse') {
     appointmentItems.push(
@@ -82,6 +81,7 @@ const Layout: React.FC = () => {
       { to: '/appointments/queue',   label: 'Walk-in Queue',       icon: 'queue' },
       { to: '/appointments/manage',  label: 'Manage Appointments', icon: 'event_note' },
       { to: '/appointments/waitlist',label: 'Waitlist',            icon: 'playlist_add' },
+      { to: '/appointments/reports',         label: 'Reports',             icon: 'analytics' },
     );
   }
   // pharmacist, cashier, inventory_manager, staff — no appointment items

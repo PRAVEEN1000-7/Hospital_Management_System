@@ -22,6 +22,11 @@ def create_schedule(db: Session, doctor_id: str | uuid.UUID, data: dict) -> Doct
     if isinstance(doctor_id, str):
         doctor_id = uuid.UUID(doctor_id)
     
+    # Ensure effective_from is never null (DB NOT NULL constraint)
+    if not data.get("effective_from"):
+        from datetime import date as _date
+        data["effective_from"] = _date.today()
+    
     schedule = DoctorSchedule(doctor_id=doctor_id, **data)
     db.add(schedule)
     db.commit()

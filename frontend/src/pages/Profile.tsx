@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useAuth } from '../contexts/AuthContext';
 import authService from '../services/authService';
+import doctorService from '../services/doctorService';
 import { changePasswordSchema } from '../utils/validation';
 import { ROLE_LABELS, ROLE_COLORS } from '../utils/constants';
 import { useToast } from '../contexts/ToastContext';
+import type { DoctorProfile as DoctorProfileType } from '../types/doctor';
 
 type ChangePasswordData = {
   current_password: string;
@@ -20,6 +22,15 @@ const Profile: React.FC = () => {
   const [showCurrent, setShowCurrent] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [doctorProfile, setDoctorProfile] = useState<DoctorProfileType | null>(null);
+
+  const isDoctor = user?.roles?.includes('doctor');
+
+  useEffect(() => {
+    if (isDoctor) {
+      doctorService.getMyProfile().then(setDoctorProfile).catch(() => {});
+    }
+  }, [isDoctor]);
 
   const { register, handleSubmit, formState: { errors, isSubmitting }, reset, watch } = useForm<ChangePasswordData>({
     resolver: zodResolver(changePasswordSchema),
@@ -71,6 +82,9 @@ const Profile: React.FC = () => {
         <span className="inline-block mt-2 px-3 py-1 text-xs font-semibold rounded-full bg-white/20 text-white">
           {roleLabel}
         </span>
+        {isDoctor && doctorProfile && (
+          <p className="mt-2 text-white/80 text-xs">{doctorProfile.specialization} · {doctorProfile.qualification}</p>
+        )}
       </div>
 
       {/* Details Card */}
@@ -82,6 +96,60 @@ const Profile: React.FC = () => {
           <InfoRow icon="shield" label="Role" value={<span className={`px-2.5 py-1 text-[11px] font-bold rounded-full ${roleColors}`}>{roleLabel}</span>} />
           <InfoRow icon="lock" label="Password" value="••••••••" />
         </div>
+
+        {/* Doctor Professional Details */}
+        {isDoctor && doctorProfile && (
+          <>
+            <div className="border-t border-slate-200" />
+            <div className="p-6">
+              <h3 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-lg">stethoscope</span>
+                Professional Details
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <InfoRow icon="medical_information" label="Specialization" value={doctorProfile.specialization} />
+                <InfoRow icon="school" label="Qualification" value={doctorProfile.qualification} />
+                {doctorProfile.department_name && (
+                  <InfoRow icon="apartment" label="Department" value={doctorProfile.department_name} />
+                )}
+                {doctorProfile.employee_id && (
+                  <InfoRow icon="badge" label="Employee ID" value={doctorProfile.employee_id} />
+                )}
+                <InfoRow icon="verified" label="Registration #" value={doctorProfile.registration_number} />
+                {doctorProfile.registration_authority && (
+                  <InfoRow icon="account_balance" label="Reg. Authority" value={doctorProfile.registration_authority} />
+                )}
+                {doctorProfile.experience_years != null && (
+                  <InfoRow icon="work_history" label="Experience" value={`${doctorProfile.experience_years} years`} />
+                )}
+                <InfoRow icon="toggle_on" label="Availability" value={
+                  <span className={`px-2.5 py-1 text-[11px] font-bold rounded-full ${doctorProfile.is_available ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+                    {doctorProfile.is_available ? 'Available' : 'Unavailable'}
+                  </span>
+                } />
+              </div>
+
+              {/* Fees */}
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {doctorProfile.consultation_fee != null && (
+                  <InfoRow icon="payments" label="Consultation Fee" value={`₹${Number(doctorProfile.consultation_fee).toLocaleString()}`} />
+                )}
+                {doctorProfile.follow_up_fee != null && (
+                  <InfoRow icon="receipt" label="Follow-up Fee" value={`₹${Number(doctorProfile.follow_up_fee).toLocaleString()}`} />
+                )}
+              </div>
+
+              {/* Bio */}
+              {doctorProfile.bio && (
+                <div className="mt-4">
+                  <InfoRow icon="description" label="Bio" value={
+                    <p className="text-sm text-slate-700 leading-relaxed">{doctorProfile.bio}</p>
+                  } />
+                </div>
+              )}
+            </div>
+          </>
+        )}
 
         <div className="border-t border-slate-200" />
 

@@ -136,15 +136,30 @@ export interface QueueItem {
   queue_number: number;
   position: number;
   status: string;
+  priority: string;
   patient_name: string | null;
+  patient_id: string | null;
+  patient_reference_number: string | null;
+  patient_phone: string | null;
+  patient_gender: string | null;
+  patient_date_of_birth: string | null;
+  patient_age: number | null;
+  patient_blood_group: string | null;
+  doctor_id: string | null;
+  doctor_name: string | null;
+  chief_complaint: string | null;
+  check_in_at: string | null;
   called_at: string | null;
+  consultation_start_at: string | null;
+  consultation_end_at: string | null;
 }
 
 export interface QueueStatus {
   doctor_id: string | null;
   queue_date: string;
-  total_in_queue: number;
-  current_position: number;
+  total_waiting: number;
+  total_in_progress: number;
+  total_completed: number;
   items: QueueItem[];
 }
 

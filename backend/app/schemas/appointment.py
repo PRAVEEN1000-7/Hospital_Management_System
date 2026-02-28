@@ -38,13 +38,19 @@ class DoctorScheduleBase(BaseModel):
     day_of_week: int = Field(..., ge=0, le=6, description="0=Sunday, 1=Monday ... 6=Saturday")
     start_time: time
     end_time: time
-    slot_duration_minutes: int = Field(default=30, ge=5, le=120)
-    max_patients: int = Field(default=1, ge=1, le=10)
+    slot_duration_minutes: int = Field(default=15, ge=5, le=120)
+    max_patients: int = Field(default=20, ge=1, le=100)
     break_start_time: Optional[time] = None
     break_end_time: Optional[time] = None
     is_active: bool = True
     effective_from: Optional[date] = None
     effective_to: Optional[date] = None
+
+    @model_validator(mode="after")
+    def default_effective_from(self):
+        if self.effective_from is None:
+            self.effective_from = date.today()
+        return self
 
     @field_validator("end_time")
     @classmethod

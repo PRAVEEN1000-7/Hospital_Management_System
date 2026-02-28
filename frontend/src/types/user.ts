@@ -24,6 +24,16 @@ export interface UserCreateData {
   role: string;
   phone_number?: string;
   hospital_id?: string;
+  // Doctor-specific fields
+  specialization?: string;
+  qualification?: string;
+  registration_number?: string;
+  registration_authority?: string;
+  experience_years?: number;
+  consultation_fee?: number;
+  follow_up_fee?: number;
+  bio?: string;
+  department_id?: string;
 }
 
 export interface UserUpdateData {

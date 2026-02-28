@@ -2,9 +2,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import scheduleService from '../services/scheduleService';
+import doctorService from '../services/doctorService';
 import type { DoctorSchedule, DoctorScheduleCreate, DoctorLeave, DoctorLeaveCreate, DoctorOption } from '../types/appointment';
 
-const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+// Backend uses 0=Sunday, 1=Monday ... 6=Saturday
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 const DoctorSchedulePage: React.FC = () => {
   const { user } = useAuth();
@@ -19,11 +21,10 @@ const DoctorSchedulePage: React.FC = () => {
 
   // Form state
   const [showForm, setShowForm] = useState(false);
-  const [formWeekday, setFormWeekday] = useState(0);
+  const [formWeekday, setFormWeekday] = useState(1); // 1=Monday
   const [formStartTime, setFormStartTime] = useState('09:00');
   const [formEndTime, setFormEndTime] = useState('17:00');
-  const [formSlotDuration, setFormSlotDuration] = useState(30);
-  const [formMaxPatients, setFormMaxPatients] = useState(1);
+  const [formMaxPatients, setFormMaxPatients] = useState(20);
 
   // Leave form
   const [showLeaveForm, setShowLeaveForm] = useState(false);
@@ -37,7 +38,12 @@ const DoctorSchedulePage: React.FC = () => {
     if (isAdmin) {
       scheduleService.getDoctors().then(setDoctors).catch(() => {});
     } else if (user?.roles?.includes('doctor')) {
-      setSelectedDoctorId(String(user.id));
+      // Fetch doctor profile to get the Doctor.id (not User.id)
+      doctorService.getMyProfile().then(profile => {
+        setSelectedDoctorId(profile.id);
+      }).catch(() => {
+        toast.error('Could not load doctor profile');
+      });
     }
   }, [isAdmin, user]);
 
@@ -66,7 +72,6 @@ const DoctorSchedulePage: React.FC = () => {
         day_of_week: formWeekday,
         start_time: formStartTime,
         end_time: formEndTime,
-        slot_duration_minutes: formSlotDuration,
         max_patients: formMaxPatients,
       };
       await scheduleService.createSchedule(selectedDoctorId, data);
@@ -185,8 +190,7 @@ const DoctorSchedulePage: React.FC = () => {
                           <div>
                             <span className="text-sm font-semibold text-slate-700">{formatTimeStr(s.start_time)} – {formatTimeStr(s.end_time)}</span>
                             <div className="flex gap-2 mt-0.5">
-                              <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-semibold">{s.slot_duration_minutes} min</span>
-                              <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-semibold">Max {s.max_patients}</span>
+                              <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-semibold">Max {s.max_patients} patients</span>
                             </div>
                           </div>
                         </div>
@@ -259,19 +263,10 @@ const DoctorSchedulePage: React.FC = () => {
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 mb-1">Slot Duration (min)</label>
-                  <select value={formSlotDuration} onChange={(e) => setFormSlotDuration(Number(e.target.value))}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none">
-                    {[10, 15, 20, 30, 45, 60].map(d => <option key={d} value={d}>{d} min</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 mb-1">Max Patients/Slot</label>
-                  <input type="number" min={1} max={10} value={formMaxPatients} onChange={(e) => setFormMaxPatients(Number(e.target.value))}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
-                </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">Max Patients</label>
+                <input type="number" min={1} max={100} value={formMaxPatients} onChange={(e) => setFormMaxPatients(Number(e.target.value))}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
               </div>
             </div>
             <div className="flex justify-end gap-3 mt-6">

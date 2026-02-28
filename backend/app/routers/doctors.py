@@ -23,8 +23,34 @@ from ..services.doctor_service import (
     delete_doctor,
 )
 
+from ..models.appointment import Doctor
+
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/doctors", tags=["Doctors"])
+
+
+@router.get("/me", response_model=DoctorResponse)
+async def get_my_doctor_profile(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Get the doctor profile for the currently logged-in user."""
+    doctor = db.query(Doctor).filter(
+        Doctor.user_id == current_user.id,
+        Doctor.is_deleted == False,
+    ).first()
+    if not doctor:
+        raise HTTPException(status_code=404, detail="Doctor profile not found for this user")
+    resp = DoctorResponse.model_validate(doctor)
+    if doctor.user:
+        resp.doctor_name = f"{doctor.user.first_name} {doctor.user.last_name}"
+    # Include department name
+    if doctor.department_id:
+        from ..models.hospital import Department
+        dept = db.query(Department).filter(Department.id == doctor.department_id).first()
+        if dept:
+            resp.department_name = dept.name
+    return resp
 
 
 @router.get("", response_model=DoctorListResponse)

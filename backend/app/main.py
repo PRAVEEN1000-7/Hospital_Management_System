@@ -6,10 +6,28 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import SQLAlchemyError
 from .config import settings
-from .routers import auth, patients, users, hospital
-from .routers import schedules, appointments, walk_ins, waitlist, appointment_settings, appointment_reports
+
+# Configure logging to show INFO level
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+
+# Import routers
+from .routers import (
+    auth, hospital, users, patients,
+    appointments, schedules, appointment_settings, appointment_reports,
+    departments, doctors, hospital_settings as hospital_settings_router,
+    walk_ins,
+)
 
 logger = logging.getLogger(__name__)
+
+# Import models so they're registered with Base.metadata
+from .models import user, patient, appointment, patient_id_sequence, department, hospital_settings  # noqa: F401
+
+# NOTE: We do NOT call Base.metadata.create_all() — the new hms_db schema
+# is managed via the SQL migration files (01_schema.sql, 02_seed_data.sql).
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -57,15 +75,17 @@ async def generic_exception_handler(request: Request, exc: Exception):
 
 # Include routers
 app.include_router(auth.router, prefix="/api/v1")
-app.include_router(patients.router, prefix="/api/v1")
-app.include_router(users.router, prefix="/api/v1")
 app.include_router(hospital.router, prefix="/api/v1")
-app.include_router(schedules.router, prefix="/api/v1")
+app.include_router(users.router, prefix="/api/v1")
+app.include_router(patients.router, prefix="/api/v1")
 app.include_router(appointments.router, prefix="/api/v1")
-app.include_router(walk_ins.router, prefix="/api/v1")
-app.include_router(waitlist.router, prefix="/api/v1")
+app.include_router(schedules.router, prefix="/api/v1")
 app.include_router(appointment_settings.router, prefix="/api/v1")
 app.include_router(appointment_reports.router, prefix="/api/v1")
+app.include_router(departments.router, prefix="/api/v1")
+app.include_router(doctors.router, prefix="/api/v1")
+app.include_router(hospital_settings_router.router, prefix="/api/v1")
+app.include_router(walk_ins.router, prefix="/api/v1")
 
 
 @app.get("/")

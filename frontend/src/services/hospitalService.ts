@@ -1,50 +1,67 @@
 import api from './api';
 
 export interface HospitalDetails {
-  id: number;
-  hospital_name: string;
-  hospital_code: string | null;
-  hospital_type: string;
-  primary_phone: string;
+  id: string;
+  name: string;
+  code: string | null;
+  phone: string;
   email: string;
-  address_line1: string;
+  website: string | null;
+  address_line_1: string;
+  address_line_2: string | null;
   city: string;
-  state: string;
+  state_province: string;
   country: string;
-  pin_code: string;
-  logo_path: string | null;
-  is_configured: boolean;
+  postal_code: string;
+  timezone: string;
+  default_currency: string;
+  tax_id: string | null;
+  registration_number: string | null;
+  logo_url: string | null;
   is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HospitalSettings {
+  hospital_id: string;
+  setting_key: string;
+  setting_value: string;
+  setting_type: string;
+  description: string | null;
 }
 
 export const hospitalService = {
-  // Public endpoint - works for all users
   async getHospitalDetails(): Promise<HospitalDetails> {
     try {
       const response = await api.get<HospitalDetails>('/hospital');
       return response.data;
     } catch (error) {
-      // If endpoint fails, return default
       return {
-        id: 0,
-        hospital_name: 'HMS Core',
-        hospital_code: null,
-        hospital_type: 'General',
-        primary_phone: '',
+        id: '',
+        name: 'HMS Core',
+        code: null,
+        phone: '',
         email: '',
-        address_line1: '',
+        website: null,
+        address_line_1: '',
+        address_line_2: null,
         city: '',
-        state: '',
+        state_province: '',
         country: '',
-        pin_code: '',
-        logo_path: null,
-        is_configured: false,
+        postal_code: '',
+        timezone: 'Asia/Kolkata',
+        default_currency: 'INR',
+        tax_id: null,
+        registration_number: null,
+        logo_url: null,
         is_active: true,
+        created_at: '',
+        updated_at: '',
       };
     }
   },
 
-  // Full details endpoint - requires admin/super_admin
   async getFullHospitalDetails(): Promise<HospitalDetails> {
     const response = await api.get<HospitalDetails>('/hospital/full');
     return response.data;
@@ -52,6 +69,29 @@ export const hospitalService = {
 
   async updateHospitalDetails(data: Partial<HospitalDetails>): Promise<HospitalDetails> {
     const response = await api.put<HospitalDetails>('/hospital', data);
+    return response.data;
+  },
+
+  async updateLogo(file: File): Promise<HospitalDetails> {
+    const formData = new FormData();
+    formData.append('logo', file);
+    const response = await api.put<HospitalDetails>('/hospital/logo', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
+
+  async deleteLogo(): Promise<void> {
+    await api.delete('/hospital/logo');
+  },
+
+  async getSettings(): Promise<HospitalSettings[]> {
+    const response = await api.get<HospitalSettings[]>('/hospital/settings');
+    return response.data;
+  },
+
+  async updateSettings(settings: Record<string, string>): Promise<HospitalSettings[]> {
+    const response = await api.put<HospitalSettings[]>('/hospital/settings', settings);
     return response.data;
   },
 };

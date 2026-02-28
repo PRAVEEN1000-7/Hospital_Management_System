@@ -50,9 +50,10 @@ const Profile: React.FC = () => {
 
   if (!user) return null;
 
-  const roleLabel = ROLE_LABELS[user.role] || user.role;
-  const roleColors = ROLE_COLORS[user.role] || 'bg-slate-100 text-slate-800';
-  const initials = user.full_name
+  const roleLabel = ROLE_LABELS[user.roles?.[0] || ''] || user.roles?.[0] || '';
+  const roleColors = ROLE_COLORS[user.roles?.[0] || ''] || 'bg-slate-100 text-slate-800';
+  const fullName = `${user.first_name} ${user.last_name}`;
+  const initials = fullName
     .split(' ')
     .map(n => n[0])
     .join('')
@@ -66,7 +67,7 @@ const Profile: React.FC = () => {
         <div className="w-20 h-20 bg-white/20 backdrop-blur rounded-full flex items-center justify-center mx-auto mb-4">
           <span className="text-2xl font-bold">{initials}</span>
         </div>
-        <h1 className="text-xl font-bold">{user.full_name}</h1>
+        <h1 className="text-xl font-bold">{fullName}</h1>
         <span className="inline-block mt-2 px-3 py-1 text-xs font-semibold rounded-full bg-white/20 text-white">
           {roleLabel}
         </span>

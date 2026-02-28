@@ -1,13 +1,15 @@
 """
-Schedule service – manages doctor weekly schedules, blocked periods,
-and available time-slot generation.
+Schedule service — works with new hms_db UUID schema.
+Manages doctor weekly schedules, doctor leaves, and available time-slot generation.
 """
+import uuid
 import logging
-from datetime import date, time, timedelta, datetime
-from sqlalchemy.orm import Session
+from datetime import date, time, timedelta
+from typing import Optional
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_
 
-from ..models.appointment import DoctorSchedule, BlockedPeriod, Appointment
+from ..models.appointment import DoctorSchedule, DoctorLeave, Appointment, Doctor
 from ..models.user import User
 
 logger = logging.getLogger(__name__)
@@ -15,7 +17,11 @@ logger = logging.getLogger(__name__)
 
 # ── Doctor schedule CRUD ───────────────────────────────────────────────────
 
-def create_schedule(db: Session, doctor_id: int, data: dict) -> DoctorSchedule:
+def create_schedule(db: Session, doctor_id: str | uuid.UUID, data: dict) -> DoctorSchedule:
+    """Create a doctor schedule."""
+    if isinstance(doctor_id, str):
+        doctor_id = uuid.UUID(doctor_id)
+    
     schedule = DoctorSchedule(doctor_id=doctor_id, **data)
     db.add(schedule)
     db.commit()
@@ -23,71 +29,114 @@ def create_schedule(db: Session, doctor_id: int, data: dict) -> DoctorSchedule:
     return schedule
 
 
-def get_doctor_schedules(db: Session, doctor_id: int, active_only: bool = True):
+def get_doctor_schedules(
+    db: Session,
+    doctor_id: str | uuid.UUID,
+    active_only: bool = True
+) -> list[DoctorSchedule]:
+    """Get all schedules for a doctor."""
+    if isinstance(doctor_id, str):
+        doctor_id = uuid.UUID(doctor_id)
+    
     q = db.query(DoctorSchedule).filter(DoctorSchedule.doctor_id == doctor_id)
     if active_only:
         q = q.filter(DoctorSchedule.is_active == True)
-    return q.order_by(DoctorSchedule.weekday, DoctorSchedule.start_time).all()
+    return q.order_by(DoctorSchedule.day_of_week, DoctorSchedule.start_time).all()
 
 
-def update_schedule(db: Session, schedule_id: int, data: dict) -> DoctorSchedule | None:
+def update_schedule(
+    db: Session,
+    schedule_id: str | uuid.UUID,
+    data: dict
+) -> Optional[DoctorSchedule]:
+    """Update a doctor schedule."""
+    if isinstance(schedule_id, str):
+        schedule_id = uuid.UUID(schedule_id)
+    
     schedule = db.query(DoctorSchedule).filter(DoctorSchedule.id == schedule_id).first()
     if not schedule:
         return None
+    
     for k, v in data.items():
-        if v is not None:
+        if v is not None and hasattr(schedule, k):
             setattr(schedule, k, v)
+    
     db.commit()
     db.refresh(schedule)
     return schedule
 
 
-def delete_schedule(db: Session, schedule_id: int) -> bool:
+def delete_schedule(db: Session, schedule_id: str | uuid.UUID) -> bool:
+    """Delete a doctor schedule."""
+    if isinstance(schedule_id, str):
+        schedule_id = uuid.UUID(schedule_id)
+    
     schedule = db.query(DoctorSchedule).filter(DoctorSchedule.id == schedule_id).first()
     if not schedule:
         return False
+    
     db.delete(schedule)
     db.commit()
     return True
 
 
-# ── Blocked periods ────────────────────────────────────────────────────────
+# ── Doctor Leaves ──────────────────────────────────────────────────────────
 
-def create_blocked_period(db: Session, data: dict, created_by: int) -> BlockedPeriod:
-    bp = BlockedPeriod(**data, created_by=created_by)
-    db.add(bp)
+def create_doctor_leave(
+    db: Session,
+    data: dict,
+    approved_by: Optional[uuid.UUID] = None
+) -> DoctorLeave:
+    """Create a doctor leave record."""
+    doctor_id = data.get("doctor_id")
+    if isinstance(doctor_id, str):
+        data["doctor_id"] = uuid.UUID(doctor_id)
+    
+    leave = DoctorLeave(**data, approved_by=approved_by)
+    db.add(leave)
     db.commit()
-    db.refresh(bp)
-    return bp
+    db.refresh(leave)
+    return leave
 
 
-def get_blocked_periods(db: Session, doctor_id: int | None = None):
-    q = db.query(BlockedPeriod)
+def get_doctor_leaves(
+    db: Session,
+    doctor_id: Optional[str | uuid.UUID] = None
+) -> list[DoctorLeave]:
+    """Get doctor leaves, optionally filtered by doctor."""
+    q = db.query(DoctorLeave)
     if doctor_id is not None:
-        q = q.filter(
-            (BlockedPeriod.doctor_id == doctor_id) | (BlockedPeriod.doctor_id == None)
-        )
-    return q.order_by(BlockedPeriod.start_date.desc()).all()
+        if isinstance(doctor_id, str):
+            doctor_id = uuid.UUID(doctor_id)
+        q = q.filter(DoctorLeave.doctor_id == doctor_id)
+    return q.order_by(DoctorLeave.leave_date.desc()).all()
 
 
-def delete_blocked_period(db: Session, period_id: int) -> bool:
-    bp = db.query(BlockedPeriod).filter(BlockedPeriod.id == period_id).first()
-    if not bp:
+def delete_doctor_leave(db: Session, leave_id: str | uuid.UUID) -> bool:
+    """Delete a doctor leave record."""
+    if isinstance(leave_id, str):
+        leave_id = uuid.UUID(leave_id)
+    
+    leave = db.query(DoctorLeave).filter(DoctorLeave.id == leave_id).first()
+    if not leave:
         return False
-    db.delete(bp)
+    
+    db.delete(leave)
     db.commit()
     return True
 
 
-def is_date_blocked(db: Session, doctor_id: int, target_date: date) -> bool:
-    """Check if a date is blocked for a doctor or hospital-wide."""
-    return db.query(BlockedPeriod).filter(
-        and_(
-            (BlockedPeriod.doctor_id == doctor_id) | (BlockedPeriod.doctor_id == None),
-            BlockedPeriod.start_date <= target_date,
-            BlockedPeriod.end_date >= target_date,
-        )
-    ).first() is not None
+def is_doctor_on_leave(db: Session, doctor_id: str | uuid.UUID, target_date: date) -> bool:
+    """Check if doctor is on leave on a specific date."""
+    if isinstance(doctor_id, str):
+        doctor_id = uuid.UUID(doctor_id)
+    
+    leave = db.query(DoctorLeave).filter(
+        DoctorLeave.doctor_id == doctor_id,
+        DoctorLeave.leave_date == target_date,
+        DoctorLeave.status == "approved",
+    ).first()
+    return leave is not None
 
 
 # ── Time-slot generation ──────────────────────────────────────────────────
@@ -100,68 +149,133 @@ def _minutes_to_time(m: int) -> time:
     return time(hour=m // 60, minute=m % 60)
 
 
-def get_available_slots(db: Session, doctor_id: int, target_date: date):
-    """
-    Return a list of TimeSlot dicts for a given doctor on a given date.
-    Considers: weekly schedule, blocked periods, existing bookings.
-    """
-    # 1. Check blocked
-    if is_date_blocked(db, doctor_id, target_date):
+def get_available_slots(db: Session, doctor_id: str | uuid.UUID, target_date: date) -> list[dict]:
+    """Get available time slots for a doctor on a specific date."""
+    if isinstance(doctor_id, str):
+        doctor_id = uuid.UUID(doctor_id)
+    
+    # Check if doctor is on leave
+    if is_doctor_on_leave(db, doctor_id, target_date):
         return []
-
-    # 2. Get schedule rows for the weekday
-    weekday = target_date.weekday()  # 0=Monday
+    
+    # Get doctor's schedules for this weekday
+    weekday = target_date.isoweekday() % 7  # 0=Sunday
     schedules = db.query(DoctorSchedule).filter(
         DoctorSchedule.doctor_id == doctor_id,
-        DoctorSchedule.weekday == weekday,
+        DoctorSchedule.day_of_week == weekday,
         DoctorSchedule.is_active == True,
     ).all()
-
+    
     if not schedules:
         return []
-
-    # 3. Count existing bookings per time slot
+    
+    # Build schedule sources
+    schedule_sources = []
+    for sched in schedules:
+        # Check effective dates
+        if sched.effective_from and target_date < sched.effective_from:
+            continue
+        if sched.effective_to and target_date > sched.effective_to:
+            continue
+        
+        schedule_sources.append({
+            "start_time": sched.start_time,
+            "end_time": sched.end_time,
+            "slot_duration_minutes": sched.slot_duration_minutes,
+            "max_patients": sched.max_patients or 1,
+            "break_start_time": sched.break_start_time,
+            "break_end_time": sched.break_end_time,
+        })
+    
+    if not schedule_sources:
+        return []
+    
+    # Get existing appointments
     existing = db.query(Appointment).filter(
         Appointment.doctor_id == doctor_id,
         Appointment.appointment_date == target_date,
         Appointment.status.notin_(["cancelled", "rescheduled"]),
+        Appointment.is_deleted == False,
     ).all()
-
+    
+    # Count bookings per time slot
     booked_map: dict[str, int] = {}
     for appt in existing:
-        if appt.appointment_time:
-            key = appt.appointment_time.strftime("%H:%M")
+        if appt.start_time:
+            key = appt.start_time.strftime("%H:%M")
             booked_map[key] = booked_map.get(key, 0) + 1
-
-    # 4. Build slot list
+    
+    # Generate slots
     slots = []
-    for sched in schedules:
-        start_m = _time_to_minutes(sched.start_time)
-        end_m = _time_to_minutes(sched.end_time)
-        duration = sched.slot_duration
+    for src in schedule_sources:
+        start_m = _time_to_minutes(src["start_time"])
+        end_m = _time_to_minutes(src["end_time"])
+        duration = src["slot_duration_minutes"]
+        
+        break_start_m = _time_to_minutes(src["break_start_time"]) if src["break_start_time"] else None
+        break_end_m = _time_to_minutes(src["break_end_time"]) if src["break_end_time"] else None
+        
         cursor = start_m
         while cursor + duration <= end_m:
+            # Skip break time
+            if break_start_m is not None and break_end_m is not None:
+                if break_start_m <= cursor < break_end_m:
+                    cursor = break_end_m
+                    continue
+            
             slot_time = _minutes_to_time(cursor)
             key = slot_time.strftime("%H:%M")
             current_bookings = booked_map.get(key, 0)
+            
             slots.append({
-                "time": slot_time,
-                "available": current_bookings < sched.max_patients_per_slot,
+                "time": slot_time.strftime("%H:%M"),
+                "available": current_bookings < src["max_patients"],
                 "current_bookings": current_bookings,
-                "max_bookings": sched.max_patients_per_slot,
-                "consultation_type": sched.consultation_type,
+                "max_bookings": src["max_patients"],
             })
             cursor += duration
+    
+    # Remove duplicates and sort
+    seen = set()
+    unique_slots = []
+    for slot in sorted(slots, key=lambda s: s["time"]):
+        if slot["time"] not in seen:
+            seen.add(slot["time"])
+            unique_slots.append(slot)
+    
+    return unique_slots
 
-    slots.sort(key=lambda s: s["time"])
-    return slots
 
-
-def get_doctors_list(db: Session):
-    """Get all active doctors."""
-    return (
-        db.query(User)
-        .filter(User.role == "doctor", User.is_active == True)
-        .order_by(User.full_name)
-        .all()
+def get_doctors_list(db: Session, hospital_id: Optional[uuid.UUID] = None) -> list[Doctor]:
+    """Get list of all active doctors."""
+    q = db.query(Doctor).options(joinedload(Doctor.user)).filter(
+        Doctor.is_active == True,
+        Doctor.is_deleted == False,
     )
+    
+    if hospital_id:
+        q = q.filter(Doctor.hospital_id == hospital_id)
+    
+    return q.all()
+
+
+def get_doctor_by_id(db: Session, doctor_id: str | uuid.UUID) -> Optional[Doctor]:
+    """Get a doctor by ID."""
+    if isinstance(doctor_id, str):
+        doctor_id = uuid.UUID(doctor_id)
+    
+    return db.query(Doctor).options(joinedload(Doctor.user)).filter(
+        Doctor.id == doctor_id,
+        Doctor.is_deleted == False,
+    ).first()
+
+
+def get_doctor_by_user_id(db: Session, user_id: str | uuid.UUID) -> Optional[Doctor]:
+    """Get a doctor by their user ID."""
+    if isinstance(user_id, str):
+        user_id = uuid.UUID(user_id)
+    
+    return db.query(Doctor).options(joinedload(Doctor.user)).filter(
+        Doctor.user_id == user_id,
+        Doctor.is_deleted == False,
+    ).first()

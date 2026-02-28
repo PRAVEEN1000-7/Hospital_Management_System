@@ -188,3 +188,178 @@ def generate_patient_id_card_html(patient, settings_obj=None) -> str:
         </div>
     </div>
     """
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Appointment Email Functions
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _appointment_email_header():
+    return f"""
+    <div style="background-color: #0284c7; color: white; padding: 24px; text-align: center;">
+        <h1 style="margin: 0; font-size: 24px;">{settings.HOSPITAL_NAME}</h1>
+        <p style="margin: 5px 0 0; font-size: 14px; opacity: 0.9;">Appointment Management</p>
+    </div>"""
+
+
+def _appointment_email_footer():
+    return f"""
+    <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;">
+    <p style="color: #6b7280; font-size: 12px; line-height: 1.5;">
+        {settings.HOSPITAL_NAME}<br>
+        {settings.HOSPITAL_ADDRESS}, {settings.HOSPITAL_CITY}<br>
+        Phone: {settings.HOSPITAL_PHONE} | Email: {settings.HOSPITAL_EMAIL}<br>
+        <em>This is a system-generated email. Please do not reply.</em>
+    </p>"""
+
+
+def send_appointment_confirmation_email(
+    to_email: str, patient_name: str, doctor_name: str,
+    appointment_date: str, appointment_time: str,
+    appointment_number: str, consultation_type: str
+) -> bool:
+    """Send appointment booking confirmation email."""
+    subject = f"{settings.HOSPITAL_NAME} - Appointment Confirmation ({appointment_number})"
+    html_body = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; padding: 20px; background-color: #f3f4f6;">
+        <div style="max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; background: white;">
+            {_appointment_email_header()}
+            <div style="padding: 30px;">
+                <p style="font-size: 16px;">Dear <strong>{patient_name}</strong>,</p>
+                <p>Your appointment has been confirmed. Details below:</p>
+                <div style="background-color: #f0f9ff; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #bae6fd;">
+                    <table style="font-size: 14px; line-height: 2;">
+                        <tr><td style="padding-right: 16px; color: #6b7280; font-weight: 600;">Appointment #</td><td><strong>{appointment_number}</strong></td></tr>
+                        <tr><td style="padding-right: 16px; color: #6b7280; font-weight: 600;">Doctor</td><td>Dr. {doctor_name}</td></tr>
+                        <tr><td style="padding-right: 16px; color: #6b7280; font-weight: 600;">Date</td><td>{appointment_date}</td></tr>
+                        <tr><td style="padding-right: 16px; color: #6b7280; font-weight: 600;">Time</td><td>{appointment_time}</td></tr>
+                        <tr><td style="padding-right: 16px; color: #6b7280; font-weight: 600;">Type</td><td style="text-transform: capitalize;">{consultation_type}</td></tr>
+                    </table>
+                </div>
+                <p style="color: #059669; font-weight: 500;">&#10004; Please arrive 15 minutes before your scheduled time.</p>
+                {_appointment_email_footer()}
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    return send_email(to_email, subject, html_body)
+
+
+def send_appointment_cancellation_email(
+    to_email: str, patient_name: str,
+    appointment_number: str, appointment_date: str,
+    reason: str = ""
+) -> bool:
+    """Send appointment cancellation notification email."""
+    subject = f"{settings.HOSPITAL_NAME} - Appointment Cancelled ({appointment_number})"
+    reason_html = f'<p><strong>Reason:</strong> {reason}</p>' if reason else ''
+    html_body = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; padding: 20px; background-color: #f3f4f6;">
+        <div style="max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; background: white;">
+            {_appointment_email_header()}
+            <div style="padding: 30px;">
+                <p style="font-size: 16px;">Dear <strong>{patient_name}</strong>,</p>
+                <p>Your appointment <strong>{appointment_number}</strong> scheduled for <strong>{appointment_date}</strong> has been <span style="color: #dc2626; font-weight: bold;">cancelled</span>.</p>
+                {reason_html}
+                <p>If you would like to reschedule, please contact us or book a new appointment through our system.</p>
+                {_appointment_email_footer()}
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    return send_email(to_email, subject, html_body)
+
+
+def send_appointment_reschedule_email(
+    to_email: str, patient_name: str, doctor_name: str,
+    appointment_number: str, new_date: str, new_time: str
+) -> bool:
+    """Send appointment reschedule notification email."""
+    subject = f"{settings.HOSPITAL_NAME} - Appointment Rescheduled ({appointment_number})"
+    html_body = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; padding: 20px; background-color: #f3f4f6;">
+        <div style="max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; background: white;">
+            {_appointment_email_header()}
+            <div style="padding: 30px;">
+                <p style="font-size: 16px;">Dear <strong>{patient_name}</strong>,</p>
+                <p>Your appointment <strong>{appointment_number}</strong> has been rescheduled.</p>
+                <div style="background-color: #fffbeb; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #fde68a;">
+                    <table style="font-size: 14px; line-height: 2;">
+                        <tr><td style="padding-right: 16px; color: #6b7280; font-weight: 600;">Doctor</td><td>Dr. {doctor_name}</td></tr>
+                        <tr><td style="padding-right: 16px; color: #6b7280; font-weight: 600;">New Date</td><td><strong>{new_date}</strong></td></tr>
+                        <tr><td style="padding-right: 16px; color: #6b7280; font-weight: 600;">New Time</td><td><strong>{new_time}</strong></td></tr>
+                    </table>
+                </div>
+                <p>Please contact us if the new time doesn't work for you.</p>
+                {_appointment_email_footer()}
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    return send_email(to_email, subject, html_body)
+
+
+def send_appointment_reminder_email(
+    to_email: str, patient_name: str, doctor_name: str,
+    appointment_number: str, appointment_date: str, appointment_time: str
+) -> bool:
+    """Send appointment reminder email."""
+    subject = f"{settings.HOSPITAL_NAME} - Appointment Reminder ({appointment_number})"
+    html_body = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; padding: 20px; background-color: #f3f4f6;">
+        <div style="max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; background: white;">
+            {_appointment_email_header()}
+            <div style="padding: 30px;">
+                <p style="font-size: 16px;">Dear <strong>{patient_name}</strong>,</p>
+                <p>This is a friendly reminder about your upcoming appointment:</p>
+                <div style="background-color: #ecfdf5; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #a7f3d0;">
+                    <table style="font-size: 14px; line-height: 2;">
+                        <tr><td style="padding-right: 16px; color: #6b7280; font-weight: 600;">Appointment #</td><td>{appointment_number}</td></tr>
+                        <tr><td style="padding-right: 16px; color: #6b7280; font-weight: 600;">Doctor</td><td>Dr. {doctor_name}</td></tr>
+                        <tr><td style="padding-right: 16px; color: #6b7280; font-weight: 600;">Date</td><td>{appointment_date}</td></tr>
+                        <tr><td style="padding-right: 16px; color: #6b7280; font-weight: 600;">Time</td><td>{appointment_time}</td></tr>
+                    </table>
+                </div>
+                <p style="color: #059669; font-weight: 500;">&#128276; Please arrive 15 minutes early.</p>
+                {_appointment_email_footer()}
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    return send_email(to_email, subject, html_body)
+
+
+def send_waitlist_notification_email(
+    to_email: str, patient_name: str, doctor_name: str,
+    available_date: str
+) -> bool:
+    """Notify waitlisted patient that a slot is now available."""
+    subject = f"{settings.HOSPITAL_NAME} - Appointment Slot Available!"
+    html_body = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; padding: 20px; background-color: #f3f4f6;">
+        <div style="max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; background: white;">
+            {_appointment_email_header()}
+            <div style="padding: 30px;">
+                <p style="font-size: 16px;">Dear <strong>{patient_name}</strong>,</p>
+                <p>Great news! A slot has become available with <strong>Dr. {doctor_name}</strong> on <strong>{available_date}</strong>.</p>
+                <div style="background-color: #ecfdf5; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #a7f3d0; text-align: center;">
+                    <p style="font-size: 18px; color: #059669; font-weight: bold; margin: 0;">&#127881; Slot Available!</p>
+                    <p style="margin: 8px 0 0;">Please confirm your appointment as soon as possible as slots fill up quickly.</p>
+                </div>
+                <p>Contact us or log in to confirm your appointment.</p>
+                {_appointment_email_footer()}
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    return send_email(to_email, subject, html_body)

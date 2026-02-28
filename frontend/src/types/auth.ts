@@ -4,11 +4,16 @@ export interface LoginCredentials {
 }
 
 export interface User {
-  id: number;
+  id: string;
   username: string;
   email: string;
-  full_name: string;
-  role: string;
+  first_name: string;
+  last_name: string;
+  roles: string[];
+  hospital_id?: string;
+  hospital_name?: string;
+  reference_number?: string;
+  avatar_url?: string | null;
 }
 
 export interface AuthResponse {

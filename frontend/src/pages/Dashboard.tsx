@@ -30,7 +30,7 @@ const Dashboard: React.FC = () => {
       try {
         // Fetch hospital details
         const hospitalRes = await hospitalService.getHospitalDetails();
-        setHospitalName(hospitalRes.hospital_name);
+        setHospitalName(hospitalRes.name);
       } catch (err) {
         // Silent fail - will use default hospital name
       }
@@ -79,9 +79,9 @@ const Dashboard: React.FC = () => {
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-slate-900">Admin Dashboard Overview</h1>
         <p className="text-slate-500 text-sm mt-1">
-          Welcome back, <span className="font-semibold text-slate-700">{user?.full_name}</span>
+          Welcome back, <span className="font-semibold text-slate-700">{user ? `${user.first_name} ${user.last_name}` : ''}</span>
           {' · '}
-          <span className="text-primary font-medium">{formatRole(user?.role || '')}</span>
+          <span className="text-primary font-medium">{formatRole(user?.roles?.[0] || '')}</span>
         </p>
       </div>
 
@@ -129,7 +129,7 @@ const Dashboard: React.FC = () => {
                 <p className="text-sm font-bold text-slate-900 group-hover:text-primary transition-colors">Patient Directory</p>
                 <p className="text-[10px] text-slate-400 mt-1">Browse all patient records</p>
               </button>
-              {user?.role === 'super_admin' && (
+              {user?.roles?.includes('super_admin') && (
                 <button
                   onClick={() => navigate('/user-management')}
                   className="p-4 rounded-xl border border-slate-200 hover:border-primary hover:bg-blue-50 transition-all group cursor-pointer text-left active:scale-[0.98]"
@@ -216,7 +216,7 @@ const Dashboard: React.FC = () => {
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-slate-600">Your Role</span>
-                <span className="font-bold text-primary">{formatRole(user?.role || '')}</span>
+                <span className="font-bold text-primary">{formatRole(user?.roles?.[0] || '')}</span>
               </div>
             </div>
           </div>

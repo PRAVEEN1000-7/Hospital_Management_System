@@ -1,0 +1,56 @@
+New Database Architecture — hms_db
+Connection: postgresql://hms_user:HMS@2026@localhost:5432/hms_db
+Engine: PostgreSQL 15+ with pgcrypto extension
+PKs: UUID via gen_random_uuid() on every table
+Timestamps: TIMESTAMPTZ (UTC) everywhere
+Money: DECIMAL(12,2)
+Soft deletes: is_deleted + deleted_at on major entities
+
+62 Tables across 5 Phases
+Phase	Module	Tables
+0 — Foundation	Hospitals	hospitals, departments, hospital_settings, tax_configurations
+0 — Auth	RBAC	users, roles, permissions, user_roles, role_permissions, refresh_tokens
+1 — Core	Patients	patients, patient_consents, patient_documents
+1 — Core	Doctors	doctors, doctor_schedules, doctor_leaves, doctor_fees
+1 — Core	Appointments	appointments, appointment_status_log, appointment_queue
+2 — Clinical	Prescriptions	prescriptions, prescription_items, prescription_templates, prescription_versions
+2 — Clinical	Lab	lab_orders
+2 — Clinical	Medicines	medicines, medicine_batches
+2 — Clinical	Pharmacy	pharmacy_dispensing, pharmacy_dispensing_items, pharmacy_returns, pharmacy_return_items
+2 — Optical	Optical	optical_products, optical_prescriptions, optical_orders, optical_order_items, optical_repairs
+3 — Billing	Invoices	invoices, invoice_items, payments, refunds, credit_notes, daily_settlements
+3 — Insurance	Insurance	insurance_providers, insurance_policies, insurance_claims, pre_authorizations
+4 — Inventory	Supply Chain	suppliers, purchase_orders, purchase_order_items, goods_receipt_notes, grn_items
+4 — Inventory	Stock	stock_movements, stock_adjustments, cycle_counts, cycle_count_items
+5 — Support	Notifications	notifications, notification_templates, notification_queue
+5 — Support	Audit	audit_logs
+5 — ID System	ID Generation	id_sequences, id_cards, password_emails
+Plus 2 PL/pgSQL functions (hms_calculate_checksum, hms_generate_id) and 25+ indexes.
+
+Key Architectural Differences from Current Backend
+Aspect	Current Code	New DB
+PKs	Integer auto-increment	UUID (gen_random_uuid())
+User roles	Inline role column on users	Junction table: user_roles → roles → role_permissions → permissions
+Doctors	No separate table; doctor_id = users.id	Separate doctors table with user_id FK to users
+Departments	Not implemented	departments table with hospital_id FK
+Settings	appointment_settings table	hospital_settings (1-to-1 with hospitals, includes sequences, branding, print config)
+Schedules FK	doctor_id → users(id)	doctor_id → doctors(id)
+Appointments FK	doctor_id → users(id)	doctor_id → doctors(id)
+Queue	Part of appointment flow	Separate appointment_queue table
+Audit	appointment_audit_log	appointment_status_log + generic audit_logs
+Multi-hospital	Single hospital	hospital_id FK on virtually every table
+Pharmacy	Not implemented	Full chain: medicines → batches → dispensing → returns
+Billing	Not implemented	invoices → items → payments → refunds → credit notes → settlements
+Optical	Not implemented	products → prescriptions → orders → repairs
+Insurance	Not implemented	providers → policies → claims → pre-authorizations
+Inventory	Not implemented	suppliers → POs → GRNs → stock movements → adjustments → cycle counts
+Seed Data Summary
+3 hospitals (HMS Core NY, Apollo LA, Max Chicago)
+10 departments, 9 roles, 37 permissions
+10 users (all password: Admin@123), linked via user_roles junction
+3 doctors (linked to users via doctors.user_id), 24 schedules
+5 patients, 5 appointments, 3 prescriptions with items
+10 medicines with batches, 3 invoices with payments
+7 optical products, 3 suppliers, 3 insurance providers
+Notification templates, ID sequences, audit logs
+The entire existing backend (models, schemas, services, routers) will need a complete rewrite to work with this database. What would you like to do next?

@@ -39,8 +39,8 @@ const PatientList: React.FC = () => {
         filteredData = filteredData.filter(p => p.city?.toLowerCase().includes(cityFilter.toLowerCase()));
       }
       if (statusFilter) {
-        const isActive = statusFilter === 'active';
-        filteredData = filteredData.filter(p => p.is_active === isActive);
+        const isDeleted = statusFilter === 'inactive';
+        filteredData = filteredData.filter(p => p.is_deleted === isDeleted);
       }
       
       // Client-side sorting
@@ -101,7 +101,7 @@ const PatientList: React.FC = () => {
     };
   }, [searchInput]);
 
-  const handleDelete = async (id: number, name: string) => {
+  const handleDelete = async (id: string, name: string) => {
     if (!window.confirm(`Are you sure you want to delete patient "${name}"?`)) return;
     try {
       await patientService.deletePatient(id);
@@ -210,7 +210,7 @@ const PatientList: React.FC = () => {
               >
                 <option value="default">Default Order</option>
                 <option value="created_at">Registration Date</option>
-                <option value="prn">PRN</option>
+                <option value="patient_reference_number">PRN</option>
                 <option value="first_name">First Name</option>
                 <option value="last_name">Last Name</option>
                 <option value="date_of_birth">Date of Birth</option>
@@ -373,7 +373,7 @@ const PatientList: React.FC = () => {
                 {patients.map((patient) => (
                   <tr key={patient.id} className="hover:bg-slate-50 transition-colors group">
                     <td className="px-4 py-4">
-                      <span className="text-sm font-semibold font-mono text-slate-400">{patient.prn}</span>
+                      <span className="text-sm font-semibold font-mono text-slate-400">{patient.patient_reference_number}</span>
                     </td>
                     <td className="px-4 py-4">
                       <div className="flex items-center gap-3">
@@ -385,9 +385,9 @@ const PatientList: React.FC = () => {
                             className="text-sm font-bold text-primary hover:underline cursor-pointer truncate"
                             onClick={() => navigate(`/patients/${patient.id}`)}
                           >
-                            {patient.full_name || `${patient.title} ${patient.first_name} ${patient.last_name}`}
+                          {patient.first_name} {patient.last_name}
                           </p>
-                          <p className="text-xs text-slate-500 truncate">{patient.email || `${patient.country_code} ${patient.mobile_number}`}</p>
+                          <p className="text-xs text-slate-500 truncate">{patient.email || `${patient.phone_country_code} ${patient.phone_number}`}</p>
                         </div>
                       </div>
                     </td>
@@ -416,7 +416,7 @@ const PatientList: React.FC = () => {
                           <span className="material-icons text-base">visibility</span>
                         </button>
                         <button
-                          onClick={() => handleDelete(patient.id, patient.full_name || patient.first_name)}
+                          onClick={() => handleDelete(patient.id, `${patient.first_name} ${patient.last_name}`)}
                           className="p-1.5 hover:bg-red-50 rounded-lg text-slate-400 hover:text-red-600 transition-colors"
                           title="Delete"
                         >

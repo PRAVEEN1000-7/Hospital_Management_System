@@ -17,8 +17,6 @@ const staffCreateSchema = z.object({
   phone_number: z.string().optional(),
   country_code: z.string().optional(),
   role: z.string().min(1, 'Select a role'),
-  employee_id: z.string().optional(),
-  department: z.string().optional(),
   password: z.string().optional(),
   confirm_password: z.string().optional(),
   auto_generate_password: z.boolean().optional(),
@@ -53,8 +51,6 @@ const staffEditSchema = z.object({
   phone_number: z.string().optional(),
   country_code: z.string().optional(),
   role: z.string().min(1, 'Required'),
-  employee_id: z.string().optional(),
-  department: z.string().optional(),
   is_active: z.boolean(),
 });
 
@@ -109,7 +105,7 @@ const StaffDirectory: React.FC = () => {
   const [roleFilter, setRoleFilter] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [selectedUsers, setSelectedUsers] = useState<Set<number>>(new Set());
+  const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
   const [showBulkMenu, setShowBulkMenu] = useState(false);
   const [bulkActionLoading, setBulkActionLoading] = useState(false);
   const searchTimeoutRef = useRef<number | null>(null);
@@ -129,11 +125,11 @@ const StaffDirectory: React.FC = () => {
       
       // Apply filters
       if (roleFilter) {
-        filtered = filtered.filter(u => u.role === roleFilter);
+        filtered = filtered.filter(u => u.roles?.[0] === roleFilter);
       }
       if (departmentFilter) {
         filtered = filtered.filter(u => {
-          const dept = u.department || getDepartment(u.role);
+          const dept = getDepartment(u.roles?.[0] || '');
           return dept.toLowerCase() === departmentFilter.toLowerCase();
         });
       }
@@ -153,7 +149,7 @@ const StaffDirectory: React.FC = () => {
           if (bVal === null || bVal === undefined) return sortOrder === 'asc' ? -1 : 1;
           
           // Convert to comparable values
-          if (sortBy === 'created_at' || sortBy === 'updated_at' || sortBy === 'last_login') {
+          if (sortBy === 'created_at' || sortBy === 'updated_at' || sortBy === 'last_login_at') {
             aVal = new Date(aVal).getTime();
             bVal = new Date(bVal).getTime();
           } else if (typeof aVal === 'string') {
@@ -341,7 +337,7 @@ const StaffDirectory: React.FC = () => {
     }
   };
 
-  const toggleSelect = (id: number) => {
+  const toggleSelect = (id: string) => {
     const newSet = new Set(selectedUsers);
     if (newSet.has(id)) {
       newSet.delete(id);
@@ -352,18 +348,16 @@ const StaffDirectory: React.FC = () => {
   };
 
   const handleExportCSV = () => {
-    const headers = ['Employee ID', 'First Name', 'Last Name', 'Full Name', 'Email', 'Phone', 'Role', 'Department', 'Status', 'Last Login'];
+    const headers = ['Reference #', 'First Name', 'Last Name', 'Email', 'Phone', 'Role', 'Status', 'Last Login'];
     const rows = users.map(u => [
-      u.employee_id || 'N/A',
+      u.reference_number || 'N/A',
       u.first_name || '',
       u.last_name || '',
-      u.full_name,
       u.email,
       u.phone_number || 'N/A',
-      ROLE_LABELS[u.role] || u.role,
-      u.department || getDepartment(u.role),
+      ROLE_LABELS[u.roles?.[0] || ''] || u.roles?.[0] || '',
       u.is_active ? 'Active' : 'Inactive',
-      u.last_login ? format(new Date(u.last_login), 'dd/MM/yyyy HH:mm') : 'Never',
+      u.last_login_at ? format(new Date(u.last_login_at), 'dd/MM/yyyy HH:mm') : 'Never',
     ]);
     const csv = [headers, ...rows].map(row => row.join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -434,16 +428,14 @@ const StaffDirectory: React.FC = () => {
             >
               <option value="default">Default Order</option>
               <option value="created_at">Registration Date</option>
-              <option value="employee_id">Employee ID</option>
+              <option value="reference_number">Reference #</option>
               <option value="first_name">First Name</option>
               <option value="last_name">Last Name</option>
-              <option value="full_name">Full Name</option>
               <option value="email">Email</option>
               <option value="role">Role</option>
-              <option value="department">Department</option>
               <option value="phone_number">Phone</option>
               <option value="is_active">Status</option>
-              <option value="last_login">Last Login</option>
+              <option value="last_login_at">Last Login</option>
               <option value="updated_at">Last Updated</option>
             </select>
             <select
@@ -626,28 +618,28 @@ const StaffDirectory: React.FC = () => {
                       />
                     </td>
                     <td className="px-3 py-4 whitespace-nowrap">
-                      <span className="text-sm font-semibold font-mono text-slate-700">{user.employee_id || 'N/A'}</span>
+                      <span className="text-sm font-semibold font-mono text-slate-700">{user.reference_number || 'N/A'}</span>
                     </td>
                     <td className="px-3 py-4">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs flex-shrink-0 overflow-hidden">
-                          {user.photo_url ? (
-                            <img src={userService.getPhotoUrl(user.photo_url) || ''} alt={user.full_name} className="w-full h-full object-cover" />
+                          {user.avatar_url ? (
+                            <img src={userService.getPhotoUrl(user.avatar_url) || ''} alt={`${user.first_name} ${user.last_name}`} className="w-full h-full object-cover" />
                           ) : (
-                            getInitials(user.full_name)
+                            getInitials(`${user.first_name} ${user.last_name}`)
                           )}
                         </div>
                         <div className="min-w-0">
-                          <p className="text-sm font-semibold text-slate-900 truncate">{user.full_name}</p>
+                          <p className="text-sm font-semibold text-slate-900 truncate">{`${user.first_name} ${user.last_name}`}</p>
                           <p className="text-xs text-slate-500 truncate">
-                            Last login: {getTimeAgo(user.last_login)}
+                            Last login: {getTimeAgo(user.last_login_at)}
                           </p>
                         </div>
                       </div>
                     </td>
-                    <td className="px-3 py-4 whitespace-nowrap">{getRoleBadge(user.role)}</td>
+                    <td className="px-3 py-4 whitespace-nowrap">{getRoleBadge(user.roles?.[0] || '')}</td>
                     <td className="px-3 py-4 whitespace-nowrap">
-                      <span className="text-sm text-slate-700">{user.department || getDepartment(user.role)}</span>
+                      <span className="text-sm text-slate-700">{getDepartment(user.roles?.[0] || '')}</span>
                     </td>
                     <td className="px-3 py-4">
                       <div className="text-sm">
@@ -747,16 +739,16 @@ const StaffDirectory: React.FC = () => {
         <Drawer title="Staff Profile" onClose={() => setViewUser(null)}>
           <div className="flex flex-col items-center mb-6">
             <div className="w-20 h-20 rounded-full bg-primary/10 text-primary flex items-center justify-center text-2xl font-bold mb-3 overflow-hidden">
-              {viewUser.photo_url ? (
-                <img src={userService.getPhotoUrl(viewUser.photo_url) || ''} alt={viewUser.full_name} className="w-full h-full object-cover" />
+              {viewUser.avatar_url ? (
+                <img src={userService.getPhotoUrl(viewUser.avatar_url) || ''} alt={`${viewUser.first_name} ${viewUser.last_name}`} className="w-full h-full object-cover" />
               ) : (
-                getInitials(viewUser.full_name)
+                getInitials(`${viewUser.first_name} ${viewUser.last_name}`)
               )}
             </div>
-            <h3 className="text-lg font-bold text-slate-900">{viewUser.full_name}</h3>
+            <h3 className="text-lg font-bold text-slate-900">{`${viewUser.first_name} ${viewUser.last_name}`}</h3>
             <p className="text-sm text-slate-500 mb-2">@{viewUser.username}</p>
             <div className="flex items-center gap-2">
-              {getRoleBadge(viewUser.role)}
+              {getRoleBadge(viewUser.roles?.[0] || '')}
               <span className={`px-2.5 py-1 text-[11px] font-bold rounded-full ${viewUser.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
                 {viewUser.is_active ? 'Active' : 'Inactive'}
               </span>
@@ -777,8 +769,8 @@ const StaffDirectory: React.FC = () => {
                 <span className="w-8 h-[2px] bg-primary/20 rounded-full"></span>
                 <h3 className="text-sm font-bold text-primary uppercase tracking-wider">Professional Info</h3>
               </div>
-              <ProfileField icon="badge" label="Employee ID" value={viewUser.employee_id || 'Not assigned'} />
-              <ProfileField icon="business" label="Department" value={viewUser.department || getDepartment(viewUser.role)} />
+              <ProfileField icon="badge" label="Reference #" value={viewUser.reference_number || 'Not assigned'} />
+              <ProfileField icon="business" label="Department" value={getDepartment(viewUser.roles?.[0] || '')} />
               <ProfileField icon="person" label="Username" value={viewUser.username} />
             </section>
             <section>
@@ -786,7 +778,7 @@ const StaffDirectory: React.FC = () => {
                 <span className="w-8 h-[2px] bg-primary/20 rounded-full"></span>
                 <h3 className="text-sm font-bold text-primary uppercase tracking-wider">Activity</h3>
               </div>
-              <ProfileField icon="login" label="Last Login" value={viewUser.last_login ? format(new Date(viewUser.last_login), 'dd MMM yyyy, HH:mm') : 'Never'} />
+              <ProfileField icon="login" label="Last Login" value={viewUser.last_login_at ? format(new Date(viewUser.last_login_at), 'dd MMM yyyy, HH:mm') : 'Never'} />
               <ProfileField icon="calendar_today" label="Joined" value={format(new Date(viewUser.created_at), 'dd MMM yyyy')} />
               <ProfileField icon="update" label="Updated" value={format(new Date(viewUser.updated_at), 'dd MMM yyyy')} />
             </section>
@@ -811,7 +803,7 @@ const StaffDirectory: React.FC = () => {
               <span className="material-icons text-3xl">person_remove</span>
             </div>
             <p className="text-slate-600 mb-1">Are you sure you want to remove</p>
-            <p className="font-bold text-slate-900 text-lg">{deleteConfirm.full_name}</p>
+            <p className="font-bold text-slate-900 text-lg">{`${deleteConfirm.first_name} ${deleteConfirm.last_name}`}</p>
             <p className="text-sm text-slate-500">@{deleteConfirm.username}</p>
           </div>
           <div className="flex gap-3 mt-6">
@@ -913,13 +905,7 @@ const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => void; o
   const autoGenPassword = watch('auto_generate_password', false);
   const selectedRole = watch('role', '');
 
-  // Auto-populate department based on role
-  React.useEffect(() => {
-    if (selectedRole) {
-      const defaultDept = getDepartment(selectedRole);
-      setValue('department', defaultDept);
-    }
-  }, [selectedRole, setValue]);
+  // Department is auto-derived from role via getDepartment() — no form field needed
 
   // Auto-generate username from email
   React.useEffect(() => {
@@ -1010,12 +996,9 @@ const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => void; o
         email: data.email,
         first_name: data.first_name,
         last_name: data.last_name,
-        full_name: `${data.first_name} ${data.last_name}`,
         role: data.role,
         password: finalPassword,
         phone_number: data.phone_number,
-        employee_id: data.employee_id,
-        department: data.department,
       };
       
       // Create user first
@@ -1113,44 +1096,14 @@ const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => void; o
             <span className="w-8 h-[2px] bg-primary/20 rounded-full"></span>
             <h3 className="text-sm font-bold text-primary uppercase tracking-wider">Professional Info</h3>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4">
             <Field label="System Role (Job Function)" error={errors.role?.message}>
               <select {...register('role')} className="input-field">
                 <option value="">Select role</option>
                 {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>)}
               </select>
             </Field>
-            <Field label="Employee ID (Auto-generated)" error={errors.employee_id?.message}>
-              <input 
-                {...register('employee_id')} 
-                className="input-field bg-slate-50" 
-                placeholder="Auto-generated on creation"
-                disabled
-              />
-              <p className="text-xs text-slate-500 mt-1">Format: ROLE-YYYY-####</p>
-            </Field>
           </div>
-          <Field label="Work Department (Auto-assigned based on role)" error={errors.department?.message}>
-            <select {...register('department')} className="input-field">
-              <option value="Medical">Medical</option>
-              <option value="Nursing">Nursing</option>
-              <option value="Pharmacy">Pharmacy</option>
-              <option value="Front Desk">Front Desk</option>
-              <option value="Finance">Finance</option>
-              <option value="Inventory">Inventory</option>
-              <option value="Administration">Administration</option>
-              <option value="General">General</option>
-              <option value="Cardiology">Cardiology</option>
-              <option value="Emergency">Emergency (ER)</option>
-              <option value="Surgery">Surgery</option>
-              <option value="Pediatrics">Pediatrics</option>
-              <option value="Radiology">Radiology</option>
-              <option value="Laboratory">Laboratory</option>
-              <option value="ICU">ICU</option>
-              <option value="General Ward">General Ward</option>
-            </select>
-            <p className="text-xs text-slate-500 mt-1">Department is auto-assigned based on role, but can be changed if needed</p>
-          </Field>
         </section>
 
         {/* Security */}
@@ -1216,7 +1169,7 @@ const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => void; o
 // ---------- Edit Staff Modal ----------
 const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onSuccess: () => void; onError: (msg: string) => void }> = ({ user, onClose, onSuccess, onError }) => {
   const toast = useToast();
-  const [photoPreview, setPhotoPreview] = useState<string>(user.photo_url ? userService.getPhotoUrl(user.photo_url) || '' : '');
+  const [photoPreview, setPhotoPreview] = useState<string>(user.avatar_url ? userService.getPhotoUrl(user.avatar_url) || '' : '');
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoError, setPhotoError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1229,24 +1182,19 @@ const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onSuccess:
       last_name: user.last_name || '',
       phone_number: user.phone_number || '',
       country_code: '+91',
-      employee_id: user.employee_id || '',
-      department: user.department || '',
-      role: user.role,
+      role: user.roles?.[0] || '',
       is_active: user.is_active,
     },
   });
 
   const firstName = watch('first_name', user.first_name || '');
   const lastName = watch('last_name', user.last_name || '');
-  const selectedRole = watch('role', user.role);
+  const selectedRole = watch('role', user.roles?.[0] || '');
   const fullName = `${firstName} ${lastName}`.trim();
 
-  // Auto-populate department based on role when role changes
+  // Track role changes
   React.useEffect(() => {
-    if (selectedRole && selectedRole !== user.role) {
-      const defaultDept = getDepartment(selectedRole);
-      setValue('department', defaultDept);
-    }
+    // Role changed - could trigger UI updates if needed
   }, [selectedRole, setValue]);
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1296,10 +1244,7 @@ const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onSuccess:
         email: data.email,
         first_name: data.first_name,
         last_name: data.last_name,
-        full_name: `${data.first_name} ${data.last_name}`,
         phone_number: data.phone_number,
-        employee_id: data.employee_id,
-        department: data.department,
         role: data.role,
         is_active: data.is_active,
       };
@@ -1399,36 +1344,15 @@ const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onSuccess:
                 {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>)}
               </select>
             </Field>
-            <Field label="Employee ID">
+            <Field label="Reference #">
               <input 
-                value={user.employee_id || 'Not assigned'} 
+                value={user.reference_number || 'Not assigned'} 
                 disabled 
                 className="input-field bg-slate-100 cursor-not-allowed" 
               />
               <p className="text-xs text-slate-500 mt-1">Auto-generated, cannot be changed</p>
             </Field>
           </div>
-          <Field label="Work Department (Auto-assigned based on role)" error={errors.department?.message}>
-            <select {...register('department')} className="input-field">
-              <option value="Medical">Medical</option>
-              <option value="Nursing">Nursing</option>
-              <option value="Pharmacy">Pharmacy</option>
-              <option value="Front Desk">Front Desk</option>
-              <option value="Finance">Finance</option>
-              <option value="Inventory">Inventory</option>
-              <option value="Administration">Administration</option>
-              <option value="General">General</option>
-              <option value="Cardiology">Cardiology</option>
-              <option value="Emergency">Emergency (ER)</option>
-              <option value="Surgery">Surgery</option>
-              <option value="Pediatrics">Pediatrics</option>
-              <option value="Radiology">Radiology</option>
-              <option value="Laboratory">Laboratory</option>
-              <option value="ICU">ICU</option>
-              <option value="General Ward">General Ward</option>
-            </select>
-            <p className="text-xs text-slate-500 mt-1">Department is auto-assigned based on role, but can be changed if needed</p>
-          </Field>
         </section>
 
         {/* Status Toggle */}
@@ -1471,7 +1395,7 @@ const ResetPasswordModal: React.FC<{ user: UserData; onClose: () => void; onSucc
   };
 
   return (
-    <Drawer title={`Reset Password — ${user.full_name}`} onClose={onClose}>
+    <Drawer title={`Reset Password — ${user.first_name} ${user.last_name}`} onClose={onClose}>
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         <section className="space-y-4">
           <div className="flex items-center gap-2 mb-2">

@@ -10,7 +10,7 @@ export const userService = {
     return response.data;
   },
 
-  async getUser(id: number): Promise<UserData> {
+  async getUser(id: string): Promise<UserData> {
     const response = await api.get<UserData>(`/users/${id}`);
     return response.data;
   },
@@ -20,16 +20,16 @@ export const userService = {
     return response.data;
   },
 
-  async updateUser(id: number, data: UserUpdateData): Promise<UserData> {
+  async updateUser(id: string, data: UserUpdateData): Promise<UserData> {
     const response = await api.put<UserData>(`/users/${id}`, data);
     return response.data;
   },
 
-  async deleteUser(id: number): Promise<void> {
+  async deleteUser(id: string): Promise<void> {
     await api.delete(`/users/${id}`);
   },
 
-  async uploadPhoto(id: number, file: File): Promise<{ message: string; photo_url: string; filename: string }> {
+  async uploadPhoto(id: string, file: File): Promise<{ message: string; avatar_url: string; filename: string }> {
     const formData = new FormData();
     formData.append('file', file);
     const response = await api.post(`/users/${id}/upload-photo`, formData, {
@@ -40,12 +40,12 @@ export const userService = {
     return response.data;
   },
 
-  async resetPassword(id: number, data: PasswordResetData, sendEmail = false): Promise<{ message: string; email_sent: boolean }> {
+  async resetPassword(id: string, data: PasswordResetData, sendEmail = false): Promise<{ message: string; email_sent: boolean }> {
     const response = await api.post(`/users/${id}/reset-password?send_email=${sendEmail}`, data);
     return response.data;
   },
 
-  async sendPassword(id: number, data: PasswordResetData): Promise<{ message: string; email_sent: boolean }> {
+  async sendPassword(id: string, data: PasswordResetData): Promise<{ message: string; email_sent: boolean }> {
     const response = await api.post(`/users/${id}/send-password`, data);
     return response.data;
   },

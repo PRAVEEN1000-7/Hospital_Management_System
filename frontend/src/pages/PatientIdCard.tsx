@@ -5,21 +5,10 @@ import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { QRCodeSVG } from 'qrcode.react';
 import patientService from '../services/patientService';
+import hospitalService from '../services/hospitalService';
+import type { HospitalDetails } from '../services/hospitalService';
 import type { Patient } from '../types/patient';
-import api from '../services/api';
 import { useToast } from '../contexts/ToastContext';
-
-interface HospitalConfig {
-  hospital_name: string;
-  hospital_address: string;
-  hospital_city: string;
-  hospital_state: string;
-  hospital_country: string;
-  hospital_pin_code: string;
-  hospital_phone: string;
-  hospital_email: string;
-  hospital_website: string;
-}
 
 /* ── 12-Digit ID Parser (mirrors backend logic) ────────────────────────── */
 const GENDER_DECODE: Record<string, string> = { M: 'Male', F: 'Female', O: 'Other', N: 'Not Disclosed', U: 'Unknown' };
@@ -48,19 +37,19 @@ const PatientIdCard: React.FC = () => {
   const backRef = useRef<HTMLDivElement>(null);
 
   const [patient, setPatient] = useState<Patient | null>(null);
-  const [hospital, setHospital] = useState<HospitalConfig | null>(null);
+  const [hospital, setHospital] = useState<HospitalDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [patientData, hospitalRes] = await Promise.all([
-          patientService.getPatient(Number(id)),
-          api.get<HospitalConfig>('/config/hospital'),
+        const [patientData, hospitalData] = await Promise.all([
+          patientService.getPatient(id!),
+          hospitalService.getHospitalDetails(),
         ]);
         setPatient(patientData);
-        setHospital(hospitalRes.data);
+        setHospital(hospitalData);
       } catch {
         toast.error('Failed to load data');
       } finally {
@@ -85,7 +74,7 @@ const PatientIdCard: React.FC = () => {
 
   const handleDownload = async () => {
     const pdf = await generatePDF();
-    if (pdf && patient) pdf.save(`ID-Card-${patient.prn}.pdf`);
+    if (pdf && patient) pdf.save(`ID-Card-${patient.patient_reference_number}.pdf`);
   };
 
   const handlePrint = () => {
@@ -128,16 +117,16 @@ const PatientIdCard: React.FC = () => {
 
   const age = differenceInYears(new Date(), new Date(patient.date_of_birth));
   const photoUrl = patientService.getPhotoUrl(patient.photo_url);
-  const parsed = parsePatientId(patient.prn);
+  const parsed = parsePatientId(patient.patient_reference_number);
 
   // QR data: compact patient identification string
   const qrData = JSON.stringify({
-    id: patient.prn,
-    name: patient.full_name || `${patient.title} ${patient.first_name} ${patient.last_name}`,
+    id: patient.patient_reference_number,
+    name: `${patient.first_name} ${patient.last_name}`,
     dob: patient.date_of_birth,
     gender: patient.gender,
     blood: patient.blood_group || '-',
-    mobile: `${patient.country_code}${patient.mobile_number}`,
+    mobile: `${patient.phone_country_code}${patient.phone_number}`,
   });
 
   return (
@@ -208,14 +197,13 @@ const PatientIdCard: React.FC = () => {
           <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #e0f0ff, #b3d9ff)', borderRadius: 12, overflow: 'hidden', border: '1px solid #80bfff', position: 'relative' }}>
             {/* Hospital Header */}
             <div style={{ background: '#137fec', padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ color: 'white', fontWeight: 'bold', fontSize: 14 }}>{hospital.hospital_name}</span>
-              <span style={{ color: '#b3d9ff', fontSize: 10, letterSpacing: 1 }}>PATIENT REFERENCE CARD</span>
+              <span style={{ color: 'white', fontWeight: 'bold', fontSize: 14 }}>{hospital.name}</span>
             </div>
 
             {/* PRN Bar */}
             <div style={{ background: '#0f6dd6', padding: '5px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ color: '#b3d9ff', fontSize: 9, letterSpacing: 0.5 }}>PRN</span>
-              <span style={{ color: '#ffffff', fontSize: 13, fontWeight: 'bold', letterSpacing: 2, fontFamily: 'Consolas, monospace' }}>{patient.prn}</span>
+              <span style={{ color: '#ffffff', fontSize: 13, fontWeight: 'bold', letterSpacing: 2, fontFamily: 'Consolas, monospace' }}>{patient.patient_reference_number}</span>
             </div>
 
             {/* Body: Photo + Info + QR */}
@@ -234,7 +222,7 @@ const PatientIdCard: React.FC = () => {
               {/* Info */}
               <div style={{ flex: 1, fontSize: 11, display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
                 <div style={{ fontWeight: 'bold', fontSize: 15, color: '#0f3b6e', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {patient.full_name || `${patient.title} ${patient.first_name} ${patient.last_name}`}
+                  {patient.first_name} {patient.last_name}
                 </div>
                 <div style={{ color: '#475569' }}>
                   DOB: {format(new Date(patient.date_of_birth), 'dd MMM yyyy')} ({age} yrs)
@@ -249,7 +237,7 @@ const PatientIdCard: React.FC = () => {
                   )}
                 </div>
                 <div style={{ color: '#475569' }}>
-                  Mobile: {patient.country_code} {patient.mobile_number}
+                  Mobile: {patient.phone_country_code} {patient.phone_number}
                 </div>
               </div>
 
@@ -265,7 +253,7 @@ const PatientIdCard: React.FC = () => {
             {/* Emergency Contact Footer */}
             {patient.emergency_contact_name && (
               <div style={{ background: '#ebf5ff', borderTop: '1px solid #b3d9ff', padding: '5px 16px', fontSize: 10, color: '#64748b' }}>
-                Emergency: {patient.emergency_contact_name} ({patient.emergency_contact_relationship || 'N/A'}) — {patient.emergency_contact_country_code} {patient.emergency_contact_mobile}
+                Emergency: {patient.emergency_contact_name} ({patient.emergency_contact_relation || 'N/A'}) — {patient.emergency_contact_phone}
               </div>
             )}
 
@@ -288,18 +276,17 @@ const PatientIdCard: React.FC = () => {
           <div style={{ width: '100%', height: '100%', background: 'white', borderRadius: 12, overflow: 'hidden', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column' }}>
             {/* Header */}
             <div style={{ background: '#137fec', padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ color: 'white', fontWeight: 'bold', fontSize: 14 }}>{hospital.hospital_name}</span>
-              <span style={{ color: '#b3d9ff', fontSize: 10 }}>CONTACT DETAILS</span>
+              <span style={{ color: 'white', fontWeight: 'bold', fontSize: 14 }}>{hospital.name}</span>
             </div>
 
             {/* Details */}
             <div style={{ padding: 16, flex: 1, fontSize: 12, color: '#475569', display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <div><strong>Address:</strong> {hospital.hospital_address}</div>
-              <div><strong>City/State:</strong> {hospital.hospital_city}, {hospital.hospital_state}</div>
-              <div><strong>Country:</strong> {hospital.hospital_country} — {hospital.hospital_pin_code}</div>
-              <div><strong>Phone:</strong> {hospital.hospital_phone}</div>
-              <div><strong>Email:</strong> {hospital.hospital_email}</div>
-              {hospital.hospital_website && <div><strong>Website:</strong> {hospital.hospital_website}</div>}
+              <div><strong>Address:</strong> {hospital.address_line_1}{hospital.address_line_2 ? `, ${hospital.address_line_2}` : ''}</div>
+              <div><strong>City/State:</strong> {hospital.city}, {hospital.state_province}</div>
+              <div><strong>Country:</strong> {hospital.country} — {hospital.postal_code}</div>
+              <div><strong>Phone:</strong> {hospital.phone}</div>
+              <div><strong>Email:</strong> {hospital.email}</div>
+              {hospital.website && <div><strong>Website:</strong> {hospital.website}</div>}
             </div>
 
             {/* ID Format Reference */}
@@ -310,7 +297,7 @@ const PatientIdCard: React.FC = () => {
 
             {/* Footer */}
             <div style={{ background: '#f8fafc', borderTop: '1px solid #e2e8f0', padding: '8px 16px', fontSize: 9, color: '#94a3b8', textAlign: 'center' }}>
-              This card is property of {hospital.hospital_name}. If found, please return to the above address.
+              This card is property of {hospital.name}. If found, please return to the above address.
             </div>
           </div>
         </div>

@@ -46,27 +46,78 @@ const App: React.FC = () => {
               </ProtectedRoute>
             }
           >
+            {/* ── General ── */}
             <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/register" element={<Register />} />
             <Route path="/patients" element={<PatientList />} />
             <Route path="/patients/:id" element={<PatientDetail />} />
             <Route path="/patients/:id/id-card" element={<PatientIdCard />} />
-            <Route path="/staff" element={<StaffDirectory />} />
-            <Route path="/user-management" element={<UserManagement />} />
-            <Route path="/hospital-setup" element={<HospitalSetup />} />
             <Route path="/profile" element={<Profile />} />
 
-            {/* Appointment Routes */}
-            <Route path="/appointments/book" element={<AppointmentBooking />} />
-            <Route path="/appointments/walk-in" element={<WalkInRegistration />} />
-            <Route path="/appointments/queue" element={<WalkInQueue />} />
-            <Route path="/appointments/doctor-schedule" element={<DoctorSchedule />} />
-            <Route path="/appointments/my-schedule" element={<DoctorAppointments />} />
-            <Route path="/appointments/my-appointments" element={<MyAppointments />} />
-            <Route path="/appointments/manage" element={<AppointmentManagement />} />
-            <Route path="/appointments/waitlist" element={<WaitlistManagement />} />
-            <Route path="/appointments/reports" element={<AppointmentReports />} />
-            <Route path="/appointments/settings" element={<AppointmentSettings />} />
+            {/* ── Admin / Super-admin only ── */}
+            <Route path="/register" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin']}><Register /></ProtectedRoute>
+            } />
+            <Route path="/staff" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin']}><StaffDirectory /></ProtectedRoute>
+            } />
+            <Route path="/user-management" element={
+              <ProtectedRoute allowedRoles={['super_admin']}><UserManagement /></ProtectedRoute>
+            } />
+            <Route path="/hospital-setup" element={
+              <ProtectedRoute allowedRoles={['super_admin']}><HospitalSetup /></ProtectedRoute>
+            } />
+
+            {/* ── Appointment Routes ── */}
+            <Route path="/appointments/book" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'receptionist']}>
+                <AppointmentBooking />
+              </ProtectedRoute>
+            } />
+            <Route path="/appointments/walk-in" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'receptionist']}>
+                <WalkInRegistration />
+              </ProtectedRoute>
+            } />
+            <Route path="/appointments/queue" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'receptionist', 'doctor', 'nurse']}>
+                <WalkInQueue />
+              </ProtectedRoute>
+            } />
+            <Route path="/appointments/doctor-schedule" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor']}>
+                <DoctorSchedule />
+              </ProtectedRoute>
+            } />
+            <Route path="/appointments/my-schedule" element={
+              <ProtectedRoute allowedRoles={['doctor']}>
+                <DoctorAppointments />
+              </ProtectedRoute>
+            } />
+            <Route path="/appointments/my-appointments" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin']}>
+                <MyAppointments />
+              </ProtectedRoute>
+            } />
+            <Route path="/appointments/manage" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'receptionist', 'nurse']}>
+                <AppointmentManagement />
+              </ProtectedRoute>
+            } />
+            <Route path="/appointments/waitlist" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor', 'receptionist']}>
+                <WaitlistManagement />
+              </ProtectedRoute>
+            } />
+            <Route path="/appointments/reports" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor']}>
+                <AppointmentReports />
+              </ProtectedRoute>
+            } />
+            <Route path="/appointments/settings" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin']}>
+                <AppointmentSettings />
+              </ProtectedRoute>
+            } />
           </Route>
 
           {/* Redirects */}

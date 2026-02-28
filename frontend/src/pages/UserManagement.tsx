@@ -14,8 +14,6 @@ const userCreateSchema = z.object({
   first_name: z.string().min(1, 'Required'),
   last_name: z.string().min(1, 'Required'),
   phone_number: z.string().optional(),
-  employee_id: z.string().optional(),
-  department: z.string().optional(),
   role: z.string().min(1, 'Required'),
   password: z.string().min(8, 'Min 8 characters')
     .regex(/[A-Z]/, 'Need uppercase letter')
@@ -34,8 +32,6 @@ const userEditSchema = z.object({
   first_name: z.string().min(1, 'Required'),
   last_name: z.string().min(1, 'Required'),
   phone_number: z.string().optional(),
-  employee_id: z.string().optional(),
-  department: z.string().optional(),
   role: z.string().min(1, 'Required'),
   is_active: z.boolean(),
 });
@@ -205,36 +201,36 @@ const UserManagement: React.FC = () => {
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs overflow-hidden flex-shrink-0">
-                          {user.photo_url ? (
+                          {user.avatar_url ? (
                             <img 
-                              src={userService.getPhotoUrl(user.photo_url) || ''} 
-                              alt={user.full_name} 
+                              src={userService.getPhotoUrl(user.avatar_url) || ''} 
+                              alt={`${user.first_name} ${user.last_name}`} 
                               className="w-full h-full object-cover" 
                               onError={(e) => {
                                 e.currentTarget.style.display = 'none';
                                 const parent = e.currentTarget.parentElement;
                                 if (parent) {
-                                  parent.innerHTML = user.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+                                  parent.innerHTML = `${user.first_name?.[0] || ''}${user.last_name?.[0] || ''}`.toUpperCase();
                                 }
                               }}
                             />
                           ) : (
-                            user.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+                            `${user.first_name?.[0] || ''}${user.last_name?.[0] || ''}`.toUpperCase()
                           )}
                         </div>
                         <span className="text-sm font-semibold text-slate-900">{user.username}</span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-sm text-slate-700">{user.full_name}</td>
+                    <td className="px-6 py-4 text-sm text-slate-700">{`${user.first_name} ${user.last_name}`}</td>
                     <td className="px-6 py-4 text-sm text-slate-500 hidden md:table-cell">{user.email}</td>
-                    <td className="px-6 py-4">{getRoleBadge(user.role)}</td>
+                    <td className="px-6 py-4">{getRoleBadge(user.roles?.[0] || '')}</td>
                     <td className="px-6 py-4 text-center">
                       <span className={`px-2.5 py-1 text-[11px] font-bold rounded-full ${user.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
                         {user.is_active ? 'Active' : 'Inactive'}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-sm text-slate-500 hidden lg:table-cell">
-                      {user.last_login ? format(new Date(user.last_login), 'dd MMM yyyy HH:mm') : '—'}
+                      {user.last_login_at ? format(new Date(user.last_login_at), 'dd MMM yyyy HH:mm') : '—'}
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-1 opacity-50 group-hover:opacity-100 transition-opacity">
@@ -296,7 +292,7 @@ const UserManagement: React.FC = () => {
       {deleteConfirm && (
         <Modal title="Delete User" onClose={() => setDeleteConfirm(null)}>
           <p className="text-slate-600 mb-6">
-            Are you sure you want to delete <strong>{deleteConfirm.full_name}</strong> ({deleteConfirm.username})?
+            Are you sure you want to delete <strong>{`${deleteConfirm.first_name} ${deleteConfirm.last_name}`}</strong> ({deleteConfirm.username})?
             This action cannot be undone.
           </p>
           <div className="flex justify-end gap-3">
@@ -400,14 +396,7 @@ const CreateUserModal: React.FC<{ onClose: () => void; onSuccess: () => void; on
   const roleDeptConfig = ROLE_DEPARTMENT_MAP[selectedRole] ?? { depts: ALL_DEPARTMENTS, required: false };
   const showDepartment = roleDeptConfig.depts.length > 0;
 
-  // Auto-select when only one dept option
-  React.useEffect(() => {
-    if (roleDeptConfig.depts.length === 1) {
-      setValue('department', roleDeptConfig.depts[0].value);
-    } else {
-      setValue('department', '');
-    }
-  }, [selectedRole]); // eslint-disable-line
+  // Department is derived from role — no form field needed
 
   const onSubmit = async (data: CreateFormData) => {
     try {
@@ -416,10 +405,7 @@ const CreateUserModal: React.FC<{ onClose: () => void; onSuccess: () => void; on
         email: data.email,
         first_name: data.first_name,
         last_name: data.last_name,
-        full_name: `${data.first_name} ${data.last_name}`,
         phone_number: data.phone_number,
-        employee_id: data.employee_id,
-        department: data.department,
         role: data.role,
         password: data.password,
       };
@@ -504,38 +490,14 @@ const CreateUserModal: React.FC<{ onClose: () => void; onSuccess: () => void; on
             <span className="w-8 h-[2px] bg-primary/20 rounded-full"></span>
             <h3 className="text-sm font-bold text-primary uppercase tracking-wider">Professional Info</h3>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4">
             <Field label="Role" error={errors.role?.message}>
               <select {...register('role')} className="input-field">
                 <option value="">Select role</option>
                 {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>)}
               </select>
             </Field>
-            <Field label="Employee ID (Auto-generated)" error={errors.employee_id?.message}>
-              <input 
-                {...register('employee_id')} 
-                className="input-field bg-slate-50" 
-                placeholder="Auto-generated on creation"
-                disabled
-              />
-              <p className="text-xs text-slate-500 mt-1">Format: ROLE-YYYY-####</p>
-            </Field>
           </div>
-          {showDepartment ? (
-            <Field label={`Department${roleDeptConfig.required ? ' *' : ''}`} error={errors.department?.message}>
-              <select {...register('department')} className="input-field">
-                {roleDeptConfig.depts.length > 1 && <option value="">Select department</option>}
-                {roleDeptConfig.depts.map(d => (
-                  <option key={d.value} value={d.value}>{d.label}</option>
-                ))}
-              </select>
-            </Field>
-          ) : selectedRole ? (
-            <div className="flex items-center gap-2 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-400">
-              <span className="material-icons text-base">info</span>
-              Department not applicable for this role
-            </div>
-          ) : null}
         </section>
 
         {/* Security Section */}
@@ -567,7 +529,7 @@ const CreateUserModal: React.FC<{ onClose: () => void; onSuccess: () => void; on
 // ---------- Edit User Modal ----------
 const EditUserModal: React.FC<{ user: UserData; onClose: () => void; onSuccess: () => void; onError: (msg: string) => void }> = ({ user, onClose, onSuccess, onError }) => {
   const toast = useToast();
-  const [photoPreview, setPhotoPreview] = useState<string>(user.photo_url ? userService.getPhotoUrl(user.photo_url) || '' : '');
+  const [photoPreview, setPhotoPreview] = useState<string>(user.avatar_url ? userService.getPhotoUrl(user.avatar_url) || '' : '');
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoError, setPhotoError] = useState('');
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -580,9 +542,7 @@ const EditUserModal: React.FC<{ user: UserData; onClose: () => void; onSuccess: 
       first_name: user.first_name || '',
       last_name: user.last_name || '',
       phone_number: user.phone_number || '',
-      employee_id: user.employee_id || '',
-      department: user.department || '',
-      role: user.role,
+      role: user.roles?.[0] || '',
       is_active: user.is_active,
     },
   });
@@ -591,18 +551,11 @@ const EditUserModal: React.FC<{ user: UserData; onClose: () => void; onSuccess: 
   const lastName = watch('last_name', user.last_name || '');
   const fullName = `${firstName} ${lastName}`.trim();
 
-  const selectedRole = watch('role', user.role);
+  const selectedRole = watch('role', user.roles?.[0] || '');
   const roleDeptConfig = ROLE_DEPARTMENT_MAP[selectedRole] ?? { depts: ALL_DEPARTMENTS, required: false };
   const showDepartment = roleDeptConfig.depts.length > 0;
 
-  // When role changes, reset department if current dept is not in allowed list
-  React.useEffect(() => {
-    if (roleDeptConfig.depts.length === 1) {
-      setValue('department', roleDeptConfig.depts[0].value);
-    } else if (roleDeptConfig.depts.length === 0) {
-      setValue('department', '');
-    }
-  }, [selectedRole]); // eslint-disable-line
+  // Department is derived from role — no form field needed
   
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -651,10 +604,7 @@ const EditUserModal: React.FC<{ user: UserData; onClose: () => void; onSuccess: 
         email: data.email,
         first_name: data.first_name,
         last_name: data.last_name,
-        full_name: `${data.first_name} ${data.last_name}`,
         phone_number: data.phone_number,
-        employee_id: data.employee_id,
-        department: data.department,
         role: data.role,
         is_active: data.is_active,
       };
@@ -742,36 +692,13 @@ const EditUserModal: React.FC<{ user: UserData; onClose: () => void; onSuccess: 
             <span className="w-8 h-[2px] bg-primary/20 rounded-full"></span>
             <h3 className="text-sm font-bold text-primary uppercase tracking-wider">Professional Info</h3>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4">
             <Field label="Role" error={errors.role?.message}>
               <select {...register('role')} className="input-field">
                 {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>)}
               </select>
             </Field>
-            <Field label="Employee ID">
-              <input 
-                value={user.employee_id || 'Not assigned'} 
-                disabled 
-                className="input-field bg-slate-100 cursor-not-allowed" 
-              />
-              <p className="text-xs text-slate-500 mt-1">Auto-generated, cannot be changed</p>
-            </Field>
           </div>
-          {showDepartment ? (
-            <Field label={`Department${roleDeptConfig.required ? ' *' : ''}`} error={errors.department?.message}>
-              <select {...register('department')} className="input-field">
-                {roleDeptConfig.depts.length > 1 && <option value="">Select department</option>}
-                {roleDeptConfig.depts.map(d => (
-                  <option key={d.value} value={d.value}>{d.label}</option>
-                ))}
-              </select>
-            </Field>
-          ) : selectedRole ? (
-            <div className="flex items-center gap-2 px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-400">
-              <span className="material-icons text-base">info</span>
-              Department not applicable for this role
-            </div>
-          ) : null}
         </section>
 
         {/* Status Toggle */}

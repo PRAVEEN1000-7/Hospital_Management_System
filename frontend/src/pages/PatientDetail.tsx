@@ -18,7 +18,7 @@ const PatientDetail: React.FC = () => {
   useEffect(() => {
     const fetchPatient = async () => {
       try {
-        const data = await patientService.getPatient(Number(id));
+        const data = await patientService.getPatient(id!);
         setPatient(data);
       } catch {
         setFetchError('Patient not found');
@@ -43,7 +43,7 @@ const PatientDetail: React.FC = () => {
     }
     setUploading(true);
     try {
-      const updatedPatient = await patientService.uploadPhoto(Number(id), file);
+      const updatedPatient = await patientService.uploadPhoto(id!, file);
       setPatient(updatedPatient);
       toast.success('Photo uploaded successfully');
     } catch {
@@ -102,7 +102,7 @@ const PatientDetail: React.FC = () => {
           <div className="relative group">
             <div className="w-24 h-24 rounded-full overflow-hidden bg-white/20 border-4 border-white/30 flex items-center justify-center">
               {photoUrl ? (
-                <img src={photoUrl} alt={patient.full_name} className="w-full h-full object-cover" />
+                <img src={photoUrl} alt={`${patient.first_name} ${patient.last_name}`} className="w-full h-full object-cover" />
               ) : (
                 <span className="text-3xl font-bold text-white/80">{initials}</span>
               )}
@@ -128,10 +128,10 @@ const PatientDetail: React.FC = () => {
             )}
           </div>
           <div className="text-center sm:text-left">
-            <h1 className="text-2xl font-bold">{patient.full_name || `${patient.title} ${patient.first_name} ${patient.last_name}`}</h1>
+            <h1 className="text-2xl font-bold">{patient.first_name} {patient.last_name}</h1>
             <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 mt-2">
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-white/20">
-                <span className="material-icons text-xs">tag</span> {patient.prn}
+                <span className="material-icons text-xs">tag</span> {patient.patient_reference_number}
               </span>
               <span className="text-sm text-white/80">{patient.gender}</span>
               <span className="text-sm text-white/80">DOB: {format(new Date(patient.date_of_birth), 'dd MMM yyyy')} ({age} yrs)</span>
@@ -154,7 +154,7 @@ const PatientDetail: React.FC = () => {
             <h2 className="text-sm font-bold text-primary uppercase tracking-wider">Personal Information</h2>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <InfoItem icon="person" label="Title" value={patient.title} />
+            
             <InfoItem icon="badge" label="First Name" value={patient.first_name} />
             <InfoItem icon="badge" label="Last Name" value={patient.last_name} />
             <InfoItem icon="wc" label="Gender" value={patient.gender} />
@@ -170,7 +170,7 @@ const PatientDetail: React.FC = () => {
             <h2 className="text-sm font-bold text-primary uppercase tracking-wider">Contact Information</h2>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <InfoItem icon="phone" label="Mobile" value={`${patient.country_code} ${patient.mobile_number}`} />
+            <InfoItem icon="phone" label="Mobile" value={`${patient.phone_country_code} ${patient.phone_number}`} />
             <InfoItem icon="email" label="Email" value={patient.email || '—'} />
           </div>
         </div>
@@ -186,7 +186,7 @@ const PatientDetail: React.FC = () => {
               <span className="material-symbols-outlined text-lg">location_on</span>
             </div>
             <p className="text-sm text-slate-700 pt-2">
-              {[patient.address_line1, patient.address_line2, patient.city, patient.state, patient.pin_code, patient.country]
+              {[patient.address_line_1, patient.address_line_2, patient.city, patient.state, patient.pin_code, patient.country]
                 .filter(Boolean)
                 .join(', ')}
             </p>
@@ -202,12 +202,8 @@ const PatientDetail: React.FC = () => {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <InfoItem icon="person" label="Name" value={patient.emergency_contact_name} />
-              <InfoItem icon="favorite" label="Relationship" value={patient.emergency_contact_relationship || '—'} />
-              <InfoItem icon="phone" label="Mobile" value={
-                patient.emergency_contact_mobile
-                  ? `${patient.emergency_contact_country_code || ''} ${patient.emergency_contact_mobile}`
-                  : '—'
-              } />
+              <InfoItem icon="favorite" label="Relationship" value={patient.emergency_contact_relation || '—'} />
+              <InfoItem icon="phone" label="Mobile" value={patient.emergency_contact_phone || '—'} />
             </div>
           </div>
         )}
@@ -215,7 +211,7 @@ const PatientDetail: React.FC = () => {
         {/* Metadata */}
         <div className="p-6 bg-slate-50">
           <div className="flex flex-wrap gap-6 text-xs text-slate-400">
-            <span className="flex items-center gap-1"><span className="material-icons text-xs">tag</span> PRN: {patient.prn}</span>
+            <span className="flex items-center gap-1"><span className="material-icons text-xs">tag</span> patient_reference_number: {patient.patient_reference_number}</span>
             <span className="flex items-center gap-1"><span className="material-icons text-xs">schedule</span> Created: {format(new Date(patient.created_at), 'dd MMM yyyy, hh:mm a')}</span>
             <span className="flex items-center gap-1"><span className="material-icons text-xs">update</span> Updated: {format(new Date(patient.updated_at), 'dd MMM yyyy, hh:mm a')}</span>
           </div>

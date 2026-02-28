@@ -9,7 +9,7 @@ export const patientService = {
     return response.data;
   },
 
-  async getPatient(id: number): Promise<Patient> {
+  async getPatient(id: string): Promise<Patient> {
     const response = await api.get<Patient>(`/patients/${id}`);
     return response.data;
   },
@@ -24,7 +24,7 @@ export const patientService = {
     return response.data;
   },
 
-  async updatePatient(id: number, data: PatientCreateData): Promise<Patient> {
+  async updatePatient(id: string, data: PatientCreateData): Promise<Patient> {
     const cleaned: Record<string, unknown> = {};
     Object.entries(data).forEach(([key, value]) => {
       cleaned[key] = value === '' ? undefined : value;
@@ -33,11 +33,11 @@ export const patientService = {
     return response.data;
   },
 
-  async deletePatient(id: number): Promise<void> {
+  async deletePatient(id: string): Promise<void> {
     await api.delete(`/patients/${id}`);
   },
 
-  async uploadPhoto(id: number, file: File): Promise<Patient> {
+  async uploadPhoto(id: string, file: File): Promise<Patient> {
     const formData = new FormData();
     formData.append('photo', file);
     const response = await api.post<Patient>(`/patients/${id}/photo`, formData, {
@@ -46,7 +46,7 @@ export const patientService = {
     return response.data;
   },
 
-  async emailIdCard(id: number, pdfBlob?: Blob): Promise<{ message: string }> {
+  async emailIdCard(id: string, pdfBlob?: Blob): Promise<{ message: string }> {
     if (pdfBlob) {
       const formData = new FormData();
       formData.append('pdf_file', pdfBlob, 'id-card.pdf');

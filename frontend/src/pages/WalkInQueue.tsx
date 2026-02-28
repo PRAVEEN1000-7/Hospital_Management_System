@@ -11,19 +11,19 @@ import type { QueueStatus as QueueStatusType, DoctorOption } from '../types/appo
 const WalkInQueue: React.FC = () => {
   const { user } = useAuth();
   const toast = useToast();
-  const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
-  const isDoctor = user?.role === 'doctor';
+  const isAdmin = user?.roles?.includes('admin') || user?.roles?.includes('super_admin');
+  const isDoctor = user?.roles?.includes('doctor');
 
   const [queueData, setQueueData] = useState<QueueStatusType | null>(null);
   const [loading, setLoading] = useState(true);
   const [doctors, setDoctors] = useState<DoctorOption[]>([]);
-  const [filterDoctor, setFilterDoctor] = useState<number | ''>('');
-  const [assignModalId, setAssignModalId] = useState<number | null>(null);
-  const [assignDoctorId, setAssignDoctorId] = useState<number | ''>('');
+  const [filterDoctor, setFilterDoctor] = useState<string>('');
+  const [assignModalId, setAssignModalId] = useState<string | null>(null);
+  const [assignDoctorId, setAssignDoctorId] = useState<string>('');
 
   const fetchQueue = useCallback(async () => {
     try {
-      const docId = isDoctor ? user?.id : (filterDoctor || undefined);
+      const docId = isDoctor ? String(user?.id) : (filterDoctor || undefined);
       const data = await walkInService.getQueueStatus(docId);
       setQueueData(data);
     } catch {
@@ -47,7 +47,7 @@ const WalkInQueue: React.FC = () => {
   const handleAssign = async () => {
     if (!assignModalId || !assignDoctorId) return;
     try {
-      await walkInService.assignDoctor(assignModalId, Number(assignDoctorId));
+      await walkInService.assignDoctor(assignModalId, assignDoctorId);
       toast.success('Doctor assigned');
       setAssignModalId(null);
       setAssignDoctorId('');
@@ -57,7 +57,7 @@ const WalkInQueue: React.FC = () => {
     }
   };
 
-  const handleCallNext = async (id: number) => {
+  const handleCallNext = async (id: string) => {
     try {
       await appointmentService.updateStatus(id, 'in-progress');
       toast.success('Patient called');
@@ -67,7 +67,7 @@ const WalkInQueue: React.FC = () => {
     }
   };
 
-  const handleComplete = async (id: number) => {
+  const handleComplete = async (id: string) => {
     try {
       await appointmentService.updateStatus(id, 'completed');
       toast.success('Consultation completed');
@@ -93,12 +93,11 @@ const WalkInQueue: React.FC = () => {
 
       {/* Stats */}
       {queueData && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
           {[
-            { label: 'Waiting', value: queueData.total_waiting, icon: 'hourglass_top', color: 'text-amber-500' },
-            { label: 'In Progress', value: queueData.total_in_progress, icon: 'pending', color: 'text-purple-500' },
-            { label: 'Completed Today', value: queueData.total_completed_today, icon: 'task_alt', color: 'text-emerald-500' },
-            { label: 'Avg Wait', value: `${queueData.average_wait_time} min`, icon: 'timer', color: 'text-blue-500' },
+            { label: 'In Queue', value: queueData.total_in_queue, icon: 'hourglass_top', color: 'text-amber-500' },
+            { label: 'Current Position', value: queueData.current_position, icon: 'pending', color: 'text-purple-500' },
+            { label: 'Items', value: queueData.items?.length || 0, icon: 'groups', color: 'text-blue-500' },
           ].map(s => (
             <div key={s.label} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
               <div className="flex items-center justify-between mb-1">
@@ -117,7 +116,7 @@ const WalkInQueue: React.FC = () => {
           <select value={filterDoctor} onChange={(e) => setFilterDoctor(e.target.value as any)}
             className="w-full sm:w-72 px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none">
             <option value="">All Doctors</option>
-            {doctors.map(d => <option key={d.id} value={d.id}>{d.full_name}</option>)}
+            {doctors.map(d => <option key={d.doctor_id} value={d.doctor_id}>{d.name}</option>)}
           </select>
         </div>
       )}
@@ -125,7 +124,7 @@ const WalkInQueue: React.FC = () => {
       {/* Queue Table */}
       {loading ? (
         <div className="text-center py-20 text-slate-400"><span className="material-symbols-outlined animate-spin text-4xl">progress_activity</span></div>
-      ) : !queueData || queueData.queue.length === 0 ? (
+      ) : !queueData || !queueData.items || queueData.items.length === 0 ? (
         <div className="text-center py-20 text-slate-400 bg-white rounded-xl border border-slate-200">
           <span className="material-symbols-outlined text-5xl mb-3 block">groups</span>
           <p className="text-sm font-medium">No patients in queue</p>
@@ -138,42 +137,34 @@ const WalkInQueue: React.FC = () => {
                 <tr className="bg-slate-50 border-b border-slate-200">
                   <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">Queue #</th>
                   <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">Patient</th>
-                  <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">Doctor</th>
-                  <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">Urgency</th>
+                  <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">Position</th>
                   <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">Status</th>
-                  <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">Wait</th>
+                  <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">Called At</th>
                   <th className="px-4 py-3 text-right text-[10px] font-bold text-slate-400 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {queueData.queue.map((appt) => (
-                  <tr key={appt.id} className="border-b border-slate-100 hover:bg-slate-50/50">
+                {queueData.items.map((item) => (
+                  <tr key={item.queue_id} className="border-b border-slate-100 hover:bg-slate-50/50">
                     <td className="px-4 py-3">
-                      <span className="font-bold text-primary">{appt.queue_number}</span>
+                      <span className="font-bold text-primary">{item.queue_number}</span>
                     </td>
-                    <td className="px-4 py-3 font-semibold text-slate-900">{appt.patient_name || '—'}</td>
-                    <td className="px-4 py-3 text-slate-600">{appt.doctor_name || <span className="text-amber-500 italic text-xs">Unassigned</span>}</td>
+                    <td className="px-4 py-3 font-semibold text-slate-900">{item.patient_name || '—'}</td>
                     <td className="px-4 py-3">
-                      <QueueStatusBadge urgency={appt.urgency_level} estimatedWait={appt.estimated_wait_time} />
+                      <QueueStatusBadge position={item.position} />
                     </td>
-                    <td className="px-4 py-3"><AppointmentStatusBadge status={appt.status} /></td>
-                    <td className="px-4 py-3 text-xs text-slate-500">{appt.estimated_wait_time ? `~${appt.estimated_wait_time} min` : '—'}</td>
+                    <td className="px-4 py-3"><AppointmentStatusBadge status={item.status} /></td>
+                    <td className="px-4 py-3 text-xs text-slate-500">{item.called_at || '—'}</td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
-                        {isAdmin && !appt.doctor_id && (
-                          <button onClick={() => { setAssignModalId(appt.id); setAssignDoctorId(''); }}
-                            className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors" title="Assign Doctor">
-                            <span className="material-symbols-outlined text-lg">person_add</span>
-                          </button>
-                        )}
-                        {(isDoctor || isAdmin) && appt.status !== 'in-progress' && (
-                          <button onClick={() => handleCallNext(appt.id)}
+                        {(isDoctor || isAdmin) && item.status !== 'in-progress' && (
+                          <button onClick={() => handleCallNext(item.appointment_id)}
                             className="p-1.5 text-purple-500 hover:bg-purple-50 rounded-lg transition-colors" title="Call Patient">
                             <span className="material-symbols-outlined text-lg">campaign</span>
                           </button>
                         )}
-                        {(isDoctor || isAdmin) && appt.status === 'in-progress' && (
-                          <button onClick={() => handleComplete(appt.id)}
+                        {(isDoctor || isAdmin) && item.status === 'in-progress' && (
+                          <button onClick={() => handleComplete(item.appointment_id)}
                             className="p-1.5 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-colors" title="Mark Complete">
                             <span className="material-symbols-outlined text-lg">task_alt</span>
                           </button>
@@ -193,10 +184,10 @@ const WalkInQueue: React.FC = () => {
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setAssignModalId(null)}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-bold text-slate-900 mb-4">Assign Doctor</h3>
-            <select value={assignDoctorId} onChange={(e) => setAssignDoctorId(Number(e.target.value))}
+            <select value={assignDoctorId} onChange={(e) => setAssignDoctorId(e.target.value)}
               className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none">
               <option value="">Select doctor...</option>
-              {doctors.map(d => <option key={d.id} value={d.id}>{d.full_name}</option>)}
+              {doctors.map(d => <option key={d.doctor_id} value={d.doctor_id}>{d.name}</option>)}
             </select>
             <div className="flex justify-end gap-3 mt-6">
               <button onClick={() => setAssignModalId(null)} className="px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 rounded-lg">Cancel</button>

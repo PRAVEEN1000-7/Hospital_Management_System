@@ -1,7 +1,8 @@
 """
-Schedules router – doctor schedule and blocked-period management.
+Schedules router - doctor schedule and leave management.
 """
 import logging
+import uuid as uuid_mod
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -15,8 +16,8 @@ from ..schemas.appointment import (
     DoctorScheduleUpdate,
     DoctorScheduleResponse,
     DoctorScheduleBulkCreate,
-    BlockedPeriodCreate,
-    BlockedPeriodResponse,
+    DoctorLeaveCreate,
+    DoctorLeaveResponse,
     AvailableSlotsResponse,
 )
 from ..services.schedule_service import (
@@ -24,9 +25,9 @@ from ..services.schedule_service import (
     get_doctor_schedules,
     update_schedule,
     delete_schedule,
-    create_blocked_period,
-    get_blocked_periods,
-    delete_blocked_period,
+    create_doctor_leave,
+    get_doctor_leaves,
+    delete_doctor_leave,
     get_available_slots,
     get_doctors_list,
 )
@@ -35,7 +36,12 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/schedules", tags=["Doctor Schedules"])
 
 
-# ── Doctors list ───────────────────────────────────────────────────────────
+def _has_admin_role(user: User) -> bool:
+    """Check if user has admin or super_admin role."""
+    return any(r in ("admin", "super_admin") for r in user.roles)
+
+
+# -- Doctors list ---------------------------------------------------------------
 
 @router.get("/doctors")
 async def list_doctors(
@@ -44,25 +50,35 @@ async def list_doctors(
 ):
     """List all active doctors (for dropdown selection)."""
     doctors = get_doctors_list(db)
-    return [
-        {"id": d.id, "full_name": d.full_name, "department": d.department, "employee_id": d.employee_id}
-        for d in doctors
-    ]
+    result = []
+    for d in doctors:
+        doctor_name = None
+        if d.user:
+            doctor_name = f"{d.user.first_name} {d.user.last_name}".strip()
+        result.append({
+            "doctor_id": str(d.id),
+            "user_id": str(d.user_id),
+            "name": doctor_name or "Unknown",
+            "specialization": d.specialization,
+            "department_id": str(d.department_id) if d.department_id else None,
+            "consultation_fee": float(d.consultation_fee) if d.consultation_fee else None,
+            "employee_id": d.employee_id,
+        })
+    return result
 
 
-# ── Doctor Schedule CRUD ──────────────────────────────────────────────────
+# -- Doctor Schedule CRUD -------------------------------------------------------
 
 @router.post("/doctors/{doctor_id}", response_model=DoctorScheduleResponse, status_code=status.HTTP_201_CREATED)
 async def create_doctor_schedule(
-    doctor_id: int,
+    doctor_id: str,
     data: DoctorScheduleCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
     """Create a schedule row for a doctor."""
-    # Only the doctor themselves or admin can manage schedules
-    if current_user.id != doctor_id and current_user.role not in ("admin", "super_admin"):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorised")
+    if not _has_admin_role(current_user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     try:
         sched = create_schedule(db, doctor_id, data.model_dump())
         return sched
@@ -74,7 +90,7 @@ async def create_doctor_schedule(
 
 @router.get("/doctors/{doctor_id}", response_model=list[DoctorScheduleResponse])
 async def get_schedules(
-    doctor_id: int,
+    doctor_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
@@ -83,14 +99,14 @@ async def get_schedules(
 
 @router.post("/doctors/{doctor_id}/bulk", response_model=list[DoctorScheduleResponse], status_code=status.HTTP_201_CREATED)
 async def bulk_create_schedules(
-    doctor_id: int,
+    doctor_id: str,
     data: DoctorScheduleBulkCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
     """Create multiple schedule entries at once."""
-    if current_user.id != doctor_id and current_user.role not in ("admin", "super_admin"):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorised")
+    if not _has_admin_role(current_user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
     try:
         results = []
         for s in data.schedules:
@@ -105,7 +121,7 @@ async def bulk_create_schedules(
 
 @router.put("/{schedule_id}", response_model=DoctorScheduleResponse)
 async def update_doctor_schedule(
-    schedule_id: int,
+    schedule_id: str,
     data: DoctorScheduleUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
@@ -118,7 +134,7 @@ async def update_doctor_schedule(
 
 @router.delete("/{schedule_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_doctor_schedule(
-    schedule_id: int,
+    schedule_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
@@ -126,11 +142,11 @@ async def delete_doctor_schedule(
         raise HTTPException(status_code=404, detail="Schedule not found")
 
 
-# ── Available Slots ────────────────────────────────────────────────────────
+# -- Available Slots -----------------------------------------------------------
 
 @router.get("/available-slots", response_model=AvailableSlotsResponse)
 async def available_slots(
-    doctor_id: int = Query(...),
+    doctor_id: str = Query(...),
     date: date = Query(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
@@ -139,32 +155,32 @@ async def available_slots(
     return AvailableSlotsResponse(doctor_id=doctor_id, date=date, slots=slots)
 
 
-# ── Blocked Periods ───────────────────────────────────────────────────────
+# -- Doctor Leaves (replaces Blocked Periods) ----------------------------------
 
-@router.post("/block-period", response_model=BlockedPeriodResponse, status_code=status.HTTP_201_CREATED)
-async def create_block(
-    data: BlockedPeriodCreate,
+@router.post("/doctor-leaves", response_model=DoctorLeaveResponse, status_code=status.HTTP_201_CREATED)
+async def create_leave(
+    data: DoctorLeaveCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    bp = create_blocked_period(db, data.model_dump(), current_user.id)
-    return bp
+    leave = create_doctor_leave(db, data.model_dump(), current_user.id)
+    return leave
 
 
-@router.get("/blocked-periods", response_model=list[BlockedPeriodResponse])
-async def list_blocks(
-    doctor_id: Optional[int] = None,
+@router.get("/doctor-leaves", response_model=list[DoctorLeaveResponse])
+async def list_leaves(
+    doctor_id: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    return get_blocked_periods(db, doctor_id)
+    return get_doctor_leaves(db, doctor_id)
 
 
-@router.delete("/blocked-periods/{period_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def remove_block(
-    period_id: int,
+@router.delete("/doctor-leaves/{leave_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_leave(
+    leave_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    if not delete_blocked_period(db, period_id):
-        raise HTTPException(status_code=404, detail="Blocked period not found")
+    if not delete_doctor_leave(db, leave_id):
+        raise HTTPException(status_code=404, detail="Doctor leave not found")

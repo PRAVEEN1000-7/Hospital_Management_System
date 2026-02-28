@@ -1,0 +1,206 @@
+// =============================================================================
+// HMS — PHASE 0: FOUNDATION (Week 1-2)
+// =============================================================================
+// Tables: hospitals, departments, hospital_settings, tax_configurations,
+//         users, roles, permissions, user_roles, role_permissions,
+//         refresh_tokens, password_emails
+// Focus:  Hospital config, Authentication, RBAC, User Management
+// =============================================================================
+
+// =============================================================================
+// HOSPITAL & CONFIGURATION
+// =============================================================================
+
+hospitals [icon: home, color: blue] {
+  id uuid pk
+  name varchar "Hospital name"
+  code varchar unique "Short code (e.g. HOSP01)"
+  logo_url varchar
+  address_line_1 varchar
+  address_line_2 varchar
+  city varchar
+  state_province varchar
+  postal_code varchar
+  country varchar "ISO 3166-1 alpha-3"
+  phone varchar "E.164 format"
+  email varchar
+  website varchar
+  timezone varchar "IANA timezone"
+  default_currency varchar "ISO 4217"
+  tax_id varchar
+  registration_number varchar
+  is_active boolean
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+departments [icon: layers, color: blue] {
+  id uuid pk
+  hospital_id uuid fk
+  name varchar "Department name"
+  code varchar "Department code"
+  description text
+  head_doctor_id uuid fk "FK → doctors (set in Phase 1)"
+  is_active boolean
+  display_order integer "Sort order"
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+hospital_settings [icon: settings, color: blue] {
+  id uuid pk
+  hospital_id uuid fk "unique, 1:1 with hospitals"
+  hospital_code char(2) "2-char code for 12-digit ID"
+  patient_id_start_number integer "First PRN sequence"
+  patient_id_sequence integer "Current auto-increment"
+  staff_id_start_number integer "First staff ID sequence"
+  staff_id_sequence integer "Current staff auto-increment"
+  invoice_prefix varchar "Default: INV"
+  invoice_sequence integer
+  prescription_prefix varchar "Default: RX"
+  prescription_sequence integer
+  appointment_slot_duration_minutes integer "Default: 15"
+  appointment_buffer_minutes integer "Default: 5"
+  max_daily_appointments_per_doctor integer "Default: 40"
+  allow_walk_in boolean
+  allow_emergency_bypass boolean
+  enable_sms_notifications boolean
+  enable_email_notifications boolean
+  enable_whatsapp_notifications boolean
+  consultation_fee_default decimal
+  follow_up_validity_days integer
+  data_retention_years integer
+  branding_primary_color varchar "Hex color"
+  branding_secondary_color varchar
+  print_header_text text
+  print_footer_text text
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+tax_configurations [icon: percent, color: blue] {
+  id uuid pk
+  hospital_id uuid fk
+  name varchar "Tax name (GST, VAT, Sales Tax)"
+  code varchar "Tax code"
+  rate_percentage decimal "Tax rate %"
+  applies_to varchar "product, service, both"
+  category varchar
+  is_compound boolean "Applied on top of other taxes?"
+  is_active boolean
+  effective_from date
+  effective_to date "NULL = no end date"
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+// =============================================================================
+// USERS & RBAC
+// =============================================================================
+
+users [icon: user, color: green] {
+  id uuid pk
+  hospital_id uuid fk
+  reference_number varchar(12) unique "HMS 12-digit ID"
+  email varchar
+  username varchar
+  password_hash varchar "bcrypt hash"
+  first_name varchar
+  last_name varchar
+  phone varchar "E.164 format"
+  avatar_url varchar "Profile photo for ID card"
+  preferred_locale varchar "Default: en"
+  preferred_timezone varchar
+  is_active boolean
+  is_mfa_enabled boolean
+  mfa_secret varchar "TOTP secret (encrypted)"
+  last_login_at timestamptz
+  password_changed_at timestamptz
+  failed_login_attempts integer "Default: 0"
+  locked_until timestamptz "Account lockout expiry"
+  must_change_password boolean "Force change on first login"
+  created_at timestamptz
+  updated_at timestamptz
+  created_by uuid fk
+  is_deleted boolean
+  deleted_at timestamptz
+}
+
+roles [icon: shield, color: green] {
+  id uuid pk
+  hospital_id uuid fk "NULL = system-wide role"
+  name varchar "e.g. admin, doctor, receptionist"
+  display_name varchar "Human-readable name"
+  description text
+  is_system boolean "Built-in, cannot delete"
+  is_active boolean
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+permissions [icon: key, color: green] {
+  id uuid pk
+  module varchar "e.g. patients, billing, pharmacy"
+  action varchar "create, read, update, delete, export, approve"
+  resource varchar "e.g. patient, invoice, prescription"
+  description varchar "Human-readable"
+}
+
+user_roles [icon: link, color: green] {
+  id uuid pk
+  user_id uuid fk
+  role_id uuid fk
+  assigned_at timestamptz
+  assigned_by uuid fk "FK → users"
+}
+
+role_permissions [icon: link, color: green] {
+  id uuid pk
+  role_id uuid fk
+  permission_id uuid fk
+}
+
+refresh_tokens [icon: lock, color: green] {
+  id uuid pk
+  user_id uuid fk
+  token_hash varchar unique "SHA-256 hash"
+  device_info varchar "User-agent / device"
+  ip_address varchar "IPv4 or IPv6"
+  expires_at timestamptz
+  revoked_at timestamptz "NULL = valid"
+  created_at timestamptz
+}
+
+password_emails [icon: mail, color: emerald] {
+  id uuid pk
+  user_id uuid fk "Target user"
+  sent_by uuid fk "Super Admin who triggered"
+  sent_to_email varchar "Email address"
+  sent_at timestamptz
+  is_temp_password boolean "Was it temporary?"
+  created_at timestamptz
+}
+
+// =============================================================================
+// RELATIONSHIPS
+// =============================================================================
+
+// Hospital → Configuration (1:many)
+hospitals.id < departments.hospital_id
+hospitals.id - hospital_settings.hospital_id
+hospitals.id < tax_configurations.hospital_id
+
+// Hospital → Users (1:many)
+hospitals.id < users.hospital_id
+hospitals.id < roles.hospital_id
+
+// RBAC many-to-many via join tables
+users.id < user_roles.user_id
+roles.id < user_roles.role_id
+roles.id < role_permissions.role_id
+permissions.id < role_permissions.permission_id
+
+// User → Tokens & Password Emails
+users.id < refresh_tokens.user_id
+users.id < password_emails.user_id
+users.id < password_emails.sent_by

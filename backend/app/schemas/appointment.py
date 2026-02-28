@@ -1,43 +1,50 @@
-from pydantic import BaseModel, Field, field_validator
-from typing import Optional
+﻿from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict
+from typing import Optional, Any
 from datetime import date, time, datetime
 from decimal import Decimal
 
 
-# ── Constants ──────────────────────────────────────────────────────────────
-
 VALID_APPOINTMENT_TYPES = ["scheduled", "walk-in"]
-VALID_CONSULTATION_TYPES = ["online", "offline", "both"]
 VALID_APPOINTMENT_STATUSES = [
-    "pending", "confirmed", "in-progress", "completed",
+    "scheduled", "pending", "confirmed", "in-progress", "completed",
     "cancelled", "no-show", "rescheduled",
 ]
-VALID_URGENCY_LEVELS = ["routine", "urgent", "emergency"]
-VALID_WAITLIST_STATUSES = ["waiting", "notified", "confirmed", "expired", "cancelled"]
-VALID_PAYMENT_STATUSES = ["pending", "paid", "partial", "waived"]
-VALID_BLOCK_TYPES = ["leave", "holiday", "emergency", "other"]
+VALID_PRIORITY_LEVELS = ["normal", "urgent", "emergency"]
+VALID_LEAVE_TYPES = ["personal", "sick", "holiday", "conference", "other"]
 WEEKDAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Doctor Schedule Schemas
-# ═══════════════════════════════════════════════════════════════════════════
+# ---- Helper: ORM -> dict with stringified UUIDs ----
+
+def _orm_to_dict(data: Any) -> Any:
+    """Convert SQLAlchemy model instance to dict with all UUIDs as strings."""
+    if hasattr(data, "__table__"):
+        d = {}
+        for col in data.__table__.columns:
+            val = getattr(data, col.name)
+            # Convert UUID fields to str
+            if hasattr(val, "hex"):  # uuid.UUID
+                val = str(val)
+            d[col.name] = val
+        return d
+    if isinstance(data, dict):
+        return data
+    return data
+
+
+# ---- Doctor Schedule Schemas ----
 
 class DoctorScheduleBase(BaseModel):
-    weekday: int = Field(..., ge=0, le=6, description="0=Monday … 6=Sunday")
+    day_of_week: int = Field(..., ge=0, le=6, description="0=Sunday, 1=Monday ... 6=Saturday")
     start_time: time
     end_time: time
-    slot_duration: int = Field(default=30, ge=5, le=120)
-    consultation_type: str = Field(default="both")
-    max_patients_per_slot: int = Field(default=1, ge=1, le=10)
+    slot_duration_minutes: int = Field(default=30, ge=5, le=120)
+    max_patients: int = Field(default=1, ge=1, le=10)
+    break_start_time: Optional[time] = None
+    break_end_time: Optional[time] = None
     is_active: bool = True
-
-    @field_validator("consultation_type")
-    @classmethod
-    def validate_consultation_type(cls, v: str) -> str:
-        if v not in VALID_CONSULTATION_TYPES:
-            raise ValueError(f"Must be one of: {', '.join(VALID_CONSULTATION_TYPES)}")
-        return v
+    effective_from: Optional[date] = None
+    effective_to: Optional[date] = None
 
     @field_validator("end_time")
     @classmethod
@@ -55,94 +62,93 @@ class DoctorScheduleCreate(DoctorScheduleBase):
 class DoctorScheduleUpdate(BaseModel):
     start_time: Optional[time] = None
     end_time: Optional[time] = None
-    slot_duration: Optional[int] = Field(default=None, ge=5, le=120)
-    consultation_type: Optional[str] = None
-    max_patients_per_slot: Optional[int] = Field(default=None, ge=1, le=10)
+    slot_duration_minutes: Optional[int] = Field(default=None, ge=5, le=120)
+    max_patients: Optional[int] = Field(default=None, ge=1, le=10)
+    break_start_time: Optional[time] = None
+    break_end_time: Optional[time] = None
     is_active: Optional[bool] = None
+    effective_from: Optional[date] = None
+    effective_to: Optional[date] = None
 
 
 class DoctorScheduleResponse(BaseModel):
-    id: int
-    doctor_id: int
-    weekday: int
+    id: str
+    doctor_id: str
+    day_of_week: int
     start_time: time
     end_time: time
-    slot_duration: int
-    consultation_type: str
-    max_patients_per_slot: int
+    slot_duration_minutes: int
+    max_patients: int
+    break_start_time: Optional[time] = None
+    break_end_time: Optional[time] = None
     is_active: bool
+    effective_from: Optional[date] = None
+    effective_to: Optional[date] = None
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    @model_validator(mode="before")
+    @classmethod
+    def transform(cls, data: Any) -> Any:
+        return _orm_to_dict(data)
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class DoctorScheduleBulkCreate(BaseModel):
-    """Create multiple schedule entries at once"""
-    doctor_id: int
+    doctor_id: str
     schedules: list[DoctorScheduleCreate]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Blocked Period Schemas
-# ═══════════════════════════════════════════════════════════════════════════
+# ---- Doctor Leave Schemas ----
 
-class BlockedPeriodBase(BaseModel):
-    doctor_id: Optional[int] = None  # None = hospital-wide holiday
-    start_date: date
-    end_date: date
+class DoctorLeaveCreate(BaseModel):
+    doctor_id: str
+    leave_date: date
+    leave_type: str = Field(default="full_day", description="full_day, morning, or afternoon")
     reason: Optional[str] = Field(None, max_length=255)
-    block_type: str = Field(default="leave")
 
-    @field_validator("block_type")
+    @field_validator("leave_type")
     @classmethod
-    def validate_block_type(cls, v: str) -> str:
-        if v not in VALID_BLOCK_TYPES:
-            raise ValueError(f"Must be one of: {', '.join(VALID_BLOCK_TYPES)}")
-        return v
-
-    @field_validator("end_date")
-    @classmethod
-    def validate_end_after_start(cls, v: date, info) -> date:
-        start = info.data.get("start_date")
-        if start and v < start:
-            raise ValueError("end_date must be >= start_date")
+    def validate_leave_type(cls, v: str) -> str:
+        valid = ["full_day", "morning", "afternoon"]
+        if v not in valid:
+            raise ValueError(f"Must be one of: {', '.join(valid)}")
         return v
 
 
-class BlockedPeriodCreate(BlockedPeriodBase):
-    pass
-
-
-class BlockedPeriodResponse(BaseModel):
-    id: int
-    doctor_id: Optional[int]
-    start_date: date
-    end_date: date
-    reason: Optional[str]
-    block_type: str
-    created_by: Optional[int]
+class DoctorLeaveResponse(BaseModel):
+    id: str
+    doctor_id: str
+    leave_date: date
+    leave_type: str
+    reason: Optional[str] = None
+    status: Optional[str] = None
+    approved_by: Optional[str] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    @model_validator(mode="before")
+    @classmethod
+    def transform(cls, data: Any) -> Any:
+        return _orm_to_dict(data)
+
+    model_config = ConfigDict(from_attributes=True)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Appointment Schemas
-# ═══════════════════════════════════════════════════════════════════════════
+# ---- Appointment Schemas ----
 
 class AppointmentCreate(BaseModel):
-    patient_id: int
-    doctor_id: Optional[int] = None
+    patient_id: str
+    doctor_id: Optional[str] = None
+    department_id: Optional[str] = None
     appointment_type: str = Field(default="scheduled")
-    consultation_type: str = Field(default="offline")
+    visit_type: Optional[str] = None
     appointment_date: date
-    appointment_time: Optional[time] = None
-    reason_for_visit: Optional[str] = None
-    urgency_level: Optional[str] = None
-    fees: Optional[Decimal] = None
+    start_time: Optional[time] = None
+    end_time: Optional[time] = None
+    chief_complaint: Optional[str] = None
+    priority: Optional[str] = Field(default="normal")
+    consultation_fee: Optional[Decimal] = None
 
     @field_validator("appointment_type")
     @classmethod
@@ -151,33 +157,24 @@ class AppointmentCreate(BaseModel):
             raise ValueError(f"Must be one of: {', '.join(VALID_APPOINTMENT_TYPES)}")
         return v
 
-    @field_validator("consultation_type")
+    @field_validator("priority")
     @classmethod
-    def validate_consultation_type(cls, v: str) -> str:
-        if v not in ["online", "offline"]:
-            raise ValueError("Must be 'online' or 'offline'")
-        return v
-
-    @field_validator("urgency_level")
-    @classmethod
-    def validate_urgency(cls, v: Optional[str]) -> Optional[str]:
-        if v and v not in VALID_URGENCY_LEVELS:
-            raise ValueError(f"Must be one of: {', '.join(VALID_URGENCY_LEVELS)}")
+    def validate_priority(cls, v: Optional[str]) -> Optional[str]:
+        if v and v not in VALID_PRIORITY_LEVELS:
+            raise ValueError(f"Must be one of: {', '.join(VALID_PRIORITY_LEVELS)}")
         return v
 
 
 class AppointmentUpdate(BaseModel):
-    doctor_id: Optional[int] = None
+    doctor_id: Optional[str] = None
     appointment_date: Optional[date] = None
-    appointment_time: Optional[time] = None
-    consultation_type: Optional[str] = None
-    reason_for_visit: Optional[str] = None
-    doctor_notes: Optional[str] = None
-    diagnosis: Optional[str] = None
-    prescription: Optional[str] = None
-    fees: Optional[Decimal] = None
-    payment_status: Optional[str] = None
-    urgency_level: Optional[str] = None
+    start_time: Optional[time] = None
+    end_time: Optional[time] = None
+    chief_complaint: Optional[str] = None
+    priority: Optional[str] = None
+    consultation_fee: Optional[Decimal] = None
+    visit_type: Optional[str] = None
+    department_id: Optional[str] = None
 
 
 class AppointmentStatusUpdate(BaseModel):
@@ -198,67 +195,68 @@ class AppointmentReschedule(BaseModel):
 
 
 class AppointmentResponse(BaseModel):
-    id: int
+    id: str
     appointment_number: str
-    patient_id: int
-    doctor_id: Optional[int]
+    patient_id: str
+    doctor_id: Optional[str] = None
+    hospital_id: Optional[str] = None
+    department_id: Optional[str] = None
     appointment_type: str
-    consultation_type: str
+    visit_type: Optional[str] = None
     appointment_date: date
-    appointment_time: Optional[time]
-    slot_duration: int
+    start_time: Optional[time] = None
+    end_time: Optional[time] = None
     status: str
-    queue_number: Optional[str]
-    queue_position: Optional[int]
-    estimated_wait_time: Optional[int]
-    walk_in_registered_at: Optional[datetime]
-    urgency_level: Optional[str]
-    zoom_meeting_link: Optional[str]
-    reason_for_visit: Optional[str]
-    doctor_notes: Optional[str]
-    diagnosis: Optional[str]
-    prescription: Optional[str]
-    fees: Optional[Decimal]
-    payment_status: Optional[str]
-    confirmation_sent: bool
-    reminder_sent: bool
-    booked_by: Optional[int]
-    cancelled_by: Optional[int]
-    cancellation_reason: Optional[str]
-    cancelled_at: Optional[datetime]
+    priority: Optional[str] = "normal"
+    chief_complaint: Optional[str] = None
+    consultation_fee: Optional[Decimal] = None
+    cancel_reason: Optional[str] = None
+    reschedule_reason: Optional[str] = None
+    reschedule_count: int = 0
+    created_by: Optional[str] = None
+    check_in_at: Optional[datetime] = None
+    consultation_start_at: Optional[datetime] = None
+    consultation_end_at: Optional[datetime] = None
+    is_deleted: bool = False
     created_at: datetime
     updated_at: datetime
-
-    # Joined fields (populated by router)
     patient_name: Optional[str] = None
     doctor_name: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    @model_validator(mode="before")
+    @classmethod
+    def transform(cls, data: Any) -> Any:
+        return _orm_to_dict(data)
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AppointmentListItem(BaseModel):
-    id: int
+    id: str
     appointment_number: str
-    patient_id: int
-    doctor_id: Optional[int]
+    patient_id: str
+    doctor_id: Optional[str] = None
     appointment_type: str
-    consultation_type: str
+    visit_type: Optional[str] = None
     appointment_date: date
-    appointment_time: Optional[time]
+    start_time: Optional[time] = None
     status: str
-    queue_number: Optional[str]
-    urgency_level: Optional[str]
-    reason_for_visit: Optional[str]
-    fees: Optional[Decimal]
-    payment_status: Optional[str]
+    priority: Optional[str] = "normal"
+    chief_complaint: Optional[str] = None
+    consultation_fee: Optional[Decimal] = None
+    notes: Optional[str] = None
     created_at: datetime
-
     patient_name: Optional[str] = None
     doctor_name: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    @model_validator(mode="before")
+    @classmethod
+    def transform(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            return data
+        return _orm_to_dict(data)
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PaginatedAppointmentResponse(BaseModel):
@@ -269,113 +267,75 @@ class PaginatedAppointmentResponse(BaseModel):
     data: list[AppointmentListItem]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Walk-in Schemas
-# ═══════════════════════════════════════════════════════════════════════════
+# ---- Walk-in Schemas ----
 
 class WalkInRegister(BaseModel):
-    patient_id: int
-    doctor_id: Optional[int] = None
-    reason_for_visit: Optional[str] = None
-    urgency_level: str = Field(default="routine")
-    fees: Optional[Decimal] = None
+    patient_id: str
+    doctor_id: Optional[str] = None
+    chief_complaint: Optional[str] = None
+    priority: str = Field(default="normal")
+    consultation_fee: Optional[Decimal] = None
 
-    @field_validator("urgency_level")
+    @field_validator("priority")
     @classmethod
-    def validate_urgency(cls, v: str) -> str:
-        if v not in VALID_URGENCY_LEVELS:
-            raise ValueError(f"Must be one of: {', '.join(VALID_URGENCY_LEVELS)}")
+    def validate_priority(cls, v: str) -> str:
+        if v not in VALID_PRIORITY_LEVELS:
+            raise ValueError(f"Must be one of: {', '.join(VALID_PRIORITY_LEVELS)}")
         return v
 
 
 class WalkInAssignDoctor(BaseModel):
-    doctor_id: int
+    doctor_id: str
 
 
 class QueueStatus(BaseModel):
     total_waiting: int
     total_in_progress: int
     total_completed_today: int
-    average_wait_time: int  # minutes
+    average_wait_time: int
     queue: list[AppointmentListItem]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Waitlist Schemas
-# ═══════════════════════════════════════════════════════════════════════════
+# ---- Settings Schemas (Hospital-level) ----
 
-class WaitlistCreate(BaseModel):
-    patient_id: int
-    doctor_id: int
-    preferred_date: date
-    preferred_time: Optional[time] = None
-    consultation_type: str = Field(default="offline")
-    reason_for_visit: Optional[str] = None
+class HospitalSettingsResponse(BaseModel):
+    id: str
+    hospital_id: str
+    appointment_slot_duration: int = 30
+    appointment_buffer_minutes: int = 5
+    allow_walk_ins: bool = True
+    max_advance_booking_days: int = 30
+    cancellation_policy_hours: int = 24
+    enable_auto_reminders: bool = True
+    enable_sms_notifications: bool = False
+    enable_email_notifications: bool = True
+    working_hours_start: Optional[time] = None
+    working_hours_end: Optional[time] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
-    @field_validator("consultation_type")
+    @model_validator(mode="before")
     @classmethod
-    def validate_consultation_type(cls, v: str) -> str:
-        if v not in ["online", "offline"]:
-            raise ValueError("Must be 'online' or 'offline'")
-        return v
+    def transform(cls, data: Any) -> Any:
+        return _orm_to_dict(data)
+
+    model_config = ConfigDict(from_attributes=True)
 
 
-class WaitlistResponse(BaseModel):
-    id: int
-    patient_id: int
-    doctor_id: int
-    preferred_date: date
-    preferred_time: Optional[time]
-    consultation_type: str
-    reason_for_visit: Optional[str]
-    status: str
-    priority: int
-    notified_at: Optional[datetime]
-    expires_at: Optional[datetime]
-    joined_at: Optional[datetime]
-    confirmed_at: Optional[datetime]
-    created_at: datetime
-
-    patient_name: Optional[str] = None
-    doctor_name: Optional[str] = None
-
-    class Config:
-        from_attributes = True
+class HospitalSettingsUpdate(BaseModel):
+    appointment_slot_duration: Optional[int] = None
+    appointment_buffer_minutes: Optional[int] = None
+    allow_walk_ins: Optional[bool] = None
+    max_advance_booking_days: Optional[int] = None
+    cancellation_policy_hours: Optional[int] = None
+    enable_auto_reminders: Optional[bool] = None
+    enable_sms_notifications: Optional[bool] = None
+    enable_email_notifications: Optional[bool] = None
+    working_hours_start: Optional[time] = None
+    working_hours_end: Optional[time] = None
 
 
-class PaginatedWaitlistResponse(BaseModel):
-    total: int
-    page: int
-    limit: int
-    total_pages: int
-    data: list[WaitlistResponse]
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# Settings Schemas
-# ═══════════════════════════════════════════════════════════════════════════
-
-class AppointmentSettingResponse(BaseModel):
-    id: int
-    setting_key: str
-    setting_value: str
-    value_type: str
-    description: Optional[str]
-    is_global: bool
-    doctor_id: Optional[int]
-    updated_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
-class AppointmentSettingUpdate(BaseModel):
-    setting_value: str
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# Report / Stats Schemas
-# ═══════════════════════════════════════════════════════════════════════════
+# ---- Stats / Report Schemas ----
 
 class AppointmentStats(BaseModel):
     total_appointments: int = 0
@@ -391,15 +351,36 @@ class AppointmentStats(BaseModel):
     average_wait_time: float = 0.0
 
 
+class EnhancedAppointmentStats(AppointmentStats):
+    """Extended stats with per-doctor and per-department breakdowns."""
+    doctor_stats: list[dict] = []
+    department_stats: list[dict] = []
+    daily_trends: list[dict] = []
+    peak_hours: list[dict] = []
+    cancellation_reasons: list[dict] = []
+
+
+class AppointmentSettingResponse(BaseModel):
+    key: str
+    value: str
+    description: Optional[str] = None
+    updated_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AppointmentSettingUpdate(BaseModel):
+    setting_value: str
+
+
 class TimeSlot(BaseModel):
     time: time
     available: bool
     current_bookings: int
     max_bookings: int
-    consultation_type: str
 
 
 class AvailableSlotsResponse(BaseModel):
-    doctor_id: int
+    doctor_id: str
     date: date
     slots: list[TimeSlot]

@@ -1,0 +1,477 @@
+// =============================================================================
+// HMS — PHASE 3: BILLING & INVENTORY (Week 10-12)
+// =============================================================================
+// Tables: invoices, invoice_items, payments, refunds, credit_notes,
+//         daily_settlements,
+//         insurance_providers, insurance_policies, insurance_claims,
+//         pre_authorizations,
+//         suppliers, purchase_orders, purchase_order_items,
+//         goods_receipt_notes, grn_items, stock_movements,
+//         stock_adjustments, cycle_counts, cycle_count_items
+// Focus:  Billing Flow, Insurance Claims, Full Inventory Lifecycle
+// =============================================================================
+// Dependencies: Phase 0 (hospitals, users), Phase 1 (patients, appointments),
+//               Phase 2 (prescriptions, medicines, pharmacy, optical)
+// =============================================================================
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PHASE 0-2 REFERENCE TABLES (abbreviated)
+// ─────────────────────────────────────────────────────────────────────────────
+
+hospitals [icon: home, color: blue] {
+  id uuid pk
+  name varchar
+  code varchar
+}
+
+users [icon: user, color: blue] {
+  id uuid pk
+  hospital_id uuid fk
+  reference_number varchar(12)
+}
+
+patients [icon: heart, color: blue] {
+  id uuid pk
+  hospital_id uuid fk
+  patient_reference_number varchar(12)
+}
+
+appointments [icon: clock, color: blue] {
+  id uuid pk
+  hospital_id uuid fk
+  patient_id uuid fk
+  doctor_id uuid fk
+}
+
+tax_configurations [icon: percent, color: blue] {
+  id uuid pk
+  hospital_id uuid fk
+  rate_percentage decimal
+}
+
+medicines [icon: package, color: blue] {
+  id uuid pk
+  hospital_id uuid fk
+  name varchar
+}
+
+medicine_batches [icon: box, color: blue] {
+  id uuid pk
+  medicine_id uuid fk
+  batch_number varchar
+  grn_id uuid fk
+}
+
+pharmacy_dispensing [icon: shopping-cart, color: blue] {
+  id uuid pk
+  invoice_id uuid fk
+}
+
+optical_orders [icon: shopping-bag, color: blue] {
+  id uuid pk
+  invoice_id uuid fk
+}
+
+optical_repairs [icon: tool, color: blue] {
+  id uuid pk
+  invoice_id uuid fk
+}
+
+optical_products [icon: eye, color: blue] {
+  id uuid pk
+  hospital_id uuid fk
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BILLING & PAYMENTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+invoices [icon: file-text, color: yellow] {
+  id uuid pk
+  hospital_id uuid fk
+  invoice_number varchar unique "INV-2026-00001"
+  patient_id uuid fk
+  appointment_id uuid fk
+  invoice_type varchar "opd, pharmacy, optical, combined"
+  invoice_date date
+  due_date date
+  subtotal decimal "Before tax & discount"
+  discount_amount decimal
+  discount_reason varchar
+  tax_amount decimal
+  total_amount decimal "Final total"
+  paid_amount decimal "Amount received"
+  balance_amount decimal "total - paid"
+  currency varchar "ISO 4217"
+  status varchar "draft, issued, partially_paid, paid, overdue, cancelled, void"
+  notes text
+  insurance_claim_id uuid fk
+  created_at timestamptz
+  updated_at timestamptz
+  created_by uuid fk
+  is_deleted boolean
+}
+
+invoice_items [icon: list, color: yellow] {
+  id uuid pk
+  invoice_id uuid fk
+  item_type varchar "consultation, medicine, optical_product, service, procedure"
+  reference_id uuid "FK to source table"
+  description varchar
+  quantity decimal
+  unit_price decimal
+  discount_percent decimal
+  discount_amount decimal
+  tax_config_id uuid fk
+  tax_rate decimal
+  tax_amount decimal
+  total_price decimal
+  display_order integer
+  created_at timestamptz
+}
+
+payments [icon: credit-card, color: yellow] {
+  id uuid pk
+  hospital_id uuid fk
+  payment_number varchar unique "PAY-2026-00001"
+  invoice_id uuid fk
+  patient_id uuid fk
+  amount decimal
+  currency varchar
+  payment_mode varchar "cash, card, upi, wallet, bank_transfer, online, cheque, insurance"
+  payment_reference varchar "Transaction ID / cheque number"
+  payment_date date
+  payment_time time
+  status varchar "pending, completed, failed, reversed"
+  received_by uuid fk "FK → users"
+  notes text
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+refunds [icon: rotate-ccw, color: yellow] {
+  id uuid pk
+  hospital_id uuid fk
+  refund_number varchar unique "REF-2026-00001"
+  invoice_id uuid fk
+  payment_id uuid fk
+  patient_id uuid fk
+  amount decimal
+  reason_code varchar "service_not_provided, billing_error, patient_request, duplicate, other"
+  reason_detail text
+  status varchar "pending, approved, processed, rejected"
+  refund_mode varchar
+  refund_reference varchar "Transaction ID"
+  requested_by uuid fk "FK → users"
+  approved_by uuid fk "FK → users"
+  processed_at timestamptz
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+credit_notes [icon: file-minus, color: yellow] {
+  id uuid pk
+  hospital_id uuid fk
+  credit_note_number varchar unique "CN-2026-00001"
+  invoice_id uuid fk
+  patient_id uuid fk
+  amount decimal
+  reason text
+  status varchar "issued, applied, expired"
+  applied_to_invoice_id uuid fk "FK → invoices"
+  valid_until date
+  created_by uuid fk
+  created_at timestamptz
+}
+
+daily_settlements [icon: check-square, color: yellow] {
+  id uuid pk
+  hospital_id uuid fk
+  settlement_date date
+  cashier_user_id uuid fk "FK → users"
+  total_cash decimal
+  total_card decimal
+  total_online decimal
+  total_other decimal
+  total_collected decimal
+  total_refunds decimal
+  net_amount decimal
+  status varchar "open, closed, verified"
+  verified_by uuid fk "FK → users"
+  notes text
+  created_at timestamptz
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INSURANCE
+// ─────────────────────────────────────────────────────────────────────────────
+
+insurance_providers [icon: shield, color: pink] {
+  id uuid pk
+  hospital_id uuid fk
+  name varchar
+  code varchar
+  contact_person varchar
+  phone varchar
+  email varchar
+  address text
+  is_active boolean
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+insurance_policies [icon: file-text, color: pink] {
+  id uuid pk
+  patient_id uuid fk
+  provider_id uuid fk
+  policy_number varchar
+  group_number varchar
+  member_id varchar
+  plan_name varchar
+  coverage_type varchar "individual, family"
+  coverage_amount decimal "Max coverage"
+  deductible decimal
+  copay_percent decimal "Patient copay %"
+  effective_from date
+  effective_to date
+  is_primary boolean "Primary or secondary"
+  status varchar "active, expired, suspended"
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+insurance_claims [icon: clipboard, color: pink] {
+  id uuid pk
+  hospital_id uuid fk
+  claim_number varchar unique "CLM-2026-00001"
+  patient_id uuid fk
+  policy_id uuid fk
+  invoice_id uuid fk
+  claim_amount decimal
+  approved_amount decimal
+  status varchar "draft, submitted, under_review, approved, partially_approved, rejected, settled"
+  submission_date date
+  response_date date
+  rejection_reason text
+  notes text
+  documents jsonb "Array of document URLs"
+  created_by uuid fk
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+pre_authorizations [icon: check, color: pink] {
+  id uuid pk
+  patient_id uuid fk
+  policy_id uuid fk
+  service_description text
+  estimated_cost decimal
+  status varchar "requested, approved, denied, expired"
+  auth_number varchar "Insurance auth number"
+  approved_amount decimal
+  valid_from date
+  valid_to date
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INVENTORY
+// ─────────────────────────────────────────────────────────────────────────────
+
+suppliers [icon: truck, color: brown] {
+  id uuid pk
+  hospital_id uuid fk
+  name varchar
+  code varchar
+  contact_person varchar
+  phone varchar
+  email varchar
+  address text
+  tax_id varchar "Supplier tax registration"
+  payment_terms varchar "e.g. Net 30"
+  lead_time_days integer
+  rating decimal "1.0-5.0"
+  is_active boolean
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+purchase_orders [icon: clipboard, color: brown] {
+  id uuid pk
+  hospital_id uuid fk
+  po_number varchar unique "PO-2026-00001"
+  supplier_id uuid fk
+  order_date date
+  expected_delivery_date date
+  status varchar "draft, submitted, partially_received, received, cancelled"
+  total_amount decimal
+  tax_amount decimal
+  notes text
+  approved_by uuid fk "FK → users"
+  created_by uuid fk "FK → users"
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+purchase_order_items [icon: list, color: brown] {
+  id uuid pk
+  purchase_order_id uuid fk
+  item_type varchar "medicine, optical_product"
+  item_id uuid "FK → medicines or optical_products"
+  quantity_ordered integer
+  quantity_received integer
+  unit_price decimal
+  total_price decimal
+  created_at timestamptz
+}
+
+goods_receipt_notes [icon: inbox, color: brown] {
+  id uuid pk
+  hospital_id uuid fk
+  grn_number varchar unique "GRN-2026-00001"
+  purchase_order_id uuid fk
+  supplier_id uuid fk
+  receipt_date date
+  invoice_number varchar "Supplier invoice number"
+  invoice_date date
+  total_amount decimal
+  status varchar "pending, verified, accepted, rejected"
+  verified_by uuid fk "FK → users"
+  notes text
+  created_by uuid fk "FK → users"
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+grn_items [icon: list, color: brown] {
+  id uuid pk
+  grn_id uuid fk
+  item_type varchar "medicine, optical_product"
+  item_id uuid "FK → medicines or optical_products"
+  batch_number varchar "For medicines"
+  manufactured_date date
+  expiry_date date
+  quantity_received integer
+  quantity_accepted integer "After QC"
+  quantity_rejected integer
+  unit_price decimal
+  total_price decimal
+  rejection_reason varchar
+  created_at timestamptz
+}
+
+stock_movements [icon: trending-up, color: brown] {
+  id uuid pk
+  hospital_id uuid fk
+  item_type varchar "medicine, optical_product"
+  item_id uuid "FK → source item"
+  batch_id uuid "For medicines"
+  movement_type varchar "stock_in, sale, dispensing, return, adjustment, transfer, expired, damaged"
+  reference_type varchar "grn, dispensing, return, adjustment, transfer"
+  reference_id uuid "FK to source record"
+  quantity integer "Positive = in, Negative = out"
+  balance_after integer "Running balance"
+  unit_cost decimal
+  notes varchar
+  performed_by uuid fk "FK → users"
+  created_at timestamptz
+}
+
+stock_adjustments [icon: sliders, color: brown] {
+  id uuid pk
+  hospital_id uuid fk
+  adjustment_number varchar unique
+  item_type varchar
+  item_id uuid
+  batch_id uuid
+  adjustment_type varchar "increase, decrease, write_off"
+  quantity integer
+  reason varchar
+  approved_by uuid fk "FK → users"
+  status varchar "pending, approved, rejected"
+  created_by uuid fk "FK → users"
+  created_at timestamptz
+}
+
+cycle_counts [icon: refresh-cw, color: brown] {
+  id uuid pk
+  hospital_id uuid fk
+  count_number varchar unique
+  count_date date
+  status varchar "in_progress, completed, verified"
+  notes text
+  counted_by uuid fk "FK → users"
+  verified_by uuid fk "FK → users"
+  created_at timestamptz
+}
+
+cycle_count_items [icon: list, color: brown] {
+  id uuid pk
+  cycle_count_id uuid fk
+  item_type varchar
+  item_id uuid
+  batch_id uuid
+  system_quantity integer "Expected"
+  counted_quantity integer "Actual"
+  variance integer "counted - system"
+  variance_reason varchar
+  created_at timestamptz
+}
+
+// =============================================================================
+// RELATIONSHIPS
+// =============================================================================
+
+// ── Billing ──
+hospitals.id < invoices.hospital_id
+patients.id < invoices.patient_id
+appointments.id < invoices.appointment_id
+insurance_claims.id < invoices.insurance_claim_id
+invoices.id < invoice_items.invoice_id
+tax_configurations.id < invoice_items.tax_config_id
+hospitals.id < payments.hospital_id
+invoices.id < payments.invoice_id
+patients.id < payments.patient_id
+users.id < payments.received_by
+hospitals.id < refunds.hospital_id
+invoices.id < refunds.invoice_id
+payments.id < refunds.payment_id
+patients.id < refunds.patient_id
+hospitals.id < credit_notes.hospital_id
+invoices.id < credit_notes.invoice_id
+patients.id < credit_notes.patient_id
+invoices.id < credit_notes.applied_to_invoice_id
+hospitals.id < daily_settlements.hospital_id
+users.id < daily_settlements.cashier_user_id
+
+// ── Cross-module invoice links ──
+invoices.id < pharmacy_dispensing.invoice_id
+invoices.id < optical_orders.invoice_id
+invoices.id < optical_repairs.invoice_id
+
+// ── Insurance ──
+hospitals.id < insurance_providers.hospital_id
+patients.id < insurance_policies.patient_id
+insurance_providers.id < insurance_policies.provider_id
+hospitals.id < insurance_claims.hospital_id
+patients.id < insurance_claims.patient_id
+insurance_policies.id < insurance_claims.policy_id
+invoices.id < insurance_claims.invoice_id
+patients.id < pre_authorizations.patient_id
+insurance_policies.id < pre_authorizations.policy_id
+
+// ── Inventory ──
+hospitals.id < suppliers.hospital_id
+hospitals.id < purchase_orders.hospital_id
+suppliers.id < purchase_orders.supplier_id
+purchase_orders.id < purchase_order_items.purchase_order_id
+hospitals.id < goods_receipt_notes.hospital_id
+purchase_orders.id < goods_receipt_notes.purchase_order_id
+suppliers.id < goods_receipt_notes.supplier_id
+goods_receipt_notes.id < grn_items.grn_id
+goods_receipt_notes.id < medicine_batches.grn_id
+hospitals.id < stock_movements.hospital_id
+hospitals.id < stock_adjustments.hospital_id
+hospitals.id < cycle_counts.hospital_id
+cycle_counts.id < cycle_count_items.cycle_count_id

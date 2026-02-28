@@ -24,9 +24,8 @@ const Register: React.FC = () => {
   } = useForm<PatientFormData>({
     resolver: zodResolver(patientSchema),
     defaultValues: {
-      country_code: '+91',
+      phone_country_code: '+91',
       country: 'India',
-      emergency_contact_country_code: '+91',
     },
   });
 
@@ -45,7 +44,7 @@ const Register: React.FC = () => {
   useEffect(() => {
     if (watchCountry) {
       const phoneCode = getPhoneCode(watchCountry);
-      setValue('country_code', phoneCode);
+      setValue('phone_country_code', phoneCode);
     }
   }, [watchCountry, setValue]);
 
@@ -55,7 +54,7 @@ const Register: React.FC = () => {
   const onSubmit = async (data: PatientFormData) => {
     try {
       const result = await patientService.createPatient(data);
-      toast.success(`Patient registered successfully! PRN: ${result.prn}`);
+      toast.success(`Patient registered successfully! patient_reference_number: ${result.patient_reference_number}`);
       setTimeout(() => navigate('/patients'), 2000);
     } catch (err: unknown) {
       const axiosError = err as { response?: { data?: { detail?: string | Array<{ msg: string }> } } };
@@ -155,19 +154,19 @@ const Register: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className={labelClass}>Country Code <span className="text-red-500">*</span></label>
-              <select {...register('country_code')} className={selectClass}>
+              <select {...register('phone_country_code')} className={selectClass}>
                 {COUNTRIES.map(c => (
                   <option key={c.code} value={c.phoneCode}>
                     {c.phoneCode} ({c.name})
                   </option>
                 ))}
               </select>
-              {errors.country_code && <p className={errorClass}>{errors.country_code.message}</p>}
+              {errors.phone_country_code && <p className={errorClass}>{errors.phone_country_code.message}</p>}
             </div>
             <div>
               <label className={labelClass}>Mobile Number <span className="text-red-500">*</span></label>
-              <input {...register('mobile_number')} type="tel" className={inputClass} placeholder="9876543210" />
-              {errors.mobile_number && <p className={errorClass}>{errors.mobile_number.message}</p>}
+              <input {...register('phone_number')} type="tel" className={inputClass} placeholder="9876543210" />
+              {errors.phone_number && <p className={errorClass}>{errors.phone_number.message}</p>}
             </div>
           </div>
         </div>
@@ -181,12 +180,12 @@ const Register: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div className="md:col-span-2 lg:col-span-3">
               <label className={labelClass}>Address Line 1 <span className="text-red-500">*</span></label>
-              <input {...register('address_line1')} className={inputClass} placeholder="Street address" />
-              {errors.address_line1 && <p className={errorClass}>{errors.address_line1.message}</p>}
+              <input {...register('address_line_1')} className={inputClass} placeholder="Street address" />
+              {errors.address_line_1 && <p className={errorClass}>{errors.address_line_1.message}</p>}
             </div>
             <div className="md:col-span-2 lg:col-span-3">
               <label className={labelClass}>Address Line 2</label>
-              <input {...register('address_line2')} className={inputClass} placeholder="Apartment, suite, etc." />
+              <input {...register('address_line_2')} className={inputClass} placeholder="Apartment, suite, etc." />
             </div>
             <div>
               <label className={labelClass}>State / Province</label>
@@ -230,24 +229,15 @@ const Register: React.FC = () => {
             </div>
             <div>
               <label className={labelClass}>Relationship</label>
-              <select {...register('emergency_contact_relationship')} className={selectClass}>
+              <select {...register('emergency_contact_relation')} className={selectClass}>
                 <option value="">Select relationship</option>
                 {RELATIONSHIP_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
               </select>
             </div>
             <div>
-              <label className={labelClass}>Country Code</label>
-              <select {...register('emergency_contact_country_code')} className={selectClass}>
-                <option value="">Select code</option>
-                {COUNTRIES.map(c => (
-                  <option key={c.code} value={c.phoneCode}>{c.phoneCode} ({c.name})</option>
-                ))}
-              </select>
-            </div>
-            <div>
               <label className={labelClass}>Contact Mobile</label>
-              <input {...register('emergency_contact_mobile')} type="tel" className={inputClass} placeholder="Emergency contact number" />
-              {errors.emergency_contact_mobile && <p className={errorClass}>{errors.emergency_contact_mobile.message}</p>}
+              <input {...register('emergency_contact_phone')} type="tel" className={inputClass} placeholder="Emergency contact number" />
+              {errors.emergency_contact_phone && <p className={errorClass}>{errors.emergency_contact_phone.message}</p>}
             </div>
           </div>
         </div>

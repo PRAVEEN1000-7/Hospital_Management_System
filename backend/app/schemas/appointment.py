@@ -390,3 +390,84 @@ class AvailableSlotsResponse(BaseModel):
     doctor_id: str
     date: date
     slots: list[TimeSlot]
+
+
+# ---- Waitlist Schemas ----
+
+VALID_WAITLIST_STATUSES = ["waiting", "notified", "booked", "cancelled", "expired"]
+
+
+class WaitlistCreate(BaseModel):
+    patient_id: str
+    doctor_id: str
+    department_id: Optional[str] = None
+    preferred_date: date
+    preferred_time: Optional[time] = None
+    appointment_type: str = Field(default="walk-in")
+    priority: str = Field(default="normal")
+    chief_complaint: Optional[str] = None
+    reason: Optional[str] = None
+
+    @field_validator("priority")
+    @classmethod
+    def validate_priority(cls, v: str) -> str:
+        if v not in VALID_PRIORITY_LEVELS:
+            raise ValueError(f"Must be one of: {', '.join(VALID_PRIORITY_LEVELS)}")
+        return v
+
+
+class WaitlistUpdate(BaseModel):
+    status: Optional[str] = None
+    preferred_date: Optional[date] = None
+    preferred_time: Optional[time] = None
+    priority: Optional[str] = None
+    reason: Optional[str] = None
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, v: Optional[str]) -> Optional[str]:
+        if v and v not in VALID_WAITLIST_STATUSES:
+            raise ValueError(f"Must be one of: {', '.join(VALID_WAITLIST_STATUSES)}")
+        return v
+
+
+class WaitlistResponse(BaseModel):
+    id: str
+    hospital_id: str
+    patient_id: str
+    doctor_id: str
+    department_id: Optional[str] = None
+    preferred_date: date
+    preferred_time: Optional[time] = None
+    appointment_type: str
+    priority: str
+    chief_complaint: Optional[str] = None
+    reason: Optional[str] = None
+    status: str
+    position: int
+    booked_appointment_id: Optional[str] = None
+    notified_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    created_by: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    # Enriched fields (set by router)
+    patient_name: Optional[str] = None
+    patient_reference_number: Optional[str] = None
+    patient_phone: Optional[str] = None
+    doctor_name: Optional[str] = None
+    doctor_specialization: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def transform(cls, data: Any) -> Any:
+        return _orm_to_dict(data)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PaginatedWaitlistResponse(BaseModel):
+    total: int
+    page: int
+    limit: int
+    data: list[WaitlistResponse]

@@ -1,5 +1,5 @@
 import api from './api';
-import type { Appointment, WalkInRegister, QueueStatus } from '../types/appointment';
+import type { Appointment, WalkInRegister, QueueStatus, WalkInResponse } from '../types/appointment';
 
 export interface UnassignedWalkIn {
   appointment_id: string;
@@ -17,8 +17,8 @@ export interface UnassignedWalkIn {
 }
 
 const walkInService = {
-  async register(data: WalkInRegister): Promise<Appointment> {
-    const res = await api.post<Appointment>('/walk-ins', data);
+  async register(data: WalkInRegister): Promise<WalkInResponse> {
+    const res = await api.post<WalkInResponse>('/walk-ins', data);
     return res.data;
   },
 

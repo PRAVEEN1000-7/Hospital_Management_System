@@ -39,6 +39,7 @@ const WalkInRegistration: React.FC = () => {
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState<{ queueNumber: string; estimatedWait: number } | null>(null);
+  const [waitlisted, setWaitlisted] = useState<{ message: string; position: number; patientName: string; doctorName: string } | null>(null);
 
   // Patient search
   const [patientSearch, setPatientSearch] = useState('');
@@ -86,17 +87,30 @@ const WalkInRegistration: React.FC = () => {
     }
     setSubmitting(true);
     try {
-      const appt = await walkInService.register({
+      const result = await walkInService.register({
         patient_id: selectedPatient.id,
         doctor_id: selectedDoctorId,
         chief_complaint: reason || undefined,
         priority: urgencyLevel,
       });
-      setSuccess({
-        queueNumber: appt.id?.slice(-6)?.toUpperCase() || '—',
-        estimatedWait: 0,
-      });
-      toast.success('Walk-in registered successfully');
+
+      // Check if patient was auto-waitlisted (all slots full)
+      if (result.waitlisted) {
+        const wEntry = result.waitlist_entry;
+        setWaitlisted({
+          message: result.message || 'Patient added to waitlist',
+          position: wEntry?.position || 0,
+          patientName: wEntry?.patient_name || selectedPatient.full_name || '—',
+          doctorName: wEntry?.doctor_name || '—',
+        });
+        toast.success('Patient added to waitlist — all doctor slots are full');
+      } else {
+        setSuccess({
+          queueNumber: result.id?.slice(-6)?.toUpperCase() || '—',
+          estimatedWait: 0,
+        });
+        toast.success('Walk-in registered successfully');
+      }
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || 'Registration failed');
     }
@@ -110,6 +124,7 @@ const WalkInRegistration: React.FC = () => {
     setUrgencyLevel('normal');
     setReason('');
     setSuccess(null);
+    setWaitlisted(null);
   };
 
   // ── Reg modal handlers ────────────────────────────────────────────────
@@ -170,6 +185,56 @@ const WalkInRegistration: React.FC = () => {
     setRegErrors({});
     setRegSection('personal');
   };
+
+  if (waitlisted) {
+    return (
+      <div className="max-w-5xl mx-auto">
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+              <span className="material-symbols-outlined text-primary">directions_walk</span>
+              Walk-in Registration
+            </h1>
+            <p className="text-slate-400 text-xs mt-0.5">Register a walk-in patient and add to the queue</p>
+          </div>
+        </div>
+        <div className="max-w-md mx-auto bg-white rounded-2xl border border-amber-200 shadow-sm p-8 text-center">
+          <div className="w-14 h-14 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-3">
+            <span className="material-symbols-outlined text-amber-600 text-3xl">playlist_add</span>
+          </div>
+          <h2 className="text-lg font-bold text-slate-900 mb-1">Added to Waitlist</h2>
+          <p className="text-xs text-slate-500 mb-4">All doctor slots are full for today. Patient has been waitlisted.</p>
+          <div className="bg-amber-50 rounded-xl p-5 mb-5 w-full text-left space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-slate-500 font-medium">Patient</span>
+              <span className="text-sm font-semibold text-slate-800">{waitlisted.patientName}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-slate-500 font-medium">Doctor</span>
+              <span className="text-sm font-semibold text-slate-800">{waitlisted.doctorName}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-slate-500 font-medium">Position</span>
+              <span className="text-2xl font-black text-amber-600">#{waitlisted.position}</span>
+            </div>
+          </div>
+          <p className="text-[11px] text-slate-400 mb-5">{waitlisted.message}</p>
+          <div className="flex gap-3 justify-center">
+            <button onClick={handleReset}
+              className="px-5 py-2.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors shadow-sm flex items-center gap-2">
+              <span className="material-symbols-outlined text-base">add</span>
+              Register Another
+            </button>
+            <button onClick={() => window.location.href = '/appointments/waitlist'}
+              className="px-5 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-lg text-sm font-semibold hover:bg-slate-50 transition-colors flex items-center gap-2">
+              <span className="material-symbols-outlined text-base">playlist_add</span>
+              View Waitlist
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (success) {
     return (

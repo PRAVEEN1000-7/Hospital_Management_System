@@ -1,6 +1,20 @@
-# Setup Guide
+# HMS — Setup Guide
 
-Step-by-step instructions to get the Hospital Management System running on your local machine.
+Complete step-by-step instructions to get the Hospital Management System running on a fresh machine.
+
+---
+
+## Table of Contents
+
+1. [Prerequisites](#prerequisites)
+2. [Clone the Repository](#step-1--clone-the-repository)
+3. [Create the Database](#step-2--create-the-database)
+4. [Set Up the Backend](#step-3--set-up-the-backend)
+5. [Set Up the Frontend](#step-4--set-up-the-frontend)
+6. [First-Time Login](#step-5--first-time-login)
+7. [Default Credentials](#default-credentials)
+8. [Useful Commands](#useful-commands)
+9. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -8,44 +22,63 @@ Step-by-step instructions to get the Hospital Management System running on your 
 
 Install the following before proceeding:
 
-| Software | Version | Download |
-|----------|---------|----------|
-| PostgreSQL | 15 or higher | https://www.postgresql.org/download/windows/ |
-| Python | 3.11 or higher | https://www.python.org/downloads/ |
-| Node.js | 20 or higher | https://nodejs.org/ |
+| Software   | Version    | Download                                                 |
+| ---------- | ---------- | -------------------------------------------------------- |
+| PostgreSQL | 15 or higher | https://www.postgresql.org/download/                   |
+| Python     | 3.11 or higher | https://www.python.org/downloads/                    |
+| Node.js    | 20 or higher   | https://nodejs.org/                                  |
+| Git        | Any recent     | https://git-scm.com/downloads                        |
 
-> **Tip:** During PostgreSQL installation, note down the superuser password you set. You'll need it to create the application database.
-
-> **Tip:** During Python installation, check **"Add Python to PATH"**.
+> **Windows tips:**
+>
+> - During PostgreSQL install, note the **superuser password** you set.
+> - During Python install, check **"Add Python to PATH"**.
+> - After PostgreSQL install, add its `bin` folder to PATH (e.g. `C:\Program Files\PostgreSQL\15\bin`) so `psql` works from any terminal.
 
 ---
 
-## Step 1 — Create the Database
+## Step 1 — Clone the Repository
 
-Open **pgAdmin** or a terminal with `psql` access.
+```powershell
+git clone <REPO_URL>
+cd HMS/v1
+```
 
-### Using psql
+Replace `<REPO_URL>` with your GitHub repository URL.
+
+---
+
+## Step 2 — Create the Database
+
+### 2.1 — Create User & Database
+
+Open **PowerShell** (or any terminal) and connect to PostgreSQL as the superuser:
+
+```powershell
+psql -U postgres
+```
+
+Run the following SQL commands:
 
 ```sql
--- Connect as the PostgreSQL superuser
-psql -U postgres
-
--- Create the application user
-CREATE USER hospital_admin WITH PASSWORD '<YOUR_DB_PASSWORD>';
+-- Create the application database user
+CREATE USER hms_user WITH PASSWORD 'HMS@2026';
 
 -- Create the database
-CREATE DATABASE hospital_management;
+CREATE DATABASE hms_db;
 
--- Grant permissions
-GRANT ALL PRIVILEGES ON DATABASE hospital_management TO hospital_admin;
+-- Grant full access
+GRANT ALL PRIVILEGES ON DATABASE hms_db TO hms_user;
 
 -- Connect to the new database
-\c hospital_management
+\c hms_db
 
 -- Grant schema permissions
-GRANT ALL ON SCHEMA public TO hospital_admin;
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO hospital_admin;
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO hospital_admin;
+GRANT ALL ON SCHEMA public TO hms_user;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO hms_user;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO hms_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO hms_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO hms_user;
 
 -- Enable required extension
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
@@ -54,61 +87,61 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 \q
 ```
 
-### Run Schema & Migration Scripts
+### 2.2 — Run Schema & Seed Scripts
 
-Open **PowerShell** and run:
+The SQL files are located in the `database_hole/` folder. Run them **in order**:
 
 ```powershell
-cd d:\HMS\v1\database
-
 # Set password for non-interactive execution
-$env:PGPASSWORD = "<YOUR_DB_PASSWORD>"
+$env:PGPASSWORD = "HMS@2026"
 
-# Schema scripts (run in order)
-psql -h localhost -U hospital_admin -d hospital_management -f scripts\001_create_schema.sql
-psql -h localhost -U hospital_admin -d hospital_management -f scripts\002_migrate_patient_fields.sql
-psql -h localhost -U hospital_admin -d hospital_management -f scripts\003_global_and_user_mgmt.sql
-psql -h localhost -U hospital_admin -d hospital_management -f scripts\004_create_hospital_details.sql
+# 1. Create all tables (62 tables)
+psql -h localhost -U hms_user -d hms_db -f database_hole/01_schema.sql
 
-# Migration scripts (run in order)
-psql -h localhost -U hospital_admin -d hospital_management -f migrations\001_add_user_profile_fields.sql
-psql -h localhost -U hospital_admin -d hospital_management -f migrations\002_add_employee_sequences_and_indexes.sql
-psql -h localhost -U hospital_admin -d hospital_management -f migrations\003_backfill_employee_ids.sql
-psql -h localhost -U hospital_admin -d hospital_management -f migrations\004_migrate_to_new_id_format.sql
+# 2. Seed initial data (hospitals, departments, roles, users, sample patients)
+psql -h localhost -U hms_user -d hms_db -f database_hole/02_seed_data.sql
 
-# Seed initial data
-psql -h localhost -U hospital_admin -d hospital_management -f seeds\seed_data.sql
+# 3. Create waitlist table
+psql -h localhost -U hms_user -d hms_db -f database_hole/04_waitlist_table.sql
 ```
 
-> **Note:** If `psql` is not recognized, add PostgreSQL's `bin` directory to your system PATH (e.g., `C:\Program Files\PostgreSQL\15\bin`).
+> **Note:** `03_queries.sql` contains reference queries only — it does NOT need to be executed.
+
+### 2.3 — Verify the Setup
+
+```powershell
+psql -h localhost -U hms_user -d hms_db -c "SELECT COUNT(*) AS table_count FROM information_schema.tables WHERE table_schema = 'public';"
+```
+
+You should see **63 tables** (62 from schema + 1 waitlist).
 
 ---
 
-## Step 2 — Set Up the Backend
+## Step 3 — Set Up the Backend
 
-### Create a Virtual Environment
+### 3.1 — Create a Virtual Environment
 
 ```powershell
-cd d:\HMS\v1\backend
+cd backend
 python -m venv venv
 .\venv\Scripts\Activate.ps1
 ```
 
-### Install Dependencies
+> On macOS/Linux: `source venv/bin/activate`
+
+### 3.2 — Install Dependencies
 
 ```powershell
 pip install -r requirements.txt
 ```
 
-### Configure Environment Variables
-
-Copy the example file and update it:
+### 3.3 — Configure Environment Variables
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-Edit `backend\.env` with your actual values:
+Open `backend\.env` and update these values:
 
 ```env
 # Application
@@ -116,32 +149,44 @@ APP_NAME=Hospital Management System
 APP_VERSION=1.0.0
 DEBUG=True
 
-# Database
-DATABASE_URL=postgresql://hospital_admin:<YOUR_DB_PASSWORD>@localhost:5432/hospital_management
+# Database  (@ in password must be encoded as %40)
+DATABASE_URL=postgresql://hms_user:HMS%402026@localhost:5432/hms_db
 DB_ECHO=False
 
-# Security
-SECRET_KEY=<generate-with-python-secrets-token_hex-32>
+# Security  (generate a unique key — see command below)
+SECRET_KEY=<YOUR_SECRET_KEY>
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=60
 REFRESH_TOKEN_EXPIRE_DAYS=7
 
-# CORS
-CORS_ORIGINS=["http://localhost:3000", "http://localhost:5173"]
+# CORS  (must include the frontend URL)
+CORS_ORIGINS=["http://localhost:3000"]
 
 # Pagination
 DEFAULT_PAGE_SIZE=10
 MAX_PAGE_SIZE=100
 
-# PRN (Patient Reference Number)
+# PRN  (Patient Reference Number prefix)
 PRN_PREFIX=HMS
 ```
 
-> **Important:** The `@` in the database password must be URL-encoded as `%40` in `DATABASE_URL`.
+Generate a strong secret key:
 
-> Generate a strong secret key: `python -c "import secrets; print(secrets.token_hex(32))"`
+```powershell
+python -c "import secrets; print(secrets.token_hex(32))"
+```
 
-### Start the Backend Server
+> **Important:** The `@` in `HMS@2026` must be URL-encoded as `%40` in the `DATABASE_URL`.
+
+### 3.4 — Create the Uploads Folder
+
+The backend stores patient photos and other uploads here:
+
+```powershell
+mkdir uploads
+```
+
+### 3.5 — Start the Backend Server
 
 ```powershell
 uvicorn app.main:app --reload --port 8000
@@ -151,33 +196,38 @@ You should see:
 
 ```
 INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
-INFO:     Started reloader process
 ```
 
-Verify by opening http://localhost:8000/docs in your browser.
+**Verify:** Open http://localhost:8000/docs — you should see the Swagger API documentation.
 
 ---
 
-## Step 3 — Set Up the Frontend
+## Step 4 — Set Up the Frontend
 
-Open a **new PowerShell window** (keep the backend running).
+Open a **new terminal** (keep the backend running).
 
-### Install Dependencies
+### 4.1 — Install Dependencies
 
 ```powershell
-cd d:\HMS\v1\frontend
+cd frontend
 npm install
 ```
 
-### Configure Environment Variables
+### 4.2 — Configure Environment Variables
 
-Create `frontend\.env`:
-
-```env
-VITE_API_BASE_URL=http://localhost:8000/api/v1
+```powershell
+Copy-Item .env.example .env
 ```
 
-### Start the Development Server
+The default `.env` should contain:
+
+```env
+VITE_API_BASE_URL=http://localhost:8000
+```
+
+> This is the backend server URL. The frontend proxies `/api` requests to it via Vite's dev server.
+
+### 4.3 — Start the Development Server
 
 ```powershell
 npm run dev
@@ -188,103 +238,223 @@ You should see:
 ```
   VITE v7.x.x  ready in xxx ms
 
-  ➜  Local:   http://localhost:5173/
+  ➜  Local:   http://localhost:3000/
 ```
+
+**Open** http://localhost:3000 in your browser.
 
 ---
 
-## Step 4 — First-Time Login
+## Step 5 — First-Time Login
 
-1. Open http://localhost:5173 in your browser
-2. Log in with the default superadmin credentials:
-   - **Username:** `superadmin`
-   - **Password:** (set during database seed — see `seeds/seed_data.sql`)
-3. Complete the **Hospital Setup** wizard (3 steps)
-4. **Change the default password** from the profile settings
+1. Open http://localhost:3000
+2. Log in with the **superadmin** credentials (see below)
+3. Complete the **Hospital Setup** wizard (hospital name, address, settings)
+4. You can now create users, register patients, manage appointments, etc.
 
 ---
 
-## Troubleshooting
+## Default Credentials
 
-### Port Already in Use
+All seed users share the same password. Change them after first login.
 
-```powershell
-# Find process using port 8000
-netstat -ano | findstr :8000
+| Role          | Username        | Password     |
+| ------------- | --------------- | ------------ |
+| Super Admin   | `superadmin`    | `Admin@123`  |
+| Admin         | `admin1`        | `Admin@123`  |
+| Doctor        | `drsmith`       | `Admin@123`  |
+| Doctor        | `drjohnson`     | `Admin@123`  |
+| Nurse         | `nursewilson`   | `Admin@123`  |
+| Receptionist  | `reception1`    | `Admin@123`  |
+| Pharmacist    | `pharma1`       | `Admin@123`  |
+| Cashier       | `cashier1`      | `Admin@123`  |
 
-# Kill it (replace PID with actual number)
-taskkill /PID <PID> /F
-```
-
-### psql Not Recognized
-
-Add PostgreSQL to your PATH:
-
-```powershell
-$env:PATH += ";C:\Program Files\PostgreSQL\15\bin"
-```
-
-Or add it permanently via **System Properties → Environment Variables → Path**.
-
-### Module Not Found (Backend)
-
-Make sure the virtual environment is activated:
-
-```powershell
-cd d:\HMS\v1\backend
-.\venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
-
-### CORS Errors in Browser
-
-Ensure `CORS_ORIGINS` in `backend\.env` includes your frontend URL:
-
-```env
-CORS_ORIGINS=["http://localhost:5173"]
-```
-
-### Database Connection Refused
-
-1. Check PostgreSQL service is running:
-   ```powershell
-   Get-Service postgresql*
-   ```
-2. If stopped, start it:
-   ```powershell
-   Start-Service postgresql-x64-15
-   ```
-3. Verify connection:
-   ```powershell
-   psql -h localhost -U hospital_admin -d hospital_management -c "SELECT 1;"
-   ```
-
-### Permission Denied on Database Objects
-
-If you see "permission denied for table/sequence" errors:
-
-```sql
-\c hospital_management
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO hospital_admin;
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO hospital_admin;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO hospital_admin;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO hospital_admin;
-```
+> **Security:** All non-superadmin users have `must_change_password = true` and will be prompted to change their password on first login.
 
 ---
 
 ## Useful Commands
 
-| Command | Purpose |
-|---------|---------|
-| `uvicorn app.main:app --reload` | Start backend with hot reload |
-| `npm run dev` | Start frontend dev server |
-| `npm run build` | Build frontend for production |
-| `npm run preview` | Preview production build |
-| `pip freeze` | List installed Python packages |
+### Backend
+
+| Command                                 | Purpose                        |
+| --------------------------------------- | ------------------------------ |
+| `.\venv\Scripts\Activate.ps1`           | Activate virtual environment   |
+| `uvicorn app.main:app --reload`         | Start backend (hot reload)     |
+| `pip install -r requirements.txt`       | Install/update dependencies    |
+| `pip freeze`                            | List installed packages        |
+
+### Frontend
+
+| Command           | Purpose                        |
+| ----------------- | ------------------------------ |
+| `npm run dev`     | Start dev server (port 3000)   |
+| `npm run build`   | Build for production           |
+| `npm run preview` | Preview production build       |
+| `npm run lint`    | Run ESLint                     |
+
+### Database
+
+| Command                                                                  | Purpose              |
+| ------------------------------------------------------------------------ | -------------------- |
+| `psql -h localhost -U hms_user -d hms_db`                                | Connect to database  |
+| `psql -U hms_user -d hms_db -c "\dt"`                                    | List all tables      |
+| `psql -U hms_user -d hms_db -c "SELECT count(*) FROM users;"`            | Count users          |
+
+---
+
+## Troubleshooting
+
+### `psql` is not recognized
+
+Add PostgreSQL's `bin` directory to your system PATH:
+
+```powershell
+# Temporary (current session only)
+$env:PATH += ";C:\Program Files\PostgreSQL\15\bin"
+
+# Permanent: System Properties → Environment Variables → Path → Add the above path
+```
+
+### Port already in use
+
+```powershell
+# Find process using port 8000
+netstat -ano | findstr :8000
+
+# Kill it (replace <PID> with actual number)
+taskkill /PID <PID> /F
+```
+
+### Database connection refused
+
+1. Check PostgreSQL is running:
+   ```powershell
+   Get-Service postgresql*
+   ```
+2. Start it if stopped:
+   ```powershell
+   Start-Service postgresql-x64-15
+   ```
+
+### CORS errors in browser
+
+Ensure `CORS_ORIGINS` in `backend\.env` includes your frontend URL:
+
+```env
+CORS_ORIGINS=["http://localhost:3000"]
+```
+
+### Module not found (backend)
+
+Make sure the virtual environment is activated:
+
+```powershell
+cd backend
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+### Permission denied on database objects
+
+```sql
+\c hms_db
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO hms_user;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO hms_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO hms_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO hms_user;
+```
+
+### Frontend build errors after `git pull`
+
+```powershell
+cd frontend
+rm -r node_modules
+npm install
+```
+
+---
+
+## Project Structure
+
+```
+HMS/v1/
+├── backend/                  # FastAPI backend
+│   ├── app/
+│   │   ├── config.py         # Settings (reads .env)
+│   │   ├── main.py           # App entry point
+│   │   ├── models/           # SQLAlchemy models
+│   │   ├── routers/          # API route handlers
+│   │   ├── schemas/          # Pydantic request/response schemas
+│   │   └── services/         # Business logic
+│   ├── uploads/              # User-uploaded files (gitignored)
+│   ├── requirements.txt      # Python dependencies
+│   └── .env.example          # Environment template
+│
+├── frontend/                 # React + TypeScript frontend
+│   ├── src/
+│   │   ├── components/       # Reusable UI components
+│   │   ├── pages/            # Page-level components
+│   │   ├── services/         # API service modules
+│   │   ├── types/            # TypeScript type definitions
+│   │   ├── contexts/         # React contexts (Auth, Toast)
+│   │   ├── App.tsx           # Router & route definitions
+│   │   └── main.tsx          # Entry point
+│   ├── package.json          # Node dependencies
+│   ├── vite.config.ts        # Vite config (port, proxy)
+│   ├── tailwind.config.js    # Tailwind CSS theme
+│   └── .env.example          # Environment template
+│
+├── database_hole/            # Database SQL scripts
+│   ├── 01_schema.sql         # Full schema (62 tables)
+│   ├── 02_seed_data.sql      # Seed data (users, departments, etc.)
+│   ├── 03_queries.sql        # Reference queries (DO NOT run)
+│   ├── 04_waitlist_table.sql # Waitlist table migration
+│   └── README.md             # Database-specific setup notes
+│
+├── project-plan/             # Architecture & design docs
+├── .gitignore                # Git ignore rules
+├── README.md                 # Project overview
+└── SETUP_GUIDE.md            # ← You are here
+```
+
+---
+
+## Quick Start (TL;DR)
+
+For those who just want the commands:
+
+```powershell
+# 1. Database
+psql -U postgres -c "CREATE USER hms_user WITH PASSWORD 'HMS@2026';"
+psql -U postgres -c "CREATE DATABASE hms_db OWNER hms_user;"
+psql -U hms_user -d hms_db -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;"
+$env:PGPASSWORD = "HMS@2026"
+psql -h localhost -U hms_user -d hms_db -f database_hole/01_schema.sql
+psql -h localhost -U hms_user -d hms_db -f database_hole/02_seed_data.sql
+psql -h localhost -U hms_user -d hms_db -f database_hole/04_waitlist_table.sql
+
+# 2. Backend  (Terminal 1)
+cd backend
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+Copy-Item .env.example .env
+# → Edit .env: set DATABASE_URL and SECRET_KEY
+mkdir uploads
+uvicorn app.main:app --reload --port 8000
+
+# 3. Frontend  (Terminal 2)
+cd frontend
+npm install
+Copy-Item .env.example .env
+npm run dev
+
+# 4. Open http://localhost:3000  →  Login: superadmin / Admin@123
+```
 
 ---
 
 <p align="center">
-  <sub>For the main project documentation, see <a href="README.md">README.md</a></sub>
+  <sub>For project overview and architecture, see <a href="README.md">README.md</a></sub>
 </p>

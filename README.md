@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/status-Production_Ready-brightgreen?style=flat-square" alt="Status"/>
+  <img src="https://img.shields.io/badge/status-Active_Development-brightgreen?style=flat-square" alt="Status"/>
   <img src="https://img.shields.io/badge/version-1.0.0-blue?style=flat-square" alt="Version"/>
   <img src="https://img.shields.io/badge/license-Proprietary-red?style=flat-square" alt="License"/>
 </p>
@@ -27,7 +27,7 @@
 
 ## Overview
 
-HMS is an enterprise-grade hospital management system that streamlines staff management, patient records, and facility operations through an intuitive web interface. Built with a React + TypeScript frontend and a FastAPI + PostgreSQL backend, it delivers fast performance with robust security out of the box.
+HMS is an enterprise-grade hospital management system that streamlines appointment booking, doctor schedules, walk-in queues, patient records, and facility operations through an intuitive web interface. Built with a React + TypeScript frontend and a FastAPI + PostgreSQL backend, it delivers fast performance with robust role-based security out of the box.
 
 ---
 
@@ -35,13 +35,20 @@ HMS is an enterprise-grade hospital management system that streamlines staff man
 
 | Module | Highlights |
 |--------|------------|
-| **Dashboard** | Real-time stats for patients, active staff, and facility overview |
-| **Staff Directory** | Search, filter, bulk actions, ID card generation (PDF), CSV export |
-| **User Management** | Role-based access (8 roles), auto-generated employee IDs, photo upload |
-| **Patient Records** | Registration, demographics, medical history, auto-generated PRNs |
-| **Hospital Setup** | 3-step configuration wizard with card display view and edit mode |
-| **Authentication** | JWT access + refresh tokens, bcrypt password hashing, session management |
-| **Audit Trail** | Tracks all CRUD operations with user, IP, timestamp, and change details |
+| **Dashboard** | Real-time stats — patients, appointments, doctor workloads, department overview |
+| **Appointment Booking** | Schedule appointments by doctor, department, date & time slot with auto-validation |
+| **Walk-In Registration** | Quick walk-in registration with auto-queue token, auto-waitlist when slots are full |
+| **Walk-In Queue** | Live queue management — call, start consultation, complete, skip patients |
+| **Waitlist** | Automatic waitlisting when doctor slots are full, promote to appointment on cancellation |
+| **Doctor Schedule** | Create/manage doctor time slots, bulk slot creation, leave management with day-cards |
+| **Appointment Reports** | Statistics and enhanced reports with filters by date, doctor, department |
+| **Patient Records** | Full registration, demographics, medical history, auto-generated 12-digit PRNs |
+| **Patient ID Card** | Printable & downloadable PDF ID cards with QR code, email delivery |
+| **Staff Directory** | Search, filter, bulk actions, employee ID card generation, CSV export |
+| **User Management** | Role-based access (8 roles), auto-generated employee IDs, photo upload, password reset |
+| **Hospital Setup** | 3-step configuration wizard — hospital info, settings, branding |
+| **Profile** | User profile management, password change, personal info update |
+| **Authentication** | JWT access + refresh tokens, bcrypt hashing, session management, forced password change |
 
 ---
 
@@ -53,34 +60,38 @@ HMS is an enterprise-grade hospital management system that streamlines staff man
 |-----------|---------|
 | React 19 + TypeScript 5.9 | UI framework with type safety |
 | Vite 7.3 | Build tool with HMR |
-| Tailwind CSS 3.4 | Utility-first styling |
+| Tailwind CSS 3.4 | Utility-first styling (Custom theme: Manrope font, `#137fec` primary) |
 | React Hook Form + Zod | Form handling and validation |
-| Axios | HTTP client |
-| Lucide React | Icon library |
+| React Router DOM 6 | Client-side routing with role guards |
+| Axios | HTTP client with interceptors |
 | html2canvas + jsPDF | ID card PDF generation |
-| date-fns | Date formatting |
+| qrcode.react | QR code rendering on ID cards |
+| date-fns | Date formatting and calculations |
+| Lucide React | Icon library |
 
 ### Backend
 
 | Technology | Purpose |
 |-----------|---------|
-| FastAPI 0.109 | High-performance API framework |
-| SQLAlchemy 2.0 | ORM with async support |
+| FastAPI 0.109 | High-performance async API framework |
+| SQLAlchemy 2.0 | ORM with relationship mapping |
 | Pydantic 2.5 | Request/response validation |
 | python-jose | JWT token management |
-| bcrypt | Password hashing |
-| psycopg2 | PostgreSQL driver |
+| bcrypt 4.0+ | Password hashing |
+| psycopg2-binary | PostgreSQL driver |
 | Jinja2 | Email templates |
+| python-dotenv | Environment configuration |
 
 ### Database
 
 | Feature | Details |
 |---------|---------|
-| PostgreSQL 15+ | Primary database |
-| pgcrypto | Cryptographic functions |
-| Role-based sequences | Auto-incrementing employee IDs per role |
-| Optimized indexes | On role, department, status, employee_id |
-| JSONB audit logs | Detailed change tracking |
+| PostgreSQL 15+ | Primary database — 63 tables |
+| pgcrypto | UUID generation via `gen_random_uuid()` |
+| 12-digit PRN system | `[HH][G][YY][M][C][#####]` patient reference numbers |
+| Soft deletes | `is_deleted` + `deleted_at` on all core tables |
+| Audit columns | `created_by`, `updated_by`, timestamps on every table |
+| Optimized indexes | On role, department, status, doctor+date, queue position |
 
 ---
 
@@ -88,32 +99,77 @@ HMS is an enterprise-grade hospital management system that streamlines staff man
 
 ```
 HMS/v1/
-├── backend/
-│   └── app/
-│       ├── routers/          # auth, users, patients, hospital
-│       ├── models/           # SQLAlchemy models
-│       ├── schemas/          # Pydantic validation schemas
-│       ├── services/         # Business logic layer
-│       ├── utils/            # Security, validators
-│       ├── config.py         # Environment configuration
-│       └── main.py           # FastAPI app entry point
+├── backend/                        # FastAPI backend
+│   ├── app/
+│   │   ├── main.py                 # App entry point, router registration
+│   │   ├── config.py               # Environment settings
+│   │   ├── database.py             # SQLAlchemy engine & session
+│   │   ├── models/                 # 6 SQLAlchemy model files
+│   │   │   ├── user.py             # Users, roles
+│   │   │   ├── patient.py          # Patients
+│   │   │   ├── appointment.py      # Appointments, queue, waitlist
+│   │   │   ├── department.py       # Departments
+│   │   │   ├── hospital_settings.py
+│   │   │   └── patient_id_sequence.py
+│   │   ├── routers/                # 13 API routers
+│   │   │   ├── auth.py             # Login, logout, refresh, me
+│   │   │   ├── users.py            # CRUD, photo upload, password reset
+│   │   │   ├── patients.py         # Registration, records
+│   │   │   ├── appointments.py     # Booking, reschedule, status
+│   │   │   ├── walk_ins.py         # Walk-in registration & queue
+│   │   │   ├── waitlist.py         # Waitlist CRUD, promote to booking
+│   │   │   ├── schedules.py        # Doctor schedules, slots, leaves
+│   │   │   ├── doctors.py          # Doctor profiles
+│   │   │   ├── departments.py      # Department CRUD
+│   │   │   ├── hospital.py         # Hospital config & logo
+│   │   │   ├── hospital_settings.py
+│   │   │   ├── appointment_settings.py
+│   │   │   └── appointment_reports.py
+│   │   ├── schemas/                # Pydantic request/response schemas
+│   │   └── services/               # 12 business logic services
+│   ├── uploads/                    # User-uploaded files (gitignored)
+│   ├── requirements.txt
+│   └── .env.example
 │
-├── frontend/
+├── frontend/                       # React + TypeScript frontend
 │   └── src/
-│       ├── pages/            # 10 page components
-│       ├── components/       # Layout, ProtectedRoute, Toast
-│       ├── services/         # API client modules
-│       ├── contexts/         # Auth & Toast providers
-│       ├── types/            # TypeScript interfaces
-│       └── utils/            # Constants, validation helpers
+│       ├── pages/                  # 20 page components
+│       │   ├── Dashboard.tsx
+│       │   ├── Login.tsx
+│       │   ├── Profile.tsx
+│       │   ├── Register.tsx        # Create new user
+│       │   ├── StaffDirectory.tsx
+│       │   ├── UserManagement.tsx
+│       │   ├── HospitalSetup.tsx
+│       │   ├── PatientList.tsx
+│       │   ├── PatientDetail.tsx
+│       │   ├── PatientIdCard.tsx
+│       │   ├── AppointmentBooking.tsx
+│       │   ├── AppointmentManagement.tsx
+│       │   ├── WalkInRegistration.tsx
+│       │   ├── WalkInQueue.tsx
+│       │   ├── WaitlistManagement.tsx
+│       │   ├── DoctorSchedule.tsx
+│       │   ├── DoctorAppointments.tsx
+│       │   ├── MyAppointments.tsx
+│       │   ├── AppointmentReports.tsx
+│       │   └── AppointmentSettings.tsx
+│       ├── components/             # Layout, ProtectedRoute, Toast
+│       ├── services/               # 11 API service modules
+│       ├── contexts/               # Auth & Toast providers
+│       └── types/                  # 5 TypeScript type definition files
 │
-├── database/
-│   ├── scripts/              # 4 schema creation scripts
-│   ├── migrations/           # 4 migration scripts
-│   └── seeds/                # Initial demo data
+├── database_hole/                  # Database SQL scripts
+│   ├── 01_schema.sql              # Full schema (62 tables)
+│   ├── 02_seed_data.sql           # Seed data
+│   ├── 03_queries.sql             # Reference queries (do not run)
+│   ├── 04_waitlist_table.sql      # Waitlist migration
+│   └── README.md                  # Database setup notes
 │
-├── SETUP_GUIDE.md            # Development setup instructions
-└── README.md                 # This file
+├── project-plan/                   # Architecture & design docs
+├── .gitignore
+├── SETUP_GUIDE.md                  # Full setup instructions
+└── README.md                       # This file
 ```
 
 ---
@@ -122,55 +178,55 @@ HMS/v1/
 
 ### Prerequisites
 
-| Software | Version |
-|----------|---------|
-| PostgreSQL | 15+ |
-| Python | 3.11+ |
-| Node.js | 20+ |
+| Software   | Version  |
+|------------|----------|
+| PostgreSQL | 15+      |
+| Python     | 3.11+    |
+| Node.js    | 20+      |
 
 ### 1. Database
 
 ```sql
--- Run as PostgreSQL superuser
-CREATE USER hospital_admin WITH PASSWORD '<YOUR_DB_PASSWORD>';
-CREATE DATABASE hospital_management;
-GRANT ALL PRIVILEGES ON DATABASE hospital_management TO hospital_admin;
-\c hospital_management
-GRANT ALL ON SCHEMA public TO hospital_admin;
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO hospital_admin;
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO hospital_admin;
+psql -U postgres
+CREATE USER hms_user WITH PASSWORD 'HMS@2026';
+CREATE DATABASE hms_db;
+GRANT ALL PRIVILEGES ON DATABASE hms_db TO hms_user;
+\c hms_db
+GRANT ALL ON SCHEMA public TO hms_user;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO hms_user;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO hms_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO hms_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO hms_user;
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+\q
 ```
 
 ```powershell
-cd d:\HMS\v1\database
-$env:PGPASSWORD = "<YOUR_DB_PASSWORD>"
-psql -h localhost -U hospital_admin -d hospital_management -f scripts\001_create_schema.sql
-psql -h localhost -U hospital_admin -d hospital_management -f scripts\002_migrate_patient_fields.sql
-psql -h localhost -U hospital_admin -d hospital_management -f scripts\003_global_and_user_mgmt.sql
-psql -h localhost -U hospital_admin -d hospital_management -f scripts\004_create_hospital_details.sql
-psql -h localhost -U hospital_admin -d hospital_management -f migrations\001_add_user_profile_fields.sql
-psql -h localhost -U hospital_admin -d hospital_management -f migrations\002_add_employee_sequences_and_indexes.sql
-psql -h localhost -U hospital_admin -d hospital_management -f migrations\003_backfill_employee_ids.sql
-psql -h localhost -U hospital_admin -d hospital_management -f seeds\seed_data.sql
-psql -h localhost -U hospital_admin -d hospital_management -f migrations\004_migrate_to_new_id_format.sql
+$env:PGPASSWORD = "HMS@2026"
+psql -h localhost -U hms_user -d hms_db -f database_hole/01_schema.sql
+psql -h localhost -U hms_user -d hms_db -f database_hole/02_seed_data.sql
+psql -h localhost -U hms_user -d hms_db -f database_hole/04_waitlist_table.sql
 ```
 
 ### 2. Backend
 
 ```powershell
-cd d:\HMS\v1\backend
+cd backend
 python -m venv venv
 .\venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+Copy-Item .env.example .env
+# → Edit .env: set DATABASE_URL and generate SECRET_KEY
+mkdir uploads
 uvicorn app.main:app --reload --port 8000
 ```
 
 ### 3. Frontend
 
 ```powershell
-cd d:\HMS\v1\frontend
+cd frontend
 npm install
+Copy-Item .env.example .env
 npm run dev
 ```
 
@@ -178,13 +234,13 @@ npm run dev
 
 | URL | Description |
 |-----|-------------|
-| http://localhost:5173 | Application |
+| http://localhost:3000 | Application |
 | http://localhost:8000/docs | Swagger API Docs |
 | http://localhost:8000/redoc | ReDoc API Docs |
 
-**Default Login:** `superadmin` / (password set during seed — change immediately after first login)
+**Default Login:** `superadmin` / `Admin@123`
 
-> Detailed setup instructions: [SETUP_GUIDE.md](SETUP_GUIDE.md)
+> For detailed step-by-step instructions, see **[SETUP_GUIDE.md](SETUP_GUIDE.md)**
 
 ---
 
@@ -192,24 +248,97 @@ npm run dev
 
 All endpoints are prefixed with `/api/v1`.
 
+### Authentication
+
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `POST` | `/auth/login` | User login |
 | `POST` | `/auth/refresh` | Refresh access token |
 | `POST` | `/auth/logout` | User logout |
-| `GET` | `/users` | List users (paginated) |
+| `GET` | `/auth/me` | Current user profile |
+
+### Users & Staff
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/users` | List users (paginated, filterable) |
 | `POST` | `/users` | Create user |
+| `GET` | `/users/:id` | Get user details |
 | `PUT` | `/users/:id` | Update user |
-| `DELETE` | `/users/:id` | Delete user |
-| `POST` | `/users/:id/photo` | Upload user photo |
+| `DELETE` | `/users/:id` | Soft-delete user |
+| `POST` | `/users/:id/upload-photo` | Upload user photo |
+| `POST` | `/users/:id/reset-password` | Reset user password |
+
+### Patients
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
 | `GET` | `/patients` | List patients (paginated) |
-| `POST` | `/patients` | Register patient |
+| `POST` | `/patients` | Register new patient |
 | `GET` | `/patients/:id` | Get patient details |
 | `PUT` | `/patients/:id` | Update patient |
-| `DELETE` | `/patients/:id` | Delete patient |
+| `DELETE` | `/patients/:id` | Soft-delete patient |
+
+### Appointments
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/appointments` | List appointments |
+| `POST` | `/appointments` | Book appointment |
+| `GET` | `/appointments/:id` | Get appointment details |
+| `PUT` | `/appointments/:id` | Update appointment |
+| `DELETE` | `/appointments/:id` | Cancel appointment |
+| `POST` | `/appointments/:id/reschedule` | Reschedule appointment |
+| `PATCH` | `/appointments/:id/status` | Update status |
+| `GET` | `/appointments/:id/pdf` | Download appointment PDF |
+
+### Walk-In Queue
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/walk-ins` | Register walk-in (auto-waitlists if full) |
+| `GET` | `/walk-ins/queue` | Get live queue |
+| `PATCH` | `/walk-ins/queue/:id/call` | Call next patient |
+| `PATCH` | `/walk-ins/queue/:id/start-consultation` | Start consultation |
+| `PATCH` | `/walk-ins/queue/:id/complete` | Complete consultation |
+| `PATCH` | `/walk-ins/queue/:id/skip` | Skip patient |
+| `GET` | `/walk-ins/queue/doctor-loads` | Doctor workload stats |
+
+### Waitlist
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/waitlist` | List waitlist entries |
+| `POST` | `/waitlist` | Add to waitlist |
+| `GET` | `/waitlist/:id` | Get waitlist entry |
+| `PATCH` | `/waitlist/:id` | Update entry |
+| `DELETE` | `/waitlist/:id` | Cancel entry |
+| `POST` | `/waitlist/:id/book` | Promote to appointment |
+| `GET` | `/waitlist/stats/summary` | Waitlist statistics |
+
+### Schedules & Doctors
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/schedules/doctors` | List doctor schedules |
+| `POST` | `/schedules/doctors/:id` | Create schedule slot |
+| `POST` | `/schedules/doctors/:id/bulk` | Bulk create slots |
+| `GET` | `/schedules/available-slots` | Get available slots for booking |
+| `POST` | `/schedules/doctor-leaves` | Create leave |
+| `GET` | `/schedules/doctor-leaves` | List leaves |
+| `GET` | `/doctors` | List doctors |
+| `GET` | `/doctors/me` | Current doctor profile |
+
+### Hospital & Settings
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
 | `GET` | `/hospital/full` | Get hospital configuration |
 | `POST` | `/hospital` | Create hospital config |
 | `PUT` | `/hospital` | Update hospital config |
+| `GET` | `/departments` | List departments |
+| `GET` | `/appointment-settings` | Get appointment settings |
+| `GET` | `/reports/appointments/statistics` | Appointment statistics |
 
 ---
 
@@ -217,14 +346,14 @@ All endpoints are prefixed with `/api/v1`.
 
 | Role | Access Level |
 |------|-------------|
-| Super Admin | Full system access, user management, hospital setup |
-| Admin | Staff management, patient records |
-| Doctor | Patient records, medical notes |
-| Nurse | Patient records, vitals |
-| Pharmacist | Prescription access |
-| Receptionist | Patient registration, appointments |
-| Cashier | Billing operations |
-| Inventory Manager | Stock management |
+| **Super Admin** | Full system access — user management, hospital setup, all modules |
+| **Admin** | Staff management, patient records, appointments, reports |
+| **Doctor** | Own schedule, appointments, walk-in queue, patient records |
+| **Nurse** | Patient records, walk-in queue, appointment management |
+| **Receptionist** | Walk-in registration, queue, appointment booking, waitlist |
+| **Pharmacist** | Prescription access |
+| **Cashier** | Billing operations |
+| **Inventory Manager** | Stock management |
 
 ---
 
@@ -233,20 +362,36 @@ All endpoints are prefixed with `/api/v1`.
 ### Backend (`backend/.env`)
 
 ```env
-DATABASE_URL=postgresql://hospital_admin:<YOUR_DB_PASSWORD>@localhost:5432/hospital_management
-SECRET_KEY=<generate-with-python-secrets-token_hex-32>
+DATABASE_URL=postgresql://hms_user:HMS%402026@localhost:5432/hms_db
+SECRET_KEY=<generate-with: python -c "import secrets; print(secrets.token_hex(32))">
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=60
-CORS_ORIGINS=["http://localhost:5173"]
+REFRESH_TOKEN_EXPIRE_DAYS=7
+CORS_ORIGINS=["http://localhost:3000"]
+PRN_PREFIX=HMS
 ```
 
 ### Frontend (`frontend/.env`)
 
 ```env
-VITE_API_BASE_URL=http://localhost:8000/api/v1
+VITE_API_BASE_URL=http://localhost:8000
 ```
 
-> Generate a production secret key: `python -c "import secrets; print(secrets.token_hex(32))"`
+---
+
+## Default Credentials
+
+| Role | Username | Password |
+|------|----------|----------|
+| Super Admin | `superadmin` | `Admin@123` |
+| Admin | `admin1` | `Admin@123` |
+| Doctor | `drsmith` | `Admin@123` |
+| Receptionist | `reception1` | `Admin@123` |
+| Nurse | `nursewilson` | `Admin@123` |
+| Pharmacist | `pharma1` | `Admin@123` |
+| Cashier | `cashier1` | `Admin@123` |
+
+> **Change all default passwords after first login.**
 
 ---
 
@@ -259,9 +404,10 @@ VITE_API_BASE_URL=http://localhost:8000/api/v1
 - [ ] Enable HTTPS
 - [ ] Set up automated database backups
 - [ ] Configure log rotation
+- [ ] Set `VITE_API_BASE_URL` to production API URL
 
 ---
 
 <p align="center">
-  <sub>Built with React, FastAPI, and PostgreSQL &mdash; February 2026</sub>
+  <sub>Built with React, FastAPI, and PostgreSQL</sub>
 </p>

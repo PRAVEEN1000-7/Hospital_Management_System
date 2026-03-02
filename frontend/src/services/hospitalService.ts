@@ -24,11 +24,34 @@ export interface HospitalDetails {
 }
 
 export interface HospitalSettings {
+  id: string;
   hospital_id: string;
-  setting_key: string;
-  setting_value: string;
-  setting_type: string;
-  description: string | null;
+  hospital_code: string;
+  patient_id_start_number: number;
+  patient_id_sequence: number;
+  staff_id_start_number: number;
+  staff_id_sequence: number;
+  invoice_prefix: string;
+  invoice_sequence: number;
+  prescription_prefix: string;
+  prescription_sequence: number;
+  appointment_slot_duration_minutes: number;
+  appointment_buffer_minutes: number;
+  max_daily_appointments_per_doctor: number;
+  allow_walk_in: boolean;
+  allow_emergency_bypass: boolean;
+  enable_sms_notifications: boolean;
+  enable_email_notifications: boolean;
+  enable_whatsapp_notifications: boolean;
+  consultation_fee_default: string;
+  follow_up_validity_days: number;
+  data_retention_years: number;
+  branding_primary_color: string;
+  branding_secondary_color: string;
+  print_header_text: string | null;
+  print_footer_text: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export const hospitalService = {
@@ -85,13 +108,13 @@ export const hospitalService = {
     await api.delete('/hospital/logo');
   },
 
-  async getSettings(): Promise<HospitalSettings[]> {
-    const response = await api.get<HospitalSettings[]>('/hospital/settings');
+  async getSettings(): Promise<HospitalSettings> {
+    const response = await api.get<HospitalSettings>('/hospital-settings');
     return response.data;
   },
 
-  async updateSettings(settings: Record<string, string>): Promise<HospitalSettings[]> {
-    const response = await api.put<HospitalSettings[]>('/hospital/settings', settings);
+  async updateSettings(settings: Partial<HospitalSettings>): Promise<HospitalSettings> {
+    const response = await api.put<HospitalSettings>('/hospital-settings', settings);
     return response.data;
   },
 };

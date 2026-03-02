@@ -25,7 +25,13 @@ async def statistics(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    return get_appointment_stats(db, date_from, date_to, doctor_id)
+    return get_appointment_stats(
+        db,
+        hospital_id=current_user.hospital_id,
+        date_from=date_from,
+        date_to=date_to,
+        doctor_id=doctor_id,
+    )
 
 
 @router.get("/enhanced-statistics", response_model=EnhancedAppointmentStats)

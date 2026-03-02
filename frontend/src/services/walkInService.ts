@@ -45,6 +45,26 @@ const walkInService = {
     await api.patch(`/walk-ins/queue/${queueId}/skip`);
   },
 
+  async saveConsultationNotes(queueId: string, data: {
+    notes?: string;
+    diagnosis?: string;
+    prescription?: string;
+    vitals_bp?: string;
+    vitals_pulse?: string;
+    vitals_temp?: string;
+    vitals_weight?: string;
+    vitals_spo2?: string;
+    follow_up_date?: string;
+  }): Promise<{ ok: boolean }> {
+    const res = await api.patch<{ ok: boolean }>(`/walk-ins/queue/${queueId}/save-notes`, data);
+    return res.data;
+  },
+
+  async getConsultationNotes(queueId: string): Promise<Record<string, unknown>> {
+    const res = await api.get<Record<string, unknown>>(`/walk-ins/queue/${queueId}/notes`);
+    return res.data;
+  },
+
   async sendToDoctor(appointmentId: string, doctorId: string): Promise<Appointment> {
     const res = await api.post<Appointment>(`/walk-ins/${appointmentId}/assign-doctor`, {
       doctor_id: doctorId,

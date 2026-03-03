@@ -1,0 +1,331 @@
+// =============================================================================
+// HMS — PHASE 1: CORE MODULES (Week 3-6)
+// =============================================================================
+// Tables: patients, patient_consents, patient_documents,
+//         doctors, doctor_schedules, doctor_leaves, doctor_fees,
+//         appointments, appointment_status_log, appointment_queue,
+//         id_sequences, id_cards
+// Focus:  Patient Registration, Doctor Management, Appointments,
+//         HMS 12-Digit ID System, ID Card Generation
+// =============================================================================
+// Dependencies: Phase 0 tables (hospitals, departments, users, etc.)
+// =============================================================================
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PHASE 0 REFERENCE TABLES (abbreviated — relationships only)
+// ─────────────────────────────────────────────────────────────────────────────
+
+hospitals [icon: home, color: blue] {
+  id uuid pk
+  name varchar
+  code varchar
+}
+
+departments [icon: layers, color: blue] {
+  id uuid pk
+  hospital_id uuid fk
+  name varchar
+  code varchar
+  head_doctor_id uuid fk
+}
+
+hospital_settings [icon: settings, color: blue] {
+  id uuid pk
+  hospital_id uuid fk
+  hospital_code char(2)
+  patient_id_start_number integer
+  patient_id_sequence integer
+  staff_id_start_number integer
+  staff_id_sequence integer
+}
+
+users [icon: user, color: blue] {
+  id uuid pk
+  hospital_id uuid fk
+  reference_number varchar(12)
+  first_name varchar
+  last_name varchar
+  avatar_url varchar
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATIENTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+patients [icon: heart, color: red] {
+  id uuid pk
+  hospital_id uuid fk
+  patient_reference_number varchar(12) "HMS 12-digit PRN"
+  first_name varchar
+  last_name varchar
+  date_of_birth date
+  age_years integer "Manual if DOB unknown"
+  age_months integer "For infants"
+  gender varchar "male, female, other, prefer_not_to_say"
+  blood_group varchar "A+, A-, B+, B-, AB+, AB-, O+, O-"
+  marital_status varchar
+  phone_country_code varchar "Default: +1"
+  phone_number varchar
+  secondary_phone varchar
+  email varchar
+  national_id_type varchar "SSN, passport, aadhaar, etc."
+  national_id_number varchar "Encrypted at rest"
+  address_line_1 varchar
+  address_line_2 varchar
+  city varchar
+  state_province varchar
+  postal_code varchar
+  country varchar "ISO 3166-1 alpha-3"
+  photo_url varchar "Path to photo"
+  emergency_contact_name varchar
+  emergency_contact_phone varchar
+  emergency_contact_relation varchar
+  known_allergies text
+  chronic_conditions text
+  notes text
+  preferred_language varchar
+  is_active boolean
+  registered_at timestamptz
+  created_at timestamptz
+  updated_at timestamptz
+  created_by uuid fk
+  updated_by uuid fk
+  is_deleted boolean
+  deleted_at timestamptz
+}
+
+patient_consents [icon: check-circle, color: red] {
+  id uuid pk
+  patient_id uuid fk
+  consent_type varchar "registration, treatment, data_sharing, photo"
+  consent_text text "Full consent text shown"
+  is_accepted boolean
+  signature_url varchar "Digital signature image"
+  consented_at timestamptz
+  ip_address varchar
+  created_at timestamptz
+}
+
+patient_documents [icon: file, color: red] {
+  id uuid pk
+  patient_id uuid fk
+  document_type varchar "id_proof, insurance_card, lab_report, other"
+  title varchar
+  file_url varchar
+  file_type varchar "pdf, jpeg, png"
+  file_size_bytes integer
+  uploaded_by uuid fk "FK → users"
+  created_at timestamptz
+  is_deleted boolean
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DOCTORS
+// ─────────────────────────────────────────────────────────────────────────────
+
+doctors [icon: stethoscope, color: purple] {
+  id uuid pk
+  user_id uuid fk "unique — 1:1 with users"
+  hospital_id uuid fk
+  department_id uuid fk
+  employee_id varchar "Hospital employee ID"
+  specialization varchar
+  qualification varchar "e.g. MBBS, MD"
+  registration_number varchar "Medical license"
+  registration_authority varchar
+  experience_years integer
+  bio text
+  doctor_sequence integer "1, 2, or 3 for workflow"
+  consultation_fee decimal
+  follow_up_fee decimal
+  is_available boolean
+  is_active boolean
+  created_at timestamptz
+  updated_at timestamptz
+  created_by uuid fk
+  is_deleted boolean
+}
+
+doctor_schedules [icon: calendar, color: purple] {
+  id uuid pk
+  doctor_id uuid fk
+  day_of_week integer "0=Sunday, 6=Saturday"
+  shift_name varchar "Default: default"
+  start_time time "e.g. 09:00"
+  end_time time "e.g. 17:00"
+  break_start_time time
+  break_end_time time
+  slot_duration_minutes integer "Default: 15"
+  max_patients integer "Default: 20"
+  is_active boolean
+  effective_from date
+  effective_to date "NULL = indefinite"
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+doctor_leaves [icon: calendar-x, color: purple] {
+  id uuid pk
+  doctor_id uuid fk
+  leave_date date
+  leave_type varchar "full_day, morning, afternoon"
+  reason varchar
+  approved_by uuid fk "FK → users"
+  status varchar "pending, approved, rejected"
+  created_at timestamptz
+}
+
+doctor_fees [icon: tag, color: purple] {
+  id uuid pk
+  doctor_id uuid fk
+  fee_type varchar "consultation, follow_up, procedure"
+  service_name varchar
+  amount decimal
+  currency varchar "Default: USD"
+  effective_from date
+  effective_to date
+  is_active boolean
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// APPOINTMENTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+appointments [icon: clock, color: orange] {
+  id uuid pk
+  hospital_id uuid fk
+  appointment_number varchar unique "APT-2026-00001"
+  patient_id uuid fk
+  doctor_id uuid fk
+  department_id uuid fk
+  appointment_date date
+  start_time time
+  end_time time
+  appointment_type varchar "scheduled, walk_in, emergency, follow_up"
+  visit_type varchar "new, follow_up"
+  priority varchar "normal, urgent, emergency"
+  status varchar "scheduled → checked_in → in_queue → with_doctor → completed"
+  current_doctor_sequence integer "Which doctor (1, 2, or 3)"
+  parent_appointment_id uuid fk "For follow-ups"
+  chief_complaint text
+  cancel_reason varchar
+  reschedule_reason varchar
+  reschedule_count integer
+  check_in_at timestamptz
+  consultation_start_at timestamptz
+  consultation_end_at timestamptz
+  notes text
+  consultation_fee decimal
+  created_at timestamptz
+  updated_at timestamptz
+  created_by uuid fk
+  is_deleted boolean
+}
+
+appointment_status_log [icon: list, color: orange] {
+  id uuid pk
+  appointment_id uuid fk
+  from_status varchar "Previous status"
+  to_status varchar "New status"
+  changed_by uuid fk "FK → users"
+  notes text
+  created_at timestamptz
+}
+
+appointment_queue [icon: users, color: orange] {
+  id uuid pk
+  appointment_id uuid fk
+  doctor_id uuid fk
+  queue_date date
+  queue_number integer "Token number for the day"
+  position integer "Current position in queue"
+  status varchar "waiting, called, in_consultation, completed, skipped"
+  called_at timestamptz
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ID CARD SYSTEM
+// ─────────────────────────────────────────────────────────────────────────────
+
+id_sequences [icon: hash, color: emerald] {
+  id uuid pk
+  hospital_id uuid fk
+  hospital_code char(2) "e.g. HC, HA, HM"
+  entity_type varchar "patient or staff"
+  role_gender_code char(1) "M/F/O/D/N/S/A/P/R/T/X"
+  year_code char(2) "e.g. 26"
+  month_code char(1) "1-9, A=Oct, B=Nov, C=Dec"
+  last_sequence integer "Last issued sequence number"
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+id_cards [icon: credit-card, color: emerald] {
+  id uuid pk
+  hospital_id uuid fk
+  holder_type varchar "patient or user (staff)"
+  holder_id uuid "FK → patients.id or users.id"
+  reference_number varchar(12) "The 12-digit ID"
+  photo_url varchar "Uploaded photo for card"
+  card_data_snapshot jsonb "Complete card data (name, DOB, etc.)"
+  front_design_url varchar "Generated front-side PDF"
+  back_design_url varchar "Generated back-side PDF"
+  issued_at timestamptz
+  issued_by uuid fk "FK → users"
+  revoked_at timestamptz "NULL = active"
+  version integer "Regenerated card bumps version"
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+// =============================================================================
+// RELATIONSHIPS
+// =============================================================================
+
+// Hospital → Patients & Doctors
+hospitals.id < patients.hospital_id
+hospitals.id < doctors.hospital_id
+hospitals.id < appointments.hospital_id
+
+// Patient relationships
+patients.id < patient_consents.patient_id
+patients.id < patient_documents.patient_id
+patients.id < appointments.patient_id
+
+// Doctor ↔ User (1:1)
+users.id - doctors.user_id
+
+// Doctor → Department
+departments.id < doctors.department_id
+
+// Department head → Doctor (nullable)
+doctors.id < departments.head_doctor_id
+
+// Doctor sub-tables
+doctors.id < doctor_schedules.doctor_id
+doctors.id < doctor_leaves.doctor_id
+doctors.id < doctor_fees.doctor_id
+
+// Doctor → Appointments
+doctors.id < appointments.doctor_id
+departments.id < appointments.department_id
+
+// Appointment self-reference (follow-ups)
+appointments.id < appointments.parent_appointment_id
+
+// Appointment → Status Log & Queue
+appointments.id < appointment_status_log.appointment_id
+appointments.id < appointment_queue.appointment_id
+doctors.id < appointment_queue.doctor_id
+
+// ID Card System
+hospitals.id < id_sequences.hospital_id
+hospitals.id < id_cards.hospital_id
+users.id < id_cards.issued_by
+
+// Hospital Settings → ID generation config
+hospitals.id - hospital_settings.hospital_id

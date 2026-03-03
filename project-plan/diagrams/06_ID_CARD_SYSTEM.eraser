@@ -1,0 +1,264 @@
+// =============================================================================
+// HMS — ID CARD SYSTEM: DETAILED RELATIONSHIP DIAGRAM
+// =============================================================================
+// Tables: id_sequences, id_cards, password_emails, hospital_settings
+// Focus:  HMS 12-Digit ID Generation, ID Card Lifecycle, Password Management
+// =============================================================================
+// This diagram shows the complete ID card ecosystem and how it integrates
+// with users, patients, hospitals, and departments.
+//
+// ID Format: [HH][G][YY][M][C][#####] = 12 characters
+//   HH     = Hospital Code (2 chars)
+//   G      = Gender (1 char)
+//   YY     = Year (2 digits)
+//   M      = Month (1 char: 1-9, A=Oct, B=Nov, C=Dec)
+//   C      = Checksum (1 char, validation)
+//   ##### = Sequence (5 digits, auto-incremented)
+// =============================================================================
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CORE REFERENCE TABLES
+// ─────────────────────────────────────────────────────────────────────────────
+
+hospitals [icon: home, color: blue] {
+  id uuid pk
+  name varchar "Hospital name"
+  code varchar unique "Short code (e.g. HOSP01)"
+  logo_url varchar "Logo for ID card"
+  address_line_1 varchar "For ID card back side"
+  city varchar
+  state_province varchar
+  postal_code varchar
+  country varchar
+  phone varchar "For ID card back side"
+  email varchar "For ID card back side"
+  website varchar "For ID card back side"
+  registration_number varchar "For ID card back side"
+}
+
+hospital_settings [icon: settings, color: blue] {
+  id uuid pk
+  hospital_id uuid fk "unique, 1:1"
+  hospital_code char(2) "2-char code for 12-digit ID (HC, HA, HM)"
+  patient_id_start_number integer "First PRN sequence (e.g. 1 or 100000)"
+  patient_id_sequence integer "Current patient auto-increment"
+  staff_id_start_number integer "First staff ID sequence"
+  staff_id_sequence integer "Current staff auto-increment"
+}
+
+departments [icon: layers, color: blue] {
+  id uuid pk
+  hospital_id uuid fk
+  name varchar "Department name"
+  code varchar "2-char dept code (GP, CC, ER, etc.)"
+}
+
+users [icon: user, color: green] {
+  id uuid pk
+  hospital_id uuid fk
+  reference_number varchar(12) unique "HMS 12-digit staff ID"
+  email varchar
+  first_name varchar "Displayed on ID card"
+  last_name varchar "Displayed on ID card"
+  phone varchar
+  avatar_url varchar "Profile photo for ID card"
+  is_active boolean
+  must_change_password boolean "Set true when password sent"
+  created_at timestamptz
+}
+
+patients [icon: heart, color: red] {
+  id uuid pk
+  hospital_id uuid fk
+  patient_reference_number varchar(12) "HMS 12-digit PRN"
+  first_name varchar "Displayed on ID card"
+  last_name varchar "Displayed on ID card"
+  date_of_birth date "Displayed on ID card"
+  gender varchar "Determines R code: M/F/O/N/U/C"
+  blood_group varchar "Displayed on ID card"
+  photo_url varchar "Photo for ID card"
+  registered_at timestamptz "Registration date on card"
+}
+
+doctors [icon: stethoscope, color: purple] {
+  id uuid pk
+  user_id uuid fk "1:1 with users"
+  department_id uuid fk "Determines DD code"
+  specialization varchar "Displayed on staff ID card"
+  qualification varchar "Displayed on staff ID card"
+}
+
+roles [icon: shield, color: green] {
+  id uuid pk
+  name varchar "Determines R code for staff: D/N/S/A/P/R/T/X"
+  display_name varchar "Role title on ID card"
+}
+
+user_roles [icon: link, color: green] {
+  id uuid pk
+  user_id uuid fk
+  role_id uuid fk
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ID SEQUENCE TRACKER
+// ─────────────────────────────────────────────────────────────────────────────
+
+id_sequences [icon: hash, color: emerald] {
+  id uuid pk
+  hospital_id uuid fk
+  hospital_code char(2) "From hospital_settings"
+  entity_type varchar "patient or staff"
+  role_gender_code char(1) "Patient: M/F/O/N/U | Staff: D/N/S/A/P/R/T/X"
+  year_code char(2) "Last 2 digits of year (e.g. 26)"
+  month_code char(1) "1-9 for Jan-Sep, A=Oct, B=Nov, C=Dec"
+  last_sequence integer "Last issued 5-digit sequence"
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ID CARDS
+// ─────────────────────────────────────────────────────────────────────────────
+
+id_cards [icon: credit-card, color: emerald] {
+  id uuid pk
+  hospital_id uuid fk
+  holder_type varchar "patient or user (staff)"
+  holder_id uuid "FK → patients.id or users.id"
+  reference_number varchar(12) "The generated 12-digit ID"
+  photo_url varchar "Uploaded photo rendered on card"
+  card_data_snapshot jsonb "Complete card data at generation time"
+  front_design_url varchar "Generated front-side image/PDF"
+  back_design_url varchar "Generated back-side image/PDF"
+  issued_at timestamptz "Card issue date"
+  issued_by uuid fk "FK → users (who generated)"
+  revoked_at timestamptz "NULL = active"
+  version integer "Bumps on regeneration"
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PASSWORD EMAIL TRACKING
+// ─────────────────────────────────────────────────────────────────────────────
+
+password_emails [icon: mail, color: emerald] {
+  id uuid pk
+  user_id uuid fk "Target user"
+  sent_by uuid fk "Super Admin who triggered"
+  sent_to_email varchar "Email address password was sent to"
+  sent_at timestamptz
+  is_temp_password boolean "Was it a temporary password?"
+  created_at timestamptz
+}
+
+// =============================================================================
+// RELATIONSHIPS
+// =============================================================================
+
+// Hospital → Settings (1:1) — holds hospital_code for ID generation
+hospitals.id - hospital_settings.hospital_id
+
+// Hospital → Departments, Users, Patients
+hospitals.id < departments.hospital_id
+hospitals.id < users.hospital_id
+hospitals.id < patients.hospital_id
+
+// User ↔ Doctor (1:1)
+users.id - doctors.user_id
+departments.id < doctors.department_id
+
+// RBAC for role code determination
+users.id < user_roles.user_id
+roles.id < user_roles.role_id
+
+// Hospital → ID Sequences (1:many, per dept/month)
+hospitals.id < id_sequences.hospital_id
+
+// Hospital → ID Cards (1:many)
+hospitals.id < id_cards.hospital_id
+
+// ID Card issued by a user
+users.id < id_cards.issued_by
+
+// Password email tracking
+users.id < password_emails.user_id
+users.id < password_emails.sent_by
+
+// =============================================================================
+// ID GENERATION FLOW (documented as comments)
+// =============================================================================
+//
+// 1. New patient/staff registration triggers ID generation
+//
+// 2. System reads:
+//    - hospital_settings.hospital_code → HH (positions 1-2)
+//    - patient.gender OR user_roles.role → G (position 3)
+//    - Current date → YY (positions 4-5), M (position 6)
+//
+// 3. System calculates checksum from first 6 chars → C (position 7)
+//
+// 4. System queries id_sequences for matching
+//    (hospital_id, entity_type, role_gender_code, year_code, month_code)
+//
+// 4. If no row exists → create with last_sequence = start_number from hospital_settings
+//    If row exists → increment last_sequence
+//
+// 5. Compose ID: HH + G + YY + M + C(checksum) + zero-padded(sequence, 5)
+//    Example: HC + M + 26 + 2 + K + 00147 = HCM262K00147
+//
+// 6. Store in:
+//    - patients.patient_reference_number (for patients)
+//    - users.reference_number (for staff)
+//
+// 7. ID Card generation:
+//    - Render front side: logo, photo, name, ID, department, QR code
+//    - Render back side: hospital info, emergency contact, terms
+//    - Store in id_cards table
+//    - Available for download, email, print
+//
+// =============================================================================
+// CARD CONTENT REFERENCE
+// =============================================================================
+//
+// FRONT SIDE (Patient):
+//   ┌──────────────────────────────────────┐
+//   │  [Logo]  HOSPITAL NAME               │
+//   │  ─────────────────────────────────    │
+//   │  [Photo]  PATIENT NAME               │
+//   │           DOB/Age | Gender            │
+//   │           Blood Group: O+             │
+//   │  ─────────────────────────────────    │
+//   │  PRN: HCM262K00147                    │
+//   │  Department: Cardiology     [QR Code] │
+//   │  Registered: 02-Feb-2026              │
+//   │  [Department Color Band]              │
+//   └──────────────────────────────────────┘
+//
+// FRONT SIDE (Staff):
+//   ┌──────────────────────────────────────┐
+//   │  [Logo]  HOSPITAL NAME               │
+//   │  ─────────────────────────────────    │
+//   │  [Photo]  DR. STAFF NAME             │
+//   │           DESIGNATION / ROLE          │
+//   │           Specialization              │
+//   │  ─────────────────────────────────    │
+//   │  ID: HCD261X00003                     │
+//   │  Department: Cardiology     [QR Code] │
+//   │  [Department Color Band]              │
+//   └──────────────────────────────────────┘
+//
+// BACK SIDE (Both):
+//   ┌──────────────────────────────────────┐
+//   │  Hospital Full Address               │
+//   │  Phone | Email | Website             │
+//   │  ─────────────────────────────────    │
+//   │  Emergency: 108 / 911                │
+//   │  ─────────────────────────────────    │
+//   │  Terms & Conditions                  │
+//   │  Reg No: HOSP/REG/2024/001          │
+//   │  Issued: 02-Feb-2026 | v1            │
+//   └──────────────────────────────────────┘
+//
+// =============================================================================

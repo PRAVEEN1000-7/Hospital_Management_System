@@ -15,6 +15,7 @@ Complete step-by-step instructions to get the Hospital Management System running
 7. [Default Credentials](#default-credentials)
 8. [Useful Commands](#useful-commands)
 9. [Troubleshooting](#troubleshooting)
+10. [Database Reset Commands](#database-reset-commands)
 
 ---
 
@@ -41,7 +42,7 @@ Install the following before proceeding:
 
 ```powershell
 git clone <REPO_URL>
-cd HMS/v1
+cd Hospital_Management_System
 ```
 
 Replace `<REPO_URL>` with your GitHub repository URL.
@@ -92,18 +93,17 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 The SQL files are located in the `database_hole/` folder. Run them **in order**:
 
 ```powershell
-# Set password for non-interactive execution
-$env:PGPASSWORD = "HMS@2026"
-
 # 1. Create all tables (62 tables)
-psql -h localhost -U hms_user -d hms_db -f database_hole/01_schema.sql
+psql -U hms_user -d hms_db -f database_hole/01_schema.sql
 
 # 2. Seed initial data (hospitals, departments, roles, users, sample patients)
-psql -h localhost -U hms_user -d hms_db -f database_hole/02_seed_data.sql
+psql -U hms_user -d hms_db -f database_hole/02_seed_data.sql
 
 # 3. Create waitlist table
-psql -h localhost -U hms_user -d hms_db -f database_hole/04_waitlist_table.sql
+psql -U hms_user -d hms_db -f database_hole/04_waitlist_table.sql
 ```
+
+> When prompted for a password, enter `HMS@2026`.
 
 > **Note:** `03_queries.sql` contains reference queries only — it does NOT need to be executed.
 
@@ -213,6 +213,11 @@ cd frontend
 npm install
 ```
 
+> **If you get peer dependency errors**, run instead:
+> ```powershell
+> npm install --legacy-peer-deps
+> ```
+
 ### 4.2 — Configure Environment Variables
 
 ```powershell
@@ -256,18 +261,20 @@ You should see:
 
 ## Default Credentials
 
-All seed users share the same password. Change them after first login.
+Each seed user has a role-specific password. **Change them after first login.**
 
-| Role          | Username        | Password     |
-| ------------- | --------------- | ------------ |
-| Super Admin   | `superadmin`    | `Admin@123`  |
-| Admin         | `admin1`        | `Admin@123`  |
-| Doctor        | `drsmith`       | `Admin@123`  |
-| Doctor        | `drjohnson`     | `Admin@123`  |
-| Nurse         | `nursewilson`   | `Admin@123`  |
-| Receptionist  | `reception1`    | `Admin@123`  |
-| Pharmacist    | `pharma1`       | `Admin@123`  |
-| Cashier       | `cashier1`      | `Admin@123`  |
+| Role               | Username       | Password            |
+| ------------------ | -------------- | ------------------- |
+| Super Admin        | `superadmin`   | `Super@123`         |
+| Hospital Admin     | `hospadmin`    | `Admin@123`         |
+| Doctor (Gen Med)   | `dr.smith`     | `Doctor@123`        |
+| Doctor (Cardio)    | `dr.patel`     | `Doctor@123`        |
+| Doctor (Ophthal)   | `dr.lee`       | `Doctor@123`        |
+| Receptionist       | `reception1`   | `Receptionist@123`  |
+| Pharmacist         | `pharmacist1`  | `Pharmacist@123`    |
+| Cashier            | `cashier1`     | `Cashier@123`       |
+| Optical Staff      | `optical1`     | `Optical@123`       |
+| Inventory Manager  | `inventory1`   | `Inventory@123`     |
 
 > **Security:** All non-superadmin users have `must_change_password = true` and will be prompted to change their password on first login.
 
@@ -370,7 +377,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO hms_user;
 ```powershell
 cd frontend
 rm -r node_modules
-npm install
+npm install --legacy-peer-deps
 ```
 
 ---
@@ -422,35 +429,353 @@ HMS/v1/
 
 ## Quick Start (TL;DR)
 
-For those who just want the commands:
+### 1. Go to the project folder
 
 ```powershell
-# 1. Database
+cd Hospital_Management_System
+```
+
+---
+
+### Database
+
+**2. Create database (as postgres superuser):**
+
+```powershell
 psql -U postgres -c "CREATE USER hms_user WITH PASSWORD 'HMS@2026';"
 psql -U postgres -c "CREATE DATABASE hms_db OWNER hms_user;"
-psql -U hms_user -d hms_db -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;"
-$env:PGPASSWORD = "HMS@2026"
-psql -h localhost -U hms_user -d hms_db -f database_hole/01_schema.sql
-psql -h localhost -U hms_user -d hms_db -f database_hole/02_seed_data.sql
-psql -h localhost -U hms_user -d hms_db -f database_hole/04_waitlist_table.sql
+```
 
-# 2. Backend  (Terminal 1)
+**3. Run schema:**
+
+```powershell
+psql -U hms_user -d hms_db -f database_hole/01_schema.sql
+```
+
+**4. Load sample data:**
+
+```powershell
+psql -U hms_user -d hms_db -f database_hole/02_seed_data.sql
+```
+
+**5. Verify:**
+
+```powershell
+psql -U hms_user -d hms_db -c "SELECT COUNT(*) FROM users;"
+```
+
+> Expected: **10 rows** as output.
+
+---
+
+### Backend
+
+**1. Install uv & go to backend folder:**
+
+```powershell
+pip install uv
 cd backend
-python -m venv venv
-.\venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+```
+
+**2. Create new venv with Python 3.11:**
+
+```powershell
+uv venv venv --python 3.11
+```
+
+**3. Activate:**
+
+```powershell
+venv\Scripts\activate
+```
+
+**4. Install requirements:**
+
+```powershell
+uv pip install -r requirements.txt
+```
+
+**5. Copy .env file:**
+
+```powershell
 Copy-Item .env.example .env
-# → Edit .env: set DATABASE_URL and SECRET_KEY
-mkdir uploads
+```
+
+**6. Use the below as `.env` file:**
+
+```env
+# Application
+APP_NAME=Hospital Management System
+APP_VERSION=1.0.0
+DEBUG=True
+
+# Database
+DATABASE_URL=postgresql://hms_user:HMS%402026@localhost:5432/hms_db
+DB_ECHO=False
+ 
+# Security
+SECRET_KEY=ecb11559e040a01fd00456e98845390b186fac7e257041cd73ae2700cc9f193b
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=60
+REFRESH_TOKEN_EXPIRE_DAYS=7
+
+# CORS
+CORS_ORIGINS=["http://localhost:3000", "http://localhost:5173"]
+
+# Pagination
+DEFAULT_PAGE_SIZE=10
+MAX_PAGE_SIZE=100
+
+# PRN (Patient Reference Number)
+PRN_PREFIX=HMS
+```
+
+**7. Run backend:**
+
+```powershell
 uvicorn app.main:app --reload --port 8000
+```
 
-# 3. Frontend  (Terminal 2)
+---
+
+### Frontend
+
+**1. Go to frontend folder:**
+
+```powershell
 cd frontend
-npm install
-Copy-Item .env.example .env
-npm run dev
+```
 
-# 4. Open http://localhost:3000  →  Login: superadmin / Admin@123
+**2. Install frontend packages:**
+
+```powershell
+npm install 
+```
+
+**3. Create `.env` file under frontend folder (`frontend\.env`):**
+
+```powershell
+Copy-Item .env.example .env
+```
+**paste the below code**
+```env
+VITE_API_BASE_URL=http://localhost:8000/api/v1
+```
+
+**4. Start frontend dev server:**
+
+```powershell
+npm run dev
+```
+
+**5. Open http://localhost:5173 → Login: `superadmin` / `Super@123`**
+
+---
+
+## Database Reset Commands
+
+> **⚠ WARNING:** These commands permanently delete data. Make sure you know what you're doing. Always back up first if needed.
+
+### Option 1 — Drop the Entire Database (Nuclear Reset)
+
+Use this when you want to completely destroy the database and user, then start fresh.
+
+```powershell
+# 1. Drop the database and user (run as postgres superuser)
+psql -U postgres -c "DROP DATABASE IF EXISTS hms_db;"
+psql -U postgres -c "DROP USER IF EXISTS hms_user;"
+```
+
+After dropping, re-create everything from scratch by following **[Step 2 — Create the Database](#step-2--create-the-database)** above, or use the Quick Start commands:
+
+```powershell
+# 2. Re-create user and database
+psql -U postgres -c "CREATE USER hms_user WITH PASSWORD 'HMS@2026';"
+psql -U postgres -c "CREATE DATABASE hms_db OWNER hms_user;"
+psql -U postgres -d hms_db -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;"
+psql -U postgres -d hms_db -c "GRANT ALL ON SCHEMA public TO hms_user;"
+psql -U postgres -d hms_db -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO hms_user;"
+psql -U postgres -d hms_db -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO hms_user;"
+
+# 3. Re-run schema and seed scripts
+psql -U hms_user -d hms_db -f database_hole/01_schema.sql
+psql -U hms_user -d hms_db -f database_hole/02_seed_data.sql
+psql -U hms_user -d hms_db -f database_hole/04_waitlist_table.sql
+```
+
+---
+
+### Option 2 — Delete All Records Only (Keep Tables)
+
+Use this when you want to empty every table but keep the schema intact. After truncating, you can re-seed if needed.
+
+**Truncate all tables in one command (using psql):**
+
+```powershell
+psql -U hms_user -d hms_db -c "
+DO \$\$
+DECLARE
+    r RECORD;
+BEGIN
+    -- Disable triggers temporarily to avoid FK constraint issues
+    FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+        EXECUTE 'TRUNCATE TABLE public.' || quote_ident(r.tablename) || ' CASCADE';
+    END LOOP;
+END \$\$;
+"
+```
+
+**Or connect interactively and run:**
+
+```powershell
+psql -U hms_user -d hms_db
+```
+
+```sql
+-- Truncate ALL 63 tables (CASCADE handles foreign key dependencies)
+TRUNCATE TABLE
+    waitlists,
+    password_emails,
+    id_cards,
+    id_sequences,
+    audit_logs,
+    notification_queue,
+    notification_templates,
+    notifications,
+    cycle_count_items,
+    cycle_counts,
+    stock_adjustments,
+    stock_movements,
+    grn_items,
+    goods_receipt_notes,
+    purchase_order_items,
+    purchase_orders,
+    suppliers,
+    optical_repairs,
+    optical_order_items,
+    optical_orders,
+    pharmacy_return_items,
+    pharmacy_returns,
+    pharmacy_dispensing_items,
+    medicine_batches,
+    pharmacy_dispensing,
+    pre_authorizations,
+    insurance_claims,
+    insurance_policies,
+    insurance_providers,
+    daily_settlements,
+    credit_notes,
+    refunds,
+    payments,
+    invoice_items,
+    invoices,
+    optical_prescriptions,
+    optical_products,
+    lab_orders,
+    prescription_versions,
+    prescription_templates,
+    prescription_items,
+    prescriptions,
+    medicines,
+    appointment_queue,
+    appointment_status_log,
+    appointments,
+    doctor_fees,
+    doctor_leaves,
+    doctor_schedules,
+    doctors,
+    patient_documents,
+    patient_consents,
+    patients,
+    refresh_tokens,
+    role_permissions,
+    user_roles,
+    permissions,
+    roles,
+    users,
+    tax_configurations,
+    hospital_settings,
+    departments,
+    hospitals
+CASCADE;
+```
+
+**After truncating, re-seed the sample data:**
+
+```powershell
+psql -U hms_user -d hms_db -f database_hole/02_seed_data.sql
+```
+
+---
+
+### Option 3 — Delete Only Transactional Data (Keep Setup & Users)
+
+Use this to clear appointments, prescriptions, invoices, etc. while keeping hospitals, departments, users, doctors, and roles.
+
+```powershell
+psql -U hms_user -d hms_db
+```
+
+```sql
+-- Clear transactional/operational data only (keeps setup, users, doctors, roles)
+TRUNCATE TABLE
+    waitlists,
+    password_emails,
+    id_cards,
+    audit_logs,
+    notification_queue,
+    notifications,
+    cycle_count_items,
+    cycle_counts,
+    stock_adjustments,
+    stock_movements,
+    grn_items,
+    goods_receipt_notes,
+    purchase_order_items,
+    purchase_orders,
+    optical_repairs,
+    optical_order_items,
+    optical_orders,
+    pharmacy_return_items,
+    pharmacy_returns,
+    pharmacy_dispensing_items,
+    pharmacy_dispensing,
+    pre_authorizations,
+    insurance_claims,
+    insurance_policies,
+    daily_settlements,
+    credit_notes,
+    refunds,
+    payments,
+    invoice_items,
+    invoices,
+    optical_prescriptions,
+    lab_orders,
+    prescription_versions,
+    prescription_items,
+    prescriptions,
+    appointment_queue,
+    appointment_status_log,
+    appointments,
+    patient_documents,
+    patient_consents,
+    patients,
+    refresh_tokens
+CASCADE;
+```
+
+> **What's preserved:** `hospitals`, `hospital_settings`, `departments`, `tax_configurations`, `users`, `roles`, `permissions`, `user_roles`, `role_permissions`, `doctors`, `doctor_schedules`, `doctor_leaves`, `doctor_fees`, `medicines`, `medicine_batches`, `optical_products`, `prescription_templates`, `notification_templates`, `id_sequences`, `suppliers`.
+
+---
+
+### Verify After Reset
+
+```powershell
+# Check table count (should be 63)
+psql -U hms_user -d hms_db -c "SELECT COUNT(*) AS table_count FROM information_schema.tables WHERE table_schema = 'public';"
+
+# Check if records were re-seeded
+psql -U hms_user -d hms_db -c "SELECT COUNT(*) AS user_count FROM users;"
 ```
 
 ---

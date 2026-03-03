@@ -15,6 +15,7 @@ Complete step-by-step instructions to get the Hospital Management System running
 7. [Default Credentials](#default-credentials)
 8. [Useful Commands](#useful-commands)
 9. [Troubleshooting](#troubleshooting)
+10. [Database Reset Commands](#database-reset-commands)
 
 ---
 
@@ -568,6 +569,214 @@ npm run dev
 ```
 
 **5. Open http://localhost:5173 → Login: `superadmin` / `Super@123`**
+
+---
+
+## Database Reset Commands
+
+> **⚠ WARNING:** These commands permanently delete data. Make sure you know what you're doing. Always back up first if needed.
+
+### Option 1 — Drop the Entire Database (Nuclear Reset)
+
+Use this when you want to completely destroy the database and user, then start fresh.
+
+```powershell
+# 1. Drop the database and user (run as postgres superuser)
+psql -U postgres -c "DROP DATABASE IF EXISTS hms_db;"
+psql -U postgres -c "DROP USER IF EXISTS hms_user;"
+```
+
+After dropping, re-create everything from scratch by following **[Step 2 — Create the Database](#step-2--create-the-database)** above, or use the Quick Start commands:
+
+```powershell
+# 2. Re-create user and database
+psql -U postgres -c "CREATE USER hms_user WITH PASSWORD 'HMS@2026';"
+psql -U postgres -c "CREATE DATABASE hms_db OWNER hms_user;"
+psql -U postgres -d hms_db -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;"
+psql -U postgres -d hms_db -c "GRANT ALL ON SCHEMA public TO hms_user;"
+psql -U postgres -d hms_db -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO hms_user;"
+psql -U postgres -d hms_db -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO hms_user;"
+
+# 3. Re-run schema and seed scripts
+psql -U hms_user -d hms_db -f database_hole/01_schema.sql
+psql -U hms_user -d hms_db -f database_hole/02_seed_data.sql
+psql -U hms_user -d hms_db -f database_hole/04_waitlist_table.sql
+```
+
+---
+
+### Option 2 — Delete All Records Only (Keep Tables)
+
+Use this when you want to empty every table but keep the schema intact. After truncating, you can re-seed if needed.
+
+**Truncate all tables in one command (using psql):**
+
+```powershell
+psql -U hms_user -d hms_db -c "
+DO \$\$
+DECLARE
+    r RECORD;
+BEGIN
+    -- Disable triggers temporarily to avoid FK constraint issues
+    FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+        EXECUTE 'TRUNCATE TABLE public.' || quote_ident(r.tablename) || ' CASCADE';
+    END LOOP;
+END \$\$;
+"
+```
+
+**Or connect interactively and run:**
+
+```powershell
+psql -U hms_user -d hms_db
+```
+
+```sql
+-- Truncate ALL 63 tables (CASCADE handles foreign key dependencies)
+TRUNCATE TABLE
+    waitlists,
+    password_emails,
+    id_cards,
+    id_sequences,
+    audit_logs,
+    notification_queue,
+    notification_templates,
+    notifications,
+    cycle_count_items,
+    cycle_counts,
+    stock_adjustments,
+    stock_movements,
+    grn_items,
+    goods_receipt_notes,
+    purchase_order_items,
+    purchase_orders,
+    suppliers,
+    optical_repairs,
+    optical_order_items,
+    optical_orders,
+    pharmacy_return_items,
+    pharmacy_returns,
+    pharmacy_dispensing_items,
+    medicine_batches,
+    pharmacy_dispensing,
+    pre_authorizations,
+    insurance_claims,
+    insurance_policies,
+    insurance_providers,
+    daily_settlements,
+    credit_notes,
+    refunds,
+    payments,
+    invoice_items,
+    invoices,
+    optical_prescriptions,
+    optical_products,
+    lab_orders,
+    prescription_versions,
+    prescription_templates,
+    prescription_items,
+    prescriptions,
+    medicines,
+    appointment_queue,
+    appointment_status_log,
+    appointments,
+    doctor_fees,
+    doctor_leaves,
+    doctor_schedules,
+    doctors,
+    patient_documents,
+    patient_consents,
+    patients,
+    refresh_tokens,
+    role_permissions,
+    user_roles,
+    permissions,
+    roles,
+    users,
+    tax_configurations,
+    hospital_settings,
+    departments,
+    hospitals
+CASCADE;
+```
+
+**After truncating, re-seed the sample data:**
+
+```powershell
+psql -U hms_user -d hms_db -f database_hole/02_seed_data.sql
+```
+
+---
+
+### Option 3 — Delete Only Transactional Data (Keep Setup & Users)
+
+Use this to clear appointments, prescriptions, invoices, etc. while keeping hospitals, departments, users, doctors, and roles.
+
+```powershell
+psql -U hms_user -d hms_db
+```
+
+```sql
+-- Clear transactional/operational data only (keeps setup, users, doctors, roles)
+TRUNCATE TABLE
+    waitlists,
+    password_emails,
+    id_cards,
+    audit_logs,
+    notification_queue,
+    notifications,
+    cycle_count_items,
+    cycle_counts,
+    stock_adjustments,
+    stock_movements,
+    grn_items,
+    goods_receipt_notes,
+    purchase_order_items,
+    purchase_orders,
+    optical_repairs,
+    optical_order_items,
+    optical_orders,
+    pharmacy_return_items,
+    pharmacy_returns,
+    pharmacy_dispensing_items,
+    pharmacy_dispensing,
+    pre_authorizations,
+    insurance_claims,
+    insurance_policies,
+    daily_settlements,
+    credit_notes,
+    refunds,
+    payments,
+    invoice_items,
+    invoices,
+    optical_prescriptions,
+    lab_orders,
+    prescription_versions,
+    prescription_items,
+    prescriptions,
+    appointment_queue,
+    appointment_status_log,
+    appointments,
+    patient_documents,
+    patient_consents,
+    patients,
+    refresh_tokens
+CASCADE;
+```
+
+> **What's preserved:** `hospitals`, `hospital_settings`, `departments`, `tax_configurations`, `users`, `roles`, `permissions`, `user_roles`, `role_permissions`, `doctors`, `doctor_schedules`, `doctor_leaves`, `doctor_fees`, `medicines`, `medicine_batches`, `optical_products`, `prescription_templates`, `notification_templates`, `id_sequences`, `suppliers`.
+
+---
+
+### Verify After Reset
+
+```powershell
+# Check table count (should be 63)
+psql -U hms_user -d hms_db -c "SELECT COUNT(*) AS table_count FROM information_schema.tables WHERE table_schema = 'public';"
+
+# Check if records were re-seeded
+psql -U hms_user -d hms_db -c "SELECT COUNT(*) AS user_count FROM users;"
+```
 
 ---
 

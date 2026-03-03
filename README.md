@@ -174,7 +174,29 @@ HMS/v1/
 
 ---
 
-## Quick Start
+## Quick Setup (TL;DR)
+
+```powershell
+# Database
+psql -U postgres -c "CREATE USER hms_user WITH PASSWORD 'HMS@2026'; CREATE DATABASE hms_db OWNER hms_user;"
+$env:PGPASSWORD='HMS@2026'
+psql -U hms_user -d hms_db -f database_hole/01_schema.sql
+psql -U hms_user -d hms_db -f database_hole/02_seed_data.sql
+psql -U hms_user -d hms_db -f database_hole/04_waitlist_table.sql
+
+# Backend
+cd backend; python -m venv venv; .\venv\Scripts\Activate.ps1
+pip install -r requirements.txt; mkdir uploads
+uvicorn app.main:app --reload --port 8000
+
+# Frontend (new terminal)
+cd frontend; npm install; npm run dev
+```
+**Login:** `superadmin` / `superadmin@123` → http://localhost:5173
+
+---
+
+## Full Setup
 
 ### Prerequisites
 
@@ -238,7 +260,7 @@ npm run dev
 | http://localhost:8000/docs | Swagger API Docs |
 | http://localhost:8000/redoc | ReDoc API Docs |
 
-**Default Login:** `superadmin` / `Admin@123`
+**Default Login:** `superadmin` / `superadmin@123`
 
 > For detailed step-by-step instructions, see **[SETUP_GUIDE.md](SETUP_GUIDE.md)**
 
@@ -381,15 +403,20 @@ VITE_API_BASE_URL=http://localhost:8000
 
 ## Default Credentials
 
+Password pattern: **`<username>@123`** (e.g. `superadmin@123`, `doctor@123`)
+
 | Role | Username | Password |
 |------|----------|----------|
-| Super Admin | `superadmin` | `Admin@123` |
-| Admin | `admin1` | `Admin@123` |
-| Doctor | `drsmith` | `Admin@123` |
-| Receptionist | `reception1` | `Admin@123` |
-| Nurse | `nursewilson` | `Admin@123` |
-| Pharmacist | `pharma1` | `Admin@123` |
-| Cashier | `cashier1` | `Admin@123` |
+| Super Admin | `superadmin` | `superadmin@123` |
+| Hospital Admin | `admin` | `admin@123` |
+| Doctor (General Medicine) | `doctor1` | `doctor@123` |
+| Doctor (Cardiology) | `doctor2` | `doctor@123` |
+| Doctor (Ophthalmology) | `doctor3` | `doctor@123` |
+| Receptionist | `receptionist` | `receptionist@123` |
+| Pharmacist | `pharmacist` | `pharmacist@123` |
+| Cashier | `cashier` | `cashier@123` |
+| Optical Staff | `optical` | `optical@123` |
+| Inventory Manager | `inventory` | `inventory@123` |
 
 > **Change all default passwords after first login.**
 

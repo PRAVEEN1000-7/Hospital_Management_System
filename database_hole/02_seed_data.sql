@@ -199,82 +199,80 @@ VALUES
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 8. USERS  (Super Admin + sample staff)
---    Password: "Admin@123" → bcrypt hash below
+--    Password pattern: <role>@123  (e.g. superadmin@123, doctor@123)
 --    Reference numbers: 12-digit HMS IDs
 -- ─────────────────────────────────────────────────────────────────────────────
--- bcrypt hash for "Admin@123":
--- $2b$12$LJ3m4ys3Lk0TSwHjfM3vWOvMPJ5bPJVGqL7vN.Lm0xkDQHyGHyGa
 
 INSERT INTO users (id, hospital_id, reference_number, email, username, password_hash, first_name, last_name, phone, is_active, must_change_password)
 VALUES
-    -- Super Admin
+    -- Super Admin  (superadmin / superadmin@123)
     ('10000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001',
      'HCA261X00001',
      'superadmin@hmscore.com', 'superadmin',
-     '$2b$12$LJ3m4ys3Lk0TSwHjfM3vWOvMPJ5bPJVGqL7vN.Lm0xkDQHyGHyGa',
+     '$2b$12$0tc7zjjkvjOKWHuu7/nen.uUGTROcl0BG..7hT8WavtQwWo7LMX4m',
      'System', 'Administrator', '+12125550001', true, false),
 
-    -- Hospital Admin
+    -- Hospital Admin  (admin / admin@123)
     ('10000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000001',
      'HCA261X00002',
-     'admin@hmscore.com', 'hospadmin',
-     '$2b$12$LJ3m4ys3Lk0TSwHjfM3vWOvMPJ5bPJVGqL7vN.Lm0xkDQHyGHyGa',
+     'admin@hmscore.com', 'admin',
+     '$2b$12$n6FJA9f6j4EZIquwwRMyDO9plnfDoJQAetkGWlGlDvNTpsoioFVY6',
      'Hospital', 'Admin', '+12125550002', true, true),
 
-    -- Doctor 1 — General Medicine
+    -- Doctor 1 — General Medicine  (doctor1 / doctor@123)
     ('10000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000001',
      'HCD261X00003',
-     'dr.smith@hmscore.com', 'dr.smith',
-     '$2b$12$LJ3m4ys3Lk0TSwHjfM3vWOvMPJ5bPJVGqL7vN.Lm0xkDQHyGHyGa',
+     'dr.smith@hmscore.com', 'doctor1',
+     '$2b$12$uqpihhxtDoT4eLZCGqX24usojSuJeXuDrAMpQVNBJ78Iybb.H/0Wy',
      'John', 'Smith', '+12125550003', true, true),
 
-    -- Doctor 2 — Cardiology
+    -- Doctor 2 — Cardiology  (doctor2 / doctor@123)
     ('10000000-0000-0000-0000-000000000004', 'a0000000-0000-0000-0000-000000000001',
      'HCD261X00004',
-     'dr.patel@hmscore.com', 'dr.patel',
-     '$2b$12$LJ3m4ys3Lk0TSwHjfM3vWOvMPJ5bPJVGqL7vN.Lm0xkDQHyGHyGa',
+     'dr.patel@hmscore.com', 'doctor2',
+     '$2b$12$uqpihhxtDoT4eLZCGqX24usojSuJeXuDrAMpQVNBJ78Iybb.H/0Wy',
      'Arun', 'Patel', '+12125550004', true, true),
 
-    -- Doctor 3 — Ophthalmology
+    -- Doctor 3 — Ophthalmology  (doctor3 / doctor@123)
     ('10000000-0000-0000-0000-000000000005', 'a0000000-0000-0000-0000-000000000001',
      'HCD261X00005',
-     'dr.lee@hmscore.com', 'dr.lee',
-     '$2b$12$LJ3m4ys3Lk0TSwHjfM3vWOvMPJ5bPJVGqL7vN.Lm0xkDQHyGHyGa',
+     'dr.lee@hmscore.com', 'doctor3',
+     '$2b$12$uqpihhxtDoT4eLZCGqX24usojSuJeXuDrAMpQVNBJ78Iybb.H/0Wy',
      'Sarah', 'Lee', '+12125550005', true, true),
 
-    -- Receptionist
+    -- Receptionist  (receptionist / receptionist@123)
     ('10000000-0000-0000-0000-000000000006', 'a0000000-0000-0000-0000-000000000001',
      'HCS261X00006',
-     'reception@hmscore.com', 'reception1',
-     '$2b$12$LJ3m4ys3Lk0TSwHjfM3vWOvMPJ5bPJVGqL7vN.Lm0xkDQHyGHyGa',
+     'reception@hmscore.com', 'receptionist',
+     '$2b$12$ZeFUc3uAcQkCzJFW1rXnt.BY3Wyq1QkRjzYSs5NZzH79BMMv2yqXq',
      'Emily', 'Davis', '+12125550006', true, true),
 
-    -- Pharmacist
+    -- Pharmacist  (pharmacist / pharmacist@123)
     ('10000000-0000-0000-0000-000000000007', 'a0000000-0000-0000-0000-000000000001',
      'HCP261X00007',
-     'pharma@hmscore.com', 'pharmacist1',
-     '$2b$12$LJ3m4ys3Lk0TSwHjfM3vWOvMPJ5bPJVGqL7vN.Lm0xkDQHyGHyGa',
+     'pharma@hmscore.com', 'pharmacist',
+     '$2b$12$XLjhkUJ0yX4a8Hlvo.MXA.ht1KsVpZQD5mBzfV1wr5ZOGqdMmUELK',
      'Michael', 'Brown', '+12125550007', true, true),
 
-    -- Cashier
+    -- Cashier  (cashier / cashier@123)
     ('10000000-0000-0000-0000-000000000008', 'a0000000-0000-0000-0000-000000000001',
      'HCS261X00008',
-     'cashier@hmscore.com', 'cashier1',
-     '$2b$12$LJ3m4ys3Lk0TSwHjfM3vWOvMPJ5bPJVGqL7vN.Lm0xkDQHyGHyGa',
+     'cashier@hmscore.com', 'cashier',
+     '$2b$12$pfXHfnbCXWo7oEiJbCflruMai/TyTmFhLjsLhTiE3fkJKN6kvXPWO',
      'Jessica', 'Wilson', '+12125550008', true, true),
 
-    -- Optical Staff
+    -- Optical Staff  (optical / optical@123)
     ('10000000-0000-0000-0000-000000000009', 'a0000000-0000-0000-0000-000000000001',
      'HCS261X00009',
-     'optical@hmscore.com', 'optical1',
-     '$2b$12$LJ3m4ys3Lk0TSwHjfM3vWOvMPJ5bPJVGqL7vN.Lm0xkDQHyGHyGa',
+     'optical@hmscore.com', 'optical',
+     '$2b$12$k1PUbiXm2AP1fGG7HBHg5u6cjOEnHqrJi30qOZXYAFPutHtvAlZdy',
      'David', 'Martinez', '+12125550009', true, true),
 
-    -- Inventory Manager
+    -- Inventory Manager  (inventory / inventory@123)
     ('10000000-0000-0000-0000-000000000010', 'a0000000-0000-0000-0000-000000000001',
      'HCS261X00010',
-     'inventory@hmscore.com', 'inventory1',
-     '$2b$12$LJ3m4ys3Lk0TSwHjfM3vWOvMPJ5bPJVGqL7vN.Lm0xkDQHyGHyGa',
+     'inventory@hmscore.com', 'inventory',
+     '$2b$12$YVXG5t7ZUlhx9f3FSeLSMuhCycBWz8jEhe7EWXfr6H0iqHo5HHWwK',
      'Robert', 'Taylor', '+12125550010', true, true);
 
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -316,36 +314,37 @@ UPDATE departments SET head_doctor_id = '20000000-0000-0000-0000-000000000003' W
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 11. DOCTOR SCHEDULES  (Mon-Fri for each doctor)
 -- ─────────────────────────────────────────────────────────────────────────────
-INSERT INTO doctor_schedules (doctor_id, day_of_week, start_time, end_time, break_start_time, break_end_time, slot_duration_minutes, max_patients, effective_from)
+INSERT INTO doctor_schedules (doctor_id, day_of_week, shift_name, start_time, end_time, break_start_time, break_end_time, slot_duration_minutes, max_patients, effective_from)
 VALUES
-    -- Dr. Smith (General Medicine) — Mon-Fri
-    ('20000000-0000-0000-0000-000000000001', 1, '09:00', '13:00', '11:00', '11:15', 15, 16, '2026-01-01'),
-    ('20000000-0000-0000-0000-000000000001', 2, '09:00', '13:00', '11:00', '11:15', 15, 16, '2026-01-01'),
-    ('20000000-0000-0000-0000-000000000001', 3, '09:00', '13:00', '11:00', '11:15', 15, 16, '2026-01-01'),
-    ('20000000-0000-0000-0000-000000000001', 4, '09:00', '13:00', '11:00', '11:15', 15, 16, '2026-01-01'),
-    ('20000000-0000-0000-0000-000000000001', 5, '09:00', '13:00', '11:00', '11:15', 15, 16, '2026-01-01'),
-    -- Afternoon shift
-    ('20000000-0000-0000-0000-000000000001', 1, '14:00', '17:00', NULL, NULL, 15, 12, '2026-01-01'),
-    ('20000000-0000-0000-0000-000000000001', 2, '14:00', '17:00', NULL, NULL, 15, 12, '2026-01-01'),
-    ('20000000-0000-0000-0000-000000000001', 3, '14:00', '17:00', NULL, NULL, 15, 12, '2026-01-01'),
-    ('20000000-0000-0000-0000-000000000001', 4, '14:00', '17:00', NULL, NULL, 15, 12, '2026-01-01'),
-    ('20000000-0000-0000-0000-000000000001', 5, '14:00', '17:00', NULL, NULL, 15, 12, '2026-01-01'),
+    -- Dr. Smith (General Medicine) — Mon-Fri morning
+    ('20000000-0000-0000-0000-000000000001', 1, 'morning', '09:00', '13:00', '11:00', '11:15', 15, 16, '2026-01-01'),
+    ('20000000-0000-0000-0000-000000000001', 2, 'morning', '09:00', '13:00', '11:00', '11:15', 15, 16, '2026-01-01'),
+    ('20000000-0000-0000-0000-000000000001', 3, 'morning', '09:00', '13:00', '11:00', '11:15', 15, 16, '2026-01-01'),
+    ('20000000-0000-0000-0000-000000000001', 4, 'morning', '09:00', '13:00', '11:00', '11:15', 15, 16, '2026-01-01'),
+    ('20000000-0000-0000-0000-000000000001', 5, 'morning', '09:00', '13:00', '11:00', '11:15', 15, 16, '2026-01-01'),
+    -- Dr. Smith — Mon-Fri afternoon
+    ('20000000-0000-0000-0000-000000000001', 1, 'afternoon', '14:00', '17:00', NULL, NULL, 15, 12, '2026-01-01'),
+    ('20000000-0000-0000-0000-000000000001', 2, 'afternoon', '14:00', '17:00', NULL, NULL, 15, 12, '2026-01-01'),
+    ('20000000-0000-0000-0000-000000000001', 3, 'afternoon', '14:00', '17:00', NULL, NULL, 15, 12, '2026-01-01'),
+    ('20000000-0000-0000-0000-000000000001', 4, 'afternoon', '14:00', '17:00', NULL, NULL, 15, 12, '2026-01-01'),
+    ('20000000-0000-0000-0000-000000000001', 5, 'afternoon', '14:00', '17:00', NULL, NULL, 15, 12, '2026-01-01'),
     -- Dr. Patel (Cardiology) — Mon-Sat
-    ('20000000-0000-0000-0000-000000000002', 1, '10:00', '14:00', '12:00', '12:30', 20, 12, '2026-01-01'),
-    ('20000000-0000-0000-0000-000000000002', 2, '10:00', '14:00', '12:00', '12:30', 20, 12, '2026-01-01'),
-    ('20000000-0000-0000-0000-000000000002', 3, '10:00', '14:00', '12:00', '12:30', 20, 12, '2026-01-01'),
-    ('20000000-0000-0000-0000-000000000002', 4, '10:00', '14:00', '12:00', '12:30', 20, 12, '2026-01-01'),
-    ('20000000-0000-0000-0000-000000000002', 5, '10:00', '14:00', '12:00', '12:30', 20, 12, '2026-01-01'),
-    ('20000000-0000-0000-0000-000000000002', 6, '10:00', '13:00', NULL,    NULL,    20, 9,  '2026-01-01'),
-    -- Dr. Lee (Ophthalmology) — Mon-Fri
-    ('20000000-0000-0000-0000-000000000003', 1, '09:00', '12:00', NULL, NULL, 20, 9, '2026-01-01'),
-    ('20000000-0000-0000-0000-000000000003', 2, '09:00', '12:00', NULL, NULL, 20, 9, '2026-01-01'),
-    ('20000000-0000-0000-0000-000000000003', 3, '09:00', '12:00', NULL, NULL, 20, 9, '2026-01-01'),
-    ('20000000-0000-0000-0000-000000000003', 4, '09:00', '12:00', NULL, NULL, 20, 9, '2026-01-01'),
-    ('20000000-0000-0000-0000-000000000003', 5, '09:00', '12:00', NULL, NULL, 20, 9, '2026-01-01'),
-    ('20000000-0000-0000-0000-000000000003', 1, '15:00', '18:00', NULL, NULL, 20, 9, '2026-01-01'),
-    ('20000000-0000-0000-0000-000000000003', 3, '15:00', '18:00', NULL, NULL, 20, 9, '2026-01-01'),
-    ('20000000-0000-0000-0000-000000000003', 5, '15:00', '18:00', NULL, NULL, 20, 9, '2026-01-01');
+    ('20000000-0000-0000-0000-000000000002', 1, 'default', '10:00', '14:00', '12:00', '12:30', 20, 12, '2026-01-01'),
+    ('20000000-0000-0000-0000-000000000002', 2, 'default', '10:00', '14:00', '12:00', '12:30', 20, 12, '2026-01-01'),
+    ('20000000-0000-0000-0000-000000000002', 3, 'default', '10:00', '14:00', '12:00', '12:30', 20, 12, '2026-01-01'),
+    ('20000000-0000-0000-0000-000000000002', 4, 'default', '10:00', '14:00', '12:00', '12:30', 20, 12, '2026-01-01'),
+    ('20000000-0000-0000-0000-000000000002', 5, 'default', '10:00', '14:00', '12:00', '12:30', 20, 12, '2026-01-01'),
+    ('20000000-0000-0000-0000-000000000002', 6, 'default', '10:00', '13:00', NULL,    NULL,    20, 9,  '2026-01-01'),
+    -- Dr. Lee (Ophthalmology) — Mon-Fri morning
+    ('20000000-0000-0000-0000-000000000003', 1, 'morning', '09:00', '12:00', NULL, NULL, 20, 9, '2026-01-01'),
+    ('20000000-0000-0000-0000-000000000003', 2, 'morning', '09:00', '12:00', NULL, NULL, 20, 9, '2026-01-01'),
+    ('20000000-0000-0000-0000-000000000003', 3, 'morning', '09:00', '12:00', NULL, NULL, 20, 9, '2026-01-01'),
+    ('20000000-0000-0000-0000-000000000003', 4, 'morning', '09:00', '12:00', NULL, NULL, 20, 9, '2026-01-01'),
+    ('20000000-0000-0000-0000-000000000003', 5, 'morning', '09:00', '12:00', NULL, NULL, 20, 9, '2026-01-01'),
+    -- Dr. Lee — afternoon (Mon, Wed, Fri)
+    ('20000000-0000-0000-0000-000000000003', 1, 'afternoon', '15:00', '18:00', NULL, NULL, 20, 9, '2026-01-01'),
+    ('20000000-0000-0000-0000-000000000003', 3, 'afternoon', '15:00', '18:00', NULL, NULL, 20, 9, '2026-01-01'),
+    ('20000000-0000-0000-0000-000000000003', 5, 'afternoon', '15:00', '18:00', NULL, NULL, 20, 9, '2026-01-01');
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 12. DOCTOR FEES

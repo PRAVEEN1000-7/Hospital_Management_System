@@ -15,8 +15,7 @@ Complete step-by-step instructions to get the Hospital Management System running
 7. [Default Credentials](#default-credentials)
 8. [Useful Commands](#useful-commands)
 9. [Troubleshooting](#troubleshooting)
-10. [Quick Setup] (#Quick-Start)
-11. [Database Reset Commands](#database-reset-commands)
+10. [Database Reset Commands](#database-reset-commands)
 
 ---
 
@@ -428,7 +427,7 @@ HMS/v1/
 
 ---
 
-## Quick-Start
+## Quick Start (TL;DR)
 
 ### 1. Go to the project folder
 

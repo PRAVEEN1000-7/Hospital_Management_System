@@ -28,6 +28,11 @@ import WaitlistManagement from './pages/WaitlistManagement';
 import AppointmentReports from './pages/AppointmentReports';
 import AppointmentSettings from './pages/AppointmentSettings';
 
+// Prescription pages
+import PrescriptionList from './pages/PrescriptionList';
+import PrescriptionBuilder from './pages/PrescriptionBuilder';
+import PrescriptionDetail from './pages/PrescriptionDetail';
+
 const App: React.FC = () => {
   return (
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
@@ -116,6 +121,28 @@ const App: React.FC = () => {
             <Route path="/appointments/settings" element={
               <ProtectedRoute allowedRoles={['super_admin', 'admin']}>
                 <AppointmentSettings />
+              </ProtectedRoute>
+            } />
+
+            {/* ── Prescription Routes ── */}
+            <Route path="/prescriptions" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor', 'nurse', 'pharmacist']}>
+                <PrescriptionList />
+              </ProtectedRoute>
+            } />
+            <Route path="/prescriptions/new" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor']}>
+                <PrescriptionBuilder />
+              </ProtectedRoute>
+            } />
+            <Route path="/prescriptions/:id" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor', 'nurse', 'pharmacist']}>
+                <PrescriptionDetail />
+              </ProtectedRoute>
+            } />
+            <Route path="/prescriptions/:id/edit" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor']}>
+                <PrescriptionBuilder />
               </ProtectedRoute>
             } />
           </Route>

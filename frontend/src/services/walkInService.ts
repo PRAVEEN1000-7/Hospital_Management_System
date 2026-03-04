@@ -72,6 +72,12 @@ const walkInService = {
     return res.data;
   },
 
+  /** Send a patient already in queue to the doctor's NEXT UP. Receptionist-only. */
+  async sendPatientToDoctor(queueId: string): Promise<{ ok: boolean; queue_id: string; status: string }> {
+    const res = await api.patch<{ ok: boolean; queue_id: string; status: string }>(`/walk-ins/queue/${queueId}/send-to-doctor`);
+    return res.data;
+  },
+
   /** @deprecated Use sendToDoctor instead */
   async assignDoctor(appointmentId: string, doctorId: string): Promise<Appointment> {
     return this.sendToDoctor(appointmentId, doctorId);

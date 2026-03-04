@@ -98,7 +98,7 @@ def _next_position(db: Session, doctor_id: uuid.UUID, queue_date: date) -> int:
         .filter(
             AppointmentQueue.doctor_id == doctor_id,
             AppointmentQueue.queue_date == queue_date,
-            AppointmentQueue.status.in_(["waiting", "called"]),
+            AppointmentQueue.status.in_(["waiting", "called", "sent_to_doctor"]),
         )
         .scalar()
     )
@@ -387,7 +387,7 @@ async def get_queue_status(
             "consultation_end_at": appt.consultation_end_at.isoformat() if appt and appt.consultation_end_at else None,
         })
 
-    total_waiting = sum(1 for i in items if i["status"] in ("waiting", "called"))
+    total_waiting = sum(1 for i in items if i["status"] in ("waiting", "called", "sent_to_doctor"))
     total_in_progress = sum(1 for i in items if i["status"] == "in_consultation")
     total_completed = sum(1 for i in items if i["status"] == "completed")
 
@@ -430,6 +430,43 @@ async def call_patient(
     return {"ok": True, "queue_id": str(qe.id), "status": "called"}
 
 
+@router.patch("/queue/{queue_id}/send-to-doctor")
+async def send_to_doctor_queue(
+    queue_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Receptionist confirms sending a patient to the doctor.
+    Changes queue status from 'waiting' or 'called' to 'sent_to_doctor'.
+    Only then will the patient appear in the doctor's NEXT UP section.
+    """
+    if not (_is_receptionist(current_user) or _is_admin_or_super(current_user)):
+        raise HTTPException(
+            status_code=403,
+            detail="Only receptionists or admins can send patients to doctor",
+        )
+
+    try:
+        q_uuid = uuid.UUID(queue_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid queue_id")
+
+    qe = db.query(AppointmentQueue).filter(AppointmentQueue.id == q_uuid).first()
+    if not qe:
+        raise HTTPException(status_code=404, detail="Queue entry not found")
+
+    if qe.status not in ("waiting", "called"):
+        raise HTTPException(
+            status_code=400,
+            detail="Only 'waiting' or 'called' patients can be sent to doctor",
+        )
+
+    qe.status = "sent_to_doctor"
+    db.commit()
+    return {"ok": True, "queue_id": str(qe.id), "status": "sent_to_doctor"}
+
+
 @router.patch("/queue/{queue_id}/start-consultation")
 async def start_consultation(
     queue_id: str,
@@ -448,8 +485,8 @@ async def start_consultation(
 
     _require_queue_actor(db, current_user, qe)
 
-    if qe.status not in ("waiting", "called"):
-        raise HTTPException(status_code=400, detail="Patient must be in 'waiting' or 'called' status to start consultation")
+    if qe.status not in ("waiting", "called", "sent_to_doctor"):
+        raise HTTPException(status_code=400, detail="Patient must be in 'waiting', 'called', or 'sent_to_doctor' status to start consultation")
 
     qe.status = "in_consultation"
 
@@ -763,7 +800,7 @@ async def get_doctor_queue_loads(
         )
         .filter(
             AppointmentQueue.queue_date == today,
-            AppointmentQueue.status.in_(["waiting", "called"]),
+            AppointmentQueue.status.in_(["waiting", "called", "sent_to_doctor"]),
         )
         .group_by(AppointmentQueue.doctor_id)
         .all()

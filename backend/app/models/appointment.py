@@ -174,7 +174,7 @@ class AppointmentQueue(Base):
     queue_date = Column(Date, nullable=False)
     queue_number = Column(Integer, nullable=False)
     position = Column(Integer, nullable=False)
-    status = Column(String(20), default="waiting")  # 'waiting','called','in_consultation','completed','skipped'
+    status = Column(String(20), default="waiting")  # 'waiting','called','sent_to_doctor','in_consultation','completed','skipped'
     called_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

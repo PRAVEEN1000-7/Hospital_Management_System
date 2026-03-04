@@ -18,6 +18,7 @@ const PRIORITY_CONFIG: Record<string, { label: string; bg: string; text: string;
 const QUEUE_STATUS_CONFIG: Record<string, { label: string; bg: string; text: string; dot: string }> = {
   waiting:          { label: 'Waiting',         bg: 'bg-amber-50',   text: 'text-amber-700',   dot: 'bg-amber-400' },
   called:           { label: 'Called',           bg: 'bg-blue-50',    text: 'text-blue-700',    dot: 'bg-blue-500' },
+  sent_to_doctor:   { label: 'Sent to Doctor',  bg: 'bg-teal-50',    text: 'text-teal-700',    dot: 'bg-teal-500' },
   in_consultation:  { label: 'In Consultation',  bg: 'bg-purple-50',  text: 'text-purple-700',  dot: 'bg-purple-500' },
   completed:        { label: 'Completed',        bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500' },
   skipped:          { label: 'Skipped',          bg: 'bg-slate-100',  text: 'text-slate-500',   dot: 'bg-slate-400' },
@@ -315,6 +316,17 @@ const WalkInQueue: React.FC = () => {
     setSendingInProgress(false);
   };
 
+  // ── Send patient already in queue to doctor's NEXT UP ──────────
+  const handleSendPatientToDoctor = async (queueId: string, patientName: string) => {
+    try {
+      await walkInService.sendPatientToDoctor(queueId);
+      toast.success(`${patientName} sent to doctor's queue`);
+      fetchQueue();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to send patient');
+    }
+  };
+
   // ── Derived data ───────────────────────────────────────────────
   const activeItems = (queueData?.items || []).filter(
     i => !['completed', 'skipped'].includes(i.status),
@@ -326,8 +338,8 @@ const WalkInQueue: React.FC = () => {
   const displayItems = [...activeItems, ...completedItems];
 
   // ── Reception Tabs Derived Data ────────────────────────────────
-  // New: waiting patients + called patients (called = highlighted, waiting for reception to send)
-  const receptionNewItems = (queueData?.items || []).filter(i => ['waiting', 'called'].includes(i.status));
+  // New: waiting patients + called patients + sent_to_doctor (called = highlighted, waiting for reception to send)
+  const receptionNewItems = (queueData?.items || []).filter(i => ['waiting', 'called', 'sent_to_doctor'].includes(i.status));
   // Ongoing: only in consultation (doctor has started consultation)
   const receptionOngoingItems = (queueData?.items || []).filter(i => i.status === 'in_consultation');
   // Completed: finished consultations
@@ -506,7 +518,7 @@ const WalkInQueue: React.FC = () => {
                 );
               })()}
 
-              {/* Called Patient — Ready to Start */}
+              {/* Called Patient — Waiting for Reception to Send */}
               {(() => {
                 const calledPatient = activeItems.find(i => i.status === 'called');
                 if (!calledPatient) return null;
@@ -514,8 +526,9 @@ const WalkInQueue: React.FC = () => {
                 return (
                   <div className="bg-gradient-to-r from-blue-50 to-blue-100/50 rounded-2xl border-2 border-blue-200 p-5 shadow-sm">
                     <div className="flex items-center gap-2 mb-4">
-                      <span className="material-symbols-outlined text-blue-600">campaign</span>
-                      <span className="text-xs font-bold text-blue-700 uppercase tracking-wider">Called — Waiting to Enter</span>
+                      <span className="material-symbols-outlined text-blue-600 animate-pulse">campaign</span>
+                      <span className="text-xs font-bold text-blue-700 uppercase tracking-wider">Called — Waiting for Reception</span>
+                      <span className="text-[10px] text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full font-semibold animate-pulse">Pending Send</span>
                     </div>
                     <div className="flex flex-col lg:flex-row lg:items-center gap-4">
                       <div className="flex items-center gap-4 flex-1 min-w-0">
@@ -549,11 +562,6 @@ const WalkInQueue: React.FC = () => {
                           <span className="material-symbols-outlined text-sm">person</span>
                           Info
                         </button>
-                        <button onClick={() => handleStartConsultation(calledPatient.queue_id)}
-                          className="inline-flex items-center gap-1.5 px-5 py-2.5 text-sm font-bold text-white bg-purple-500 rounded-lg hover:bg-purple-600 transition-colors shadow-sm">
-                          <span className="material-symbols-outlined text-base">clinical_notes</span>
-                          Start Consultation
-                        </button>
                         <button onClick={() => handleSkip(calledPatient.queue_id)}
                           className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="No Show">
                           <span className="material-symbols-outlined text-lg">person_off</span>
@@ -564,27 +572,28 @@ const WalkInQueue: React.FC = () => {
                 );
               })()}
 
-              {/* Next Up — Ready to Call */}
+              {/* Next Up — Sent by Reception (only sent_to_doctor patients) */}
               {(() => {
-                const waitingPatients = activeItems.filter(i => i.status === 'waiting');
-                const nextPatient = waitingPatients[0];
+                const sentPatients = activeItems.filter(i => i.status === 'sent_to_doctor');
+                const nextPatient = sentPatients[0];
                 if (!nextPatient) return null;
                 const pri = PRIORITY_CONFIG[nextPatient.priority] || PRIORITY_CONFIG.normal;
                 const hasCalledOrConsulting = activeItems.some(i => i.status === 'called' || i.status === 'in_consultation');
                 return (
-                  <div className={`bg-white rounded-xl border-2 p-5 ${hasCalledOrConsulting ? 'border-slate-200' : 'border-amber-300 bg-amber-50/30'}`}>
+                  <div className={`bg-white rounded-xl border-2 p-5 ${hasCalledOrConsulting ? 'border-slate-200' : 'border-teal-300 bg-teal-50/30'}`}>
                     <div className="flex items-center gap-2 mb-4">
-                      <span className={`material-symbols-outlined ${hasCalledOrConsulting ? 'text-slate-500' : 'text-amber-600'}`}>hourglass_top</span>
-                      <span className={`text-xs font-bold uppercase tracking-wider ${hasCalledOrConsulting ? 'text-slate-500' : 'text-amber-700'}`}>
-                        Next Up {waitingPatients.length > 1 ? `(+${waitingPatients.length - 1} waiting)` : ''}
+                      <span className={`material-symbols-outlined ${hasCalledOrConsulting ? 'text-slate-500' : 'text-teal-600'}`}>send</span>
+                      <span className={`text-xs font-bold uppercase tracking-wider ${hasCalledOrConsulting ? 'text-slate-500' : 'text-teal-700'}`}>
+                        Next Up {sentPatients.length > 1 ? `(+${sentPatients.length - 1} ready)` : ''}
                       </span>
+                      <span className="text-[10px] text-teal-600 bg-teal-100 px-2 py-0.5 rounded-full font-semibold">Sent by Reception</span>
                     </div>
                     <div className="flex flex-col lg:flex-row lg:items-center gap-4">
                       <div className="flex items-center gap-4 flex-1 min-w-0">
                         <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-lg font-bold shrink-0 ${
                           nextPatient.priority === 'emergency' ? 'bg-red-100 text-red-700' :
                           nextPatient.priority === 'urgent' ? 'bg-amber-100 text-amber-700' :
-                          'bg-primary/10 text-primary'
+                          'bg-teal-100 text-teal-700'
                         }`}>
                           {nextPatient.queue_number}
                         </div>
@@ -627,26 +636,33 @@ const WalkInQueue: React.FC = () => {
                 );
               })()}
 
-              {/* Remaining Waiting Queue — Compact cards */}
+              {/* Remaining Waiting Queue — Patients waiting for reception to send */}
               {(() => {
-                const waitingPatients = activeItems.filter(i => i.status === 'waiting').slice(1);
+                const waitingPatients = activeItems.filter(i => i.status === 'waiting' || i.status === 'called');
                 if (waitingPatients.length === 0) return null;
                 return (
                   <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                    <div className="px-4 py-3 bg-slate-50 border-b border-slate-100">
-                      <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                        Queue ({waitingPatients.length} more waiting)
-                      </span>
+                    <div className="px-4 py-3 bg-amber-50 border-b border-amber-100">
+                      <div className="flex items-center gap-2">
+                        <span className="material-symbols-outlined text-amber-500 text-sm">hourglass_top</span>
+                        <span className="text-xs font-bold text-amber-700 uppercase tracking-wider">
+                          Waiting for Reception ({waitingPatients.length})
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-amber-600 mt-0.5">These patients will appear in Next Up once reception sends them</p>
                     </div>
                     <div className="divide-y divide-slate-100">
                       {waitingPatients.map(item => {
                         const pri = PRIORITY_CONFIG[item.priority] || PRIORITY_CONFIG.normal;
+                        const isCalled = item.status === 'called';
                         return (
                           <div key={item.queue_id} className={`flex items-center gap-3 px-4 py-3 ${
+                            isCalled ? 'bg-blue-50/50' :
                             item.priority === 'emergency' ? 'bg-red-50/30' :
                             item.priority === 'urgent' ? 'bg-amber-50/20' : ''
                           }`}>
                             <span className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold shrink-0 ${
+                              isCalled ? 'bg-blue-100 text-blue-700 ring-2 ring-blue-300' :
                               item.priority === 'emergency' ? 'bg-red-100 text-red-700' :
                               item.priority === 'urgent' ? 'bg-amber-100 text-amber-700' :
                               'bg-slate-100 text-slate-600'
@@ -656,6 +672,9 @@ const WalkInQueue: React.FC = () => {
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <p className="text-sm font-bold text-slate-900">{item.patient_name || 'Unknown'}</p>
+                                {isCalled && (
+                                  <span className="text-[10px] font-bold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded-full">Called</span>
+                                )}
                                 {item.patient_reference_number && (
                                   <span className="text-xs font-mono text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">MRN: {item.patient_reference_number}</span>
                                 )}
@@ -668,11 +687,13 @@ const WalkInQueue: React.FC = () => {
                               </div>
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
-                              <button onClick={() => handleCall(item.queue_id)}
-                                className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors">
-                                <span className="material-symbols-outlined text-sm">campaign</span>
-                                Call
-                              </button>
+                              {!isCalled && (
+                                <button onClick={() => handleCall(item.queue_id)}
+                                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors">
+                                  <span className="material-symbols-outlined text-sm">campaign</span>
+                                  Call
+                                </button>
+                              )}
                             </div>
                           </div>
                         );
@@ -875,12 +896,14 @@ const WalkInQueue: React.FC = () => {
                   const recentComplete = isRecentlyCompleted(item);
                   const isCalled = item.status === 'called';
                   const isInConsultation = item.status === 'in_consultation';
+                  const isSentToDoctor = item.status === 'sent_to_doctor';
                   const isCompleted = ['completed', 'skipped'].includes(item.status);
                   return (
                     <tr key={item.queue_id}
                       className={`border-b border-slate-100 transition-colors ${
                         isInConsultation ? 'bg-purple-50/50' :
                         isCalled ? 'bg-blue-50 ring-2 ring-blue-200 ring-inset animate-pulse' :
+                        isSentToDoctor ? 'bg-teal-50/40' :
                         recentComplete ? 'bg-emerald-50/50 animate-pulse' :
                         isCompleted && receptionTab === 'completed' ? 'hover:bg-slate-50/50' :
                         item.priority === 'emergency' ? 'bg-red-50/30' :
@@ -890,6 +913,7 @@ const WalkInQueue: React.FC = () => {
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center justify-center w-8 h-8 rounded-lg text-sm font-bold ${
                           isCalled ? 'bg-blue-500 text-white ring-2 ring-blue-300' :
+                          isSentToDoctor ? 'bg-teal-100 text-teal-700' :
                           isCompleted ? 'bg-emerald-100 text-emerald-700' :
                           item.priority === 'emergency' ? 'bg-red-100 text-red-700' :
                           item.priority === 'urgent' ? 'bg-amber-100 text-amber-700' :
@@ -971,20 +995,37 @@ const WalkInQueue: React.FC = () => {
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
                           {/* Send to Doctor: for reception/admin on waiting OR called items */}
-                          {canFilter && (item.status === 'waiting' || item.status === 'called') && (
-                            <button onClick={() => {
-                              setSendModalId(item.appointment_id);
-                              setSendDoctorId(item.doctor_id || '');
-                              setSendModalPatientName(item.patient_name || 'Patient');
-                            }}
-                              className={`w-8 h-8 flex items-center justify-center rounded-lg hover:scale-105 active:scale-95 transition-all shadow-sm ${
+                          {canFilter && (item.status === 'waiting' || item.status === 'called') && item.doctor_id && (
+                            <button onClick={() => handleSendPatientToDoctor(item.queue_id, item.patient_name || 'Patient')}
+                              className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg hover:scale-105 active:scale-95 transition-all shadow-sm text-xs font-semibold ${
                                 isCalled 
                                   ? 'bg-blue-500 text-white ring-2 ring-blue-300 animate-pulse' 
                                   : 'bg-primary text-white hover:bg-primary/90'
                               }`}
-                              title={isCalled ? 'Doctor Called - Send to Queue' : 'Send to Doctor'}>
-                              <span className="material-symbols-outlined text-lg">send</span>
+                              title={isCalled ? 'Doctor Called — Send Now!' : 'Send to Doctor'}>
+                              <span className="material-symbols-outlined text-base">send</span>
+                              {isCalled ? 'Send Now' : 'Send'}
                             </button>
+                          )}
+                          {/* Assign doctor: for unassigned items */}
+                          {canFilter && (item.status === 'waiting' || item.status === 'called') && !item.doctor_id && (
+                            <button onClick={() => {
+                              setSendModalId(item.appointment_id);
+                              setSendDoctorId('');
+                              setSendModalPatientName(item.patient_name || 'Patient');
+                            }}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-orange-500 text-white hover:bg-orange-600 hover:scale-105 active:scale-95 transition-all shadow-sm text-xs font-semibold"
+                              title="Assign & Send to Doctor">
+                              <span className="material-symbols-outlined text-base">person_add</span>
+                              Assign
+                            </button>
+                          )}
+                          {/* Sent to Doctor badge */}
+                          {item.status === 'sent_to_doctor' && (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold rounded-lg bg-teal-100 text-teal-700">
+                              <span className="material-symbols-outlined text-sm">check_circle</span>
+                              Sent to Doctor
+                            </span>
                           )}
                           {/* In Consultation status indicator */}
                           {isInConsultation && (
@@ -1417,6 +1458,18 @@ const WalkInQueue: React.FC = () => {
                 <button onClick={() => { handleCall(detailItem.queue_id); setDetailItem(null); }}
                   className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-blue-500 rounded-lg hover:bg-blue-600 shadow-sm transition-colors">
                   <span className="material-symbols-outlined text-base">campaign</span> Call Patient
+                </button>
+              )}
+              {canFilter && (detailItem.status === 'waiting' || detailItem.status === 'called') && detailItem.doctor_id && (
+                <button onClick={() => { handleSendPatientToDoctor(detailItem.queue_id, detailItem.patient_name || 'Patient'); setDetailItem(null); }}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-teal-500 rounded-lg hover:bg-teal-600 shadow-sm transition-colors">
+                  <span className="material-symbols-outlined text-base">send</span> Send to Doctor
+                </button>
+              )}
+              {canActOnQueue && detailItem.status === 'sent_to_doctor' && (
+                <button onClick={() => { handleStartConsultation(detailItem.queue_id); setDetailItem(null); }}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-purple-500 rounded-lg hover:bg-purple-600 shadow-sm transition-colors">
+                  <span className="material-symbols-outlined text-base">clinical_notes</span> Start Consultation
                 </button>
               )}
               {canActOnQueue && detailItem.status === 'called' && (

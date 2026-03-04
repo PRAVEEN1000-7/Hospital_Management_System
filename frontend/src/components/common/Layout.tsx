@@ -13,6 +13,9 @@ const Layout: React.FC = () => {
   const [appointmentsOpen, setAppointmentsOpen] = useState(
     () => location.pathname.startsWith('/appointments')
   );
+  const [prescriptionsOpen, setPrescriptionsOpen] = useState(
+    () => location.pathname.startsWith('/prescriptions')
+  );
 
   useEffect(() => {
     hospitalService.getHospitalDetails()
@@ -29,6 +32,9 @@ const Layout: React.FC = () => {
   useEffect(() => {
     if (location.pathname.startsWith('/appointments')) {
       setAppointmentsOpen(true);
+    }
+    if (location.pathname.startsWith('/prescriptions')) {
+      setPrescriptionsOpen(true);
     }
   }, [location.pathname]);
 
@@ -87,6 +93,25 @@ const Layout: React.FC = () => {
     );
   }
   // pharmacist, cashier, inventory_manager, staff — no appointment items
+
+  // ── Prescription navigation ── role-driven
+  const prescriptionItems: { to: string; label: string; icon: string }[] = [];
+
+  if (role === 'super_admin' || role === 'admin') {
+    prescriptionItems.push(
+      { to: '/prescriptions',     label: 'All Prescriptions', icon: 'list_alt' },
+      { to: '/prescriptions/new', label: 'New Prescription',  icon: 'note_add' },
+    );
+  } else if (role === 'doctor') {
+    prescriptionItems.push(
+      { to: '/prescriptions',     label: 'My Prescriptions',  icon: 'list_alt' },
+      { to: '/prescriptions/new', label: 'New Prescription',  icon: 'note_add' },
+    );
+  } else if (role === 'nurse' || role === 'pharmacist') {
+    prescriptionItems.push(
+      { to: '/prescriptions', label: 'Prescriptions', icon: 'list_alt' },
+    );
+  }
 
   // ── System navigation ── admin / super_admin only
   const systemNavItems: { to: string; label: string; icon: string }[] = [];
@@ -215,6 +240,48 @@ const Layout: React.FC = () => {
             </div>
           )}
 
+          {/* ══ PRESCRIPTIONS — collapsible ══ */}
+          {prescriptionItems.length > 0 && (
+            <div className="mt-4">
+              <div className="px-6 mb-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Prescriptions</span>
+              </div>
+              <button
+                onClick={() => setPrescriptionsOpen(!prescriptionsOpen)}
+                className={`w-full flex items-center justify-between px-6 py-2.5 text-sm font-medium transition-all ${
+                  location.pathname.startsWith('/prescriptions')
+                    ? 'text-primary bg-primary/5'
+                    : 'text-slate-500 hover:text-primary hover:bg-slate-50'
+                }`}
+              >
+                <div className="flex items-center">
+                  <span className="material-symbols-outlined mr-3 text-[20px]">prescriptions</span>
+                  Prescriptions
+                </div>
+                <span className={`material-symbols-outlined text-[18px] transition-transform duration-200 ${prescriptionsOpen ? 'rotate-180' : ''}`}>
+                  expand_more
+                </span>
+              </button>
+              <div className={`overflow-hidden transition-all duration-200 ${prescriptionsOpen ? 'max-h-[700px] opacity-100' : 'max-h-0 opacity-0'}`}>
+                {prescriptionItems.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    onClick={() => setSidebarOpen(false)}
+                    className={`flex items-center pl-10 pr-6 py-2.5 text-[13px] font-medium transition-all ${
+                      isActive(item.to)
+                        ? 'sidebar-item-active'
+                        : 'text-slate-400 hover:text-primary hover:bg-slate-50'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined mr-3 text-[18px]">{item.icon}</span>
+                    {item.label}
+                  </NavLink>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* ══ SYSTEM — admin / super_admin only ══ */}
           {systemNavItems.length > 0 && (
             <div className="mt-4">
@@ -300,6 +367,7 @@ const Layout: React.FC = () => {
             <h1 className="text-lg font-bold text-slate-900 hidden sm:block">
               {mainNavItems.find(i => isActive(i.to))?.label ||
               appointmentItems.find(i => isActive(i.to))?.label ||
+              prescriptionItems.find(i => isActive(i.to))?.label ||
               systemNavItems.find(i => isActive(i.to))?.label ||
               (isActive('/profile') ? 'My Profile' : 'HMS')}
             </h1>

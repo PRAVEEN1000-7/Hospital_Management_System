@@ -23,6 +23,8 @@ export interface Patient {
   emergency_contact_phone: string | null;
   emergency_contact_relation: string | null;
   photo_url: string | null;
+  known_allergies: string | null;
+  chronic_conditions: string | null;
   is_deleted: boolean;
   created_by: string | null;
   updated_by: string | null;

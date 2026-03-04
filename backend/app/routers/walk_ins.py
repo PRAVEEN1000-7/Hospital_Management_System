@@ -93,6 +93,15 @@ async def register_walk_in(
             doctor = db.query(Doctor).filter(Doctor.id == doctor_id).first()
             if not doctor:
                 raise HTTPException(status_code=404, detail="Doctor not found")
+        else:
+            # DB requires doctor_id NOT NULL – pick any available doctor as fallback
+            fallback = db.query(Doctor).filter(Doctor.is_active == True).first()
+            if fallback is None:
+                raise HTTPException(
+                    status_code=422,
+                    detail="doctor_id is required (no default doctor available)",
+                )
+            doctor_id = fallback.id
 
         # Create walk-in appointment
         appt_number = generate_appointment_number("walk_in")
@@ -102,7 +111,7 @@ async def register_walk_in(
             patient_id=patient_id,
             doctor_id=doctor_id,
             appointment_date=today,
-            start_time=None,
+            start_time=now.replace(tzinfo=None).time(),
             end_time=None,
             appointment_type="walk-in",
             visit_type="new",
@@ -211,7 +220,10 @@ async def assign_doctor_to_walkin(
     current_user: User = Depends(get_current_active_user),
 ):
     """Assign or re-assign a doctor to a walk-in appointment."""
-    appt_uuid = uuid.UUID(appointment_id)
+    try:
+        appt_uuid = uuid.UUID(appointment_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=404, detail="Appointment not found")
     appt = db.query(Appointment).filter(Appointment.id == appt_uuid).first()
     if not appt:
         raise HTTPException(status_code=404, detail="Appointment not found")

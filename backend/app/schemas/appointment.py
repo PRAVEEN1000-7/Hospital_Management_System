@@ -175,6 +175,8 @@ class AppointmentUpdate(BaseModel):
     consultation_fee: Optional[Decimal] = None
     visit_type: Optional[str] = None
     department_id: Optional[str] = None
+    notes: Optional[str] = None
+    doctor_notes: Optional[str] = None  # alias for notes (backwards compat)
 
 
 class AppointmentStatusUpdate(BaseModel):
@@ -218,6 +220,8 @@ class AppointmentResponse(BaseModel):
     consultation_start_at: Optional[datetime] = None
     consultation_end_at: Optional[datetime] = None
     is_deleted: bool = False
+    notes: Optional[str] = None
+    doctor_notes: Optional[str] = None  # alias populated from notes
     created_at: datetime
     updated_at: datetime
     patient_name: Optional[str] = None

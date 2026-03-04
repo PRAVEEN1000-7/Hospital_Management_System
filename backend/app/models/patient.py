@@ -17,6 +17,7 @@ class Patient(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=False)
     patient_reference_number = Column(String(12), nullable=False, index=True)
+    title = Column(String(10))
     first_name = Column(String(100), nullable=False)
     last_name = Column(String(100), nullable=False)
     date_of_birth = Column(Date)
@@ -63,5 +64,10 @@ class Patient(Base):
 
     @property
     def full_name(self) -> str:
-        return f"{self.first_name} {self.last_name}"
+        parts = []
+        if self.title:
+            parts.append(self.title)
+        parts.append(self.first_name)
+        parts.append(self.last_name)
+        return " ".join(parts)
 

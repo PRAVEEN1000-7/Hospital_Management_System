@@ -227,6 +227,7 @@ CREATE TABLE patients (
     id                          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     hospital_id                 UUID        NOT NULL REFERENCES hospitals(id),
     patient_reference_number    VARCHAR(12) NOT NULL,                   -- HMS 12-digit PRN
+    title                       VARCHAR(10),                              -- 'Mr.','Mrs.','Ms.','Master','Dr.','Prof.','Baby'
     first_name                  VARCHAR(100) NOT NULL,
     last_name                   VARCHAR(100) NOT NULL,
     date_of_birth               DATE,
@@ -246,7 +247,7 @@ CREATE TABLE patients (
     city                        VARCHAR(100),
     state_province              VARCHAR(100),
     postal_code                 VARCHAR(20),
-    country                     VARCHAR(3)  DEFAULT 'USA',
+    country                     VARCHAR(100) DEFAULT 'India',
     photo_url                   VARCHAR(500),
     emergency_contact_name      VARCHAR(200),
     emergency_contact_phone     VARCHAR(20),

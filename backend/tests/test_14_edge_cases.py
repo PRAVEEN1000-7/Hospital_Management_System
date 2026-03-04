@@ -16,8 +16,7 @@ ALL_PROTECTED_ENDPOINTS = [
     ("GET",    "/api/v1/users"),
     ("GET",    "/api/v1/appointments"),
     ("GET",    "/api/v1/walk-ins/queue"),
-    ("GET",    "/api/v1/waitlist"),
-    ("GET",    "/api/v1/appointment-settings"),
+    ("GET",    "/api/v1/hospital-settings"),
     ("GET",    "/api/v1/reports/appointments/statistics"),
 ]
 
@@ -150,14 +149,14 @@ class TestRoleMatrix:
         assert resp.status_code == 200
 
     def test_nurse_can_register_walk_ins(self, client, nurse_headers):
-        """TC-EDGE-026: nurses should have access to walk-in registration"""
+        """TC-EDGE-026: receptionists should have access to walk-in registration"""
         # Just test the 422 (missing required body) not 403
         resp = client.post("/api/v1/walk-ins", json={}, headers=nurse_headers)
         assert resp.status_code in (422, 201, 500)  # not 403
 
-    def test_nurse_can_access_waitlist(self, client, nurse_headers):
-        """TC-EDGE-027"""
-        resp = client.get("/api/v1/waitlist", headers=nurse_headers)
+    def test_receptionist_can_read_departments(self, client, nurse_headers):
+        """TC-EDGE-027: receptionists can view departments list"""
+        resp = client.get("/api/v1/departments", headers=nurse_headers)
         assert resp.status_code == 200
 
 
@@ -202,7 +201,7 @@ class TestDataIntegrity:
         """TC-EDGE-036"""
         payload = {**sample_patient_payload}
         ts = str(int(time.time() * 1000))[-6:]
-        payload["mobile_number"] = "20" + ts
+        payload["phone_number"] = "20" + ts
         payload["email"] = f"del{ts}@example.com"
 
         created = client.post("/api/v1/patients", json=payload, headers=sa_headers).json()
@@ -216,39 +215,37 @@ class TestDataIntegrity:
         assert resp.status_code == 404
 
     def test_patient_prn_is_unique(self, client, sa_headers):
-        """TC-EDGE-037: two patients get different PRNs"""
+        """TC-EDGE-037: two patients get different patient_reference_numbers"""
         ts1 = str(int(time.time() * 1000))[-7:]
         ts2 = str(int(time.time() * 1000))[-6:] + "99"
         p1 = client.post(
             "/api/v1/patients",
             json={
-                "title": "Mr.",
                 "first_name": "P1",
                 "last_name": "Unique",
                 "gender": "Male",
                 "date_of_birth": "1991-01-01",
-                "mobile_number": "11" + ts1,
-                "address_line1": "1 First Road",
+                "phone_number": "11" + ts1,
+                "address_line_1": "1 First Road",
             },
             headers=sa_headers,
         ).json()
         p2 = client.post(
             "/api/v1/patients",
             json={
-                "title": "Mrs.",
                 "first_name": "P2",
                 "last_name": "Unique",
                 "gender": "Female",
                 "date_of_birth": "1992-02-02",
-                "mobile_number": "12" + ts2,
-                "address_line1": "2 Second Road",
+                "phone_number": "12" + ts2,
+                "address_line_1": "2 Second Road",
             },
             headers=sa_headers,
         ).json()
-        # 'prn' is the field name in PatientResponse
-        assert p1.get("prn") is not None
-        assert p2.get("prn") is not None
-        assert p1.get("prn") != p2.get("prn")
+        # 'patient_reference_number' is the field name in PatientResponse
+        assert p1.get("patient_reference_number") is not None
+        assert p2.get("patient_reference_number") is not None
+        assert p1.get("patient_reference_number") != p2.get("patient_reference_number")
 
     def test_user_password_not_exposed_in_response(self, client, sa_headers):
         """TC-EDGE-038"""
@@ -264,13 +261,13 @@ class TestDataIntegrity:
         from datetime import date, timedelta
 
         ts = str(int(time.time() * 1000))[-6:]
-        payload = {**sample_patient_payload, "mobile_number": "13" + ts, "email": f"apnum{ts}@x.com"}
+        payload = {**sample_patient_payload, "phone_number": "13" + ts, "email": f"apnum{ts}@x.com"}
         patient = client.post("/api/v1/patients", json=payload, headers=sa_headers).json()
 
-        # Get doctor1 id
-        doc_resp = client.get("/api/v1/users?search=doctor1", headers=sa_headers).json()
+        # Get doctor id from doctors endpoint
+        doc_resp = client.get("/api/v1/doctors?limit=100", headers=sa_headers).json()
         if not doc_resp["data"]:
-            pytest.skip("doctor1 not seeded")
+            pytest.skip("No doctors seeded")
         doc_id = doc_resp["data"][0]["id"]
 
         today = date.today()
@@ -285,9 +282,9 @@ class TestDataIntegrity:
                 "patient_id": patient["id"],
                 "doctor_id": doc_id,
                 "appointment_date": next_mon,
-                "appointment_time": "09:30:00",
+                "start_time": "09:30:00",
                 "appointment_type": "scheduled",
-                "consultation_type": "offline",
+                "chief_complaint": "routine check",
             },
             headers=sa_headers,
         )
@@ -296,13 +293,13 @@ class TestDataIntegrity:
         appt = appt_resp.json()
 
         number = appt.get("appointment_number", "")
-        assert re.match(r"APT-\d{8}-\d{4}", number), f"Unexpected format: {number}"
+        assert re.match(r"APT-\d{8}-[A-F0-9]{6}", number), f"Unexpected format: {number}"
 
     def test_login_updates_last_login(self, client):
         """TC-EDGE-040"""
         resp1 = client.post(
             "/api/v1/auth/login",
-            json={"username": "superadmin", "password": "Super@123"},
+            json={"username": "superadmin", "password": "Admin@123"},
         )
         assert resp1.status_code == 200
         # The token payload has an expiry; last_login in the DB is updated

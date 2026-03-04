@@ -9,9 +9,10 @@ from datetime import date, timedelta
 
 @pytest.fixture(scope="function")
 def doctor1_id(client, sa_headers):
-    resp = client.get("/api/v1/users?search=doctor1", headers=sa_headers)
+    resp = client.get("/api/v1/doctors?limit=100", headers=sa_headers)
+    assert resp.status_code == 200
     data = resp.json()["data"]
-    assert len(data) >= 1
+    assert len(data) >= 1, "No doctors found in DB"
     return data[0]["id"]
 
 

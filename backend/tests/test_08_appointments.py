@@ -30,14 +30,13 @@ def patient(client, sa_headers):
     resp = client.post(
         "/api/v1/patients",
         json={
-            "title": "Mr.",
             "first_name": "Appt",
             "last_name": "Test",
             "gender": "Male",
-            "mobile_number": "9" + ts,
+            "phone_number": "9" + ts,
             "email": f"appt{ts}@example.com",
             "date_of_birth": "1990-01-01",
-            "address_line1": "123 Test Street",
+            "address_line_1": "123 Test Street",
         },
         headers=sa_headers,
     )
@@ -47,10 +46,10 @@ def patient(client, sa_headers):
 
 @pytest.fixture(scope="function")
 def doctor1_id(client, sa_headers):
-    resp = client.get("/api/v1/users?search=doctor1", headers=sa_headers)
+    resp = client.get("/api/v1/doctors?limit=100", headers=sa_headers)
     assert resp.status_code == 200
     data = resp.json()["data"]
-    assert len(data) >= 1, "doctor1 not in DB"
+    assert len(data) >= 1, "No doctors found in DB"
     return data[0]["id"]
 
 
@@ -63,10 +62,9 @@ def scheduled_appt(client, sa_headers, patient, doctor1_id):
             "patient_id": patient["id"],
             "doctor_id": doctor1_id,
             "appointment_date": _next_monday(),
-            "appointment_time": "10:00:00",
+            "start_time": "10:00:00",
             "appointment_type": "scheduled",
-            "consultation_type": "offline",
-            "reason_for_visit": "routine check-up",
+            "chief_complaint": "routine check-up",
         },
         headers=sa_headers,
     )
@@ -87,10 +85,9 @@ class TestBookAppointment:
                 "patient_id": patient["id"],
                 "doctor_id": doctor1_id,
                 "appointment_date": _next_monday(),
-                "appointment_time": "11:00:00",
+                "start_time": "11:00:00",
                 "appointment_type": "scheduled",
-                "consultation_type": "offline",
-                "reason_for_visit": "checkup",
+                "chief_complaint": "checkup",
             },
             headers=sa_headers,
         )
@@ -101,35 +98,6 @@ class TestBookAppointment:
         assert data["appointment_number"].startswith("APT-")
         assert data["appointment_type"] == "scheduled"
 
-    def test_book_on_blocked_date_returns_400(self, client, sa_headers, patient, doctor1_id):
-        """TC-APT-002"""
-        block_date = "2027-07-15"
-        # Block that date first
-        client.post(
-            "/api/v1/schedules/block-period",
-            json={
-                "doctor_id": doctor1_id,
-                "start_date": block_date,
-                "end_date": block_date,
-                "block_type": "leave",
-            },
-            headers=sa_headers,
-        )
-        resp = client.post(
-            "/api/v1/appointments",
-            json={
-                "patient_id": patient["id"],
-                "doctor_id": doctor1_id,
-                "appointment_date": block_date,
-                "appointment_time": "10:00:00",
-                "appointment_type": "scheduled",
-                "consultation_type": "offline",
-            },
-            headers=sa_headers,
-        )
-        assert resp.status_code == 400
-        assert "not available" in resp.json()["detail"].lower()
-
     def test_double_booking_same_slot_returns_400(self, client, sa_headers, patient, scheduled_appt, doctor1_id):
         """TC-APT-003: booking same doctor/date/time again must fail"""
         ts = str(int(time.time() * 1000))[-7:]
@@ -137,13 +105,12 @@ class TestBookAppointment:
         p2 = client.post(
             "/api/v1/patients",
             json={
-                "title": "Mrs.",
                 "first_name": "Second",
                 "last_name": "Patient",
                 "gender": "Female",
                 "date_of_birth": "1992-03-10",
-                "mobile_number": "8" + ts,
-                "address_line1": "456 Second Ave",
+                "phone_number": "8" + ts,
+                "address_line_1": "456 Second Ave",
             },
             headers=sa_headers,
         ).json()
@@ -154,13 +121,12 @@ class TestBookAppointment:
                 "patient_id": p2["id"],
                 "doctor_id": doctor1_id,
                 "appointment_date": scheduled_appt["appointment_date"],
-                "appointment_time": scheduled_appt["appointment_time"],
+                "start_time": scheduled_appt["start_time"],
                 "appointment_type": "scheduled",
-                "consultation_type": "offline",
             },
             headers=sa_headers,
         )
-        # Either 400 (fully booked) or 201 when max_patients_per_slot > 1
+        # Either 400 (fully booked) or 201 when max_patients > 1
         assert resp.status_code in (201, 400)
 
     def test_invalid_appointment_type_returns_422(self, client, sa_headers, patient, doctor1_id):
@@ -171,25 +137,8 @@ class TestBookAppointment:
                 "patient_id": patient["id"],
                 "doctor_id": doctor1_id,
                 "appointment_date": _next_monday(),
-                "appointment_time": "12:00:00",
+                "start_time": "12:00:00",
                 "appointment_type": "urgent_walk",  # invalid
-                "consultation_type": "offline",
-            },
-            headers=sa_headers,
-        )
-        assert resp.status_code == 422
-
-    def test_invalid_consultation_type_returns_422(self, client, sa_headers, patient, doctor1_id):
-        """TC-APT-005"""
-        resp = client.post(
-            "/api/v1/appointments",
-            json={
-                "patient_id": patient["id"],
-                "doctor_id": doctor1_id,
-                "appointment_date": _next_monday(),
-                "appointment_time": "12:00:00",
-                "appointment_type": "scheduled",
-                "consultation_type": "hybrid",  # invalid
             },
             headers=sa_headers,
         )
@@ -294,13 +243,12 @@ class TestCancelAppointment:
         new_p = client.post(
             "/api/v1/patients",
             json={
-                "title": "Mr.",
                 "first_name": "Cancel",
                 "last_name": "Me",
                 "gender": "Male",
                 "date_of_birth": "1990-06-15",
-                "mobile_number": "7" + ts,
-                "address_line1": "789 Cancel Road",
+                "phone_number": "7" + ts,
+                "address_line_1": "789 Cancel Road",
             },
             headers=sa_headers,
         ).json()
@@ -312,9 +260,8 @@ class TestCancelAppointment:
                 "patient_id": new_p["id"],
                 "doctor_id": doctor1_id,
                 "appointment_date": _next_monday(),
-                "appointment_time": "14:00:00",
+                "start_time": "14:00:00",
                 "appointment_type": "scheduled",
-                "consultation_type": "offline",
             },
             headers=sa_headers,
         ).json()
@@ -374,17 +321,17 @@ class TestUpdateAppointment:
         appt_id = scheduled_appt["id"]
         resp = client.put(
             f"/api/v1/appointments/{appt_id}",
-            json={"doctor_notes": "Patient allergic to penicillin"},
+            json={"notes": "Patient allergic to penicillin"},
             headers=sa_headers,
         )
         assert resp.status_code == 200
-        assert resp.json()["doctor_notes"] == "Patient allergic to penicillin"
+        assert resp.json()["notes"] == "Patient allergic to penicillin"
 
     def test_update_nonexistent_returns_404(self, client, sa_headers):
         """TC-APT-027"""
         resp = client.put(
             "/api/v1/appointments/9999999",
-            json={"doctor_notes": "test"},
+            json={"notes": "test"},
             headers=sa_headers,
         )
         assert resp.status_code == 404

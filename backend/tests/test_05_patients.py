@@ -20,43 +20,43 @@ class TestPatientCreation:
         resp = client.post("/api/v1/patients", json=sample_patient_payload, headers=sa_headers)
         assert resp.status_code == 201
         data = resp.json()
-        assert "prn" in data
-        assert len(data["prn"]) == 12          # 12-digit Patient ID
+        assert "patient_reference_number" in data
+        assert len(data["patient_reference_number"]) == 12  # 12-digit Patient ID
         assert data["first_name"] == "Test"
 
     def test_created_prn_has_valid_checksum(self, client, sa_headers, sample_patient_payload):
         """TC-PAT-025: checksum in generated PRN is valid"""
         resp = client.post("/api/v1/patients", json=sample_patient_payload, headers=sa_headers)
         assert resp.status_code == 201
-        prn = resp.json()["prn"]
+        prn = resp.json()["patient_reference_number"]
         assert validate_checksum(prn) is True
 
     def test_duplicate_mobile_returns_400(self, client, sa_headers, sample_patient_payload):
         """TC-PAT-002"""
         # Create first patient
         client.post("/api/v1/patients", json=sample_patient_payload, headers=sa_headers)
-        # Try to create second patient with same mobile
+        # Try to create second patient with same phone_number
         payload2 = dict(sample_patient_payload)
         payload2["email"] = f"different{_uid()}@hms-test.com"
         resp = client.post("/api/v1/patients", json=payload2, headers=sa_headers)
         assert resp.status_code == 400
-        assert "mobile" in resp.json()["detail"].lower()
+        assert "phone" in resp.json()["detail"].lower()
 
     def test_duplicate_email_returns_400(self, client, sa_headers, sample_patient_payload):
         """TC-PAT-003"""
         # Create first patient
         client.post("/api/v1/patients", json=sample_patient_payload, headers=sa_headers)
-        # Different mobile, same email
+        # Different phone_number, same email
         payload2 = dict(sample_patient_payload)
-        payload2["mobile_number"] = f"600{_uid()}"
+        payload2["phone_number"] = f"600{_uid()}"
         resp = client.post("/api/v1/patients", json=payload2, headers=sa_headers)
         assert resp.status_code == 400
         assert "email" in resp.json()["detail"].lower()
 
-    def test_missing_required_field_title_returns_422(self, client, sa_headers, sample_patient_payload):
-        """TC-PAT-004"""
+    def test_missing_required_field_gender_returns_422(self, client, sa_headers, sample_patient_payload):
+        """TC-PAT-004: gender is required"""
         payload = dict(sample_patient_payload)
-        del payload["title"]
+        del payload["gender"]
         resp = client.post("/api/v1/patients", json=payload, headers=sa_headers)
         assert resp.status_code == 422
 
@@ -66,23 +66,29 @@ class TestPatientCreation:
         resp = client.post("/api/v1/patients", json=payload, headers=sa_headers)
         assert resp.status_code == 422
 
-    def test_missing_date_of_birth_returns_422(self, client, sa_headers, sample_patient_payload):
+    def test_missing_date_of_birth_still_creates(self, client, sa_headers, sample_patient_payload):
+        """date_of_birth is optional — omitting it should succeed"""
         payload = dict(sample_patient_payload)
+        payload["phone_number"] = f"700{_uid()}"  # unique phone
+        payload["email"] = f"nodb{_uid()}@hms-test.com"
         del payload["date_of_birth"]
         resp = client.post("/api/v1/patients", json=payload, headers=sa_headers)
-        assert resp.status_code == 422
+        assert resp.status_code == 201
 
     def test_missing_mobile_returns_422(self, client, sa_headers, sample_patient_payload):
         payload = dict(sample_patient_payload)
-        del payload["mobile_number"]
+        del payload["phone_number"]
         resp = client.post("/api/v1/patients", json=payload, headers=sa_headers)
         assert resp.status_code == 422
 
-    def test_missing_address_returns_422(self, client, sa_headers, sample_patient_payload):
+    def test_missing_address_still_creates(self, client, sa_headers, sample_patient_payload):
+        """address_line_1 is optional — omitting it should succeed"""
         payload = dict(sample_patient_payload)
-        del payload["address_line1"]
+        payload["phone_number"] = f"710{_uid()}"  # unique phone
+        payload["email"] = f"noadd{_uid()}@hms-test.com"
+        del payload["address_line_1"]
         resp = client.post("/api/v1/patients", json=payload, headers=sa_headers)
-        assert resp.status_code == 422
+        assert resp.status_code == 201
 
     def test_unauthenticated_create_returns_403(self, client, sample_patient_payload):
         resp = client.post("/api/v1/patients", json=sample_patient_payload)
@@ -118,7 +124,7 @@ class TestPatientUpdate:
         patient_id = create_resp.json()["id"]
 
         # Build a full valid update payload from the original, just changing city/state
-        update_payload = {**sample_patient_payload, "city": "Delhi", "state": "Delhi NCR"}
+        update_payload = {**sample_patient_payload, "city": "Delhi", "state_province": "Delhi NCR"}
         update_resp = client.put(
             f"/api/v1/patients/{patient_id}",
             json=update_payload,
@@ -132,18 +138,18 @@ class TestPatientUpdate:
         """TC-PAT-012"""
         # Create patient 1
         p1 = client.post("/api/v1/patients", json=sample_patient_payload, headers=sa_headers)
-        mobile1 = sample_patient_payload["mobile_number"]
+        mobile1 = sample_patient_payload["phone_number"]
 
-        # Create patient 2 with different mobile
+        # Create patient 2 with different phone
         payload2 = dict(sample_patient_payload)
         uid = _uid()
-        payload2["mobile_number"] = f"500{uid}"
+        payload2["phone_number"] = f"500{uid}"
         payload2["email"] = f"pat2_{uid}@hms-test.com"
         p2 = client.post("/api/v1/patients", json=payload2, headers=sa_headers)
         patient2_id = p2.json()["id"]
 
-        # Try to update patient 2's mobile to patient 1's mobile — send full payload
-        update_payload = {**payload2, "mobile_number": mobile1}
+        # Try to update patient 2's phone to patient 1's phone — send full payload
+        update_payload = {**payload2, "phone_number": mobile1}
         resp = client.put(
             f"/api/v1/patients/{patient2_id}",
             json=update_payload,

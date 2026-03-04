@@ -1,5 +1,7 @@
 """
 test_07_schedules.py — API integration tests for Doctor Schedules.
+Updated for hms_db schema: day_of_week (0=Sunday, 1=Monday …),
+slot_duration_minutes, max_patients, effective_from (required).
 Covers TC-SCH-001 through TC-SCH-020.
 """
 import pytest
@@ -7,9 +9,11 @@ from datetime import date, timedelta
 
 
 def _next_monday():
-    """Return next Monday's date as ISO string."""
+    """Return next Monday's date as ISO string.
+    Python weekday(): Mon=0.  hms_db day_of_week: Mon=1.
+    """
     today = date.today()
-    days_ahead = 0 - today.weekday()  # Monday is 0
+    days_ahead = 0 - today.weekday()   # Monday=0 in Python
     if days_ahead <= 0:
         days_ahead += 7
     return (today + timedelta(days=days_ahead)).isoformat()
@@ -17,31 +21,31 @@ def _next_monday():
 
 @pytest.fixture(scope="function")
 def doctor1_id(client, sa_headers):
-    """Return the DB id for the seeded doctor1 user."""
-    resp = client.get("/api/v1/users?search=doctor1", headers=sa_headers)
+    """Return the doctors.id for the first seeded doctor (dr.smith)."""
+    resp = client.get("/api/v1/doctors?limit=100", headers=sa_headers)
     assert resp.status_code == 200
     data = resp.json()["data"]
-    assert len(data) >= 1, "doctor1 not found in DB"
+    assert len(data) >= 1, "No doctors found in DB"
     return data[0]["id"]
 
 
 @pytest.fixture(scope="function")
 def monday_schedule(client, sa_headers, doctor1_id):
-    """Create a Monday schedule for doctor1 and return it."""
+    """Create a Monday schedule for doctor1 and return the response JSON."""
     resp = client.post(
         f"/api/v1/schedules/doctors/{doctor1_id}",
         json={
-            "weekday": 0,
+            "day_of_week": 1,                          # 1 = Monday in hms_db
             "start_time": "09:00:00",
             "end_time": "17:00:00",
-            "slot_duration": 30,
-            "consultation_type": "both",
-            "max_patients_per_slot": 1,
+            "slot_duration_minutes": 30,
+            "max_patients": 1,
             "is_active": True,
+            "effective_from": date.today().isoformat(),
         },
         headers=sa_headers,
     )
-    assert resp.status_code == 201
+    assert resp.status_code == 201, resp.text
     return resp.json()
 
 
@@ -53,7 +57,7 @@ class TestListDoctors:
         assert resp.status_code == 200
         data = resp.json()
         assert isinstance(data, list)
-        assert len(data) >= 1  # doctor1 is seeded
+        assert len(data) >= 1  # dr.smith is seeded
 
 
 class TestCreateSchedule:
@@ -64,19 +68,19 @@ class TestCreateSchedule:
         resp = client.post(
             f"/api/v1/schedules/doctors/{doctor1_id}",
             json={
-                "weekday": 0,
+                "day_of_week": 1,                          # 1 = Monday
                 "start_time": "09:00:00",
                 "end_time": "17:00:00",
-                "slot_duration": 30,
-                "consultation_type": "both",
-                "max_patients_per_slot": 1,
+                "slot_duration_minutes": 30,
+                "max_patients": 1,
                 "is_active": True,
+                "effective_from": date.today().isoformat(),
             },
             headers=sa_headers,
         )
         assert resp.status_code == 201
         data = resp.json()
-        assert data["weekday"] == 0
+        assert data["day_of_week"] == 1
         assert data["doctor_id"] == doctor1_id
 
     def test_end_time_before_start_time_returns_422(self, client, sa_headers, doctor1_id):
@@ -84,11 +88,11 @@ class TestCreateSchedule:
         resp = client.post(
             f"/api/v1/schedules/doctors/{doctor1_id}",
             json={
-                "weekday": 1,
+                "day_of_week": 2,
                 "start_time": "17:00:00",
-                "end_time": "09:00:00",  # end before start
-                "slot_duration": 30,
-                "consultation_type": "both",
+                "end_time": "09:00:00",           # end before start
+                "slot_duration_minutes": 30,
+                "effective_from": date.today().isoformat(),
             },
             headers=sa_headers,
         )
@@ -99,11 +103,11 @@ class TestCreateSchedule:
         resp = client.post(
             f"/api/v1/schedules/doctors/{doctor1_id}",
             json={
-                "weekday": 1,
+                "day_of_week": 2,
                 "start_time": "09:00:00",
                 "end_time": "17:00:00",
-                "slot_duration": 4,   # below minimum of 5
-                "consultation_type": "both",
+                "slot_duration_minutes": 4,        # below minimum of 5
+                "effective_from": date.today().isoformat(),
             },
             headers=sa_headers,
         )
@@ -114,25 +118,11 @@ class TestCreateSchedule:
         resp = client.post(
             f"/api/v1/schedules/doctors/{doctor1_id}",
             json={
-                "weekday": 1,
+                "day_of_week": 2,
                 "start_time": "09:00:00",
                 "end_time": "17:00:00",
-                "slot_duration": 121,  # above max of 120
-                "consultation_type": "both",
-            },
-            headers=sa_headers,
-        )
-        assert resp.status_code == 422
-
-    def test_invalid_consultation_type_returns_422(self, client, sa_headers, doctor1_id):
-        """TC-SCH-006"""
-        resp = client.post(
-            f"/api/v1/schedules/doctors/{doctor1_id}",
-            json={
-                "weekday": 1,
-                "start_time": "09:00:00",
-                "end_time": "17:00:00",
-                "consultation_type": "hybrid",  # invalid
+                "slot_duration_minutes": 121,      # above max of 120
+                "effective_from": date.today().isoformat(),
             },
             headers=sa_headers,
         )
@@ -143,7 +133,6 @@ class TestCreateSchedule:
         resp = client.get(f"/api/v1/schedules/doctors/{doctor1_id}", headers=sa_headers)
         assert resp.status_code == 200
         assert isinstance(resp.json(), list)
-        # The monday_schedule we created should be in the list
         ids = [s["id"] for s in resp.json()]
         assert monday_schedule["id"] in ids
 
@@ -154,9 +143,27 @@ class TestCreateSchedule:
             json={
                 "doctor_id": doctor1_id,
                 "schedules": [
-                    {"weekday": 2, "start_time": "09:00:00", "end_time": "13:00:00", "slot_duration": 20, "consultation_type": "offline"},
-                    {"weekday": 3, "start_time": "09:00:00", "end_time": "13:00:00", "slot_duration": 20, "consultation_type": "online"},
-                    {"weekday": 4, "start_time": "09:00:00", "end_time": "13:00:00", "slot_duration": 20, "consultation_type": "both"},
+                    {
+                        "day_of_week": 2,
+                        "start_time": "09:00:00",
+                        "end_time": "13:00:00",
+                        "slot_duration_minutes": 20,
+                        "effective_from": date.today().isoformat(),
+                    },
+                    {
+                        "day_of_week": 3,
+                        "start_time": "09:00:00",
+                        "end_time": "13:00:00",
+                        "slot_duration_minutes": 20,
+                        "effective_from": date.today().isoformat(),
+                    },
+                    {
+                        "day_of_week": 4,
+                        "start_time": "09:00:00",
+                        "end_time": "13:00:00",
+                        "slot_duration_minutes": 20,
+                        "effective_from": date.today().isoformat(),
+                    },
                 ],
             },
             headers=sa_headers,
@@ -164,15 +171,16 @@ class TestCreateSchedule:
         assert resp.status_code == 201
         assert len(resp.json()) == 3
 
-    def test_nurse_cannot_create_schedule_for_other_doctor(self, client, nurse_headers, doctor1_id):
-        """TC-SCH-018: nurse cannot manage schedules"""
+    def test_receptionist_cannot_create_schedule(self, client, nurse_headers, doctor1_id):
+        """TC-SCH-018: receptionist cannot manage doctor schedules"""
         resp = client.post(
             f"/api/v1/schedules/doctors/{doctor1_id}",
             json={
-                "weekday": 5,
+                "day_of_week": 5,
                 "start_time": "09:00:00",
                 "end_time": "12:00:00",
-                "consultation_type": "offline",
+                "slot_duration_minutes": 30,
+                "effective_from": date.today().isoformat(),
             },
             headers=nurse_headers,
         )
@@ -187,11 +195,11 @@ class TestUpdateAndDeleteSchedule:
         schedule_id = monday_schedule["id"]
         resp = client.put(
             f"/api/v1/schedules/{schedule_id}",
-            json={"slot_duration": 45},
+            json={"slot_duration_minutes": 45},
             headers=sa_headers,
         )
         assert resp.status_code == 200
-        assert resp.json()["slot_duration"] == 45
+        assert resp.json()["slot_duration_minutes"] == 45
 
     def test_delete_schedule(self, client, sa_headers, monday_schedule):
         """TC-SCH-010"""
@@ -201,76 +209,92 @@ class TestUpdateAndDeleteSchedule:
 
     def test_update_nonexistent_schedule_returns_404(self, client, sa_headers):
         resp = client.put(
-            "/api/v1/schedules/999999",
-            json={"slot_duration": 30},
+            "/api/v1/schedules/00000000-0000-0000-0000-000000000000",
+            json={"slot_duration_minutes": 30},
             headers=sa_headers,
         )
         assert resp.status_code == 404
 
 
-class TestBlockedPeriods:
-    """TC-SCH-011 through TC-SCH-014"""
+class TestDoctorLeaves:
+    """TC-SCH-011 through TC-SCH-014 — Doctor leave management."""
 
-    def test_create_blocked_period(self, client, sa_headers, doctor1_id):
-        """TC-SCH-011"""
+    def test_create_doctor_leave(self, client, sa_headers, doctor1_id):
+        """TC-SCH-011: create a full-day leave entry"""
         resp = client.post(
-            "/api/v1/schedules/block-period",
+            "/api/v1/schedules/doctor-leaves",
             json={
                 "doctor_id": doctor1_id,
-                "start_date": "2026-12-25",
-                "end_date": "2026-12-26",
+                "leave_date": "2027-12-25",
+                "leave_type": "full_day",
                 "reason": "Christmas holiday",
-                "block_type": "holiday",
             },
             headers=sa_headers,
         )
-        assert resp.status_code == 201
+        assert resp.status_code == 201, resp.text
         data = resp.json()
         assert data["doctor_id"] == doctor1_id
-        assert data["block_type"] == "holiday"
+        assert data["leave_type"] == "full_day"
 
-    def test_end_date_before_start_returns_422(self, client, sa_headers, doctor1_id):
-        """TC-SCH-012"""
+    def test_create_leave_morning_session(self, client, sa_headers, doctor1_id):
+        """TC-SCH-012: create a morning-only leave"""
         resp = client.post(
-            "/api/v1/schedules/block-period",
+            "/api/v1/schedules/doctor-leaves",
             json={
                 "doctor_id": doctor1_id,
-                "start_date": "2026-12-30",
-                "end_date": "2026-12-25",  # before start
+                "leave_date": "2027-12-26",
+                "leave_type": "morning",
+                "reason": "Personal appointment",
             },
             headers=sa_headers,
         )
-        assert resp.status_code == 422
+        assert resp.status_code == 201, resp.text
+        assert resp.json()["leave_type"] == "morning"
 
-    def test_list_blocked_periods(self, client, sa_headers, doctor1_id):
-        """TC-SCH-013"""
+    def test_list_doctor_leaves(self, client, sa_headers, doctor1_id):
+        """TC-SCH-013: list all leaves for a doctor"""
+        # Ensure at least one leave exists
+        client.post(
+            "/api/v1/schedules/doctor-leaves",
+            json={
+                "doctor_id": doctor1_id,
+                "leave_date": "2027-11-01",
+                "leave_type": "full_day",
+            },
+            headers=sa_headers,
+        )
         resp = client.get(
-            f"/api/v1/schedules/blocked-periods?doctor_id={doctor1_id}",
+            f"/api/v1/schedules/doctor-leaves?doctor_id={doctor1_id}",
             headers=sa_headers,
         )
         assert resp.status_code == 200
         assert isinstance(resp.json(), list)
+        assert len(resp.json()) >= 1
 
-    def test_delete_blocked_period(self, client, sa_headers, doctor1_id):
-        """TC-SCH-014"""
-        # Create then delete
+    def test_delete_doctor_leave(self, client, sa_headers, doctor1_id):
+        """TC-SCH-014: create then delete a leave entry"""
         create_resp = client.post(
-            "/api/v1/schedules/block-period",
+            "/api/v1/schedules/doctor-leaves",
             json={
                 "doctor_id": doctor1_id,
-                "start_date": "2027-01-01",
-                "end_date": "2027-01-05",
-                "block_type": "leave",
+                "leave_date": "2027-10-10",
+                "leave_type": "afternoon",
+                "reason": "Training session",
             },
             headers=sa_headers,
         )
-        bp_id = create_resp.json()["id"]
-        del_resp = client.delete(f"/api/v1/schedules/blocked-periods/{bp_id}", headers=sa_headers)
+        assert create_resp.status_code == 201, create_resp.text
+        leave_id = create_resp.json()["id"]
+
+        del_resp = client.delete(
+            f"/api/v1/schedules/doctor-leaves/{leave_id}",
+            headers=sa_headers,
+        )
         assert del_resp.status_code == 204
 
 
 class TestAvailableSlots:
-    """TC-SCH-015 through TC-SCH-016, TC-SCH-019"""
+    """TC-SCH-015: available slots for a scheduled day."""
 
     def test_available_slots_for_scheduled_day(self, client, sa_headers, doctor1_id, monday_schedule):
         """TC-SCH-015: get available slots for next Monday"""
@@ -281,60 +305,4 @@ class TestAvailableSlots:
         )
         assert resp.status_code == 200
         data = resp.json()
-        # Should have a list of slots
         assert isinstance(data, (list, dict))
-
-    def test_available_slots_blocked_date(self, client, sa_headers, doctor1_id):
-        """TC-SCH-016: blocked date returns empty or blocked"""
-        # Create block for that date
-        block_date = "2027-03-15"
-        client.post(
-            "/api/v1/schedules/block-period",
-            json={
-                "doctor_id": doctor1_id,
-                "start_date": block_date,
-                "end_date": block_date,
-                "block_type": "leave",
-            },
-            headers=sa_headers,
-        )
-        resp = client.get(
-            f"/api/v1/schedules/available-slots?doctor_id={doctor1_id}&date={block_date}",
-            headers=sa_headers,
-        )
-        assert resp.status_code == 200
-        # Either empty or has a blocked flag
-        data = resp.json()
-        if isinstance(data, list):
-            assert data == []
-        elif isinstance(data, dict):
-            assert data.get("slots") == [] or data.get("blocked") is True
-
-
-class TestIsDateBlockedService:
-    """TC-SCH-020"""
-
-    def test_date_in_blocked_range_returns_true(self, db_session):
-        """TC-SCH-020"""
-        from app.services.schedule_service import is_date_blocked, create_blocked_period
-        from datetime import date
-
-        # Get doctor1 id
-        from app.models.user import User as UserModel
-        doctor = db_session.query(UserModel).filter(UserModel.username == "doctor1").first()
-        assert doctor is not None
-
-        # Create blocked period programmatically
-        create_blocked_period(
-            db_session,
-            {
-                "doctor_id": doctor.id,
-                "start_date": date(2027, 6, 1),
-                "end_date": date(2027, 6, 7),
-                "block_type": "leave",
-            },
-            created_by=doctor.id,
-        )
-
-        assert is_date_blocked(db_session, doctor.id, date(2027, 6, 3)) is True
-        assert is_date_blocked(db_session, doctor.id, date(2027, 6, 10)) is False

@@ -70,22 +70,23 @@ def _get_token(client: TestClient, username: str, password: str) -> str:
 
 @pytest.fixture(scope="function")
 def superadmin_token(client):
-    return _get_token(client, "superadmin", "Super@123")
+    return _get_token(client, "superadmin", "Admin@123")
 
 
 @pytest.fixture(scope="function")
 def admin_token(client):
-    return _get_token(client, "admin", "Admin@123")
+    return _get_token(client, "hospadmin", "Admin@123")
 
 
 @pytest.fixture(scope="function")
 def doctor_token(client):
-    return _get_token(client, "doctor1", "Admin@123")
+    return _get_token(client, "dr.smith", "Admin@123")
 
 
 @pytest.fixture(scope="function")
 def nurse_token(client):
-    return _get_token(client, "nurse1", "Admin@123")
+    # No 'nurse' role in new schema — use receptionist as the closest equivalent
+    return _get_token(client, "reception1", "Admin@123")
 
 
 # ── Helper: auth header dict ────────────────────────────────────────────
@@ -116,24 +117,22 @@ def sample_patient_payload():
     import time
     uid = str(int(time.time() * 1000))[-6:]   # 6-digit unique suffix
     return {
-        "title": "Mr.",
         "first_name": "Test",
         "last_name": "User",
         "date_of_birth": "1990-05-15",
         "gender": "Male",
         "blood_group": "O+",
-        "country_code": "+91",
-        "mobile_number": f"900{uid}",         # unique each run
+        "phone_country_code": "+91",
+        "phone_number": f"900{uid}",            # unique each run
         "email": f"testuser{uid}@hms-test.com",
-        "address_line1": "123 Test Street",
+        "address_line_1": "123 Test Street",
         "city": "Mumbai",
-        "state": "Maharashtra",
-        "pin_code": "400001",
-        "country": "India",
+        "state_province": "Maharashtra",
+        "postal_code": "400001",
+        "country": "IND",
         "emergency_contact_name": "Test Emergency",
-        "emergency_contact_country_code": "+91",
-        "emergency_contact_mobile": f"800{uid}",
-        "emergency_contact_relationship": "Father",
+        "emergency_contact_phone": f"800{uid}",
+        "emergency_contact_relation": "Father",
     }
 
 
@@ -148,6 +147,7 @@ def sample_doctor_payload():
         "password": "TestDoctor@123",
         "first_name": "Test",
         "last_name": "Doctor",
+        "role": "doctor",
         "full_name": f"Dr. Test Doctor {uid}",
         "role": "doctor",
         "department": "Cardiology",

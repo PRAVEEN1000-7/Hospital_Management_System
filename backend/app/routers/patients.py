@@ -23,6 +23,7 @@ from ..services.patient_service import (
     create_patient,
     get_patient_by_id,
     get_patient_by_mobile,
+    get_patient_by_email,
     update_patient,
     soft_delete_patient,
     list_patients as list_patients_service,
@@ -48,6 +49,15 @@ async def create_new_patient(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="A patient with this phone number already exists",
             )
+
+        # Check if email already exists
+        if patient.email:
+            existing_by_email = get_patient_by_email(db, patient.email)
+            if existing_by_email:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="A patient with this email already exists",
+                )
 
         db_patient = create_patient(
             db,
@@ -139,6 +149,24 @@ async def update_existing_patient(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update patient.",
         )
+
+
+@router.get("/validate-id/{patient_id}")
+async def validate_patient_id_endpoint(
+    patient_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Validate a 12-character patient ID checksum and parse its components."""
+    from ..services.patient_id_service import validate_checksum, parse_patient_id
+    if len(patient_id) != 12:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Patient ID must be exactly 12 characters",
+        )
+    is_valid = validate_checksum(patient_id)
+    components = parse_patient_id(patient_id)
+    return {"valid": is_valid, "components": components}
 
 
 @router.delete("/{patient_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -38,6 +38,14 @@ def create_department(
     data: dict,
 ) -> Department:
     head_doctor_id = data.pop("head_doctor_id", None)
+    # Auto-generate code from name if not provided
+    if not data.get("code"):
+        import re
+        import random
+        import string
+        raw = re.sub(r"[^A-Z0-9]", "", data.get("name", "DEPT").upper())[:4]
+        suffix = "".join(random.choices(string.digits, k=3))
+        data["code"] = f"{raw}{suffix}" if raw else f"DEPT{suffix}"
     dept = Department(
         hospital_id=hospital_id,
         **data,

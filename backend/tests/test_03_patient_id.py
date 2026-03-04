@@ -1,4 +1,4 @@
-"""
+﻿"""
 test_03_patient_id.py — Unit tests for the 12-digit Patient ID system.
 Covers TC-PID-001 through TC-PID-015.
 """
@@ -133,37 +133,49 @@ class TestGenderAndMonthCodes:
 
 
 class TestPatientIDGeneration:
-    """TC-PID-011 through TC-PID-013 — require DB"""
+    """TC-PID-011 through TC-PID-013 - require DB"""
+
+    @staticmethod
+    def _get_hospital_id(db_session):
+        from app.models.user import Hospital
+        hospital = db_session.query(Hospital).first()
+        assert hospital is not None, "No hospital seeded in DB"
+        return hospital.id
 
     def test_generated_id_is_12_chars(self, db_session):
         """TC-PID-011"""
         from app.services.patient_id_service import generate_patient_id
-        pid = generate_patient_id(db_session, "Male")
+        hid = self._get_hospital_id(db_session)
+        pid = generate_patient_id(db_session, hid, "Male")
         assert len(pid) == 12
 
     def test_generated_id_passes_checksum(self, db_session):
         """TC-PID-012: checksum in the generated ID is valid"""
         from app.services.patient_id_service import generate_patient_id
-        pid = generate_patient_id(db_session, "Female")
+        hid = self._get_hospital_id(db_session)
+        pid = generate_patient_id(db_session, hid, "Female")
         assert validate_checksum(pid) is True
 
     def test_generated_ids_are_unique(self, db_session):
         """TC-PID-013: sequential calls produce different IDs"""
         from app.services.patient_id_service import generate_patient_id
-        ids = {generate_patient_id(db_session, "Male") for _ in range(5)}
+        hid = self._get_hospital_id(db_session)
+        ids = {generate_patient_id(db_session, hid, "Male") for _ in range(5)}
         assert len(ids) == 5
 
     def test_generated_id_uppercase(self, db_session):
         """Generated ID should be uppercase"""
         from app.services.patient_id_service import generate_patient_id
-        pid = generate_patient_id(db_session, "Male")
+        hid = self._get_hospital_id(db_session)
+        pid = generate_patient_id(db_session, hid, "Male")
         assert pid == pid.upper()
 
     def test_generated_id_alphanumeric(self, db_session):
         """ID characters must be alphanumeric"""
         from app.services.patient_id_service import generate_patient_id
-        pid = generate_patient_id(db_session, "Male")
-        assert re.match(r'^[A-Z0-9]{12}$', pid)
+        hid = self._get_hospital_id(db_session)
+        pid = generate_patient_id(db_session, hid, "Male")
+        assert re.match(r"^[A-Z0-9]{12}$", pid)
 
 
 class TestValidateIDEndpoint:

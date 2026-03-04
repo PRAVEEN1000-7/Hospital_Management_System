@@ -10,18 +10,18 @@ import pytest
 # ---------------------------------------------------------------------------
 
 HOSPITAL_PAYLOAD = {
-    "hospital_name": "Test General Hospital",
-    "hospital_code": "TGH",
+    "name": "Test General Hospital",
+    "code": "TGH",
     "registration_number": "REG-001",
-    "primary_phone": "9876543210",
+    "phone": "9876543210",
     "email": "hospital@example.com",
     "website": "https://tgh.test",
-    "address_line1": "123 Health Street",
+    "address_line_1": "123 Health Street",
     "city": "TestCity",
-    "state": "TestState",
-    "country": "TestCountry",
-    "pin_code": "560001",
-    "working_days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+    "state_province": "TestState",
+    "country": "IN",
+    "postal_code": "560001",
+    
 }
 
 
@@ -83,12 +83,12 @@ class TestCreateHospital:
 
     def test_superadmin_can_create_or_conflict(self, client, sa_headers):
         """TC-HOS-008: super_admin can attempt creation; may be 201 or 409 if already exists"""
-        resp = client.post("/api/v1/hospital", json={**HOSPITAL_PAYLOAD, "hospital_code": "TGHX"}, headers=sa_headers)
+        resp = client.post("/api/v1/hospital", json={**HOSPITAL_PAYLOAD, "code": "TGHX"}, headers=sa_headers)
         assert resp.status_code in (201, 400, 409, 500)  # 400/409 if already configured
 
     def test_create_hospital_missing_name_returns_422(self, client, sa_headers):
         """TC-HOS-009"""
-        payload = {k: v for k, v in HOSPITAL_PAYLOAD.items() if k != "hospital_name"}
+        payload = {k: v for k, v in HOSPITAL_PAYLOAD.items() if k != "name"}
         resp = client.post("/api/v1/hospital", json=payload, headers=sa_headers)
         assert resp.status_code == 422
 
@@ -129,11 +129,11 @@ class TestUpdateHospital:
 class TestHospitalLogo:
     def test_logo_endpoint_requires_auth(self, client):
         """TC-HOS-013"""
-        resp = client.post("/api/v1/hospital/logo")
+        resp = client.put("/api/v1/hospital/logo")
         # Requires auth (403) or unprocessable (422 if file required)
         assert resp.status_code in (403, 422)
 
     def test_logo_endpoint_non_admin_returns_403(self, client, nurse_headers):
         """TC-HOS-014"""
-        resp = client.post("/api/v1/hospital/logo", headers=nurse_headers)
+        resp = client.put("/api/v1/hospital/logo", headers=nurse_headers)
         assert resp.status_code in (403, 422)

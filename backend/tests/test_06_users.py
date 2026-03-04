@@ -36,7 +36,7 @@ class TestCreateUser:
         resp = client.post("/api/v1/users", json=sample_doctor_payload, headers=sa_headers)
         assert resp.status_code == 201
         data = resp.json()
-        assert data["role"] == "doctor"
+        assert "doctor" in data["roles"]
         assert data["username"] == sample_doctor_payload["username"]
 
     def test_created_password_not_stored_plaintext(self, client, sa_headers, sample_doctor_payload, db_session):
@@ -86,18 +86,18 @@ class TestCreateUser:
 class TestUpdateUser:
     """TC-USR-008 through TC-USR-010"""
 
-    def test_update_user_department(self, client, sa_headers, sample_doctor_payload):
+    def test_update_user_first_name(self, client, sa_headers, sample_doctor_payload):
         """TC-USR-008"""
         create_resp = client.post("/api/v1/users", json=sample_doctor_payload, headers=sa_headers)
         user_id = create_resp.json()["id"]
 
         update_resp = client.put(
             f"/api/v1/users/{user_id}",
-            json={"department": "Neurology", "phone_number": "7001234567"},
+            json={"first_name": "Updated", "last_name": sample_doctor_payload["last_name"]},
             headers=sa_headers
         )
         assert update_resp.status_code == 200
-        assert update_resp.json()["department"] == "Neurology"
+        assert update_resp.json()["first_name"] == "Updated"
 
     def test_update_nonexistent_user_returns_404(self, client, sa_headers):
         """TC-USR-010"""
@@ -137,8 +137,8 @@ class TestGetUserProfile:
     """TC-USR-014, TC-USR-020"""
 
     def test_get_own_profile(self, client, sa_headers):
-        """TC-USR-014: no /me endpoint — use login response to get user_id, then GET /users/{id}"""
-        login = client.post("/api/v1/auth/login", json={"username": "superadmin", "password": "Super@123"})
+        """TC-USR-014: use login to get user_id, then fetch profile"""
+        login = client.post("/api/v1/auth/login", json={"username": "superadmin", "password": "Admin@123"})
         user_id = login.json()["user"]["id"]
         resp = client.get(f"/api/v1/users/{user_id}", headers=sa_headers)
         assert resp.status_code == 200
@@ -156,12 +156,12 @@ class TestSearchUsers:
 
     def test_search_by_username(self, client, sa_headers):
         """TC-USR-015"""
-        resp = client.get("/api/v1/users?search=doctor1", headers=sa_headers)
+        resp = client.get("/api/v1/users?search=dr.smith", headers=sa_headers)
         assert resp.status_code == 200
-        # Should find doctor1
+        # Should find dr.smith
         data = resp.json()["data"]
         usernames = [u["username"] for u in data]
-        assert "doctor1" in usernames
+        assert "dr.smith" in usernames
 
 
 class TestDeleteUser:

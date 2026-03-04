@@ -20,7 +20,7 @@ def _orm_to_dict(data: Any) -> Any:
 
 class DepartmentCreate(BaseModel):
     name: str = Field(..., min_length=2, max_length=100)
-    code: str = Field(..., min_length=2, max_length=20)
+    code: Optional[str] = Field(None, min_length=2, max_length=20)
     description: Optional[str] = None
     head_doctor_id: Optional[str] = None
     display_order: int = 0

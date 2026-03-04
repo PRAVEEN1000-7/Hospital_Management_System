@@ -179,6 +179,11 @@ def update_appointment(
         return None
     
     old_status = appt.status
+    # Handle doctor_notes as alias for notes (backwards compat)
+    if "doctor_notes" in data and data["doctor_notes"] is not None:
+        data["notes"] = data.pop("doctor_notes")
+    elif "doctor_notes" in data:
+        data.pop("doctor_notes")
     for k, v in data.items():
         if v is not None and hasattr(appt, k):
             setattr(appt, k, v)

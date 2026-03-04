@@ -13,29 +13,29 @@ class TestLogin:
         """TC-AUTH-001: valid superadmin credentials"""
         resp = client.post("/api/v1/auth/login", json={
             "username": "superadmin",
-            "password": "Super@123"
+            "password": "Admin@123"
         })
         assert resp.status_code == 200
         data = resp.json()
         assert "access_token" in data
         assert data["token_type"] == "bearer"
-        assert data["user"]["role"] == "super_admin"
+        assert "super_admin" in data["user"]["roles"]
         assert data["user"]["username"] == "superadmin"
 
     def test_admin_login_success(self, client):
         resp = client.post("/api/v1/auth/login", json={
-            "username": "admin",
+            "username": "hospadmin",
             "password": "Admin@123"
         })
         assert resp.status_code == 200
 
     def test_doctor_login_success(self, client):
         resp = client.post("/api/v1/auth/login", json={
-            "username": "doctor1",
+            "username": "dr.smith",
             "password": "Admin@123"
         })
         assert resp.status_code == 200
-        assert resp.json()["user"]["role"] == "doctor"
+        assert "doctor" in resp.json()["user"]["roles"]
 
     def test_wrong_password_returns_401(self, client):
         """TC-AUTH-002"""
@@ -72,9 +72,9 @@ class TestLogin:
         assert resp.status_code == 422
 
     def test_token_payload_contains_expected_fields(self, client):
-        """TC-AUTH-012: token payload has user_id, username, role"""
+        """TC-AUTH-012: token payload has user_id, username, roles"""
         resp = client.post("/api/v1/auth/login", json={
-            "username": "admin",
+            "username": "hospadmin",
             "password": "Admin@123"
         })
         assert resp.status_code == 200
@@ -83,30 +83,30 @@ class TestLogin:
         assert payload is not None
         assert "user_id" in payload
         assert "username" in payload
-        assert "role" in payload
-        assert payload["username"] == "admin"
+        assert "roles" in payload
+        assert payload["username"] == "hospadmin"
 
     def test_login_returns_expires_in(self, client):
         """expires_in should be present and positive"""
         resp = client.post("/api/v1/auth/login", json={
-            "username": "admin",
+            "username": "hospadmin",
             "password": "Admin@123"
         })
         assert resp.status_code == 200
         assert resp.json()["expires_in"] > 0
 
     def test_login_updates_last_login(self, client, db_session):
-        """TC-AUTH-011: last_login is updated after login"""
+        """TC-AUTH-011: last_login_at is updated after login"""
         from app.models.user import User as UserModel
         resp = client.post("/api/v1/auth/login", json={
-            "username": "admin",
+            "username": "hospadmin",
             "password": "Admin@123"
         })
         assert resp.status_code == 200
-        # Verify last_login is now set
+        # Verify last_login_at is now set
         db_session.expire_all()
-        user = db_session.query(UserModel).filter(UserModel.username == "admin").first()
-        assert user.last_login is not None
+        user = db_session.query(UserModel).filter(UserModel.username == "hospadmin").first()
+        assert user.last_login_at is not None
 
 
 class TestLogout:

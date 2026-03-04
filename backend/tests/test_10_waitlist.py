@@ -1,52 +1,26 @@
-"""
-test_10_waitlist.py — API integration tests for Waitlist management.
-Covers TC-WTL-001 through TC-WTL-012.
+﻿"""
+test_10_departments.py — API integration tests for Departments.
+The waitlist router was removed in the hms_db schema refresh.
+This file now covers Department CRUD (TC-DEPT-001 through TC-DEPT-012).
 """
 import pytest
 import time
 
 
 # ---------------------------------------------------------------------------
-# Fixtures
+# Fixture
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(scope="function")
-def wl_patient(client, sa_headers):
-    ts = str(int(time.time() * 1000))[-7:]
+def new_department(client, sa_headers):
+    """Create a fresh department and return the response JSON."""
+    ts = str(int(time.time() * 1000))[-6:]
     resp = client.post(
-        "/api/v1/patients",
+        "/api/v1/departments",
         json={
-            "title": "Mrs.",
-            "first_name": "Wlist",
-            "last_name": "Patient",
-            "gender": "Female",
-            "date_of_birth": "1995-04-12",
-            "mobile_number": "4" + ts,
-            "address_line1": "22 Waitlist Ave",
-        },
-        headers=sa_headers,
-    )
-    assert resp.status_code == 201, resp.text
-    return resp.json()
-
-
-@pytest.fixture(scope="function")
-def doctor1_id(client, sa_headers):
-    resp = client.get("/api/v1/users?search=doctor1", headers=sa_headers)
-    data = resp.json()["data"]
-    assert len(data) >= 1
-    return data[0]["id"]
-
-
-@pytest.fixture(scope="function")
-def waitlist_entry(client, sa_headers, wl_patient, doctor1_id):
-    resp = client.post(
-        "/api/v1/waitlist",
-        json={
-            "patient_id": wl_patient["id"],
-            "doctor_id": doctor1_id,
-            "preferred_date": "2027-09-01",
-            "reason": "Follow-up",
+            "name": f"TestDept_{ts}",
+            "description": "Automated test department",
+            "code": f"TD{ts[-4:]}",
         },
         headers=sa_headers,
     )
@@ -55,133 +29,121 @@ def waitlist_entry(client, sa_headers, wl_patient, doctor1_id):
 
 
 # ---------------------------------------------------------------------------
-# TC-WTL-001 – TC-WTL-004: Join waitlist
+# TC-DEPT-001 – TC-DEPT-004: List departments
 # ---------------------------------------------------------------------------
 
-class TestJoinWaitlist:
-    def test_join_waitlist_success(self, client, sa_headers, wl_patient, doctor1_id):
-        """TC-WTL-001"""
+class TestListDepartments:
+    def test_list_departments_authenticated(self, client, sa_headers):
+        """TC-DEPT-001: any authenticated user can list departments"""
+        resp = client.get("/api/v1/departments", headers=sa_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        # Accepts paginated or plain list response
+        items = data.get("data", data) if isinstance(data, dict) else data
+        assert isinstance(items, list)
+
+    def test_list_departments_unauthenticated_returns_403(self, client):
+        """TC-DEPT-002: unauthenticated request is rejected"""
+        resp = client.get("/api/v1/departments")
+        assert resp.status_code == 403
+
+    def test_list_departments_doctor_can_access(self, client, doctor_headers):
+        """TC-DEPT-003: doctors can view departments"""
+        resp = client.get("/api/v1/departments", headers=doctor_headers)
+        assert resp.status_code == 200
+
+    def test_list_departments_contains_seeded(self, client, sa_headers):
+        """TC-DEPT-004: at least the seeded departments are present"""
+        resp = client.get("/api/v1/departments", headers=sa_headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        items = data.get("data", data) if isinstance(data, dict) else data
+        assert len(items) >= 1
+
+
+# ---------------------------------------------------------------------------
+# TC-DEPT-005 – TC-DEPT-007: Get by ID
+# ---------------------------------------------------------------------------
+
+class TestGetDepartment:
+    def test_get_department_by_id(self, client, sa_headers, new_department):
+        """TC-DEPT-005"""
+        dept_id = new_department["id"]
+        resp = client.get(f"/api/v1/departments/{dept_id}", headers=sa_headers)
+        assert resp.status_code == 200
+        assert resp.json()["id"] == dept_id
+
+    def test_get_nonexistent_department_returns_404(self, client, sa_headers):
+        """TC-DEPT-006"""
+        resp = client.get(
+            "/api/v1/departments/00000000-0000-0000-0000-000000000000",
+            headers=sa_headers,
+        )
+        assert resp.status_code == 404
+
+    def test_get_department_response_has_name(self, client, sa_headers, new_department):
+        """TC-DEPT-007: response always has a name field"""
+        dept_id = new_department["id"]
+        resp = client.get(f"/api/v1/departments/{dept_id}", headers=sa_headers)
+        assert "name" in resp.json()
+
+
+# ---------------------------------------------------------------------------
+# TC-DEPT-008 – TC-DEPT-010: Create department
+# ---------------------------------------------------------------------------
+
+class TestCreateDepartment:
+    def test_create_department_success(self, client, sa_headers):
+        """TC-DEPT-008"""
+        ts = str(int(time.time() * 1000))[-6:]
         resp = client.post(
-            "/api/v1/waitlist",
-            json={
-                "patient_id": wl_patient["id"],
-                "doctor_id": doctor1_id,
-                "preferred_date": "2027-10-01",
-                "reason": "Initial visit",
-            },
+            "/api/v1/departments",
+            json={"name": f"NewDept_{ts}", "description": "New test dept"},
             headers=sa_headers,
         )
         assert resp.status_code == 201
         data = resp.json()
-        assert data["status"] == "waiting"
-        assert data["patient_id"] == wl_patient["id"]
-        assert data["doctor_id"] == doctor1_id
+        assert "id" in data
+        assert "NewDept_" in data["name"]
 
-    def test_join_waitlist_without_patient_returns_422(self, client, sa_headers, doctor1_id):
-        """TC-WTL-002"""
+    def test_create_department_missing_name_returns_422(self, client, sa_headers):
+        """TC-DEPT-009"""
         resp = client.post(
-            "/api/v1/waitlist",
-            json={"doctor_id": doctor1_id},
+            "/api/v1/departments",
+            json={"description": "No name given"},
             headers=sa_headers,
         )
         assert resp.status_code == 422
 
-    def test_join_waitlist_enriches_names(self, client, sa_headers, waitlist_entry):
-        """TC-WTL-003: enrichment adds patient_name and doctor_name"""
-        assert "patient_name" in waitlist_entry or "patient_id" in waitlist_entry
-
-    def test_unauthenticated_cannot_join_waitlist(self, client, wl_patient, doctor1_id):
-        """TC-WTL-004"""
+    def test_receptionist_cannot_create_department(self, client, nurse_headers):
+        """TC-DEPT-010: non-admin roles cannot create departments"""
         resp = client.post(
-            "/api/v1/waitlist",
-            json={"patient_id": wl_patient["id"], "doctor_id": doctor1_id},
+            "/api/v1/departments",
+            json={"name": "UnauthorizedDept"},
+            headers=nurse_headers,
         )
         assert resp.status_code == 403
 
 
 # ---------------------------------------------------------------------------
-# TC-WTL-005 – TC-WTL-007: List waitlist
+# TC-DEPT-011 – TC-DEPT-012: Update & deactivate
 # ---------------------------------------------------------------------------
 
-class TestListWaitlist:
-    def test_list_waitlist(self, client, sa_headers, waitlist_entry):
-        """TC-WTL-005"""
-        resp = client.get("/api/v1/waitlist", headers=sa_headers)
-        assert resp.status_code == 200
-        data = resp.json()
-        assert "total" in data and "data" in data
-
-    def test_filter_by_doctor(self, client, sa_headers, doctor1_id, waitlist_entry):
-        """TC-WTL-006"""
-        resp = client.get(f"/api/v1/waitlist?doctor_id={doctor1_id}", headers=sa_headers)
-        assert resp.status_code == 200
-        for entry in resp.json()["data"]:
-            assert entry["doctor_id"] == doctor1_id
-
-    def test_filter_by_status_waiting(self, client, sa_headers, waitlist_entry):
-        """TC-WTL-007"""
-        resp = client.get("/api/v1/waitlist?status=waiting", headers=sa_headers)
-        assert resp.status_code == 200
-        for entry in resp.json()["data"]:
-            assert entry["status"] == "waiting"
-
-
-# ---------------------------------------------------------------------------
-# TC-WTL-008 – TC-WTL-010: Confirm waitlist entry
-# ---------------------------------------------------------------------------
-
-class TestConfirmWaitlist:
-    def test_confirm_waitlist_entry(self, client, sa_headers, waitlist_entry):
-        """TC-WTL-008"""
-        entry_id = waitlist_entry["id"]
-        resp = client.post(f"/api/v1/waitlist/{entry_id}/confirm", headers=sa_headers)
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["status"] == "confirmed"
-        assert data.get("confirmed_at") is not None
-
-    def test_confirm_nonexistent_returns_404(self, client, sa_headers):
-        """TC-WTL-009"""
-        resp = client.post("/api/v1/waitlist/9999999/confirm", headers=sa_headers)
-        assert resp.status_code == 404
-
-    def test_my_waitlist_endpoint(self, client, doctor_headers):
-        """TC-WTL-010"""
-        resp = client.get("/api/v1/waitlist/my-waitlist", headers=doctor_headers)
-        assert resp.status_code == 200
-        assert "data" in resp.json()
-
-
-# ---------------------------------------------------------------------------
-# TC-WTL-011 – TC-WTL-012: Cancel / Delete
-# ---------------------------------------------------------------------------
-
-class TestCancelWaitlist:
-    def test_cancel_waitlist_entry(self, client, sa_headers, wl_patient, doctor1_id):
-        """TC-WTL-011"""
-        ts = str(int(time.time() * 1000))[-7:]
-        new_p = client.post(
-            "/api/v1/patients",
-            json={
-                "title": "Mr.",
-                "first_name": "Cancel",
-                "last_name": "WL",
-                "gender": "Male",
-                "date_of_birth": "1987-09-30",
-                "mobile_number": "3" + ts,
-                "address_line1": "55 Cancel Blvd",
-            },
+class TestUpdateDepartment:
+    def test_update_department_name(self, client, sa_headers, new_department):
+        """TC-DEPT-011"""
+        dept_id = new_department["id"]
+        ts = str(int(time.time() * 1000))[-5:]
+        resp = client.put(
+            f"/api/v1/departments/{dept_id}",
+            json={"name": f"UpdatedDept_{ts}"},
             headers=sa_headers,
-        ).json()
-        entry = client.post(
-            "/api/v1/waitlist",
-            json={"patient_id": new_p["id"], "doctor_id": doctor1_id, "preferred_date": "2027-11-01"},
-            headers=sa_headers,
-        ).json()
-        resp = client.delete(f"/api/v1/waitlist/{entry['id']}", headers=sa_headers)
+        )
+        assert resp.status_code == 200
+        assert f"UpdatedDept_{ts}" == resp.json()["name"]
+
+    def test_deactivate_department(self, client, sa_headers, new_department):
+        """TC-DEPT-012: DELETE deactivates (soft-delete) the department"""
+        dept_id = new_department["id"]
+        resp = client.delete(f"/api/v1/departments/{dept_id}", headers=sa_headers)
         assert resp.status_code == 204
-
-    def test_cancel_nonexistent_returns_404(self, client, sa_headers):
-        """TC-WTL-012"""
-        resp = client.delete("/api/v1/waitlist/9999999", headers=sa_headers)
-        assert resp.status_code == 404

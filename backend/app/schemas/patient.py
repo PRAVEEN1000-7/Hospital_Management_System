@@ -10,7 +10,11 @@ VALID_RELATIONSHIPS = [
 ]
 
 
+VALID_TITLES = ["Mr.", "Mrs.", "Ms.", "Master", "Dr.", "Prof.", "Baby"]
+
+
 class PatientBase(BaseModel):
+    title: Optional[str] = Field(None, max_length=10)
     first_name: str = Field(..., min_length=1, max_length=100)
     last_name: str = Field(..., min_length=1, max_length=100)
     date_of_birth: Optional[date] = None
@@ -32,6 +36,13 @@ class PatientBase(BaseModel):
     emergency_contact_name: Optional[str] = Field(None, max_length=200)
     emergency_contact_phone: Optional[str] = Field(None, pattern=r"^\d{4,20}$")
     emergency_contact_relation: Optional[str] = None
+
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in VALID_TITLES:
+            raise ValueError(f'Title must be one of: {", ".join(VALID_TITLES)}')
+        return v
 
     @field_validator("blood_group")
     @classmethod
@@ -80,6 +91,7 @@ class PatientUpdate(PatientBase):
 class PatientResponse(BaseModel):
     id: str
     patient_reference_number: str
+    title: Optional[str] = None
     first_name: str
     last_name: str
     full_name: str
@@ -129,6 +141,7 @@ class PatientResponse(BaseModel):
 class PatientListItem(BaseModel):
     id: str
     patient_reference_number: str
+    title: Optional[str] = None
     first_name: str
     last_name: str
     gender: str
@@ -159,7 +172,12 @@ class PatientListItem(BaseModel):
     @computed_field
     @property
     def full_name(self) -> str:
-        return f"{self.first_name} {self.last_name}"
+        parts = []
+        if self.title:
+            parts.append(self.title)
+        parts.append(self.first_name)
+        parts.append(self.last_name)
+        return " ".join(parts)
 
 
 class PaginatedPatientResponse(BaseModel):

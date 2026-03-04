@@ -364,38 +364,38 @@ VALUES
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 13. PATIENTS  (5 sample patients)
 -- ─────────────────────────────────────────────────────────────────────────────
-INSERT INTO patients (id, hospital_id, patient_reference_number, first_name, last_name, date_of_birth, gender, blood_group, marital_status, phone_country_code, phone_number, email, address_line_1, city, state_province, postal_code, country, emergency_contact_name, emergency_contact_phone, emergency_contact_relation, created_by)
+INSERT INTO patients (id, hospital_id, patient_reference_number, title, first_name, last_name, date_of_birth, gender, blood_group, marital_status, phone_country_code, phone_number, email, address_line_1, city, state_province, postal_code, country, emergency_contact_name, emergency_contact_phone, emergency_contact_relation, created_by)
 VALUES
     ('30000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001',
-     'HCM262K00147', 'Rajesh', 'Kumar', '1990-05-15', 'male', 'B+', 'married',
+     'HCM262K00147', 'Mr.', 'Rajesh', 'Kumar', '1990-05-15', 'male', 'B+', 'married',
      '+1', '2125551001', 'rajesh.kumar@email.com',
      '100 Park Ave', 'New York', 'NY', '10017', 'USA',
      'Priya Kumar', '+12125551002', 'spouse',
      '10000000-0000-0000-0000-000000000006'),
 
     ('30000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000001',
-     'HCF261T00002', 'Priya', 'Sharma', '1985-11-22', 'female', 'O+', 'single',
+     'HCF261T00002', 'Mrs.', 'Priya', 'Sharma', '1985-11-22', 'female', 'O+', 'single',
      '+1', '2125551003', 'priya.sharma@email.com',
      '200 Broadway', 'New York', 'NY', '10007', 'USA',
      'Vikram Sharma', '+12125551004', 'brother',
      '10000000-0000-0000-0000-000000000006'),
 
     ('30000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000001',
-     'HCM261K00003', 'Alex', 'Johnson', '1978-03-08', 'male', 'A-', 'married',
+     'HCM261K00003', 'Mr.', 'Alex', 'Johnson', '1978-03-08', 'male', 'A-', 'married',
      '+1', '2125551005', 'alex.johnson@email.com',
      '300 5th Ave', 'New York', 'NY', '10016', 'USA',
      'Maria Johnson', '+12125551006', 'spouse',
      '10000000-0000-0000-0000-000000000006'),
 
     ('30000000-0000-0000-0000-000000000004', 'a0000000-0000-0000-0000-000000000001',
-     'HCF262T00004', 'Emily', 'Chen', '1995-07-30', 'female', 'AB+', 'single',
+     'HCF262T00004', 'Ms.', 'Emily', 'Chen', '1995-07-30', 'female', 'AB+', 'single',
      '+1', '2125551007', 'emily.chen@email.com',
      '400 Lexington Ave', 'New York', 'NY', '10170', 'USA',
      'David Chen', '+12125551008', 'father',
      '10000000-0000-0000-0000-000000000006'),
 
     ('30000000-0000-0000-0000-000000000005', 'a0000000-0000-0000-0000-000000000001',
-     'HCM263K00005', 'James', 'Williams', '2000-12-01', 'male', 'O-', 'single',
+     'HCM263K00005', 'Master', 'James', 'Williams', '2000-12-01', 'male', 'O-', 'single',
      '+1', '2125551009', 'james.williams@email.com',
      '500 Madison Ave', 'New York', 'NY', '10022', 'USA',
      'Susan Williams', '+12125551010', 'mother',

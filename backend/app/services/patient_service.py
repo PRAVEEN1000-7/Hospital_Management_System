@@ -24,6 +24,7 @@ def create_patient(
     db_patient = Patient(
         hospital_id=hospital_id,
         patient_reference_number=prn,
+        title=getattr(patient_data, 'title', None),
         first_name=patient_data.first_name,
         last_name=patient_data.last_name,
         date_of_birth=patient_data.date_of_birth,

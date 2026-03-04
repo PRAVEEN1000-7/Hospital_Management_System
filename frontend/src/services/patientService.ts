@@ -15,19 +15,30 @@ export const patientService = {
   },
 
   async createPatient(data: PatientCreateData): Promise<Patient> {
-    // Clean empty strings to null/undefined
+    // Clean empty strings to null/undefined and map field names
     const cleaned: Record<string, unknown> = {};
+    const fieldMap: Record<string, string> = {
+      state: 'state_province',
+      pin_code: 'postal_code',
+    };
     Object.entries(data).forEach(([key, value]) => {
-      cleaned[key] = value === '' ? undefined : value;
+      const mappedKey = fieldMap[key] || key;
+      cleaned[mappedKey] = value === '' ? undefined : value;
     });
     const response = await api.post<Patient>('/patients', cleaned);
     return response.data;
   },
 
   async updatePatient(id: string, data: PatientCreateData): Promise<Patient> {
+    // Clean empty strings to null/undefined and map field names
     const cleaned: Record<string, unknown> = {};
+    const fieldMap: Record<string, string> = {
+      state: 'state_province',
+      pin_code: 'postal_code',
+    };
     Object.entries(data).forEach(([key, value]) => {
-      cleaned[key] = value === '' ? undefined : value;
+      const mappedKey = fieldMap[key] || key;
+      cleaned[mappedKey] = value === '' ? undefined : value;
     });
     const response = await api.put<Patient>(`/patients/${id}`, cleaned);
     return response.data;

@@ -15,7 +15,7 @@ SELECT u.id, u.hospital_id, u.reference_number, u.email, u.username,
 FROM users u
 LEFT JOIN user_roles ur ON ur.user_id = u.id
 LEFT JOIN roles r ON r.id = ur.role_id
-WHERE u.email = 'dr.smith@hmscore.com'
+WHERE u.username = 'doctor1'
   AND u.is_deleted = false
 GROUP BY u.id;
 

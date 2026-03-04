@@ -15,7 +15,8 @@ Complete step-by-step instructions to get the Hospital Management System running
 7. [Default Credentials](#default-credentials)
 8. [Useful Commands](#useful-commands)
 9. [Troubleshooting](#troubleshooting)
-10. [Database Reset Commands](#database-reset-commands)
+10. [Quick Setup] (#Quick-Start)
+11. [Database Reset Commands](#database-reset-commands)
 
 ---
 
@@ -261,20 +262,20 @@ You should see:
 
 ## Default Credentials
 
-Each seed user has a role-specific password. **Change them after first login.**
+Password pattern: **`<username>@123`** (e.g. `superadmin@123`, `doctor@123`). **Change them after first login.**
 
-| Role               | Username       | Password            |
-| ------------------ | -------------- | ------------------- |
-| Super Admin        | `superadmin`   | `Super@123`         |
-| Hospital Admin     | `hospadmin`    | `Admin@123`         |
-| Doctor (Gen Med)   | `dr.smith`     | `Doctor@123`        |
-| Doctor (Cardio)    | `dr.patel`     | `Doctor@123`        |
-| Doctor (Ophthal)   | `dr.lee`       | `Doctor@123`        |
-| Receptionist       | `reception1`   | `Receptionist@123`  |
-| Pharmacist         | `pharmacist1`  | `Pharmacist@123`    |
-| Cashier            | `cashier1`     | `Cashier@123`       |
-| Optical Staff      | `optical1`     | `Optical@123`       |
-| Inventory Manager  | `inventory1`   | `Inventory@123`     |
+| Role               | Username        | Password             |
+| ------------------ | --------------- | -------------------- |
+| Super Admin        | `superadmin`    | `superadmin@123`     |
+| Hospital Admin     | `admin`         | `admin@123`          |
+| Doctor (Gen Med)   | `doctor1`       | `doctor@123`         |
+| Doctor (Cardio)    | `doctor2`       | `doctor@123`         |
+| Doctor (Ophthal)   | `doctor3`       | `doctor@123`         |
+| Receptionist       | `receptionist`  | `receptionist@123`   |
+| Pharmacist         | `pharmacist`    | `pharmacist@123`     |
+| Cashier            | `cashier`       | `cashier@123`        |
+| Optical Staff      | `optical`       | `optical@123`        |
+| Inventory Manager  | `inventory`     | `inventory@123`      |
 
 > **Security:** All non-superadmin users have `must_change_password = true` and will be prompted to change their password on first login.
 
@@ -427,7 +428,7 @@ HMS/v1/
 
 ---
 
-## Quick Start (TL;DR)
+## Quick-Start
 
 ### 1. Go to the project folder
 
@@ -568,7 +569,7 @@ VITE_API_BASE_URL=http://localhost:8000/api/v1
 npm run dev
 ```
 
-**5. Open http://localhost:5173 → Login: `superadmin` / `Super@123`**
+**5. Open http://localhost:5173 → Login: `superadmin` / `superadmin@123`**
 
 ---
 
@@ -610,19 +611,13 @@ psql -U hms_user -d hms_db -f database_hole/04_waitlist_table.sql
 Use this when you want to empty every table but keep the schema intact. After truncating, you can re-seed if needed.
 
 **Truncate all tables in one command (using psql):**
-
+**( powershell ) :**
 ```powershell
-psql -U hms_user -d hms_db -c "
-DO \$\$
-DECLARE
-    r RECORD;
-BEGIN
-    -- Disable triggers temporarily to avoid FK constraint issues
-    FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
-        EXECUTE 'TRUNCATE TABLE public.' || quote_ident(r.tablename) || ' CASCADE';
-    END LOOP;
-END \$\$;
-"
+psql -U hms_user -d hms_db -c 'DO $$ DECLARE r RECORD; BEGIN FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = ''public'') LOOP EXECUTE ''TRUNCATE TABLE public.'' || quote_ident(r.tablename) || '' CASCADE''; END LOOP; END $$;'
+```
+**or CMD (terminal) :**
+```powershell
+psql -U hms_user -d hms_db -c "DO $$ DECLARE r RECORD; BEGIN FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP EXECUTE 'TRUNCATE TABLE public.' || quote_ident(r.tablename) || ' CASCADE'; END LOOP; END $$;"
 ```
 
 **Or connect interactively and run:**

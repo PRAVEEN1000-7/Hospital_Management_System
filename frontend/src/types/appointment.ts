@@ -54,8 +54,6 @@ export interface DoctorLeaveCreate {
   leave_date: string;
   leave_type?: string;
   reason?: string;
-  is_half_day?: boolean;
-  half_day_period?: string;
 }
 
 // ── Appointment ──────────────────────────────────────────────────────────
@@ -117,6 +115,8 @@ export interface AppointmentUpdate {
   chief_complaint?: string;
   priority?: string;
   consultation_fee?: number;
+  notes?: string;
+  doctor_notes?: string;
 }
 
 // ── Walk-in ──────────────────────────────────────────────────────────────
@@ -145,6 +145,12 @@ export interface QueueItem {
   patient_date_of_birth: string | null;
   patient_age: number | null;
   patient_blood_group: string | null;
+  patient_email: string | null;
+  patient_known_allergies: string | null;
+  patient_chronic_conditions: string | null;
+  patient_emergency_contact_name: string | null;
+  patient_emergency_contact_phone: string | null;
+  patient_emergency_contact_relation: string | null;
   doctor_id: string | null;
   doctor_name: string | null;
   chief_complaint: string | null;

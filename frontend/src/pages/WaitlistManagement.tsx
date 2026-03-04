@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '../contexts/AuthContext';
 import waitlistService from '../services/waitlistService';
 import scheduleService from '../services/scheduleService';
 import type { WaitlistEntry, WaitlistStats, DoctorOption } from '../types/appointment';
@@ -18,6 +19,10 @@ const statusBadge: Record<string, { bg: string; text: string; label: string; ico
 };
 
 const WaitlistManagement: React.FC = () => {
+  const { user } = useAuth();
+  const roles = user?.roles || [];
+  const isDoctor = roles.includes('doctor');
+
   const [entries, setEntries] = useState<WaitlistEntry[]>([]);
   const [stats, setStats] = useState<WaitlistStats | null>(null);
   const [doctors, setDoctors] = useState<DoctorOption[]>([]);
@@ -26,7 +31,12 @@ const WaitlistManagement: React.FC = () => {
   const [error, setError] = useState('');
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
-  // Filters
+  // Send to Doctor modal state
+  const [sendModalEntry, setSendModalEntry] = useState<WaitlistEntry | null>(null);
+  const [sendDoctorId, setSendDoctorId] = useState('');
+  const [sendLoading, setSendLoading] = useState(false);
+
+  // Filters (doctors don't use filters — backend auto-scopes to their patients)
   const [filterDoctor, setFilterDoctor] = useState('');
   const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0]);
   const [filterStatus, setFilterStatus] = useState('waiting');
@@ -45,15 +55,16 @@ const WaitlistManagement: React.FC = () => {
       setError('');
 
       const params: Record<string, string | number> = { page, limit };
-      if (filterDoctor) params.doctor_id = filterDoctor;
-      if (filterDate) params.date = filterDate;
-      if (filterStatus) params.status = filterStatus;
+      // Doctors: no extra filters needed — backend auto-scopes
+      if (!isDoctor && filterDoctor) params.doctor_id = filterDoctor;
+      if (!isDoctor && filterDate) params.date = filterDate;
+      if (!isDoctor && filterStatus) params.status = filterStatus;
 
       const [wl, st] = await Promise.all([
         waitlistService.getWaitlist(params as any),
         waitlistService.getStats({
-          doctor_id: filterDoctor || undefined,
-          date: filterDate || undefined,
+          doctor_id: (!isDoctor && filterDoctor) ? filterDoctor : undefined,
+          date: (!isDoctor && filterDate) ? filterDate : undefined,
         }),
       ]);
 
@@ -65,9 +76,10 @@ const WaitlistManagement: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [filterDoctor, filterDate, filterStatus, page]);
+  }, [filterDoctor, filterDate, filterStatus, page, isDoctor]);
 
   useEffect(() => {
+    // Always fetch doctors list for the Send to Doctor modal
     scheduleService.getDoctors().then(setDoctors).catch(() => {});
   }, []);
 
@@ -75,17 +87,28 @@ const WaitlistManagement: React.FC = () => {
     fetchData();
   }, [fetchData]);
 
-  const handleBook = async (entry: WaitlistEntry) => {
-    if (!confirm(`Book appointment for ${entry.patient_name || 'this patient'} with ${entry.doctor_name || 'doctor'}?`)) return;
-    setActionLoading(entry.id);
+  // Open the Send to Doctor modal — pre-select the entry's assigned doctor
+  const openSendModal = (entry: WaitlistEntry) => {
+    setSendModalEntry(entry);
+    setSendDoctorId(entry.doctor_id || '');
+  };
+
+  const handleSendToDoctor = async () => {
+    if (!sendModalEntry || !sendDoctorId) return;
+    setSendLoading(true);
     try {
-      const result = await waitlistService.bookFromWaitlist(entry.id);
-      showToast(`Appointment booked! Queue #${result.queue_number}`);
+      const result = await waitlistService.bookFromWaitlist(
+        sendModalEntry.id,
+        sendDoctorId !== sendModalEntry.doctor_id ? sendDoctorId : undefined,
+      );
+      const selectedDoc = doctors.find(d => d.doctor_id === sendDoctorId);
+      showToast(`Patient sent to ${selectedDoc?.name || 'doctor'} — Queue #${result.queue_number}`);
+      setSendModalEntry(null);
       fetchData();
     } catch (err: any) {
-      showToast(err?.response?.data?.detail || 'Failed to book', 'error');
+      showToast(err?.response?.data?.detail || 'Failed to send to doctor', 'error');
     } finally {
-      setActionLoading(null);
+      setSendLoading(false);
     }
   };
 
@@ -110,8 +133,8 @@ const WaitlistManagement: React.FC = () => {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Waitlist Management</h1>
-          <p className="text-slate-500 text-sm mt-1">Patients waiting for doctor appointment slots</p>
+          <h1 className="text-2xl font-bold text-slate-900">{isDoctor ? 'My Waitlist' : 'Waitlist Management'}</h1>
+          <p className="text-slate-500 text-sm mt-1">{isDoctor ? 'Patients waiting for your appointment slots' : 'Patients waiting for doctor appointment slots'}</p>
         </div>
         <button
           onClick={fetchData}
@@ -184,49 +207,51 @@ const WaitlistManagement: React.FC = () => {
         </div>
       )}
 
-      {/* Filters */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6">
-        <div className="flex flex-wrap gap-4 items-end">
-          <div className="flex-1 min-w-[180px]">
-            <label className="block text-xs font-medium text-slate-500 mb-1">Doctor</label>
-            <select
-              value={filterDoctor}
-              onChange={e => { setFilterDoctor(e.target.value); setPage(1); }}
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none"
-            >
-              <option value="">All Doctors</option>
-              {doctors.map(d => (
-                <option key={d.doctor_id} value={d.doctor_id}>
-                  {d.name}{d.specialization ? ` — ${d.specialization}` : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="min-w-[160px]">
-            <label className="block text-xs font-medium text-slate-500 mb-1">Date</label>
-            <input
-              type="date"
-              value={filterDate}
-              onChange={e => { setFilterDate(e.target.value); setPage(1); }}
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none"
-            />
-          </div>
-          <div className="min-w-[140px]">
-            <label className="block text-xs font-medium text-slate-500 mb-1">Status</label>
-            <select
-              value={filterStatus}
-              onChange={e => { setFilterStatus(e.target.value); setPage(1); }}
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none"
-            >
-              <option value="">All</option>
-              <option value="waiting">Waiting</option>
-              <option value="booked">Booked</option>
-              <option value="cancelled">Cancelled</option>
-              <option value="expired">Expired</option>
-            </select>
+      {/* Filters — hidden for doctors (backend auto-scopes) */}
+      {!isDoctor && (
+        <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6">
+          <div className="flex flex-wrap gap-4 items-end">
+            <div className="flex-1 min-w-[180px]">
+              <label className="block text-xs font-medium text-slate-500 mb-1">Doctor</label>
+              <select
+                value={filterDoctor}
+                onChange={e => { setFilterDoctor(e.target.value); setPage(1); }}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+              >
+                <option value="">All Doctors</option>
+                {doctors.map(d => (
+                  <option key={d.doctor_id} value={d.doctor_id}>
+                    {d.name}{d.specialization ? ` — ${d.specialization}` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="min-w-[160px]">
+              <label className="block text-xs font-medium text-slate-500 mb-1">Date</label>
+              <input
+                type="date"
+                value={filterDate}
+                onChange={e => { setFilterDate(e.target.value); setPage(1); }}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+              />
+            </div>
+            <div className="min-w-[140px]">
+              <label className="block text-xs font-medium text-slate-500 mb-1">Status</label>
+              <select
+                value={filterStatus}
+                onChange={e => { setFilterStatus(e.target.value); setPage(1); }}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+              >
+                <option value="">All</option>
+                <option value="waiting">Waiting</option>
+                <option value="booked">Booked</option>
+                <option value="cancelled">Cancelled</option>
+                <option value="expired">Expired</option>
+              </select>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Error */}
       {error && (
@@ -318,20 +343,20 @@ const WaitlistManagement: React.FC = () => {
                           {entry.chief_complaint || '—'}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          {entry.status === 'waiting' && (
+                          {entry.status === 'waiting' && !isDoctor && (
                             <div className="flex items-center justify-end gap-2">
                               <button
-                                onClick={() => handleBook(entry)}
+                                onClick={() => openSendModal(entry)}
                                 disabled={isActioning}
                                 className="inline-flex items-center gap-1 px-3 py-1.5 bg-primary text-white rounded-lg text-xs font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
-                                title="Book appointment from waitlist"
+                                title="Send patient to doctor"
                               >
                                 {isActioning ? (
                                   <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
                                 ) : (
-                                  <span className="material-symbols-outlined text-sm">event_available</span>
+                                  <span className="material-symbols-outlined text-sm">send</span>
                                 )}
-                                Book
+                                Send to Doctor
                               </button>
                               <button
                                 onClick={() => handleCancel(entry)}
@@ -344,10 +369,16 @@ const WaitlistManagement: React.FC = () => {
                               </button>
                             </div>
                           )}
+                          {entry.status === 'waiting' && isDoctor && (
+                            <span className="text-xs text-blue-600 font-medium flex items-center justify-end gap-1">
+                              <span className="material-symbols-outlined text-sm">hourglass_empty</span>
+                              Waiting
+                            </span>
+                          )}
                           {entry.status === 'booked' && (
                             <span className="text-xs text-green-600 font-medium flex items-center justify-end gap-1">
                               <span className="material-symbols-outlined text-sm">check</span>
-                              Booked
+                              Sent
                             </span>
                           )}
                         </td>
@@ -385,6 +416,140 @@ const WaitlistManagement: React.FC = () => {
           </>
         )}
       </div>
+
+      {/* Send to Doctor Modal */}
+      {sendModalEntry && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setSendModalEntry(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            {/* Header */}
+            <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100">
+              <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center">
+                <span className="material-symbols-outlined text-primary text-xl">send</span>
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Send to Doctor</h3>
+                <p className="text-[11px] text-slate-400">Assign patient to a doctor's queue</p>
+              </div>
+            </div>
+
+            <div className="px-6 py-5 space-y-4">
+              {/* Patient info card */}
+              <div className="bg-slate-50 rounded-xl p-4 flex items-start gap-3">
+                <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <span className="material-symbols-outlined text-primary text-lg">person</span>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">{sendModalEntry.patient_name || 'Unknown Patient'}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {sendModalEntry.patient_reference_number || ''}
+                    {sendModalEntry.patient_phone ? ` · ${sendModalEntry.patient_phone}` : ''}
+                  </p>
+                  {sendModalEntry.chief_complaint && (
+                    <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
+                      <span className="material-symbols-outlined text-xs">medical_information</span>
+                      {sendModalEntry.chief_complaint}
+                    </p>
+                  )}
+                  <div className="flex items-center gap-2 mt-1.5">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                      (priorityBadge[sendModalEntry.priority] || priorityBadge.normal).bg
+                    } ${(priorityBadge[sendModalEntry.priority] || priorityBadge.normal).text}`}>
+                      {(priorityBadge[sendModalEntry.priority] || priorityBadge.normal).label}
+                    </span>
+                    <span className="text-[10px] text-slate-400">Position #{sendModalEntry.position}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Doctor selection */}
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1.5">Select Doctor <span className="text-red-400">*</span></label>
+                <div className="space-y-2 max-h-[240px] overflow-y-auto pr-1">
+                  {doctors.map(doc => {
+                    const isOriginal = doc.doctor_id === sendModalEntry.doctor_id;
+                    const isSelected = doc.doctor_id === sendDoctorId;
+                    return (
+                      <button
+                        key={doc.doctor_id}
+                        onClick={() => setSendDoctorId(doc.doctor_id)}
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all text-left ${
+                          isSelected
+                            ? 'bg-primary/5 border-primary ring-1 ring-primary/20'
+                            : 'bg-white border-slate-200 hover:border-slate-300'
+                        }`}
+                      >
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                          isSelected ? 'bg-primary text-white' : 'bg-slate-100 text-slate-400'
+                        }`}>
+                          <span className="material-symbols-outlined text-base">
+                            {isSelected ? 'check' : 'stethoscope'}
+                          </span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className={`text-sm font-medium truncate ${isSelected ? 'text-primary' : 'text-slate-700'}`}>
+                              {doc.name}
+                            </p>
+                            {isOriginal && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-100 text-blue-600 flex-shrink-0">
+                                ASSIGNED
+                              </span>
+                            )}
+                          </div>
+                          {doc.specialization && (
+                            <p className="text-xs text-slate-400 truncate">{doc.specialization}</p>
+                          )}
+                        </div>
+                        {isSelected && (
+                          <span className="material-symbols-outlined text-primary text-lg flex-shrink-0">radio_button_checked</span>
+                        )}
+                        {!isSelected && (
+                          <span className="material-symbols-outlined text-slate-300 text-lg flex-shrink-0">radio_button_unchecked</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                  {doctors.length === 0 && (
+                    <p className="text-xs text-slate-400 text-center py-4">No doctors available</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Reassignment notice */}
+              {sendDoctorId && sendDoctorId !== sendModalEntry.doctor_id && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-2">
+                  <span className="material-symbols-outlined text-amber-500 text-lg mt-0.5">swap_horiz</span>
+                  <div>
+                    <p className="text-[11px] font-semibold text-amber-700">Doctor Reassignment</p>
+                    <p className="text-[11px] text-amber-600 mt-0.5">
+                      Patient will be sent to <strong>{doctors.find(d => d.doctor_id === sendDoctorId)?.name}</strong> instead of <strong>{sendModalEntry.doctor_name}</strong>.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-100">
+              <button onClick={() => setSendModalEntry(null)}
+                className="px-4 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-100 rounded-lg transition-colors">
+                Cancel
+              </button>
+              <button
+                onClick={handleSendToDoctor}
+                disabled={!sendDoctorId || sendLoading}
+                className="inline-flex items-center gap-1.5 px-5 py-2 text-sm font-bold text-white bg-primary rounded-xl hover:bg-primary/90 transition-colors shadow-sm disabled:opacity-40"
+              >
+                {sendLoading ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <span className="material-symbols-outlined text-base">send</span>
+                )}
+                Send to Doctor
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

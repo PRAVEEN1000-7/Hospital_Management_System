@@ -39,8 +39,8 @@ const Layout: React.FC = () => {
 
   const role = user?.roles?.[0];
 
-  // Receptionist gets flat appointment links (no dropdown)
-  const isReceptionist = role === 'receptionist';
+  // Receptionist and Doctor get flat appointment links (no dropdown)
+  const isFlatNav = role === 'receptionist' || role === 'doctor';
 
   // ── Main navigation ── visible to every authenticated user
   const mainNavItems = [
@@ -67,8 +67,7 @@ const Layout: React.FC = () => {
     );
   } else if (role === 'doctor') {
     appointmentItems.push(
-      { to: '/appointments/queue',           label: 'My Queue',            icon: 'queue' },
-      { to: '/appointments/my-schedule',     label: 'Scheduled Appts',     icon: 'clinical_notes' },
+      { to: '/appointments/queue',           label: 'Today Patients',   icon: 'queue' },
       { to: '/appointments/doctor-schedule', label: 'Manage My Schedule',  icon: 'edit_calendar' },
       { to: '/appointments/waitlist',        label: 'Waitlist',            icon: 'playlist_add' },
     );
@@ -77,7 +76,7 @@ const Layout: React.FC = () => {
       { to: '/appointments/queue',  label: 'Walk-in Queue',  icon: 'queue' },
       { to: '/appointments/manage', label: 'Appointments',   icon: 'event_note' },
     );
-  } else if (isReceptionist) {
+  } else if (isFlatNav && role === 'receptionist') {
     // Receptionist items are shown flat (outside dropdown) — see render below
     appointmentItems.push(
       { to: '/appointments/walk-in', label: 'Walk-in Registration',icon: 'directions_walk' },
@@ -153,7 +152,7 @@ const Layout: React.FC = () => {
           ))}
 
           {/* ══ APPOINTMENTS — collapsible (or flat for receptionist) ══ */}
-          {appointmentItems.length > 0 && isReceptionist ? (
+          {appointmentItems.length > 0 && isFlatNav ? (
             /* ── Receptionist: flat links, no dropdown ── */
             <div className="mt-4">
               <div className="px-6 mb-1">

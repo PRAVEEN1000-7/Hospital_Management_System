@@ -100,13 +100,13 @@ const WalkInRegistration: React.FC = () => {
         setWaitlisted({
           message: result.message || 'Patient added to waitlist',
           position: wEntry?.position || 0,
-          patientName: wEntry?.patient_name || selectedPatient.full_name || '—',
+          patientName: wEntry?.patient_name || `${selectedPatient.first_name} ${selectedPatient.last_name}` || '—',
           doctorName: wEntry?.doctor_name || '—',
         });
         toast.success('Patient added to waitlist — all doctor slots are full');
       } else {
         setSuccess({
-          queueNumber: result.id?.slice(-6)?.toUpperCase() || '—',
+          queueNumber: result.queue_number ? String(result.queue_number) : (result.appointment_number || '—'),
           estimatedWait: 0,
         });
         toast.success('Walk-in registered successfully');

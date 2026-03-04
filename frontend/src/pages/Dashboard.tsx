@@ -7,6 +7,7 @@ import hospitalService from '../services/hospitalService';
 import userService from '../services/userService';
 import doctorService from '../services/doctorService';
 import walkInService from '../services/walkInService';
+import waitlistService from '../services/waitlistService';
 import { useToast } from '../contexts/ToastContext';
 import type { DoctorProfile } from '../types/doctor';
 
@@ -20,7 +21,9 @@ const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [doctorProfile, setDoctorProfile] = useState<DoctorProfile | null>(null);
   const [queueWaiting, setQueueWaiting] = useState<number>(0);
+  const [queueInProgress, setQueueInProgress] = useState<number>(0);
   const [queueCompleted, setQueueCompleted] = useState<number>(0);
+  const [waitlistWaiting, setWaitlistWaiting] = useState<number>(0);
 
   const isDoctor = user?.roles?.includes('doctor');
   const isAdmin = user?.roles?.includes('admin') || user?.roles?.includes('super_admin');
@@ -55,7 +58,14 @@ const Dashboard: React.FC = () => {
         try {
           const queueData = await walkInService.getQueueStatus();
           setQueueWaiting(queueData.total_waiting || 0);
+          setQueueInProgress(queueData.total_in_progress || 0);
           setQueueCompleted(queueData.total_completed || 0);
+        } catch (err) {
+          // Silent fail
+        }
+        try {
+          const wlStats = await waitlistService.getStats();
+          setWaitlistWaiting(wlStats.total_waiting || 0);
         } catch (err) {
           // Silent fail
         }
@@ -93,9 +103,9 @@ const Dashboard: React.FC = () => {
   // Stat cards - role-aware
   const doctorStatCards = [
     { label: 'Queue Waiting', value: queueWaiting.toString(), icon: 'hourglass_top', iconColor: 'text-amber-500' },
+    { label: 'In Consultation', value: queueInProgress.toString(), icon: 'stethoscope', iconColor: 'text-blue-500' },
     { label: 'Completed Today', value: queueCompleted.toString(), icon: 'task_alt', iconColor: 'text-emerald-500' },
-    { label: 'Total Patients', value: totalPatients.toLocaleString(), icon: 'group', iconColor: 'text-blue-500' },
-    { label: 'Availability', value: doctorProfile?.is_available ? 'Available' : 'Unavailable', icon: doctorProfile?.is_available ? 'check_circle' : 'cancel', iconColor: doctorProfile?.is_available ? 'text-emerald-500' : 'text-red-500' },
+    { label: 'Waitlisted', value: waitlistWaiting.toString(), icon: 'playlist_add', iconColor: 'text-purple-500' },
   ];
 
   const adminStatCards = [
@@ -370,12 +380,16 @@ const Dashboard: React.FC = () => {
                     <span className="font-bold text-amber-600">{queueWaiting}</span>
                   </div>
                   <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-600">In Consultation</span>
+                    <span className="font-bold text-blue-600">{queueInProgress}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
                     <span className="text-slate-600">Completed Today</span>
                     <span className="font-bold text-emerald-600">{queueCompleted}</span>
                   </div>
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-600">Employee ID</span>
-                    <span className="font-bold text-slate-700">{doctorProfile?.employee_id || '—'}</span>
+                    <span className="text-slate-600">Waitlisted</span>
+                    <span className="font-bold text-purple-600">{waitlistWaiting}</span>
                   </div>
                 </div>
               </div>

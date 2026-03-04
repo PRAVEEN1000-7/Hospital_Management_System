@@ -7,7 +7,7 @@ import logging
 from datetime import date, datetime, timezone
 from typing import Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, func
+from sqlalchemy import and_, case, func
 
 from ..models.appointment import Waitlist, Doctor, Appointment
 from ..models.patient import Patient
@@ -106,7 +106,7 @@ def get_waitlist(
     items = (
         q.order_by(
             # Priority order: emergency > urgent > normal
-            func.case(
+            case(
                 (Waitlist.priority == "emergency", 0),
                 (Waitlist.priority == "urgent", 1),
                 else_=2,

@@ -3,7 +3,7 @@ import { useToast } from '../contexts/ToastContext';
 import appointmentService from '../services/appointmentService';
 import scheduleService from '../services/scheduleService';
 import AppointmentStatusBadge from '../components/appointments/AppointmentStatusBadge';
-import type { Appointment, DoctorOption, AppointmentStatus } from '../types/appointment';
+import type { Appointment, DoctorOption, AppointmentStatus, AppointmentStats } from '../types/appointment';
 
 const AppointmentManagement: React.FC = () => {
   const toast = useToast();
@@ -22,6 +22,7 @@ const AppointmentManagement: React.FC = () => {
   const [detailAppt, setDetailAppt] = useState<Appointment | null>(null);
   const [cancelId, setCancelId] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState('');
+  const [stats, setStats] = useState<AppointmentStats | null>(null);
   const limit = 15;
 
   const fetchAppointments = useCallback(async () => {
@@ -44,6 +45,15 @@ const AppointmentManagement: React.FC = () => {
 
   useEffect(() => { scheduleService.getDoctors().then(setDoctors).catch(() => {}); }, []);
   useEffect(() => { fetchAppointments(); }, [fetchAppointments]);
+
+  // Fetch stats
+  useEffect(() => {
+    appointmentService.getStats(
+      filterDate || undefined,
+      filterDate || undefined,
+      filterDoctor ? parseInt(filterDoctor) : undefined
+    ).then(setStats).catch(() => {});
+  }, [filterDate, filterDoctor]);
 
   const handleSearch = () => { setPage(1); setSearch(searchInput); };
   const handleKeyDown = (e: React.KeyboardEvent) => { if (e.key === 'Enter') handleSearch(); };
@@ -82,10 +92,73 @@ const AppointmentManagement: React.FC = () => {
   return (
     <div className="max-w-7xl mx-auto">
       {/* Header */}
-      <div className="mb-8">
+      <div className="mb-6">
         <h1 className="text-2xl font-bold text-slate-900">Appointment Management</h1>
         <p className="text-slate-500 text-sm mt-1">View and manage all appointments</p>
       </div>
+
+      {/* Stats Cards */}
+      {stats && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total</span>
+              <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center">
+                <span className="material-symbols-outlined text-lg text-blue-500">calendar_month</span>
+              </div>
+            </div>
+            <p className="text-2xl font-bold text-slate-900">{stats.total_appointments}</p>
+          </div>
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Scheduled</span>
+              <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center">
+                <span className="material-symbols-outlined text-lg text-primary">event</span>
+              </div>
+            </div>
+            <p className="text-2xl font-bold text-slate-900">{stats.total_scheduled}</p>
+          </div>
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Completed</span>
+              <div className="w-8 h-8 bg-emerald-50 rounded-lg flex items-center justify-center">
+                <span className="material-symbols-outlined text-lg text-emerald-500">task_alt</span>
+              </div>
+            </div>
+            <p className="text-2xl font-bold text-emerald-600">{stats.total_completed}</p>
+            <p className="text-[10px] text-slate-400 mt-0.5">{stats.completion_rate.toFixed(1)}% rate</p>
+          </div>
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Pending</span>
+              <div className="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center">
+                <span className="material-symbols-outlined text-lg text-amber-500">hourglass_top</span>
+              </div>
+            </div>
+            <p className="text-2xl font-bold text-amber-600">{stats.total_pending}</p>
+          </div>
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Cancelled</span>
+              <div className="w-8 h-8 bg-red-50 rounded-lg flex items-center justify-center">
+                <span className="material-symbols-outlined text-lg text-red-500">cancel</span>
+              </div>
+            </div>
+            <p className="text-2xl font-bold text-red-500">{stats.total_cancelled}</p>
+            <p className="text-[10px] text-slate-400 mt-0.5">{stats.cancellation_rate.toFixed(1)}% rate</p>
+          </div>
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">No-Shows</span>
+              <div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center">
+                <span className="material-symbols-outlined text-lg text-slate-500">person_off</span>
+              </div>
+            </div>
+            <p className="text-2xl font-bold text-slate-600">{stats.total_no_shows}</p>
+            <p className="text-[10px] text-slate-400 mt-0.5">{stats.no_show_rate.toFixed(1)}% rate</p>
+          </div>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6">

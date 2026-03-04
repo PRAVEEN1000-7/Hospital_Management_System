@@ -31,9 +31,15 @@ from ..services.waitlist_service import (
     get_waitlist_count_for_doctor,
 )
 from ..services.appointment_service import generate_appointment_number, enrich_appointment
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/waitlist", tags=["Waitlist"])
+
+
+class BookFromWaitlistPayload(BaseModel):
+    """Optional payload to override doctor when sending from waitlist."""
+    doctor_id: Optional[str] = None  # If provided, reassign to this doctor
 
 
 def _user_roles(user: User) -> list:
@@ -193,17 +199,18 @@ async def cancel_entry(
     return {"detail": "Waitlist entry cancelled", "id": str(cancelled.id)}
 
 
-# ── Promote to appointment (book from waitlist) ──────────────────────────
+# ── Send to doctor (promote from waitlist) ────────────────────────────────
 
 @router.post("/{entry_id}/book")
 async def book_from_waitlist(
     entry_id: str,
+    payload: Optional[BookFromWaitlistPayload] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
     """
     Promote a waitlist entry to a real walk-in appointment + queue entry.
-    This is used when a slot opens up (e.g., cancellation or new day).
+    Optionally accepts a doctor_id to reassign to a different doctor.
     """
     try:
         entry = get_waitlist_entry(db, entry_id)
@@ -216,6 +223,18 @@ async def book_from_waitlist(
                 detail=f"Cannot book: entry status is '{entry.status}', expected 'waiting'",
             )
 
+        # Determine target doctor (allow override)
+        target_doctor_id = entry.doctor_id
+        if payload and payload.doctor_id:
+            try:
+                override_uuid = uuid.UUID(payload.doctor_id)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid doctor_id format")
+            override_doc = db.query(Doctor).filter(Doctor.id == override_uuid).first()
+            if not override_doc:
+                raise HTTPException(status_code=404, detail="Selected doctor not found")
+            target_doctor_id = override_uuid
+
         today = date.today()
         from datetime import timezone as tz
         now = __import__("datetime").datetime.now(tz.utc)
@@ -226,7 +245,7 @@ async def book_from_waitlist(
             hospital_id=entry.hospital_id,
             appointment_number=appt_number,
             patient_id=entry.patient_id,
-            doctor_id=entry.doctor_id,
+            doctor_id=target_doctor_id,
             department_id=entry.department_id,
             appointment_date=today,
             start_time=None,
@@ -248,7 +267,7 @@ async def book_from_waitlist(
         max_num = (
             db.query(sqlfunc.max(AppointmentQueue.queue_number))
             .filter(
-                AppointmentQueue.doctor_id == entry.doctor_id,
+                AppointmentQueue.doctor_id == target_doctor_id,
                 AppointmentQueue.queue_date == today,
             )
             .scalar()
@@ -258,7 +277,7 @@ async def book_from_waitlist(
         waiting_count = (
             db.query(sqlfunc.count(AppointmentQueue.id))
             .filter(
-                AppointmentQueue.doctor_id == entry.doctor_id,
+                AppointmentQueue.doctor_id == target_doctor_id,
                 AppointmentQueue.queue_date == today,
                 AppointmentQueue.status.in_(["waiting", "called"]),
             )
@@ -268,7 +287,7 @@ async def book_from_waitlist(
 
         queue_entry = AppointmentQueue(
             appointment_id=appt.id,
-            doctor_id=entry.doctor_id,
+            doctor_id=target_doctor_id,
             queue_date=today,
             queue_number=q_num,
             position=q_pos,

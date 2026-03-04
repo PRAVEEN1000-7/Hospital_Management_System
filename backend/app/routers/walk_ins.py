@@ -15,6 +15,7 @@ from ..models.patient import Patient
 from ..models.appointment import Appointment, AppointmentQueue, Doctor
 from ..dependencies import get_current_active_user
 from ..schemas.appointment import WalkInRegister, WalkInAssignDoctor
+from pydantic import BaseModel
 from ..services.appointment_service import (
     generate_appointment_number,
     enrich_appointment,
@@ -28,6 +29,19 @@ from ..services.waitlist_service import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/walk-ins", tags=["Walk-in Registration"])
+
+
+class ConsultationNotesPayload(BaseModel):
+    """Payload for saving consultation notes."""
+    notes: Optional[str] = None
+    diagnosis: Optional[str] = None
+    prescription: Optional[str] = None
+    vitals_bp: Optional[str] = None
+    vitals_pulse: Optional[str] = None
+    vitals_temp: Optional[str] = None
+    vitals_weight: Optional[str] = None
+    vitals_spo2: Optional[str] = None
+    follow_up_date: Optional[str] = None
 
 
 def _user_roles(user: User) -> list:
@@ -303,6 +317,12 @@ async def get_queue_status(
         patient_date_of_birth = None
         patient_age = None
         patient_blood_group = None
+        patient_email = None
+        patient_known_allergies = None
+        patient_chronic_conditions = None
+        patient_emergency_contact_name = None
+        patient_emergency_contact_phone = None
+        patient_emergency_contact_relation = None
 
         if appt:
             priority = appt.priority or "normal"
@@ -318,6 +338,12 @@ async def get_queue_status(
                 patient_gender = patient.gender
                 patient_date_of_birth = patient.date_of_birth.isoformat() if patient.date_of_birth else None
                 patient_blood_group = patient.blood_group
+                patient_email = patient.email
+                patient_known_allergies = patient.known_allergies
+                patient_chronic_conditions = patient.chronic_conditions
+                patient_emergency_contact_name = patient.emergency_contact_name
+                patient_emergency_contact_phone = patient.emergency_contact_phone
+                patient_emergency_contact_relation = patient.emergency_contact_relation
                 # Compute age from date_of_birth or stored age_years
                 if patient.date_of_birth:
                     age_delta = today - patient.date_of_birth
@@ -346,6 +372,12 @@ async def get_queue_status(
             "patient_date_of_birth": patient_date_of_birth,
             "patient_age": patient_age,
             "patient_blood_group": patient_blood_group,
+            "patient_email": patient_email,
+            "patient_known_allergies": patient_known_allergies,
+            "patient_chronic_conditions": patient_chronic_conditions,
+            "patient_emergency_contact_name": patient_emergency_contact_name,
+            "patient_emergency_contact_phone": patient_emergency_contact_phone,
+            "patient_emergency_contact_relation": patient_emergency_contact_relation,
             "doctor_id": doctor_id_str,
             "doctor_name": doctor_name,
             "chief_complaint": chief_complaint,
@@ -404,7 +436,7 @@ async def start_consultation(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    """Start consultation — moves queue from 'called' to 'in_consultation'."""
+    """Start consultation — moves queue from 'waiting'/'called' to 'in_consultation'."""
     try:
         q_uuid = uuid.UUID(queue_id)
     except ValueError:
@@ -416,8 +448,8 @@ async def start_consultation(
 
     _require_queue_actor(db, current_user, qe)
 
-    if qe.status != "called":
-        raise HTTPException(status_code=400, detail="Patient must be in 'called' status to start consultation")
+    if qe.status not in ("waiting", "called"):
+        raise HTTPException(status_code=400, detail="Patient must be in 'waiting' or 'called' status to start consultation")
 
     qe.status = "in_consultation"
 
@@ -488,6 +520,99 @@ async def skip_patient(
 
     db.commit()
     return {"ok": True, "queue_id": str(qe.id), "status": "skipped"}
+
+
+@router.patch("/queue/{queue_id}/save-notes")
+async def save_consultation_notes(
+    queue_id: str,
+    payload: ConsultationNotesPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Save consultation notes, vitals, diagnosis, and prescription for a queue entry."""
+    try:
+        q_uuid = uuid.UUID(queue_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid queue_id")
+
+    qe = db.query(AppointmentQueue).filter(AppointmentQueue.id == q_uuid).first()
+    if not qe:
+        raise HTTPException(status_code=404, detail="Queue entry not found")
+
+    _require_queue_actor(db, current_user, qe)
+
+    appt = db.query(Appointment).filter(Appointment.id == qe.appointment_id).first()
+    if not appt:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+
+    # Build structured notes as JSON-like text stored in the notes column
+    import json
+    existing_notes = {}
+    if appt.notes:
+        try:
+            existing_notes = json.loads(appt.notes)
+        except (json.JSONDecodeError, TypeError):
+            existing_notes = {"_legacy": appt.notes}
+
+    if payload.notes is not None:
+        existing_notes["clinical_notes"] = payload.notes
+    if payload.diagnosis is not None:
+        existing_notes["diagnosis"] = payload.diagnosis
+    if payload.prescription is not None:
+        existing_notes["prescription"] = payload.prescription
+    if payload.follow_up_date is not None:
+        existing_notes["follow_up_date"] = payload.follow_up_date
+
+    # Vitals
+    vitals = existing_notes.get("vitals", {})
+    if payload.vitals_bp is not None:
+        vitals["bp"] = payload.vitals_bp
+    if payload.vitals_pulse is not None:
+        vitals["pulse"] = payload.vitals_pulse
+    if payload.vitals_temp is not None:
+        vitals["temp"] = payload.vitals_temp
+    if payload.vitals_weight is not None:
+        vitals["weight"] = payload.vitals_weight
+    if payload.vitals_spo2 is not None:
+        vitals["spo2"] = payload.vitals_spo2
+    if vitals:
+        existing_notes["vitals"] = vitals
+
+    appt.notes = json.dumps(existing_notes)
+    db.commit()
+
+    return {"ok": True, "queue_id": str(qe.id), "notes_saved": True}
+
+
+@router.get("/queue/{queue_id}/notes")
+async def get_consultation_notes(
+    queue_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Retrieve consultation notes for a queue entry."""
+    try:
+        q_uuid = uuid.UUID(queue_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid queue_id")
+
+    qe = db.query(AppointmentQueue).filter(AppointmentQueue.id == q_uuid).first()
+    if not qe:
+        raise HTTPException(status_code=404, detail="Queue entry not found")
+
+    appt = db.query(Appointment).filter(Appointment.id == qe.appointment_id).first()
+    if not appt:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+
+    import json
+    notes_data = {}
+    if appt.notes:
+        try:
+            notes_data = json.loads(appt.notes)
+        except (json.JSONDecodeError, TypeError):
+            notes_data = {"clinical_notes": appt.notes}
+
+    return {"queue_id": str(qe.id), "appointment_id": str(appt.id), **notes_data}
 
 
 @router.post("/{appointment_id}/assign-doctor")

@@ -50,9 +50,10 @@ const waitlistService = {
     return res.data;
   },
 
-  /** Promote a waitlist entry to a real appointment (book from waitlist) */
-  async bookFromWaitlist(entryId: string): Promise<Appointment & { queue_number: number; queue_position: number; waitlist_id: string }> {
-    const res = await api.post(`/waitlist/${entryId}/book`);
+  /** Promote a waitlist entry to a real appointment (send to doctor) */
+  async bookFromWaitlist(entryId: string, doctorId?: string): Promise<Appointment & { queue_number: number; queue_position: number; waitlist_id: string }> {
+    const body = doctorId ? { doctor_id: doctorId } : {};
+    const res = await api.post(`/waitlist/${entryId}/book`, body);
     return res.data;
   },
 

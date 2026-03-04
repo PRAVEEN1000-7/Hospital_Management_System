@@ -46,7 +46,7 @@ async def get_my_doctor_profile(
         resp.doctor_name = f"{doctor.user.first_name} {doctor.user.last_name}"
     # Include department name
     if doctor.department_id:
-        from ..models.hospital import Department
+        from ..models.department import Department
         dept = db.query(Department).filter(Department.id == doctor.department_id).first()
         if dept:
             resp.department_name = dept.name

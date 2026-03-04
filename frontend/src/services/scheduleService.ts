@@ -58,7 +58,7 @@ const scheduleService = {
   },
 
   async createDoctorLeave(data: DoctorLeaveCreate): Promise<DoctorLeave> {
-    const res = await api.post<DoctorLeave>('/schedules/doctor-leave', data);
+    const res = await api.post<DoctorLeave>('/schedules/doctor-leaves', data);
     return res.data;
   },
 

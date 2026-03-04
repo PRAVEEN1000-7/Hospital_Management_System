@@ -6,11 +6,12 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from typing import Optional
-from datetime import date
+from datetime import date, datetime, timezone
+import uuid as uuid_mod
 
 from ..database import get_db
 from ..models.user import User
-from ..models.appointment import Doctor
+from ..models.appointment import Doctor, Appointment, AppointmentQueue
 from ..dependencies import get_current_active_user
 from ..schemas.prescription import (
     PrescriptionCreate,
@@ -191,6 +192,38 @@ async def finalize_rx(
         rx = finalize_prescription(db, prescription_id, current_user.id)
         if not rx:
             raise HTTPException(status_code=404, detail="Prescription not found")
+        return enrich_prescription(db, rx)
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+
+
+@router.post("/{prescription_id}/finalize-and-complete", response_model=PrescriptionResponse)
+async def finalize_and_complete_queue(
+    prescription_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Finalize a prescription AND complete the linked queue entry + appointment in one call.
+    Used by the consultation flow: Save & Complete button."""
+    try:
+        # 1. Finalize the prescription
+        rx = finalize_prescription(db, prescription_id, current_user.id)
+        if not rx:
+            raise HTTPException(status_code=404, detail="Prescription not found")
+
+        # 2. Complete the linked queue entry (if any)
+        if rx.queue_id:
+            qe = db.query(AppointmentQueue).filter(AppointmentQueue.id == rx.queue_id).first()
+            if qe and qe.status in ("called", "in_consultation", "sent_to_doctor"):
+                qe.status = "completed"
+                # Also complete the linked appointment
+                if qe.appointment_id:
+                    appt = db.query(Appointment).filter(Appointment.id == qe.appointment_id).first()
+                    if appt:
+                        appt.status = "completed"
+                        appt.consultation_end_at = datetime.now(timezone.utc)
+                db.commit()
+
         return enrich_prescription(db, rx)
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))

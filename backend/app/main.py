@@ -55,12 +55,25 @@ else:
 
 
 # ---------- Global Exception Handlers ----------
+def _cors_headers(request: Request) -> dict:
+    """Build CORS headers matching CORSMiddleware config so error responses include them."""
+    origin = request.headers.get("origin", "")
+    if origin in settings.CORS_ORIGINS:
+        return {
+            "access-control-allow-origin": origin,
+            "access-control-allow-credentials": "true",
+            "vary": "Origin",
+        }
+    return {}
+
+
 @app.exception_handler(SQLAlchemyError)
 async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError):
     logger.error(f"Database error: {exc}")
     return JSONResponse(
         status_code=500,
         content={"detail": "A database error occurred. Please try again later."},
+        headers=_cors_headers(request),
     )
 
 
@@ -70,6 +83,7 @@ async def generic_exception_handler(request: Request, exc: Exception):
     return JSONResponse(
         status_code=500,
         content={"detail": "An internal server error occurred."},
+        headers=_cors_headers(request),
     )
 
 

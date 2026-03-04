@@ -59,6 +59,14 @@ class Prescription(Base):
     diagnosis = Column(Text)
     clinical_notes = Column(Text)
     advice = Column(Text)
+    # Vitals — captured during consultation
+    vitals_bp = Column(String(20))       # e.g. "120/80"
+    vitals_pulse = Column(String(10))    # e.g. "72"
+    vitals_temp = Column(String(10))     # e.g. "98.6"
+    vitals_weight = Column(String(10))   # e.g. "70"
+    vitals_spo2 = Column(String(10))     # e.g. "98"
+    follow_up_date = Column(Date)
+    queue_id = Column(UUID(as_uuid=True), ForeignKey("appointment_queue.id"), nullable=True)
     version = Column(Integer, default=1)
     status = Column(String(20), default="draft")  # 'draft','finalized','dispensed','partially_dispensed'
     is_finalized = Column(Boolean, default=False)

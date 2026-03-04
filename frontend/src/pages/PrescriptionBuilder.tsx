@@ -50,12 +50,22 @@ const PrescriptionBuilder: React.FC = () => {
   // Form state
   const [patientId, setPatientId] = useState(searchParams.get('patient_id') || '');
   const [appointmentId, setAppointmentId] = useState(searchParams.get('appointment_id') || '');
+  const [queueId] = useState(searchParams.get('queue_id') || '');
+  const isConsultationMode = Boolean(queueId);
   const [patient, setPatient] = useState<Patient | null>(null);
   const [clinicalNotes, setClinicalNotes] = useState('');
   const [advice, setAdvice] = useState('');
   const [blocks, setBlocks] = useState<DiagnosisBlock[]>([createBlock()]);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // Vitals state
+  const [vitalsBp, setVitalsBp] = useState('');
+  const [vitalsPulse, setVitalsPulse] = useState('');
+  const [vitalsTemp, setVitalsTemp] = useState('');
+  const [vitalsWeight, setVitalsWeight] = useState('');
+  const [vitalsSpo2, setVitalsSpo2] = useState('');
+  const [followUpDate, setFollowUpDate] = useState('');
 
   // Search states
   const [patientSearch, setPatientSearch] = useState('');
@@ -96,6 +106,12 @@ const PrescriptionBuilder: React.FC = () => {
         setAppointmentId(rx.appointment_id || '');
         setClinicalNotes(rx.clinical_notes || '');
         setAdvice(rx.advice || '');
+        setVitalsBp(rx.vitals_bp || '');
+        setVitalsPulse(rx.vitals_pulse || '');
+        setVitalsTemp(rx.vitals_temp || '');
+        setVitalsWeight(rx.vitals_weight || '');
+        setVitalsSpo2(rx.vitals_spo2 || '');
+        setFollowUpDate(rx.follow_up_date || '');
         const loadedItems: PrescriptionItemCreate[] =
           rx.items && rx.items.length > 0
             ? rx.items.map((item, idx) => ({
@@ -255,7 +271,7 @@ const PrescriptionBuilder: React.FC = () => {
     showToast('success', `Template "${tmpl.name}" applied`);
   };
 
-  const handleSave = async (finalize: boolean = false) => {
+  const handleSave = async (finalize: boolean = false, completeQueue: boolean = false) => {
     if (!patient) { showToast('error', 'Please select a patient'); return; }
 
     // Flatten blocks into single diagnosis string & ordered items for the API
@@ -268,6 +284,16 @@ const PrescriptionBuilder: React.FC = () => {
     );
     if (validItems.length === 0) { showToast('error', 'Add at least one medicine'); return; }
 
+    // Common vitals payload
+    const vitalsPayload = {
+      vitals_bp: vitalsBp || undefined,
+      vitals_pulse: vitalsPulse || undefined,
+      vitals_temp: vitalsTemp || undefined,
+      vitals_weight: vitalsWeight || undefined,
+      vitals_spo2: vitalsSpo2 || undefined,
+      follow_up_date: followUpDate || undefined,
+    };
+
     setSaving(true);
     try {
       let rxId: string;
@@ -278,6 +304,7 @@ const PrescriptionBuilder: React.FC = () => {
           diagnosis: allDiagnoses || undefined,
           clinical_notes: clinicalNotes || undefined,
           advice: advice || undefined,
+          ...vitalsPayload,
           items: validItems,
         });
         rxId = updated.id;
@@ -286,21 +313,29 @@ const PrescriptionBuilder: React.FC = () => {
         const rx = await prescriptionService.createPrescription({
           patient_id: patient.id,
           appointment_id: appointmentId || undefined,
+          queue_id: queueId || undefined,
           diagnosis: allDiagnoses || undefined,
           clinical_notes: clinicalNotes || undefined,
           advice: advice || undefined,
+          ...vitalsPayload,
           items: validItems,
         });
         rxId = rx.id;
       }
 
-      if (finalize) {
+      if (completeQueue) {
+        // Finalize prescription + complete queue entry in one call
+        await prescriptionService.finalizeAndComplete(rxId);
+        showToast('success', 'Prescription finalized & consultation completed!');
+        navigate('/appointments/queue');
+      } else if (finalize) {
         await prescriptionService.finalizePrescription(rxId);
         showToast('success', 'Prescription finalized & sent to pharmacy!');
+        navigate('/prescriptions');
       } else {
         showToast('success', isEditMode ? 'Prescription updated' : 'Prescription saved as draft');
+        if (!isEditMode) navigate('/prescriptions');
       }
-      navigate('/prescriptions');
     } catch (err: any) {
       showToast('error', err?.response?.data?.detail || 'Failed to save prescription');
     } finally {
@@ -326,13 +361,24 @@ const PrescriptionBuilder: React.FC = () => {
       <div className="flex justify-between items-center mb-6">
         <div>
           <nav className="flex text-sm text-slate-400 mb-1">
-            <span>Prescriptions</span>
+            <span>{isConsultationMode ? 'Queue' : 'Prescriptions'}</span>
             <span className="mx-2">/</span>
-            <span className="text-slate-600">{isEditMode ? 'Edit Prescription' : 'New Prescription'}</span>
+            <span className="text-slate-600">{isConsultationMode ? 'Consultation' : isEditMode ? 'Edit Prescription' : 'New Prescription'}</span>
           </nav>
-          <h1 className="text-2xl font-bold text-slate-900">{isEditMode ? 'Edit Prescription' : 'E-Prescription Builder'}</h1>
+          <h1 className="text-2xl font-bold text-slate-900">
+            {isConsultationMode ? 'Consultation & Prescription' : isEditMode ? 'Edit Prescription' : 'E-Prescription Builder'}
+          </h1>
         </div>
         <div className="flex gap-3">
+          {isConsultationMode && (
+            <button
+              onClick={() => navigate('/appointments/queue')}
+              className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-medium hover:bg-slate-50 flex items-center gap-2"
+            >
+              <span className="material-symbols-outlined text-sm">arrow_back</span>
+              Back to Queue
+            </button>
+          )}
           <button
             onClick={() => setShowTemplates(!showTemplates)}
             className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-medium hover:bg-slate-50 flex items-center gap-2"
@@ -528,6 +574,42 @@ const PrescriptionBuilder: React.FC = () => {
                       <span className="font-bold text-indigo-900">{patient.phone_number}</span>
                     </div>
                   </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Vitals Section */}
+          {patient && (
+            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+              <h3 className="font-semibold mb-4 flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-sm">vital_signs</span> Vitals
+              </h3>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1.5">BP (mmHg)</label>
+                  <input type="text" value={vitalsBp} onChange={e => setVitalsBp(e.target.value)} placeholder="120/80"
+                    className="input-field" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1.5">Pulse (bpm)</label>
+                  <input type="text" value={vitalsPulse} onChange={e => setVitalsPulse(e.target.value)} placeholder="72"
+                    className="input-field" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1.5">Temp (&deg;F)</label>
+                  <input type="text" value={vitalsTemp} onChange={e => setVitalsTemp(e.target.value)} placeholder="98.6"
+                    className="input-field" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1.5">Weight (kg)</label>
+                  <input type="text" value={vitalsWeight} onChange={e => setVitalsWeight(e.target.value)} placeholder="70"
+                    className="input-field" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1.5">SpO2 (%)</label>
+                  <input type="text" value={vitalsSpo2} onChange={e => setVitalsSpo2(e.target.value)} placeholder="98"
+                    className="input-field" />
                 </div>
               </div>
             </div>
@@ -751,11 +833,25 @@ const PrescriptionBuilder: React.FC = () => {
             />
           </div>
 
+          {/* Follow-up Date */}
+          <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+            <h3 className="font-semibold mb-4 flex items-center gap-2">
+              <span className="material-symbols-outlined text-primary text-sm">event_upcoming</span> Follow-up Date
+            </h3>
+            <input
+              type="date"
+              value={followUpDate}
+              onChange={e => setFollowUpDate(e.target.value)}
+              min={new Date().toISOString().split('T')[0]}
+              className="input-field max-w-xs"
+            />
+          </div>
+
           {/* Actions */}
           <div className="flex justify-between items-center pb-6">
             <div className="flex gap-2">
               <button
-                onClick={() => navigate('/prescriptions')}
+                onClick={() => navigate(isConsultationMode ? '/appointments/queue' : '/prescriptions')}
                 className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-medium hover:bg-slate-50"
               >
                 Cancel
@@ -763,20 +859,31 @@ const PrescriptionBuilder: React.FC = () => {
             </div>
             <div className="flex gap-3">
               <button
-                onClick={() => handleSave(false)}
+                onClick={() => handleSave(false, false)}
                 disabled={saving}
                 className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
               >
-                {saving ? 'Saving...' : 'Save as Draft'}
+                {saving ? 'Saving...' : 'Save Draft'}
               </button>
-              <button
-                onClick={() => handleSave(true)}
-                disabled={saving}
-                className="bg-primary hover:bg-primary/90 text-white px-6 py-2 rounded-lg text-sm font-medium flex items-center gap-2 disabled:opacity-50 transition-colors"
-              >
-                <span className="material-symbols-outlined text-sm">send</span>
-                {saving ? 'Saving...' : 'Save & Send to Pharmacy'}
-              </button>
+              {isConsultationMode ? (
+                <button
+                  onClick={() => handleSave(false, true)}
+                  disabled={saving}
+                  className="bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2 disabled:opacity-50 transition-colors shadow-sm"
+                >
+                  <span className="material-symbols-outlined text-sm">task_alt</span>
+                  {saving ? 'Saving...' : 'Save & Complete'}
+                </button>
+              ) : (
+                <button
+                  onClick={() => handleSave(true, false)}
+                  disabled={saving}
+                  className="bg-primary hover:bg-primary/90 text-white px-6 py-2 rounded-lg text-sm font-medium flex items-center gap-2 disabled:opacity-50 transition-colors"
+                >
+                  <span className="material-symbols-outlined text-sm">send</span>
+                  {saving ? 'Saving...' : 'Save & Send to Pharmacy'}
+                </button>
+              )}
             </div>
           </div>
         </div>

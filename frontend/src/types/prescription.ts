@@ -54,6 +54,13 @@ export interface Prescription {
   diagnosis: string | null;
   clinical_notes: string | null;
   advice: string | null;
+  vitals_bp: string | null;
+  vitals_pulse: string | null;
+  vitals_temp: string | null;
+  vitals_weight: string | null;
+  vitals_spo2: string | null;
+  follow_up_date: string | null;
+  queue_id: string | null;
   version: number;
   status: PrescriptionStatus;
   is_finalized: boolean;
@@ -95,6 +102,13 @@ export interface PrescriptionCreate {
   diagnosis?: string | null;
   clinical_notes?: string | null;
   advice?: string | null;
+  vitals_bp?: string | null;
+  vitals_pulse?: string | null;
+  vitals_temp?: string | null;
+  vitals_weight?: string | null;
+  vitals_spo2?: string | null;
+  follow_up_date?: string | null;
+  queue_id?: string | null;
   valid_until?: string | null;
   items: PrescriptionItemCreate[];
 }
@@ -103,6 +117,12 @@ export interface PrescriptionUpdate {
   diagnosis?: string | null;
   clinical_notes?: string | null;
   advice?: string | null;
+  vitals_bp?: string | null;
+  vitals_pulse?: string | null;
+  vitals_temp?: string | null;
+  vitals_weight?: string | null;
+  vitals_spo2?: string | null;
+  follow_up_date?: string | null;
   valid_until?: string | null;
   items?: PrescriptionItemCreate[] | null;
 }

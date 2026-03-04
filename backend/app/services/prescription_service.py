@@ -9,7 +9,7 @@ from datetime import date, datetime, timezone
 from math import ceil
 from typing import Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_, func, or_, case
 
 from ..models.prescription import (
     Prescription, PrescriptionItem, PrescriptionTemplate,
@@ -78,6 +78,13 @@ def create_prescription(
         diagnosis=data.get("diagnosis"),
         clinical_notes=data.get("clinical_notes"),
         advice=data.get("advice"),
+        vitals_bp=data.get("vitals_bp"),
+        vitals_pulse=data.get("vitals_pulse"),
+        vitals_temp=data.get("vitals_temp"),
+        vitals_weight=data.get("vitals_weight"),
+        vitals_spo2=data.get("vitals_spo2"),
+        follow_up_date=data.get("follow_up_date"),
+        queue_id=uuid.UUID(data["queue_id"]) if data.get("queue_id") else None,
         valid_until=data.get("valid_until"),
         status="draft",
         created_by=created_by,
@@ -217,7 +224,9 @@ def update_prescription(
         raise ValueError("Cannot update a finalized prescription")
 
     # Update top-level fields
-    for k in ["diagnosis", "clinical_notes", "advice", "valid_until"]:
+    for k in ["diagnosis", "clinical_notes", "advice", "valid_until",
+              "vitals_bp", "vitals_pulse", "vitals_temp", "vitals_weight", "vitals_spo2",
+              "follow_up_date"]:
         if k in data and data[k] is not None:
             setattr(rx, k, data[k])
 
@@ -322,7 +331,7 @@ def enrich_prescription(db: Session, rx: Prescription) -> dict:
 
     # Stringify UUIDs
     for uuid_col in ["id", "hospital_id", "patient_id", "doctor_id",
-                      "appointment_id", "created_by"]:
+                      "appointment_id", "queue_id", "created_by"]:
         if d.get(uuid_col):
             d[uuid_col] = str(d[uuid_col])
 
@@ -552,7 +561,37 @@ def list_medicines(
 
     total = q.count()
     offset = (page - 1) * limit
-    rows = q.order_by(Medicine.name).offset(offset).limit(limit).all()
+    
+    # Smart sorting: prioritize tablets and exact matches when searching
+    if search:
+        search_lower = search.lower()
+        # Order by:
+        # 1. Tablets first (category = 'tablet' gets priority)
+        # 2. Exact name match first
+        # 3. Name starts with search term
+        # 4. Alphabetically by name
+        rows = q.order_by(
+            case(
+                (Medicine.category == 'tablet', 0),
+                else_=1
+            ),
+            case(
+                (func.lower(Medicine.name) == search_lower, 0),
+                (func.lower(Medicine.name).startswith(search_lower), 1),
+                else_=2
+            ),
+            Medicine.name
+        ).offset(offset).limit(limit).all()
+    else:
+        # Default sort: tablets first, then alphabetically
+        rows = q.order_by(
+            case(
+                (Medicine.category == 'tablet', 0),
+                else_=1
+            ),
+            Medicine.name
+        ).offset(offset).limit(limit).all()
+    
     total_pages = ceil(total / limit) if total > 0 else 0
     return total, page, limit, total_pages, rows
 

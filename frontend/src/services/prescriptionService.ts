@@ -82,6 +82,11 @@ const prescriptionService = {
     return res.data;
   },
 
+  async finalizeAndComplete(id: string): Promise<Prescription> {
+    const res = await api.post<Prescription>(`/prescriptions/${id}/finalize-and-complete`);
+    return res.data;
+  },
+
   async deletePrescription(id: string): Promise<void> {
     await api.delete(`/prescriptions/${id}`);
   },

@@ -51,8 +51,11 @@ const Layout: React.FC = () => {
   // ── Main navigation ── visible to every authenticated user
   const mainNavItems = [
     { to: '/dashboard', label: 'Dashboard',        icon: 'dashboard' },
-    { to: '/patients',  label: 'Patient Directory', icon: 'group' },
   ];
+  // Patient Directory - NOT for doctors
+  if (role !== 'doctor') {
+    mainNavItems.push({ to: '/patients',  label: 'Patient Directory', icon: 'group' });
+  }
   if (role === 'super_admin' || role === 'admin') {
     mainNavItems.push({ to: '/staff', label: 'Staff Directory', icon: 'badge' });
   }

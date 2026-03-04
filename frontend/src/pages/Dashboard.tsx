@@ -224,12 +224,12 @@ const Dashboard: React.FC = () => {
                     <p className="text-[10px] text-slate-400 mt-1">Today's scheduled appointments</p>
                   </button>
                   <button
-                    onClick={() => navigate('/patients')}
+                    onClick={() => navigate('/profile')}
                     className="p-4 rounded-xl border border-slate-200 hover:border-primary hover:bg-blue-50 transition-all group cursor-pointer text-left active:scale-[0.98]"
                   >
-                    <span className="material-symbols-outlined text-emerald-500 mb-2 text-2xl">group</span>
-                    <p className="text-sm font-bold text-slate-900 group-hover:text-primary transition-colors">Patient Directory</p>
-                    <p className="text-[10px] text-slate-400 mt-1">Browse patient records</p>
+                    <span className="material-symbols-outlined text-purple-500 mb-2 text-2xl">person</span>
+                    <p className="text-sm font-bold text-slate-900 group-hover:text-primary transition-colors">My Profile</p>
+                    <p className="text-[10px] text-slate-400 mt-1">Update your information</p>
                   </button>
                 </>
               ) : (
@@ -405,10 +405,6 @@ const Dashboard: React.FC = () => {
                   <button onClick={() => navigate('/appointments/my')} className="w-full flex items-center gap-3 text-left hover:bg-slate-800 rounded-lg p-2 transition-colors">
                     <span className="material-symbols-outlined text-blue-400 text-sm">calendar_month</span>
                     <span className="text-[11px] text-white font-medium">My Appointments</span>
-                  </button>
-                  <button onClick={() => navigate('/patients')} className="w-full flex items-center gap-3 text-left hover:bg-slate-800 rounded-lg p-2 transition-colors">
-                    <span className="material-symbols-outlined text-emerald-400 text-sm">group</span>
-                    <span className="text-[11px] text-white font-medium">Patient Directory</span>
                   </button>
                   <button onClick={() => navigate('/profile')} className="w-full flex items-center gap-3 text-left hover:bg-slate-800 rounded-lg p-2 transition-colors">
                     <span className="material-symbols-outlined text-purple-400 text-sm">person</span>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import walkInService from '../services/walkInService';
@@ -37,6 +38,7 @@ function timeAgo(iso: string | null): string {
 const WalkInQueue: React.FC = () => {
   const { user } = useAuth();
   const toast = useToast();
+  const navigate = useNavigate();
 
   const roles = user?.roles || [];
   const isDoctor = roles.includes('doctor');
@@ -56,19 +58,6 @@ const WalkInQueue: React.FC = () => {
   const [sendingInProgress, setSendingInProgress] = useState(false);
   const [detailItem, setDetailItem] = useState<QueueItem | null>(null);
   const [unassigned, setUnassigned] = useState<UnassignedWalkIn[]>([]);
-
-  // ── Consultation Modal State ──────────────────────────────────
-  const [consultItem, setConsultItem] = useState<QueueItem | null>(null);
-  const [consultNotes, setConsultNotes] = useState('');
-  const [consultDiagnosis, setConsultDiagnosis] = useState('');
-  const [consultPrescription, setConsultPrescription] = useState('');
-  const [consultFollowUp, setConsultFollowUp] = useState('');
-  const [vitalsBp, setVitalsBp] = useState('');
-  const [vitalsPulse, setVitalsPulse] = useState('');
-  const [vitalsTemp, setVitalsTemp] = useState('');
-  const [vitalsWeight, setVitalsWeight] = useState('');
-  const [vitalsSpo2, setVitalsSpo2] = useState('');
-  const [consultSaving, setConsultSaving] = useState(false);
 
   // ── Doctor View: Tab + Scheduled Appointments ─────────────────
   const [activeTab, setActiveTab] = useState<'queue' | 'scheduled' | 'completed'>('queue');
@@ -153,9 +142,16 @@ const WalkInQueue: React.FC = () => {
       await walkInService.startConsultation(queueId);
       toast.success('Consultation started');
       fetchQueue();
-      // Open consultation modal for the item
+      // Navigate to prescription builder in consultation mode
       const item = (queueData?.items || []).find(i => i.queue_id === queueId);
-      if (item) openConsultModal(item);
+      if (item) {
+        const params = new URLSearchParams({
+          patient_id: item.patient_id || '',
+          appointment_id: item.appointment_id || '',
+          queue_id: item.queue_id,
+        });
+        navigate(`/prescriptions/new?${params.toString()}`);
+      }
     } catch { toast.error('Failed to start consultation'); }
   };
 
@@ -198,72 +194,6 @@ const WalkInQueue: React.FC = () => {
       toast.error('Failed to book appointment');
     }
     setBookingSaving(false);
-  };
-
-  // ── Consultation Modal Handlers ────────────────────────────────
-  const openConsultModal = async (item: QueueItem) => {
-    setConsultItem(item);
-    // Reset fields
-    setConsultNotes('');
-    setConsultDiagnosis('');
-    setConsultPrescription('');
-    setConsultFollowUp('');
-    setVitalsBp('');
-    setVitalsPulse('');
-    setVitalsTemp('');
-    setVitalsWeight('');
-    setVitalsSpo2('');
-    // Load existing notes if any
-    try {
-      const data = await walkInService.getConsultationNotes(item.queue_id);
-      if (data.clinical_notes) setConsultNotes(data.clinical_notes as string);
-      if (data.diagnosis) setConsultDiagnosis(data.diagnosis as string);
-      if (data.prescription) setConsultPrescription(data.prescription as string);
-      if (data.follow_up_date) setConsultFollowUp(data.follow_up_date as string);
-      const vitals = data.vitals as Record<string, string> | undefined;
-      if (vitals) {
-        if (vitals.bp) setVitalsBp(vitals.bp);
-        if (vitals.pulse) setVitalsPulse(vitals.pulse);
-        if (vitals.temp) setVitalsTemp(vitals.temp);
-        if (vitals.weight) setVitalsWeight(vitals.weight);
-        if (vitals.spo2) setVitalsSpo2(vitals.spo2);
-      }
-    } catch { /* no existing notes, that's fine */ }
-  };
-
-  const handleSaveConsultNotes = async () => {
-    if (!consultItem) return;
-    setConsultSaving(true);
-    try {
-      await walkInService.saveConsultationNotes(consultItem.queue_id, {
-        notes: consultNotes,
-        diagnosis: consultDiagnosis,
-        prescription: consultPrescription,
-        vitals_bp: vitalsBp,
-        vitals_pulse: vitalsPulse,
-        vitals_temp: vitalsTemp,
-        vitals_weight: vitalsWeight,
-        vitals_spo2: vitalsSpo2,
-        follow_up_date: consultFollowUp,
-      });
-      toast.success('Consultation notes saved');
-    } catch {
-      toast.error('Failed to save notes');
-    }
-    setConsultSaving(false);
-  };
-
-  const handleCompleteFromConsult = async () => {
-    if (!consultItem) return;
-    await handleSaveConsultNotes();
-    try {
-      await walkInService.completePatient(consultItem.queue_id);
-      toast.success('Consultation completed');
-      setConsultItem(null);
-      fetchQueue();
-    } catch {
-      toast.error('Failed to complete');
-    }
   };
 
   // ── Scheduled Appointment Actions (doctor view) ────────────────
@@ -497,7 +427,14 @@ const WalkInQueue: React.FC = () => {
                           <span className="material-symbols-outlined text-sm">person</span>
                           Patient Info
                         </button>
-                        <button onClick={() => openConsultModal(currentPatient)}
+                        <button onClick={() => {
+                          const params = new URLSearchParams({
+                            patient_id: currentPatient.patient_id || '',
+                            appointment_id: currentPatient.appointment_id || '',
+                            queue_id: currentPatient.queue_id,
+                          });
+                          navigate(`/prescriptions/new?${params.toString()}`);
+                        }}
                           className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-purple-700 bg-white border border-purple-200 rounded-lg hover:bg-purple-50 transition-colors">
                           <span className="material-symbols-outlined text-sm">edit_note</span>
                           Consultation
@@ -1479,7 +1416,15 @@ const WalkInQueue: React.FC = () => {
                 </button>
               )}
               {canActOnQueue && detailItem.status === 'in_consultation' && (
-                <button onClick={() => { openConsultModal(detailItem); setDetailItem(null); }}
+                <button onClick={() => {
+                  const params = new URLSearchParams({
+                    patient_id: detailItem.patient_id || '',
+                    appointment_id: detailItem.appointment_id || '',
+                    queue_id: detailItem.queue_id,
+                  });
+                  navigate(`/prescriptions/new?${params.toString()}`);
+                  setDetailItem(null);
+                }}
                   className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-purple-500 rounded-lg hover:bg-purple-600 shadow-sm transition-colors">
                   <span className="material-symbols-outlined text-base">edit_note</span> Open Consultation
                 </button>
@@ -1500,152 +1445,6 @@ const WalkInQueue: React.FC = () => {
                 className="px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 rounded-lg transition-colors">
                 Close
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Consultation Modal */}
-      {consultItem && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setConsultItem(null)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[92vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
-            {/* Header */}
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-12 h-12 bg-purple-50 rounded-xl flex items-center justify-center">
-                <span className="material-symbols-outlined text-purple-600 text-2xl">clinical_notes</span>
-              </div>
-              <div className="min-w-0 flex-1">
-                <h3 className="text-lg font-bold text-slate-900">Consultation — {consultItem.patient_name || 'Patient'}</h3>
-                <div className="flex items-center gap-3 mt-0.5">
-                  <span className="text-xs text-slate-400 font-mono">Token #{consultItem.queue_number}</span>
-                  {consultItem.patient_reference_number && (
-                    <span className="text-xs text-slate-400 font-mono">MRN: {consultItem.patient_reference_number}</span>
-                  )}
-                  {consultItem.patient_age != null && (
-                    <span className="text-xs text-slate-400">{consultItem.patient_age}y, {consultItem.patient_gender || ''}</span>
-                  )}
-                </div>
-              </div>
-              <button onClick={() => setConsultItem(null)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg">
-                <span className="material-symbols-outlined text-xl">close</span>
-              </button>
-            </div>
-
-            {/* Clinical Alerts */}
-            {(consultItem.patient_known_allergies || consultItem.patient_chronic_conditions) && (
-              <div className="flex gap-3 mb-5">
-                {consultItem.patient_known_allergies && (
-                  <div className="flex-1 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                    <div className="flex items-center gap-1 mb-1">
-                      <span className="material-symbols-outlined text-red-500" style={{ fontSize: 14 }}>warning</span>
-                      <span className="text-[10px] font-bold text-red-600 uppercase">Allergies</span>
-                    </div>
-                    <p className="text-xs text-red-800">{consultItem.patient_known_allergies}</p>
-                  </div>
-                )}
-                {consultItem.patient_chronic_conditions && (
-                  <div className="flex-1 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
-                    <div className="flex items-center gap-1 mb-1">
-                      <span className="material-symbols-outlined text-blue-500" style={{ fontSize: 14 }}>monitor_heart</span>
-                      <span className="text-[10px] font-bold text-blue-600 uppercase">Chronic Conditions</span>
-                    </div>
-                    <p className="text-xs text-blue-800">{consultItem.patient_chronic_conditions}</p>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Chief Complaint */}
-            {consultItem.chief_complaint && (
-              <div className="mb-5 bg-amber-50 rounded-xl p-3">
-                <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wider mb-1">Chief Complaint</p>
-                <p className="text-sm text-amber-900">{consultItem.chief_complaint}</p>
-              </div>
-            )}
-
-            {/* Vitals Section */}
-            <div className="mb-5">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">
-                <span className="material-symbols-outlined text-xs align-text-bottom mr-1">vital_signs</span>
-                Vitals
-              </p>
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                <div>
-                  <label className="text-[10px] font-semibold text-slate-500 block mb-1">BP (mmHg)</label>
-                  <input type="text" value={vitalsBp} onChange={(e) => setVitalsBp(e.target.value)} placeholder="120/80"
-                    className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-semibold text-slate-500 block mb-1">Pulse (bpm)</label>
-                  <input type="text" value={vitalsPulse} onChange={(e) => setVitalsPulse(e.target.value)} placeholder="72"
-                    className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-semibold text-slate-500 block mb-1">Temp (°F)</label>
-                  <input type="text" value={vitalsTemp} onChange={(e) => setVitalsTemp(e.target.value)} placeholder="98.6"
-                    className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-semibold text-slate-500 block mb-1">Weight (kg)</label>
-                  <input type="text" value={vitalsWeight} onChange={(e) => setVitalsWeight(e.target.value)} placeholder="70"
-                    className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-semibold text-slate-500 block mb-1">SpO2 (%)</label>
-                  <input type="text" value={vitalsSpo2} onChange={(e) => setVitalsSpo2(e.target.value)} placeholder="98"
-                    className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
-                </div>
-              </div>
-            </div>
-
-            {/* Clinical Notes */}
-            <div className="mb-5">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Clinical Notes</label>
-              <textarea value={consultNotes} onChange={(e) => setConsultNotes(e.target.value)} rows={3}
-                placeholder="Examination findings, observations, symptoms..."
-                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm resize-none focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
-            </div>
-
-            {/* Diagnosis */}
-            <div className="mb-5">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Diagnosis</label>
-              <textarea value={consultDiagnosis} onChange={(e) => setConsultDiagnosis(e.target.value)} rows={2}
-                placeholder="Primary & secondary diagnosis..."
-                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm resize-none focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
-            </div>
-
-            {/* Prescription */}
-            <div className="mb-5">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Prescription / Treatment Plan</label>
-              <textarea value={consultPrescription} onChange={(e) => setConsultPrescription(e.target.value)} rows={3}
-                placeholder="Medications, dosage, instructions..."
-                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm resize-none focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
-            </div>
-
-            {/* Follow-up Date */}
-            <div className="mb-5">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Follow-up Date</label>
-              <input type="date" value={consultFollowUp} onChange={(e) => setConsultFollowUp(e.target.value)}
-                className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
-            </div>
-
-            {/* Footer */}
-            <div className="flex justify-between items-center mt-6 pt-4 border-t border-slate-100">
-              <button onClick={() => setConsultItem(null)} className="px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 rounded-lg">
-                Close
-              </button>
-              <div className="flex gap-3">
-                <button onClick={handleSaveConsultNotes} disabled={consultSaving}
-                  className="inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold text-primary border border-primary rounded-lg hover:bg-primary/5 disabled:opacity-50 transition-colors">
-                  <span className="material-symbols-outlined text-base">save</span>
-                  {consultSaving ? 'Saving...' : 'Save Notes'}
-                </button>
-                <button onClick={handleCompleteFromConsult} disabled={consultSaving}
-                  className="inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 disabled:opacity-50 shadow-sm transition-colors">
-                  <span className="material-symbols-outlined text-base">task_alt</span>
-                  Save &amp; Complete
-                </button>
-              </div>
             </div>
           </div>
         </div>

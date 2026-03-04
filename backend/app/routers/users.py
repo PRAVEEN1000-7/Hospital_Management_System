@@ -66,6 +66,17 @@ async def create_new_user(
             role_name=user_data.role,
             hospital_id=str(current_user.hospital_id),
             phone=user_data.phone_number,
+            # Doctor-specific fields
+            specialization=user_data.specialization,
+            qualification=user_data.qualification,
+            registration_number=user_data.registration_number,
+            registration_authority=user_data.registration_authority,
+            experience_years=user_data.experience_years,
+            consultation_fee=user_data.consultation_fee,
+            follow_up_fee=user_data.follow_up_fee,
+            bio=user_data.bio,
+            department_id=user_data.department_id,
+            created_by_id=current_user.id,
         )
 
         # Send welcome email if requested

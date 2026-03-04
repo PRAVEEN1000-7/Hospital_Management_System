@@ -18,7 +18,7 @@ from .routers import (
     auth, hospital, users, patients,
     appointments, schedules, appointment_settings, appointment_reports,
     departments, doctors, hospital_settings as hospital_settings_router,
-    walk_ins,
+    walk_ins, waitlist,
 )
 
 logger = logging.getLogger(__name__)
@@ -86,6 +86,7 @@ app.include_router(departments.router, prefix="/api/v1")
 app.include_router(doctors.router, prefix="/api/v1")
 app.include_router(hospital_settings_router.router, prefix="/api/v1")
 app.include_router(walk_ins.router, prefix="/api/v1")
+app.include_router(waitlist.router, prefix="/api/v1")
 
 
 @app.get("/")

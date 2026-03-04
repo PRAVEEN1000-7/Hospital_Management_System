@@ -55,7 +55,7 @@ const App: React.FC = () => {
 
             {/* ── Admin / Super-admin only ── */}
             <Route path="/register" element={
-              <ProtectedRoute allowedRoles={['super_admin', 'admin']}><Register /></ProtectedRoute>
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'receptionist']}><Register /></ProtectedRoute>
             } />
             <Route path="/staff" element={
               <ProtectedRoute allowedRoles={['super_admin', 'admin']}><StaffDirectory /></ProtectedRoute>
@@ -109,7 +109,7 @@ const App: React.FC = () => {
               </ProtectedRoute>
             } />
             <Route path="/appointments/reports" element={
-              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor']}>
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor', 'receptionist']}>
                 <AppointmentReports />
               </ProtectedRoute>
             } />

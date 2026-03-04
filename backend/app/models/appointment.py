@@ -187,3 +187,35 @@ class AppointmentQueue(Base):
     appointment = relationship("Appointment", backref="queue_entries")
     doctor = relationship("Doctor")
 
+
+class Waitlist(Base):
+    """Waitlist entries — patients waiting for a slot when doctor is fully booked."""
+    __tablename__ = "waitlists"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=False)
+    patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
+    doctor_id = Column(UUID(as_uuid=True), ForeignKey("doctors.id"), nullable=False)
+    department_id = Column(UUID(as_uuid=True), ForeignKey("departments.id"), nullable=True)
+    preferred_date = Column(Date, nullable=False)
+    preferred_time = Column(Time, nullable=True)
+    appointment_type = Column(String(20), nullable=False, default="walk-in")  # walk-in, scheduled
+    priority = Column(String(10), default="normal")  # normal, urgent, emergency
+    chief_complaint = Column(Text, nullable=True)
+    reason = Column(Text, nullable=True)  # additional notes
+    status = Column(String(20), default="waiting")  # waiting, notified, booked, cancelled, expired
+    position = Column(Integer, nullable=False, default=0)
+    booked_appointment_id = Column(UUID(as_uuid=True), ForeignKey("appointments.id"), nullable=True)
+    notified_at = Column(DateTime(timezone=True), nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    is_deleted = Column(Boolean, default=False)
+
+    # Relationships
+    hospital = relationship("Hospital", foreign_keys=[hospital_id])
+    patient = relationship("Patient", foreign_keys=[patient_id])
+    doctor = relationship("Doctor", foreign_keys=[doctor_id])
+    booked_appointment = relationship("Appointment", foreign_keys=[booked_appointment_id])
+

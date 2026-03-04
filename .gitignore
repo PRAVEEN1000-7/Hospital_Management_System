@@ -1,17 +1,18 @@
-# ========================
-# HMS Project - Root .gitignore
-# ========================
+# ================================================================
+#  HMS — Hospital Management System
+#  Root .gitignore
+# ================================================================
 
-# ---------- OS ----------
+# ──────────────── Operating System ──────────────────────────────
 .DS_Store
+._*
 Thumbs.db
 ehthumbs.db
 Desktop.ini
-*.swp
-*.swo
-*~
+$RECYCLE.BIN/
+*.lnk
 
-# ---------- IDEs / Editors ----------
+# ──────────────── IDEs & Editors ────────────────────────────────
 .vscode/
 !.vscode/extensions.json
 !.vscode/settings.json
@@ -21,11 +22,21 @@ Desktop.ini
 *.njsproj
 *.sln
 *.sw?
+*.swp
+*.swo
+*~
 *.code-workspace
 
-# ========================
-# Frontend (Node / Vite / React)
-# ========================
+# ──────────────── Environment / Secrets ─────────────────────────
+# Only .env.example files are committed
+.env
+.env.local
+.env.*.local
+*.local
+
+# ================================================================
+#  FRONTEND  (React / Vite / Node)
+# ================================================================
 frontend/node_modules/
 frontend/dist/
 frontend/dist-ssr/
@@ -40,40 +51,61 @@ frontend/yarn-debug.log*
 frontend/yarn-error.log*
 frontend/pnpm-debug.log*
 
-# ========================
-# Backend (Python / FastAPI)
-# ========================
-backend/env/
+# ================================================================
+#  BACKEND  (Python / FastAPI)
+# ================================================================
+
+# Virtual environments
 backend/venv/
+backend/env/
 backend/.venv/
-backend/__pycache__/
-backend/**/__pycache__/
-backend/**/*.pyc
-backend/**/*.pyo
-backend/*.pyc
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# Environment
 backend/.env
+backend/.env.local
+
+# Uploads (user-generated – recreated at runtime)
 backend/uploads/
+
+# Testing & coverage
+backend/.pytest_cache/
+backend/htmlcov/
+backend/.coverage
+backend/coverage.xml
+
+# Build & packaging
 backend/*.egg-info/
 backend/.eggs/
 backend/build/
 backend/dist/
+
+# Linters & type-checkers
 backend/.mypy_cache/
-backend/.pytest_cache/
 backend/.ruff_cache/
-backend/htmlcov/
-backend/.coverage
 
-# ========================
-# Database
-# ========================
-# (SQL scripts are tracked; no ignores needed)
+# ================================================================
+#  DATABASE
+# ================================================================
+# SQL migration scripts (database_hole/) ARE tracked.
+# CSV dumps are not.
+database_hole/*.csv
 
-# ========================
-# General
-# ========================
+# ================================================================
+#  Logs & Temp Files
+# ================================================================
 *.log
 *.bak
 *.tmp
 *.temp
-.env
-.env.local
+
+# ================================================================
+#  AI / Agent Tooling (not part of the project)
+# ================================================================
+.zencoder/
+.zenflow/

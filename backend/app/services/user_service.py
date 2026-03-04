@@ -12,6 +12,7 @@ from typing import Optional
 from datetime import datetime
 from fastapi import UploadFile, HTTPException, status
 from ..models.user import User, UserRole, Role, Hospital
+from ..models.appointment import Doctor
 from ..utils.security import get_password_hash
 from ..services.patient_id_service import generate_staff_id
 
@@ -95,8 +96,19 @@ def create_user(
     role_name: str,
     hospital_id: str | uuid.UUID,
     phone: Optional[str] = None,
+    # Doctor-specific fields
+    specialization: Optional[str] = None,
+    qualification: Optional[str] = None,
+    registration_number: Optional[str] = None,
+    registration_authority: Optional[str] = None,
+    experience_years: Optional[int] = None,
+    consultation_fee: Optional[float] = None,
+    follow_up_fee: Optional[float] = None,
+    bio: Optional[str] = None,
+    department_id: Optional[str] = None,
+    created_by_id: Optional[uuid.UUID] = None,
 ) -> User:
-    """Create a new user with role assignment"""
+    """Create a new user with role assignment. Auto-creates Doctor record for doctor role."""
     password_hash = get_password_hash(password)
     
     if isinstance(hospital_id, str):
@@ -123,6 +135,32 @@ def create_user(
     if role:
         user_role = UserRole(user_id=user.id, role_id=role.id)
         db.add(user_role)
+    
+    # Auto-create doctor record when the role is 'doctor'
+    if role_name == "doctor" and specialization:
+        dept_uuid = None
+        if department_id:
+            try:
+                dept_uuid = uuid.UUID(department_id)
+            except ValueError:
+                dept_uuid = None
+        doctor = Doctor(
+            user_id=user.id,
+            hospital_id=hospital_id,
+            department_id=dept_uuid,
+            specialization=specialization,
+            qualification=qualification or "",
+            registration_number=registration_number or "",
+            registration_authority=registration_authority,
+            experience_years=experience_years,
+            consultation_fee=consultation_fee or 0,
+            follow_up_fee=follow_up_fee or 0,
+            bio=bio,
+            is_available=True,
+            is_active=True,
+            created_by=created_by_id or user.id,
+        )
+        db.add(doctor)
     
     db.commit()
     db.refresh(user)

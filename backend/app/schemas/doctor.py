@@ -68,6 +68,7 @@ class DoctorResponse(BaseModel):
     updated_at: datetime
     # Enriched fields (set manually)
     doctor_name: Optional[str] = None
+    department_name: Optional[str] = None
 
     @model_validator(mode="before")
     @classmethod

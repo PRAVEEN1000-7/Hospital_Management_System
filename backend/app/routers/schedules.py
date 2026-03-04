@@ -11,6 +11,7 @@ from datetime import date
 from ..database import get_db
 from ..models.user import User
 from ..dependencies import get_current_active_user, require_admin_or_super_admin
+from ..models.appointment import Doctor
 from ..schemas.appointment import (
     DoctorScheduleCreate,
     DoctorScheduleUpdate,
@@ -39,6 +40,37 @@ router = APIRouter(prefix="/schedules", tags=["Doctor Schedules"])
 def _has_admin_role(user: User) -> bool:
     """Check if user has admin or super_admin role."""
     return any(r in ("admin", "super_admin") for r in user.roles)
+
+
+def _can_manage_schedule(user: User, doctor_id: str, db: Session) -> bool:
+    """Allow admin/super_admin for any doctor, or the doctor themselves."""
+    if _has_admin_role(user):
+        return True
+    if "doctor" in user.roles:
+        # Match by Doctor.id or by Doctor.user_id (in case frontend sends user_id)
+        doc = db.query(Doctor).filter(
+            (Doctor.id == doctor_id) | (Doctor.user_id == doctor_id),
+            Doctor.user_id == user.id,
+        ).first()
+        return doc is not None
+    return False
+
+
+def _resolve_doctor_id(doctor_id: str, db: Session) -> str:
+    """Resolve to actual Doctor.id — handles both Doctor.id and User.id lookups."""
+    import uuid as _uuid
+    try:
+        uid = _uuid.UUID(doctor_id)
+    except ValueError:
+        return doctor_id
+    doc = db.query(Doctor).filter(Doctor.id == uid).first()
+    if doc:
+        return str(doc.id)
+    # Maybe it's a user_id
+    doc = db.query(Doctor).filter(Doctor.user_id == uid).first()
+    if doc:
+        return str(doc.id)
+    return doctor_id
 
 
 # -- Doctors list ---------------------------------------------------------------
@@ -77,10 +109,11 @@ async def create_doctor_schedule(
     current_user: User = Depends(get_current_active_user),
 ):
     """Create a schedule row for a doctor."""
-    if not _has_admin_role(current_user):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    resolved_id = _resolve_doctor_id(doctor_id, db)
+    if not _can_manage_schedule(current_user, resolved_id, db):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only admins or the doctor themselves can manage schedules")
     try:
-        sched = create_schedule(db, doctor_id, data.model_dump())
+        sched = create_schedule(db, resolved_id, data.model_dump())
         return sched
     except Exception as e:
         logger.error(f"Error creating schedule: {e}", exc_info=True)
@@ -94,7 +127,8 @@ async def get_schedules(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    return get_doctor_schedules(db, doctor_id)
+    resolved_id = _resolve_doctor_id(doctor_id, db)
+    return get_doctor_schedules(db, resolved_id)
 
 
 @router.post("/doctors/{doctor_id}/bulk", response_model=list[DoctorScheduleResponse], status_code=status.HTTP_201_CREATED)
@@ -105,12 +139,13 @@ async def bulk_create_schedules(
     current_user: User = Depends(get_current_active_user),
 ):
     """Create multiple schedule entries at once."""
-    if not _has_admin_role(current_user):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    resolved_id = _resolve_doctor_id(doctor_id, db)
+    if not _can_manage_schedule(current_user, resolved_id, db):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only admins or the doctor themselves can manage schedules")
     try:
         results = []
         for s in data.schedules:
-            sched = create_schedule(db, doctor_id, s.model_dump())
+            sched = create_schedule(db, resolved_id, s.model_dump())
             results.append(sched)
         return results
     except Exception as e:
@@ -151,7 +186,7 @@ async def available_slots(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    slots = get_available_slots(db, doctor_id, date)
+    slots = get_available_slots(db, _resolve_doctor_id(doctor_id, db), date)
     return AvailableSlotsResponse(doctor_id=doctor_id, date=date, slots=slots)
 
 
@@ -173,7 +208,8 @@ async def list_leaves(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    return get_doctor_leaves(db, doctor_id)
+    resolved = _resolve_doctor_id(doctor_id, db) if doctor_id else None
+    return get_doctor_leaves(db, resolved)
 
 
 @router.delete("/doctor-leaves/{leave_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -39,6 +39,9 @@ const Layout: React.FC = () => {
 
   const role = user?.roles?.[0];
 
+  // Receptionist and Doctor get flat appointment links (no dropdown)
+  const isFlatNav = role === 'receptionist' || role === 'doctor';
+
   // ── Main navigation ── visible to every authenticated user
   const mainNavItems = [
     { to: '/dashboard', label: 'Dashboard',        icon: 'dashboard' },
@@ -64,24 +67,23 @@ const Layout: React.FC = () => {
     );
   } else if (role === 'doctor') {
     appointmentItems.push(
-      { to: '/appointments/my-schedule',     label: "Today's Queue",       icon: 'clinical_notes' },
+      { to: '/appointments/queue',           label: 'Today Patients',   icon: 'queue' },
       { to: '/appointments/doctor-schedule', label: 'Manage My Schedule',  icon: 'edit_calendar' },
-      { to: '/appointments/queue',           label: 'Walk-in Queue',       icon: 'queue' },
       { to: '/appointments/waitlist',        label: 'Waitlist',            icon: 'playlist_add' },
-      { to: '/appointments/reports',         label: 'Reports',             icon: 'analytics' },
     );
   } else if (role === 'nurse') {
     appointmentItems.push(
       { to: '/appointments/queue',  label: 'Walk-in Queue',  icon: 'queue' },
       { to: '/appointments/manage', label: 'Appointments',   icon: 'event_note' },
     );
-  } else if (role === 'receptionist') {
+  } else if (isFlatNav && role === 'receptionist') {
+    // Receptionist items are shown flat (outside dropdown) — see render below
     appointmentItems.push(
-      // { to: '/appointments/book',    label: 'Book Appointment',    icon: 'event' },
       { to: '/appointments/walk-in', label: 'Walk-in Registration',icon: 'directions_walk' },
       { to: '/appointments/queue',   label: 'Walk-in Queue',       icon: 'queue' },
       { to: '/appointments/manage',  label: 'Manage Appointments', icon: 'event_note' },
       { to: '/appointments/waitlist',label: 'Waitlist',            icon: 'playlist_add' },
+      { to: '/appointments/reports', label: 'Reports',             icon: 'analytics' },
     );
   }
   // pharmacist, cashier, inventory_manager, staff — no appointment items
@@ -149,8 +151,30 @@ const Layout: React.FC = () => {
             </NavLink>
           ))}
 
-          {/* ══ APPOINTMENTS — collapsible ══ */}
-          {appointmentItems.length > 0 && (
+          {/* ══ APPOINTMENTS — collapsible (or flat for receptionist) ══ */}
+          {appointmentItems.length > 0 && isFlatNav ? (
+            /* ── Receptionist: flat links, no dropdown ── */
+            <div className="mt-4">
+              <div className="px-6 mb-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Appointments</span>
+              </div>
+              {appointmentItems.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  onClick={() => setSidebarOpen(false)}
+                  className={`flex items-center px-6 py-3 text-sm font-medium transition-all ${
+                    isActive(item.to)
+                      ? 'sidebar-item-active'
+                      : 'text-slate-500 hover:text-primary hover:bg-slate-50'
+                  }`}
+                >
+                  <span className="material-symbols-outlined mr-3 text-[20px]">{item.icon}</span>
+                  {item.label}
+                </NavLink>
+              ))}
+            </div>
+          ) : appointmentItems.length > 0 && (
             <div className="mt-4">
               <div className="px-6 mb-1">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Appointments</span>

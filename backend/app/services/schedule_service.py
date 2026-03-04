@@ -22,6 +22,11 @@ def create_schedule(db: Session, doctor_id: str | uuid.UUID, data: dict) -> Doct
     if isinstance(doctor_id, str):
         doctor_id = uuid.UUID(doctor_id)
     
+    # Ensure effective_from is never null (DB NOT NULL constraint)
+    if not data.get("effective_from"):
+        from datetime import date as _date
+        data["effective_from"] = _date.today()
+    
     schedule = DoctorSchedule(doctor_id=doctor_id, **data)
     db.add(schedule)
     db.commit()
@@ -200,12 +205,24 @@ def get_available_slots(db: Session, doctor_id: str | uuid.UUID, target_date: da
     
     # Count bookings per time slot
     booked_map: dict[str, int] = {}
+    # Walk-ins (start_time=None) count as unslotted bookings
+    unslotted_count = 0
     for appt in existing:
         if appt.start_time:
             key = appt.start_time.strftime("%H:%M")
             booked_map[key] = booked_map.get(key, 0) + 1
+        else:
+            unslotted_count += 1
+    
+    # Total max capacity across all schedule sources
+    total_max_capacity = sum(src["max_patients"] for src in schedule_sources)
     
     # Generate slots
+    total_slotted = sum(booked_map.values())
+    total_appointments = total_slotted + unslotted_count
+    # If total appointments (including walk-ins without start_time) >= capacity, all full
+    all_full = total_appointments >= total_max_capacity
+
     slots = []
     for src in schedule_sources:
         start_m = _time_to_minutes(src["start_time"])
@@ -229,7 +246,7 @@ def get_available_slots(db: Session, doctor_id: str | uuid.UUID, target_date: da
             
             slots.append({
                 "time": slot_time.strftime("%H:%M"),
-                "available": current_bookings < src["max_patients"],
+                "available": (not all_full) and current_bookings < src["max_patients"],
                 "current_bookings": current_bookings,
                 "max_bookings": src["max_patients"],
             })

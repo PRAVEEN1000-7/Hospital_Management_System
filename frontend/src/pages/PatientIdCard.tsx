@@ -61,14 +61,36 @@ const PatientIdCard: React.FC = () => {
 
   const generatePDF = async (): Promise<jsPDF | null> => {
     if (!frontRef.current || !backRef.current) return null;
-    const frontCanvas = await html2canvas(frontRef.current, { scale: 3, useCORS: true });
-    const backCanvas = await html2canvas(backRef.current, { scale: 3, useCORS: true });
-    const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [96, 164] });
+    const canvasOpts = { scale: 3, useCORS: true, backgroundColor: '#ffffff', logging: false, imageTimeout: 0 };
+    const frontCanvas = await html2canvas(frontRef.current, canvasOpts);
+    const backCanvas = await html2canvas(backRef.current, canvasOpts);
     const frontImg = frontCanvas.toDataURL('image/png');
     const backImg = backCanvas.toDataURL('image/png');
-    pdf.addImage(frontImg, 'PNG', 5, 5, 86, 54);
-    pdf.text('--- Fold Here ---', 48, 63, { align: 'center' });
-    pdf.addImage(backImg, 'PNG', 5, 68, 86, 54);
+
+    // Card layout: 86×54mm cards, 5mm margin, 9mm fold gap
+    const cardW = 86, cardH = 54, margin = 5, foldGap = 9;
+    const pageW = cardW + margin * 2;                          // 96mm
+    const pageH = margin + cardH + foldGap + cardH + margin;   // 127mm
+
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [pageW, pageH] });
+
+    // Explicit white background
+    pdf.setFillColor(255, 255, 255);
+    pdf.rect(0, 0, pageW, pageH, 'F');
+
+    // Front card
+    pdf.addImage(frontImg, 'PNG', margin, margin, cardW, cardH);
+
+    // Fold line
+    const foldY = margin + cardH + foldGap / 2;
+    pdf.setFontSize(8);
+    pdf.setTextColor(170, 170, 170);
+    pdf.text('- - - - - - - - - -  Fold Here  - - - - - - - - - -', pageW / 2, foldY, { align: 'center' });
+
+    // Back card
+    const backY = margin + cardH + foldGap;
+    pdf.addImage(backImg, 'PNG', margin, backY, cardW, cardH);
+
     return pdf;
   };
 

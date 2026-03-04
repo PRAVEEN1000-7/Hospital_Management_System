@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { format } from 'date-fns';
 import userService from '../services/userService';
+import api from '../services/api';
 import type { UserData, UserCreateData, UserUpdateData } from '../types/user';
 import { ROLE_TEXT_COLORS, ROLE_LABELS } from '../utils/constants';
 import { useToast } from '../contexts/ToastContext';
@@ -21,9 +22,29 @@ const userCreateSchema = z.object({
     .regex(/[0-9]/, 'Need digit')
     .regex(/[^A-Za-z0-9]/, 'Need special char'),
   confirm_password: z.string(),
+  // Doctor fields
+  specialization: z.string().optional(),
+  qualification: z.string().optional(),
+  registration_number: z.string().optional(),
+  registration_authority: z.string().optional(),
+  experience_years: z.union([z.string(), z.number()]).optional(),
+  consultation_fee: z.union([z.string(), z.number()]).optional(),
+  follow_up_fee: z.union([z.string(), z.number()]).optional(),
+  bio: z.string().optional(),
+  department_id: z.string().optional(),
 }).refine(data => data.password === data.confirm_password, {
   message: "Passwords don't match",
   path: ['confirm_password'],
+}).refine(data => {
+  if (data.role === 'doctor') {
+    if (!data.specialization) return false;
+    if (!data.qualification) return false;
+    if (!data.registration_number) return false;
+  }
+  return true;
+}, {
+  message: "Specialization, qualification, and registration number are required for doctors",
+  path: ['specialization'],
 });
 
 const userEditSchema = z.object({
@@ -395,6 +416,17 @@ const CreateUserModal: React.FC<{ onClose: () => void; onSuccess: () => void; on
   const selectedRole = watch('role', '');
   const roleDeptConfig = ROLE_DEPARTMENT_MAP[selectedRole] ?? { depts: ALL_DEPARTMENTS, required: false };
   const showDepartment = roleDeptConfig.depts.length > 0;
+  const isDoctorRole = selectedRole === 'doctor';
+
+  // Fetch departments from DB for doctor role
+  const [departments, setDepartments] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    if (isDoctorRole) {
+      api.get('/departments').then(res => {
+        setDepartments(res.data?.data || []);
+      }).catch(() => {});
+    }
+  }, [isDoctorRole]);
 
   // Department is derived from role — no form field needed
 
@@ -409,6 +441,18 @@ const CreateUserModal: React.FC<{ onClose: () => void; onSuccess: () => void; on
         role: data.role,
         password: data.password,
       };
+      // Attach doctor-specific fields
+      if (data.role === 'doctor') {
+        payload.specialization = data.specialization;
+        payload.qualification = data.qualification;
+        payload.registration_number = data.registration_number;
+        payload.registration_authority = data.registration_authority || undefined;
+        payload.experience_years = data.experience_years ? Number(data.experience_years) : undefined;
+        payload.consultation_fee = data.consultation_fee ? Number(data.consultation_fee) : undefined;
+        payload.follow_up_fee = data.follow_up_fee ? Number(data.follow_up_fee) : undefined;
+        payload.bio = data.bio || undefined;
+        payload.department_id = data.department_id || undefined;
+      }
       const newUser = await userService.createUser(payload);
       if (photoFile && newUser?.id) {
         try {
@@ -498,6 +542,54 @@ const CreateUserModal: React.FC<{ onClose: () => void; onSuccess: () => void; on
               </select>
             </Field>
           </div>
+
+          {/* Doctor-Specific Fields */}
+          {isDoctorRole && (
+            <div className="mt-4 p-4 bg-blue-50/50 border border-blue-100 rounded-xl space-y-4">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="material-symbols-outlined text-primary text-lg">stethoscope</span>
+                <h4 className="text-xs font-bold text-primary uppercase tracking-wider">Doctor Details</h4>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Specialization *" error={(errors as any).specialization?.message}>
+                  <input {...register('specialization')} className="input-field" placeholder="e.g. Cardiology" />
+                </Field>
+                <Field label="Qualification *" error={(errors as any).qualification?.message}>
+                  <input {...register('qualification')} className="input-field" placeholder="e.g. MBBS, MD" />
+                </Field>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Registration Number *" error={(errors as any).registration_number?.message}>
+                  <input {...register('registration_number')} className="input-field" placeholder="e.g. MCI-12345" />
+                </Field>
+                <Field label="Registration Authority">
+                  <input {...register('registration_authority')} className="input-field" placeholder="e.g. Medical Council" />
+                </Field>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Experience (years)">
+                  <input {...register('experience_years')} type="number" min="0" className="input-field" placeholder="e.g. 10" />
+                </Field>
+                <Field label="Department">
+                  <select {...register('department_id')} className="input-field">
+                    <option value="">Select department</option>
+                    {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select>
+                </Field>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Consultation Fee (₹)">
+                  <input {...register('consultation_fee')} type="number" min="0" step="0.01" className="input-field" placeholder="e.g. 500" />
+                </Field>
+                <Field label="Follow-up Fee (₹)">
+                  <input {...register('follow_up_fee')} type="number" min="0" step="0.01" className="input-field" placeholder="e.g. 200" />
+                </Field>
+              </div>
+              <Field label="Bio">
+                <textarea {...register('bio')} className="input-field" rows={2} placeholder="Short professional bio..." />
+              </Field>
+            </div>
+          )}
         </section>
 
         {/* Security Section */}

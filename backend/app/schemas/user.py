@@ -23,6 +23,17 @@ class UserCreate(BaseModel):
     department: Optional[str] = Field(None, max_length=100)
     phone_number: Optional[str] = Field(None, max_length=20)
 
+    # Doctor-specific fields (required when role == 'doctor')
+    specialization: Optional[str] = Field(None, max_length=100)
+    qualification: Optional[str] = Field(None, max_length=255)
+    registration_number: Optional[str] = Field(None, max_length=50)
+    registration_authority: Optional[str] = Field(None, max_length=100)
+    experience_years: Optional[int] = Field(None, ge=0)
+    consultation_fee: Optional[float] = Field(None, ge=0)
+    follow_up_fee: Optional[float] = Field(None, ge=0)
+    bio: Optional[str] = None
+    department_id: Optional[str] = None
+
     @field_validator("username")
     @classmethod
     def validate_username(cls, v: str) -> str:
@@ -49,6 +60,17 @@ class UserCreate(BaseModel):
         if v not in VALID_ROLES:
             raise ValueError(f'Role must be one of: {", ".join(VALID_ROLES)}')
         return v
+
+    @model_validator(mode="after")
+    def validate_doctor_fields(self):
+        if self.role == "doctor":
+            if not self.specialization:
+                raise ValueError("Specialization is required for doctors")
+            if not self.qualification:
+                raise ValueError("Qualification is required for doctors")
+            if not self.registration_number:
+                raise ValueError("Registration number is required for doctors")
+        return self
 
 
 class UserUpdate(BaseModel):

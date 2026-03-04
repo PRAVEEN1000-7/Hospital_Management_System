@@ -38,13 +38,19 @@ class DoctorScheduleBase(BaseModel):
     day_of_week: int = Field(..., ge=0, le=6, description="0=Sunday, 1=Monday ... 6=Saturday")
     start_time: time
     end_time: time
-    slot_duration_minutes: int = Field(default=30, ge=5, le=120)
-    max_patients: int = Field(default=1, ge=1, le=10)
+    slot_duration_minutes: int = Field(default=15, ge=5, le=120)
+    max_patients: int = Field(default=20, ge=1, le=100)
     break_start_time: Optional[time] = None
     break_end_time: Optional[time] = None
     is_active: bool = True
     effective_from: Optional[date] = None
     effective_to: Optional[date] = None
+
+    @model_validator(mode="after")
+    def default_effective_from(self):
+        if self.effective_from is None:
+            self.effective_from = date.today()
+        return self
 
     @field_validator("end_time")
     @classmethod
@@ -327,16 +333,44 @@ class HospitalSettingsResponse(BaseModel):
 
 
 class HospitalSettingsUpdate(BaseModel):
-    appointment_slot_duration: Optional[int] = None
-    appointment_buffer_minutes: Optional[int] = None
+    # Appointment Configuration
+    appointment_slot_duration_minutes: Optional[int] = Field(None, ge=5, le=120)
+    appointment_buffer_minutes: Optional[int] = Field(None, ge=0, le=60)
+    max_daily_appointments_per_doctor: Optional[int] = Field(None, ge=1, le=100)
+    consultation_fee_default: Optional[str] = Field(None, max_length=20)
+    follow_up_validity_days: Optional[int] = Field(None, ge=1, le=365)
+    # Legacy aliases (for backward compat)
+    appointment_slot_duration: Optional[int] = Field(None, ge=5, le=120)
     allow_walk_ins: Optional[bool] = None
-    max_advance_booking_days: Optional[int] = None
-    cancellation_policy_hours: Optional[int] = None
-    enable_auto_reminders: Optional[bool] = None
+    # Notifications
     enable_sms_notifications: Optional[bool] = None
     enable_email_notifications: Optional[bool] = None
-    working_hours_start: Optional[time] = None
-    working_hours_end: Optional[time] = None
+    enable_whatsapp_notifications: Optional[bool] = None
+    # ID Sequences
+    hospital_code: Optional[str] = Field(None, min_length=2, max_length=2, pattern=r'^[A-Z]{2}$')
+    patient_id_start_number: Optional[int] = Field(None, ge=1)
+    staff_id_start_number: Optional[int] = Field(None, ge=1)
+    invoice_prefix: Optional[str] = Field(None, max_length=10)
+    prescription_prefix: Optional[str] = Field(None, max_length=10)
+    # Compliance
+    data_retention_years: Optional[int] = Field(None, ge=1, le=99)
+
+    @field_validator("hospital_code")
+    @classmethod
+    def validate_hospital_code(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and not v.isupper():
+            v = v.upper()
+        return v
+
+    @field_validator("consultation_fee_default")
+    @classmethod
+    def validate_consultation_fee(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            try:
+                float(v)  # Must be numeric string
+            except ValueError:
+                raise ValueError("Consultation fee must be a valid numeric value")
+        return v
 
 
 # ---- Stats / Report Schemas ----
@@ -388,3 +422,84 @@ class AvailableSlotsResponse(BaseModel):
     doctor_id: str
     date: date
     slots: list[TimeSlot]
+
+
+# ---- Waitlist Schemas ----
+
+VALID_WAITLIST_STATUSES = ["waiting", "notified", "booked", "cancelled", "expired"]
+
+
+class WaitlistCreate(BaseModel):
+    patient_id: str
+    doctor_id: str
+    department_id: Optional[str] = None
+    preferred_date: date
+    preferred_time: Optional[time] = None
+    appointment_type: str = Field(default="walk-in")
+    priority: str = Field(default="normal")
+    chief_complaint: Optional[str] = None
+    reason: Optional[str] = None
+
+    @field_validator("priority")
+    @classmethod
+    def validate_priority(cls, v: str) -> str:
+        if v not in VALID_PRIORITY_LEVELS:
+            raise ValueError(f"Must be one of: {', '.join(VALID_PRIORITY_LEVELS)}")
+        return v
+
+
+class WaitlistUpdate(BaseModel):
+    status: Optional[str] = None
+    preferred_date: Optional[date] = None
+    preferred_time: Optional[time] = None
+    priority: Optional[str] = None
+    reason: Optional[str] = None
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, v: Optional[str]) -> Optional[str]:
+        if v and v not in VALID_WAITLIST_STATUSES:
+            raise ValueError(f"Must be one of: {', '.join(VALID_WAITLIST_STATUSES)}")
+        return v
+
+
+class WaitlistResponse(BaseModel):
+    id: str
+    hospital_id: str
+    patient_id: str
+    doctor_id: str
+    department_id: Optional[str] = None
+    preferred_date: date
+    preferred_time: Optional[time] = None
+    appointment_type: str
+    priority: str
+    chief_complaint: Optional[str] = None
+    reason: Optional[str] = None
+    status: str
+    position: int
+    booked_appointment_id: Optional[str] = None
+    notified_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    created_by: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    # Enriched fields (set by router)
+    patient_name: Optional[str] = None
+    patient_reference_number: Optional[str] = None
+    patient_phone: Optional[str] = None
+    doctor_name: Optional[str] = None
+    doctor_specialization: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def transform(cls, data: Any) -> Any:
+        return _orm_to_dict(data)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PaginatedWaitlistResponse(BaseModel):
+    total: int
+    page: int
+    limit: int
+    data: list[WaitlistResponse]

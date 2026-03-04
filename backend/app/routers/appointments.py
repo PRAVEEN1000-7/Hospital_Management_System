@@ -56,7 +56,8 @@ async def book_appointment(
                 # Check max_patients_per_slot via available slots
                 slots = get_available_slots(db, data.doctor_id, data.appointment_date)
                 time_key = data.start_time.strftime("%H:%M")
-                slot = next((s for s in slots if s["time"].strftime("%H:%M") == time_key), None)
+                # slots[]["time"] is already a string ("HH:MM") from get_available_slots
+                slot = next((s for s in slots if s["time"] == time_key), None)
                 if not slot or not slot["available"]:
                     raise HTTPException(status_code=400, detail="Selected time slot is fully booked")
 

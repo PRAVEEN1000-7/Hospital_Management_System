@@ -16,6 +16,7 @@ Complete step-by-step instructions to get the Hospital Management System running
 8. [Useful Commands](#useful-commands)
 9. [Troubleshooting](#troubleshooting)
 10. [Database Reset Commands](#database-reset-commands)
+11. [Ubuntu Server Deployment](#ubuntu-server-deployment)
 
 ---
 
@@ -770,6 +771,208 @@ psql -U hms_user -d hms_db -c "SELECT COUNT(*) AS table_count FROM information_s
 
 # Check if records were re-seeded
 psql -U hms_user -d hms_db -c "SELECT COUNT(*) AS user_count FROM users;"
+```
+
+---
+
+## Ubuntu Server Deployment
+
+This section covers running HMS on an **Ubuntu server** (e.g. a VPS, cloud VM, or local Ubuntu machine) with processes running in the background.
+
+### Prerequisites
+
+```bash
+# Update system packages
+sudo apt update && sudo apt upgrade -y
+
+# Install required software
+sudo apt install -y python3.11 python3.11-venv python3-pip nodejs npm postgresql postgresql-contrib git curl
+
+# Verify installations
+python3 --version
+node -v
+npm -v
+psql --version
+```
+
+> If `python3.11` is not available via apt, use the **deadsnakes PPA**:
+> ```bash
+> sudo add-apt-repository ppa:deadsnakes/ppa -y
+> sudo apt update
+> sudo apt install -y python3.11 python3.11-venv
+> ```
+
+---
+
+### Check for Port Conflicts
+
+Before starting services, verify that the required ports are free:
+
+```bash
+sudo ss -tlnp | grep -E '3000|5000|8000|8080|5432'
+```
+
+- **3000** — Frontend dev server
+- **5432** — PostgreSQL
+- **8000** — Backend API
+
+If any port is in use, stop the conflicting service or choose a different port.
+
+---
+
+### Database Setup
+
+```bash
+# Start PostgreSQL if not running
+sudo systemctl start postgresql
+sudo systemctl enable postgresql
+
+# Switch to postgres user and create the database
+sudo -u postgres psql -c "CREATE USER hms_user WITH PASSWORD 'HMS@2026';"
+sudo -u postgres psql -c "CREATE DATABASE hms_db OWNER hms_user;"
+sudo -u postgres psql -d hms_db -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;"
+sudo -u postgres psql -d hms_db -c "GRANT ALL ON SCHEMA public TO hms_user;"
+sudo -u postgres psql -d hms_db -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO hms_user;"
+sudo -u postgres psql -d hms_db -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO hms_user;"
+
+# Run schema and seed scripts
+psql -U hms_user -d hms_db -f database_hole/01_schema.sql
+psql -U hms_user -d hms_db -f database_hole/02_seed_data.sql
+psql -U hms_user -d hms_db -f database_hole/04_waitlist_table.sql
+```
+
+---
+
+### Backend Setup & Start
+
+```bash
+cd backend
+
+# Create and activate virtual environment
+python3.11 -m venv venv
+source venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Copy and configure .env
+cp .env.example .env
+nano .env   # Edit DATABASE_URL, SECRET_KEY, CORS_ORIGINS, etc.
+
+# Create uploads directory
+mkdir -p uploads
+```
+
+**Start the backend in the background using `nohup`:**
+
+```bash
+nohup venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload > backend.log 2>&1 &
+```
+
+- Logs are written to `backend/backend.log`
+- The `&` runs the process in the background
+- `--host 0.0.0.0` makes it accessible from any IP (not just localhost)
+
+**Verify it's running:**
+
+```bash
+curl http://localhost:8000/docs
+# or
+sudo ss -tlnp | grep 8000
+```
+
+---
+
+### Frontend Setup & Start
+
+```bash
+cd frontend
+
+# Install dependencies
+npm install
+
+# Copy and configure .env
+cp .env.example .env
+nano .env   # Set VITE_API_BASE_URL=http://<YOUR_SERVER_IP>:8000/api/v1
+```
+
+**Start the frontend in the background using `nohup`:**
+
+```bash
+nohup npm run dev -- --host 0.0.0.0 --port 3000 > frontend.log 2>&1 &
+```
+
+- Logs are written to `frontend/frontend.log`
+- Access via `http://<YOUR_SERVER_IP>:3000`
+
+**Verify it's running:**
+
+```bash
+sudo ss -tlnp | grep 3000
+```
+
+---
+
+### Managing Background Processes
+
+```bash
+# View all running background processes
+jobs -l
+
+# View backend logs in real time
+tail -f backend/backend.log
+
+# View frontend logs in real time
+tail -f frontend/frontend.log
+
+# Find and kill the backend process
+lsof -i :8000
+kill <PID>
+
+# Find and kill the frontend process
+lsof -i :3000
+kill <PID>
+
+# Or kill by searching for the process
+pkill -f "uvicorn app.main:app"
+pkill -f "npm run dev"
+```
+
+---
+
+### Firewall (UFW)
+
+If UFW is enabled, allow the required ports:
+
+```bash
+sudo ufw allow 3000/tcp    # Frontend
+sudo ufw allow 8000/tcp    # Backend API
+sudo ufw reload
+sudo ufw status
+```
+
+---
+
+### Quick Reference — Start Everything
+
+From the project root (`Hospital_Management_System/`):
+
+```bash
+# 1. Check ports are free
+sudo ss -tlnp | grep -E '3000|5000|8000|8080|5432'
+
+# 2. Start backend
+cd backend
+nohup venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload > backend.log 2>&1 &
+cd ..
+
+# 3. Start frontend
+cd frontend
+nohup npm run dev -- --host 0.0.0.0 --port 3000 > frontend.log 2>&1 &
+cd ..
+
+# 4. Verify both are running
+sudo ss -tlnp | grep -E '3000|8000'
 ```
 
 ---

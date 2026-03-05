@@ -116,7 +116,15 @@ VALUES
     ('f0000000-0000-0000-0000-000000000034', 'optical', 'create', 'order',        'Create optical order'),
     ('f0000000-0000-0000-0000-000000000035', 'optical', 'read',   'order',        'View optical orders'),
     ('f0000000-0000-0000-0000-000000000036', 'optical', 'create', 'prescription', 'Create optical prescription'),
-    ('f0000000-0000-0000-0000-000000000037', 'optical', 'update', 'product',      'Manage optical products');
+    ('f0000000-0000-0000-0000-000000000037', 'optical', 'update', 'product',      'Manage optical products'),
+    -- Prescription module (extended)
+    ('f0000000-0000-0000-0000-000000000038', 'prescription', 'create', 'prescription', 'Create prescriptions'),
+    ('f0000000-0000-0000-0000-000000000039', 'prescription', 'read',   'prescription', 'View prescriptions'),
+    ('f0000000-0000-0000-0000-000000000040', 'prescription', 'update', 'prescription', 'Update prescriptions'),
+    ('f0000000-0000-0000-0000-000000000041', 'prescription', 'delete', 'prescription', 'Delete prescriptions'),
+    ('f0000000-0000-0000-0000-000000000042', 'prescription', 'finalize', 'prescription', 'Finalize prescriptions'),
+    ('f0000000-0000-0000-0000-000000000043', 'medicine', 'create', 'medicine', 'Create medicines'),
+    ('f0000000-0000-0000-0000-000000000044', 'medicine', 'read',   'medicine', 'View medicines');
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 7. ROLE-PERMISSION MAPPINGS
@@ -494,6 +502,25 @@ VALUES
     ('50000000-0000-0000-0000-000000000010', 'a0000000-0000-0000-0000-000000000001',
      'Eye Drops Moxifloxacin', 'Moxifloxacin', 'drops', 'EyeCare Pharma', '5ml', 'bottle', 1,
      12.00, 7.00, 'd0000000-0000-0000-0000-000000000005', 15);
+
+-- Additional sample medicines for prescription builder autocomplete
+INSERT INTO medicines (hospital_id, name, generic_name, category, strength, manufacturer, selling_price, purchase_price, unit_of_measure, reorder_level, is_active) VALUES
+-- Common tablets
+('a0000000-0000-0000-0000-000000000001', 'Paracetamol 650mg', 'Paracetamol', 'tablet', '650mg', 'Generic Pharma', 3.00, 2.00, 'strip', 50, true),
+('a0000000-0000-0000-0000-000000000001', 'Aspirin 75mg', 'Acetylsalicylic Acid', 'tablet', '75mg', 'Cardio Pharma', 4.50, 2.50, 'strip', 40, true),
+('a0000000-0000-0000-0000-000000000001', 'Amlodipine 5mg', 'Amlodipine Besylate', 'tablet', '5mg', 'BP Control Inc', 6.50, 4.00, 'strip', 40, true),
+('a0000000-0000-0000-0000-000000000001', 'Pantoprazole 40mg', 'Pantoprazole Sodium', 'tablet', '40mg', 'Gastro Med', 7.50, 4.50, 'strip', 45, true),
+('a0000000-0000-0000-0000-000000000001', 'Azithromycin 500mg', 'Azithromycin', 'tablet', '500mg', 'Antibiotics Plus', 15.00, 10.00, 'strip', 20, true),
+('a0000000-0000-0000-0000-000000000001', 'Vitamin D3 60000IU', 'Cholecalciferol', 'tablet', '60000IU', 'Vitamin World', 10.00, 6.00, 'strip', 25, true),
+-- Capsules
+('a0000000-0000-0000-0000-000000000001', 'Vitamin E 400mg', 'Tocopherol', 'capsule', '400mg', 'Vitamin World', 8.50, 5.00, 'strip', 30, true),
+('a0000000-0000-0000-0000-000000000001', 'Fish Oil 1000mg', 'Omega-3 Fatty Acids', 'capsule', '1000mg', 'Supplement Co', 12.00, 7.00, 'bottle', 20, true),
+-- Syrups
+('a0000000-0000-0000-0000-000000000001', 'Paracetamol Syrup', 'Paracetamol', 'syrup', '125mg/5ml', 'Pediatric Care', 45.00, 30.00, 'bottle', 15, true),
+('a0000000-0000-0000-0000-000000000001', 'Multivitamin Syrup', 'Multivitamin', 'syrup', '200ml', 'Child Health', 85.00, 60.00, 'bottle', 10, true),
+-- Injections
+('a0000000-0000-0000-0000-000000000001', 'Insulin Glargine', 'Insulin Glargine', 'injection', '100IU/ml', 'Diabetes Care Ltd', 450.00, 350.00, 'vial', 10, true),
+('a0000000-0000-0000-0000-000000000001', 'Ceftriaxone 1g', 'Ceftriaxone', 'injection', '1g', 'Antibiotics Plus', 85.00, 55.00, 'vial', 15, true);
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 17. MEDICINE BATCHES

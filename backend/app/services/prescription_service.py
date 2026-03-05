@@ -335,10 +335,18 @@ def enrich_prescription(db: Session, rx: Prescription) -> dict:
         if d.get(uuid_col):
             d[uuid_col] = str(d[uuid_col])
 
-    # Patient name + PRN
+    # Patient name + PRN + full details
     patient = db.query(Patient).filter(Patient.id == rx.patient_id).first()
     d["patient_name"] = patient.full_name if patient else None
     d["patient_reference_number"] = patient.patient_reference_number if patient else None
+    d["patient_gender"] = patient.gender if patient else None
+    d["patient_date_of_birth"] = str(patient.date_of_birth) if patient and patient.date_of_birth else None
+    d["patient_age"] = patient.age_years if patient and hasattr(patient, "age_years") else None
+    d["patient_blood_group"] = patient.blood_group if patient else None
+    d["patient_phone"] = patient.phone_number if patient else None
+    d["patient_email"] = patient.email if patient else None
+    d["patient_known_allergies"] = patient.known_allergies if patient else None
+    d["patient_chronic_conditions"] = patient.chronic_conditions if patient else None
 
     # Appointment number
     if rx.appointment_id:

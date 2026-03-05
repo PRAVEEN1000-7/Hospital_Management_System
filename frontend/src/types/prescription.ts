@@ -73,6 +73,14 @@ export interface Prescription {
   // Enriched fields
   patient_name?: string | null;
   patient_reference_number?: string | null;
+  patient_gender?: string | null;
+  patient_date_of_birth?: string | null;
+  patient_age?: number | null;
+  patient_blood_group?: string | null;
+  patient_phone?: string | null;
+  patient_email?: string | null;
+  patient_known_allergies?: string | null;
+  patient_chronic_conditions?: string | null;
   appointment_number?: string | null;
   doctor_name?: string | null;
   items: PrescriptionItem[];

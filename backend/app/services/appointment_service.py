@@ -25,6 +25,8 @@ def generate_appointment_number(appointment_type: str = "scheduled") -> str:
     unique_part = uuid.uuid4().hex[:6].upper()
     if appointment_type == "walk_in" or appointment_type == "walk-in":
         return f"WLK-{today}-{unique_part}"
+    if appointment_type == "referral":
+        return f"REF-{today}-{unique_part}"
     return f"APT-{today}-{unique_part}"
 
 

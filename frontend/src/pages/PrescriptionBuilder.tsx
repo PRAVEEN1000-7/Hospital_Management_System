@@ -4,8 +4,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import prescriptionService from '../services/prescriptionService';
 import patientService from '../services/patientService';
+import walkInService from '../services/walkInService';
+import scheduleService from '../services/scheduleService';
 import type { PrescriptionItemCreate, Medicine, PrescriptionTemplate } from '../types/prescription';
 import type { Patient } from '../types/patient';
+import type { DoctorOption } from '../types/appointment';
 
 const FREQUENCY_OPTIONS = ['1-0-0', '0-1-0', '0-0-1', '1-0-1', '1-1-0', '0-1-1', '1-1-1', '1-1-1-1'];
 const DURATION_UNITS = ['days', 'weeks', 'months'];
@@ -82,6 +85,14 @@ const PrescriptionBuilder: React.FC = () => {
   const [templates, setTemplates] = useState<PrescriptionTemplate[]>([]);
   const [showTemplates, setShowTemplates] = useState(false);
 
+  // Refer to Doctor modal state
+  const [showReferModal, setShowReferModal] = useState(false);
+  const [referDoctors, setReferDoctors] = useState<DoctorOption[]>([]);
+  const [referDoctorId, setReferDoctorId] = useState('');
+  const [referDate, setReferDate] = useState('');
+  const [referReason, setReferReason] = useState('');
+  const [referSaving, setReferSaving] = useState(false);
+
   // Load patient if ID passed via URL
   useEffect(() => {
     if (patientId) {
@@ -144,6 +155,13 @@ const PrescriptionBuilder: React.FC = () => {
       .then(setTemplates)
       .catch(() => {});
   }, []);
+
+  // Load doctors for referral (consultation mode only)
+  useEffect(() => {
+    if (isConsultationMode) {
+      scheduleService.getDoctors().then(setReferDoctors).catch(() => {});
+    }
+  }, [isConsultationMode]);
 
   // Patient search
   const searchPatients = useCallback(async (q: string) => {
@@ -856,6 +874,15 @@ const PrescriptionBuilder: React.FC = () => {
               >
                 Cancel
               </button>
+              {isConsultationMode && (
+                <button
+                  onClick={() => { setShowReferModal(true); setReferDoctorId(''); setReferDate(''); setReferReason(''); }}
+                  className="px-4 py-2 rounded-lg border border-orange-200 text-sm font-semibold text-orange-700 hover:bg-orange-50 flex items-center gap-2 transition-colors"
+                >
+                  <span className="material-symbols-outlined text-sm">send</span>
+                  Refer to Doctor
+                </button>
+              )}
             </div>
             <div className="flex gap-3">
               <button
@@ -951,6 +978,102 @@ const PrescriptionBuilder: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* ── Refer to Doctor Modal ──────────────────────────────────── */}
+      {showReferModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center">
+                  <span className="material-symbols-outlined text-orange-600">send</span>
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">Refer to Another Doctor</h3>
+                  <p className="text-xs text-slate-500">{patient?.first_name} {patient?.last_name}</p>
+                </div>
+              </div>
+              <button onClick={() => setShowReferModal(false)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                  Select Doctor / Specialist <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={referDoctorId}
+                  onChange={(e) => setReferDoctorId(e.target.value)}
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none">
+                  <option value="">— Choose a doctor —</option>
+                  {referDoctors.map(d => (
+                    <option key={d.doctor_id} value={d.doctor_id}>
+                      {d.name}{d.specialization ? ` — ${d.specialization}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                  Appointment Date <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={referDate}
+                  onChange={(e) => setReferDate(e.target.value)}
+                  min={new Date().toISOString().split('T')[0]}
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                  Referral Reason
+                </label>
+                <textarea
+                  value={referReason}
+                  onChange={(e) => setReferReason(e.target.value)}
+                  rows={2}
+                  placeholder="e.g. Needs cardiology evaluation for chest pain..."
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
+              <button onClick={() => setShowReferModal(false)}
+                className="px-4 py-2.5 text-sm font-medium text-slate-500 hover:bg-slate-100 rounded-lg transition-colors">
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (!referDoctorId || !referDate || !queueId) return;
+                  setReferSaving(true);
+                  try {
+                    const result = await walkInService.referToDoctor({
+                      queue_id: queueId,
+                      to_doctor_id: referDoctorId,
+                      referral_date: referDate,
+                      referral_reason: referReason || undefined,
+                    });
+                    showToast('success', result.message);
+                    setShowReferModal(false);
+                    navigate('/appointments/queue');
+                  } catch (err: any) {
+                    showToast('error', err?.response?.data?.detail || 'Failed to refer patient');
+                  }
+                  setReferSaving(false);
+                }}
+                disabled={!referDoctorId || !referDate || referSaving}
+                className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-orange-500 rounded-xl hover:bg-orange-600 disabled:opacity-50 shadow-sm transition-all">
+                <span className="material-symbols-outlined text-base">send</span>
+                {referSaving ? 'Referring...' : 'Confirm Referral'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

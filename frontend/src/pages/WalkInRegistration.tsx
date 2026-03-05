@@ -318,10 +318,16 @@ const WalkInRegistration: React.FC = () => {
             </div>
           )}
           {patientSearch.length >= 2 && !patientLoading && patients.length === 0 && !selectedPatient && (
-            <div className="mt-2 flex items-center gap-2 text-xs text-slate-400 bg-slate-50 rounded-lg px-3 py-2">
-              <span className="material-symbols-outlined text-base">search_off</span>
-              No patient found.
-              <button onClick={() => setShowRegModal(true)} className="text-emerald-600 font-semibold hover:underline">
+            <div className="mt-2 bg-slate-50 rounded-lg px-3 py-3 space-y-1.5">
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <span className="material-symbols-outlined text-base">search_off</span>
+                No patient found for "<span className="font-semibold text-slate-700">{patientSearch}</span>"
+              </div>
+              <p className="text-[10px] text-slate-400 pl-6">
+                Try searching with first name, last name, PRN, or phone number.
+              </p>
+              <button onClick={() => setShowRegModal(true)} className="flex items-center gap-1 text-xs text-emerald-600 font-semibold hover:underline pl-6">
+                <span className="material-symbols-outlined text-sm">person_add</span>
                 Register as new patient
               </button>
             </div>

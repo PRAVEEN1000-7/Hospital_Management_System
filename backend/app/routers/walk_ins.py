@@ -44,6 +44,14 @@ class ConsultationNotesPayload(BaseModel):
     follow_up_date: Optional[str] = None
 
 
+class ReferralPayload(BaseModel):
+    """Payload for referring a patient to another doctor."""
+    queue_id: str
+    to_doctor_id: str
+    referral_date: str  # YYYY-MM-DD
+    referral_reason: Optional[str] = None
+
+
 def _user_roles(user: User) -> list:
     """Extract roles list from user."""
     return user.roles if hasattr(user, "roles") and user.roles else []
@@ -807,3 +815,159 @@ async def get_doctor_queue_loads(
     )
     load_map = {str(row.doctor_id): row.waiting_count for row in loads}
     return load_map
+
+
+@router.post("/refer", status_code=status.HTTP_201_CREATED)
+async def refer_patient_to_doctor(
+    data: ReferralPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Refer a patient to another doctor/specialist.
+    Creates a new 'referral' appointment and adds to the target doctor's queue
+    for the specified date.
+    """
+    try:
+        # ── Validate queue entry ──
+        try:
+            q_uuid = uuid.UUID(data.queue_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid queue_id")
+
+        qe = db.query(AppointmentQueue).filter(AppointmentQueue.id == q_uuid).first()
+        if not qe:
+            raise HTTPException(status_code=404, detail="Queue entry not found")
+
+        # Only the assigned doctor (or admin) can refer
+        _require_queue_actor(db, current_user, qe)
+
+        original_appt = db.query(Appointment).filter(Appointment.id == qe.appointment_id).first()
+        if not original_appt:
+            raise HTTPException(status_code=404, detail="Original appointment not found")
+
+        # ── Validate target doctor ──
+        try:
+            to_doctor_uuid = uuid.UUID(data.to_doctor_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid to_doctor_id")
+
+        to_doctor = db.query(Doctor).filter(Doctor.id == to_doctor_uuid).first()
+        if not to_doctor:
+            raise HTTPException(status_code=404, detail="Target doctor not found")
+
+        # Prevent self-referral
+        if qe.doctor_id == to_doctor_uuid:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot refer patient to the same doctor",
+            )
+
+        # ── Validate referral date ──
+        try:
+            referral_date = datetime.strptime(data.referral_date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+
+        today = date.today()
+        if referral_date < today:
+            raise HTTPException(status_code=400, detail="Referral date cannot be in the past")
+
+        # Check if target doctor is on leave on the referral date
+        if is_doctor_on_leave(db, to_doctor_uuid, referral_date):
+            raise HTTPException(
+                status_code=400,
+                detail="Target doctor is on leave on the selected date",
+            )
+
+        # ── Check duplicate: patient not already in target doctor's queue for that date ──
+        existing_queue = (
+            db.query(AppointmentQueue)
+            .join(Appointment, Appointment.id == AppointmentQueue.appointment_id)
+            .filter(
+                AppointmentQueue.doctor_id == to_doctor_uuid,
+                AppointmentQueue.queue_date == referral_date,
+                AppointmentQueue.status.notin_(["completed", "skipped"]),
+                Appointment.patient_id == original_appt.patient_id,
+            )
+            .first()
+        )
+        if existing_queue:
+            raise HTTPException(
+                status_code=409,
+                detail="Patient is already in the target doctor's queue for this date",
+            )
+
+        now = datetime.now(timezone.utc)
+
+        # ── Create referral appointment ──
+        appt_number = generate_appointment_number("referral")
+        referral_appt = Appointment(
+            hospital_id=original_appt.hospital_id,
+            appointment_number=appt_number,
+            patient_id=original_appt.patient_id,
+            doctor_id=to_doctor_uuid,
+            appointment_date=referral_date,
+            start_time=None,
+            end_time=None,
+            appointment_type="referral",
+            visit_type="referral",
+            priority=original_appt.priority or "normal",
+            status="scheduled",
+            chief_complaint=original_appt.chief_complaint,
+            parent_appointment_id=original_appt.id,
+            notes=f"Referral from Dr. queue. Reason: {data.referral_reason or 'Specialist consultation'}" if data.referral_reason else None,
+            check_in_at=now if referral_date == today else None,
+            created_by=current_user.id,
+        )
+        db.add(referral_appt)
+        db.flush()
+
+        # ── Add to target doctor's queue for the referral date ──
+        q_num = _next_queue_number(db, to_doctor_uuid, referral_date)
+        q_pos = _next_position(db, to_doctor_uuid, referral_date)
+        new_queue = AppointmentQueue(
+            appointment_id=referral_appt.id,
+            doctor_id=to_doctor_uuid,
+            queue_date=referral_date,
+            queue_number=q_num,
+            position=q_pos,
+            status="waiting",
+        )
+        db.add(new_queue)
+
+        # ── Mark current consultation as completed ──
+        if qe.status == "in_consultation":
+            qe.status = "completed"
+            original_appt.status = "completed"
+            original_appt.consultation_end_at = now
+
+        db.commit()
+        db.refresh(referral_appt)
+
+        # Build response
+        to_doctor_name = to_doctor.user.full_name if to_doctor.user else "Doctor"
+        patient = db.query(Patient).filter(Patient.id == original_appt.patient_id).first()
+
+        return {
+            "ok": True,
+            "referral_appointment_id": str(referral_appt.id),
+            "referral_appointment_number": referral_appt.appointment_number,
+            "to_doctor_name": to_doctor_name,
+            "to_doctor_specialization": to_doctor.specialization,
+            "referral_date": referral_date.isoformat(),
+            "queue_number": new_queue.queue_number,
+            "queue_position": new_queue.position,
+            "patient_name": patient.full_name if patient else None,
+            "message": f"Patient referred to {to_doctor_name} for {referral_date.isoformat()} (Token #{new_queue.queue_number})",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Referral failed: {e}")
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Referral failed: {str(e)}",
+        )

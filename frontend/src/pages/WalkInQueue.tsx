@@ -71,6 +71,14 @@ const WalkInQueue: React.FC = () => {
   const [bookNextTime, setBookNextTime] = useState<string>('');
   const [bookingSaving, setBookingSaving] = useState(false);
 
+  // ── Refer to Doctor Modal State ───────────────────────────────
+  const [referItem, setReferItem] = useState<QueueItem | null>(null);
+  const [referDoctorId, setReferDoctorId] = useState<string>('');
+  const [referDate, setReferDate] = useState<string>('');
+  const [referReason, setReferReason] = useState<string>('');
+  const [referSaving, setReferSaving] = useState(false);
+  const [allDoctors, setAllDoctors] = useState<DoctorOption[]>([]);
+
   // ── Reception View: Tab for New/Ongoing/Completed ─────────────────
   const [receptionTab, setReceptionTab] = useState<'new' | 'ongoing' | 'completed'>('new');
 
@@ -116,6 +124,13 @@ const WalkInQueue: React.FC = () => {
       fetchUnassigned();
     }
   }, [canFilter, fetchUnassigned]);
+
+  // Load doctor list for referral modal (doctor role)
+  useEffect(() => {
+    if (isDoctor) {
+      scheduleService.getDoctors().then(setAllDoctors).catch(() => {});
+    }
+  }, [isDoctor]);
 
   useEffect(() => { fetchQueue(); }, [fetchQueue]);
 
@@ -194,6 +209,29 @@ const WalkInQueue: React.FC = () => {
       toast.error('Failed to book appointment');
     }
     setBookingSaving(false);
+  };
+
+  // ── Refer to Doctor Handler ─────────────────────────────────────
+  const handleReferToDoctor = async () => {
+    if (!referItem || !referDoctorId || !referDate) return;
+    setReferSaving(true);
+    try {
+      const result = await walkInService.referToDoctor({
+        queue_id: referItem.queue_id,
+        to_doctor_id: referDoctorId,
+        referral_date: referDate,
+        referral_reason: referReason || undefined,
+      });
+      toast.success(result.message);
+      setReferItem(null);
+      setReferDoctorId('');
+      setReferDate('');
+      setReferReason('');
+      fetchQueue();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to refer patient');
+    }
+    setReferSaving(false);
   };
 
   // ── Scheduled Appointment Actions (doctor view) ────────────────
@@ -448,6 +486,11 @@ const WalkInQueue: React.FC = () => {
                           className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-blue-700 bg-white border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors">
                           <span className="material-symbols-outlined text-sm">event_upcoming</span>
                           Book Follow-up
+                        </button>
+                        <button onClick={() => { setReferItem(currentPatient); setReferDoctorId(''); setReferDate(''); setReferReason(''); }}
+                          className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-orange-700 bg-white border border-orange-200 rounded-lg hover:bg-orange-50 transition-colors">
+                          <span className="material-symbols-outlined text-sm">send</span>
+                          Refer to Doctor
                         </button>
                       </div>
                     </div>
@@ -1146,6 +1189,13 @@ const WalkInQueue: React.FC = () => {
                           <span className="material-symbols-outlined text-sm">person</span>
                           Patient Info
                         </button>
+                        {item.status === 'completed' && (
+                          <button onClick={() => { setReferItem(item); setReferDoctorId(''); setReferDate(''); setReferReason(''); }}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded-lg hover:bg-orange-100 transition-colors">
+                            <span className="material-symbols-outlined text-sm">send</span>
+                            Refer
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1506,6 +1556,86 @@ const WalkInQueue: React.FC = () => {
                 className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-primary rounded-xl hover:bg-primary/90 disabled:opacity-50 shadow-sm transition-all">
                 <span className="material-symbols-outlined text-base">check</span>
                 {bookingSaving ? 'Booking...' : 'Confirm Booking'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ── Refer to Doctor Modal ──────────────────────────────────────── */}
+      {referItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center">
+                  <span className="material-symbols-outlined text-orange-600">send</span>
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">Refer to Another Doctor</h3>
+                  <p className="text-xs text-slate-500">{referItem.patient_name}</p>
+                </div>
+              </div>
+              <button onClick={() => setReferItem(null)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                  Select Doctor / Specialist <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={referDoctorId}
+                  onChange={(e) => setReferDoctorId(e.target.value)}
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none">
+                  <option value="">— Choose a doctor —</option>
+                  {allDoctors
+                    .filter(d => d.doctor_id !== referItem.doctor_id)
+                    .map(d => (
+                      <option key={d.doctor_id} value={d.doctor_id}>
+                        {d.name}{d.specialization ? ` — ${d.specialization}` : ''}
+                      </option>
+                    ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                  Appointment Date <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={referDate}
+                  onChange={(e) => setReferDate(e.target.value)}
+                  min={new Date().toISOString().split('T')[0]}
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                  Referral Reason
+                </label>
+                <textarea
+                  value={referReason}
+                  onChange={(e) => setReferReason(e.target.value)}
+                  rows={2}
+                  placeholder="e.g. Needs cardiology evaluation for chest pain..."
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
+              <button onClick={() => setReferItem(null)}
+                className="px-4 py-2.5 text-sm font-medium text-slate-500 hover:bg-slate-100 rounded-lg transition-colors">
+                Cancel
+              </button>
+              <button
+                onClick={handleReferToDoctor}
+                disabled={!referDoctorId || !referDate || referSaving}
+                className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-orange-500 rounded-xl hover:bg-orange-600 disabled:opacity-50 shadow-sm transition-all">
+                <span className="material-symbols-outlined text-base">send</span>
+                {referSaving ? 'Referring...' : 'Confirm Referral'}
               </button>
             </div>
           </div>

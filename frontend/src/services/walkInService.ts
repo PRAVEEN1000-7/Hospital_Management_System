@@ -99,6 +99,24 @@ const walkInService = {
     const res = await api.get<{ count: number; items: UnassignedWalkIn[] }>('/walk-ins/unassigned');
     return res.data;
   },
+
+  async referToDoctor(data: {
+    queue_id: string;
+    to_doctor_id: string;
+    referral_date: string;
+    referral_reason?: string;
+  }): Promise<{
+    ok: boolean;
+    referral_appointment_id: string;
+    to_doctor_name: string;
+    to_doctor_specialization: string | null;
+    referral_date: string;
+    queue_number: number;
+    message: string;
+  }> {
+    const res = await api.post('/walk-ins/refer', data);
+    return res.data;
+  },
 };
 
 export default walkInService;

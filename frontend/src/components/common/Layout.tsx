@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { NavLink, useNavigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatRole } from '../../utils/constants';
@@ -10,6 +10,9 @@ const Layout: React.FC = () => {
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [hospitalName, setHospitalName] = useState('HMS Core');
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
   const [appointmentsOpen, setAppointmentsOpen] = useState(
     () => location.pathname.startsWith('/appointments')
   );
@@ -39,9 +42,22 @@ const Layout: React.FC = () => {
   }, [location.pathname]);
 
   const handleLogout = async () => {
+    setShowLogoutConfirm(false);
+    setUserMenuOpen(false);
     await logout();
     navigate('/login');
   };
+
+  // Close user menu on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setUserMenuOpen(false);
+      }
+    };
+    if (userMenuOpen) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [userMenuOpen]);
 
   const role = user?.roles?.[0];
 
@@ -95,7 +111,13 @@ const Layout: React.FC = () => {
       { to: '/appointments/reports', label: 'Reports',             icon: 'analytics' },
     );
   }
-  // pharmacist, cashier, inventory_manager, staff — no appointment items
+  // report_viewer only sees Reports
+  else if (role === 'report_viewer') {
+    appointmentItems.push(
+      { to: '/appointments/reports', label: 'Appointment Reports', icon: 'analytics' },
+    );
+  }
+  // pharmacist, cashier, inventory_manager, optical_staff — no appointment items
 
   // ── Prescription navigation ── role-driven
   const prescriptionItems: { to: string; label: string; icon: string }[] = [];
@@ -116,7 +138,7 @@ const Layout: React.FC = () => {
     );
   }
 
-  // ── System navigation ── admin / super_admin only
+  // ── System navigation ── admin / super_admin / receptionist
   const systemNavItems: { to: string; label: string; icon: string }[] = [];
   if (role === 'super_admin') {
     systemNavItems.push(
@@ -127,6 +149,10 @@ const Layout: React.FC = () => {
   } else if (role === 'admin') {
     systemNavItems.push(
       { to: '/register', label: 'Register User', icon: 'person_add' },
+    );
+  } else if (role === 'receptionist') {
+    systemNavItems.push(
+      { to: '/register', label: 'Register Patient', icon: 'person_add' },
     );
   }
 
@@ -328,7 +354,7 @@ const Layout: React.FC = () => {
         </nav>
 
         {/* User Card at Bottom */}
-        <div className="p-4 border-t border-slate-100">
+        <div className="p-4 border-t border-slate-100 space-y-2">
           <div className="flex items-center gap-3 p-2 rounded-lg bg-slate-50">
             <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold">
               {initials}
@@ -337,14 +363,14 @@ const Layout: React.FC = () => {
               <p className="text-xs font-bold text-slate-900 truncate">{fullName}</p>
               <p className="text-[10px] text-slate-500">{formatRole(user?.roles?.[0] || '')}</p>
             </div>
-            <button
-              onClick={handleLogout}
-              className="text-slate-400 hover:text-red-500 transition-colors"
-              title="Logout"
-            >
-              <span className="material-symbols-outlined text-sm">logout</span>
-            </button>
           </div>
+          <button
+            onClick={() => setShowLogoutConfirm(true)}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-100 transition-all active:scale-[0.98]"
+          >
+            <span className="material-symbols-outlined text-sm">logout</span>
+            Sign Out
+          </button>
         </div>
       </aside>
 
@@ -391,15 +417,57 @@ const Layout: React.FC = () => {
               <span className="absolute top-2.5 right-2.5 w-1.5 h-1.5 bg-red-500 rounded-full border border-white"></span>
             </button>
             <div className="h-8 w-px bg-slate-200 hidden sm:block"></div>
-            <button
-              onClick={() => navigate('/profile')}
-              className="flex items-center gap-2 hover:bg-slate-50 rounded-lg px-2 py-1 transition-colors"
-            >
-              <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold">
-                {initials}
-              </div>
-              <span className="text-xs font-bold text-slate-700 hidden sm:block">{fullName}</span>
-            </button>
+            {/* User avatar dropdown */}
+            <div className="relative" ref={userMenuRef}>
+              <button
+                onClick={() => setUserMenuOpen(!userMenuOpen)}
+                className="flex items-center gap-2 hover:bg-slate-50 rounded-lg px-2 py-1.5 transition-colors"
+              >
+                <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold">
+                  {initials}
+                </div>
+                <span className="text-xs font-bold text-slate-700 hidden sm:block">{fullName}</span>
+                <span className={`material-symbols-outlined text-slate-400 text-[16px] hidden sm:block transition-transform duration-200 ${userMenuOpen ? 'rotate-180' : ''}`}>expand_more</span>
+              </button>
+
+              {/* Dropdown */}
+              {userMenuOpen && (
+                <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl border border-slate-200 shadow-xl py-1.5 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                  {/* User info header */}
+                  <div className="px-4 py-3 border-b border-slate-100">
+                    <p className="text-sm font-bold text-slate-900 truncate">{fullName}</p>
+                    <p className="text-[11px] text-slate-500">{user?.username} &middot; {formatRole(user?.roles?.[0] || '')}</p>
+                  </div>
+
+                  <div className="py-1">
+                    <button
+                      onClick={() => { setUserMenuOpen(false); navigate('/profile'); }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-[18px] text-slate-400">manage_accounts</span>
+                      My Profile
+                    </button>
+                    <button
+                      onClick={() => { setUserMenuOpen(false); navigate('/dashboard'); }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-[18px] text-slate-400">dashboard</span>
+                      Dashboard
+                    </button>
+                  </div>
+
+                  <div className="border-t border-slate-100 py-1">
+                    <button
+                      onClick={() => { setUserMenuOpen(false); setShowLogoutConfirm(true); }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">logout</span>
+                      Sign Out
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
@@ -418,6 +486,36 @@ const Layout: React.FC = () => {
           <span className="material-icons">menu</span>
         </button>
       </div>
+
+      {/* Logout Confirmation Modal */}
+      {showLogoutConfirm && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowLogoutConfirm(false)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex flex-col items-center text-center">
+              <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center mb-4">
+                <span className="material-symbols-outlined text-red-500 text-3xl">logout</span>
+              </div>
+              <h3 className="text-lg font-bold text-slate-900 mb-1">Sign Out</h3>
+              <p className="text-sm text-slate-500 mb-6">Are you sure you want to sign out of your account?</p>
+              <div className="flex gap-3 w-full">
+                <button
+                  onClick={() => setShowLogoutConfirm(false)}
+                  className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleLogout}
+                  className="flex-1 px-4 py-2.5 rounded-lg bg-red-600 text-sm font-semibold text-white hover:bg-red-700 transition-colors active:scale-[0.98]"
+                >
+                  Sign Out
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

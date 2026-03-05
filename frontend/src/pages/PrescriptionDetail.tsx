@@ -159,6 +159,26 @@ const PrescriptionDetail: React.FC = () => {
               <div>
                 <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Patient</h4>
                 <p className="text-sm font-semibold text-slate-900">{rx.patient_name || rx.patient_id}</p>
+                {rx.patient_reference_number && (
+                  <p className="text-[11px] text-slate-500 mt-0.5">PRN: {rx.patient_reference_number}</p>
+                )}
+                <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2">
+                  {rx.patient_age != null && rx.patient_gender && (
+                    <span className="text-[11px] text-slate-500">{rx.patient_age}y / {rx.patient_gender}</span>
+                  )}
+                  {rx.patient_blood_group && (
+                    <span className="text-[11px] text-slate-500 flex items-center gap-0.5">
+                      <span className="material-symbols-outlined text-red-400" style={{ fontSize: '12px' }}>water_drop</span>
+                      {rx.patient_blood_group}
+                    </span>
+                  )}
+                  {rx.patient_phone && (
+                    <span className="text-[11px] text-slate-500 flex items-center gap-0.5">
+                      <span className="material-symbols-outlined text-slate-400" style={{ fontSize: '12px' }}>call</span>
+                      {rx.patient_phone}
+                    </span>
+                  )}
+                </div>
               </div>
               {/* Doctor */}
               <div>
@@ -167,19 +187,71 @@ const PrescriptionDetail: React.FC = () => {
               </div>
             </div>
 
+            {/* Allergies & Chronic Conditions */}
+            {(rx.patient_known_allergies || rx.patient_chronic_conditions) && (
+              <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-2 gap-4">
+                {rx.patient_known_allergies && (
+                  <div>
+                    <h4 className="text-xs font-semibold text-red-500 uppercase tracking-wide mb-1.5 flex items-center gap-1">
+                      <span className="material-symbols-outlined text-red-500" style={{ fontSize: '14px' }}>allergy</span>
+                      Allergies
+                    </h4>
+                    <div className="flex flex-wrap gap-1">
+                      {rx.patient_known_allergies.split(',').map((a: string, i: number) => (
+                        <span key={i} className="px-2 py-0.5 bg-red-50 text-red-700 border border-red-200 rounded-full text-[10px] font-medium">{a.trim()}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {rx.patient_chronic_conditions && (
+                  <div>
+                    <h4 className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-1.5 flex items-center gap-1">
+                      <span className="material-symbols-outlined text-amber-500" style={{ fontSize: '14px' }}>monitor_heart</span>
+                      Chronic Conditions
+                    </h4>
+                    <div className="flex flex-wrap gap-1">
+                      {rx.patient_chronic_conditions.split(',').map((c: string, i: number) => (
+                        <span key={i} className="px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-[10px] font-medium">{c.trim()}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Appointment reference */}
             {rx.appointment_id && (
               <div className="mt-4 pt-4 border-t border-slate-100">
                 <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Appointment</h4>
-                <button
-                  onClick={() => navigate(`/appointments/${rx.appointment_id}`)}
-                  className="text-xs text-primary hover:underline"
-                >
-                  View Appointment →
-                </button>
+                <span className="text-xs text-slate-500">{rx.appointment_number || rx.appointment_id}</span>
               </div>
             )}
           </div>
+
+          {/* Vitals */}
+          {(rx.vitals_bp || rx.vitals_pulse || rx.vitals_temp || rx.vitals_weight || rx.vitals_spo2) && (
+            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+              <h3 className="font-semibold mb-4 flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-sm">vital_signs</span>
+                Vitals
+              </h3>
+              <div className="grid grid-cols-5 gap-3">
+                {[
+                  { label: 'BP', value: rx.vitals_bp, unit: 'mmHg', icon: 'bloodtype' },
+                  { label: 'Pulse', value: rx.vitals_pulse, unit: 'bpm', icon: 'heart_check' },
+                  { label: 'Temp', value: rx.vitals_temp, unit: '°F', icon: 'thermostat' },
+                  { label: 'Weight', value: rx.vitals_weight, unit: 'kg', icon: 'monitor_weight' },
+                  { label: 'SpO2', value: rx.vitals_spo2, unit: '%', icon: 'spo2' },
+                ].map(v => (
+                  <div key={v.label} className="text-center p-3 bg-slate-50 rounded-lg">
+                    <p className="text-[10px] font-semibold text-slate-400 uppercase">{v.label}</p>
+                    <p className="text-sm font-bold text-slate-800 mt-1">{v.value || '—'}</p>
+                    {v.value && <p className="text-[10px] text-slate-400">{v.unit}</p>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Clinical Details */}
           <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">

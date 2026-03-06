@@ -3,7 +3,7 @@ Walk-in registration router - handles walk-in patient flow.
 """
 import logging
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, func, case
@@ -262,16 +262,25 @@ async def register_walk_in(
 @router.get("/queue")
 async def get_queue_status(
     doctor_id: Optional[str] = Query(None),
+    queue_date: Optional[str] = Query(None, description="Date in YYYY-MM-DD format. Defaults to today."),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
     """
-    Get the current walk-in queue.
+    Get the walk-in queue for a specific date.
     - Receptionist / admin: sees all doctors, can filter by doctor_id.
     - Doctor: auto-filtered to their own queue.
     Display order: urgency priority (emergency > urgent > normal), then queue_number.
     Queue number remains the original sequential token number.
     """
+    # Parse queue_date or default to today
+    target_date = date.today()
+    if queue_date:
+        try:
+            target_date = datetime.strptime(queue_date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid queue_date format. Use YYYY-MM-DD")
+
     today = date.today()
 
     # Auto-detect doctor role → filter to own queue
@@ -290,11 +299,11 @@ async def get_queue_status(
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid doctor_id")
 
-    # Query queue entries for today
+    # Query queue entries for the target date
     query = (
         db.query(AppointmentQueue)
         .join(Appointment, Appointment.id == AppointmentQueue.appointment_id)
-        .filter(AppointmentQueue.queue_date == today)
+        .filter(AppointmentQueue.queue_date == target_date)
     )
     if resolved_doctor_id:
         query = query.filter(AppointmentQueue.doctor_id == resolved_doctor_id)
@@ -354,7 +363,7 @@ async def get_queue_status(
                 patient_emergency_contact_relation = patient.emergency_contact_relation
                 # Compute age from date_of_birth or stored age_years
                 if patient.date_of_birth:
-                    age_delta = today - patient.date_of_birth
+                    age_delta = date.today() - patient.date_of_birth
                     patient_age = age_delta.days // 365
                 elif patient.age_years is not None:
                     patient_age = patient.age_years
@@ -401,7 +410,7 @@ async def get_queue_status(
 
     return {
         "doctor_id": str(resolved_doctor_id) if resolved_doctor_id else None,
-        "queue_date": today.isoformat(),
+        "queue_date": target_date.isoformat(),
         "total_waiting": total_waiting,
         "total_in_progress": total_in_progress,
         "total_completed": total_completed,
@@ -796,25 +805,137 @@ async def get_unassigned_walkins(
 
 @router.get("/queue/doctor-loads")
 async def get_doctor_queue_loads(
+    target_date: Optional[str] = Query(None, alias="date", description="Date in YYYY-MM-DD. Defaults to today."),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    """Return today's queue load per doctor (waiting count) for the Send-to-Doctor modal."""
-    today = date.today()
+    """Return queue load per doctor (total patient count) for the Send-to-Doctor / referral modal."""
+    load_date = date.today()
+    if target_date:
+        try:
+            load_date = datetime.strptime(target_date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+
     loads = (
         db.query(
             AppointmentQueue.doctor_id,
-            func.count(AppointmentQueue.id).label("waiting_count"),
+            func.count(AppointmentQueue.id).label("patient_count"),
         )
         .filter(
-            AppointmentQueue.queue_date == today,
-            AppointmentQueue.status.in_(["waiting", "called", "sent_to_doctor"]),
+            AppointmentQueue.queue_date == load_date,
+            AppointmentQueue.status.notin_(["skipped"]),
         )
         .group_by(AppointmentQueue.doctor_id)
         .all()
     )
-    load_map = {str(row.doctor_id): row.waiting_count for row in loads}
+    load_map = {str(row.doctor_id): row.patient_count for row in loads}
     return load_map
+
+
+@router.get("/queue/upcoming")
+async def get_upcoming_queue(
+    days: int = Query(7, ge=1, le=30, description="Number of days ahead to look"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Get upcoming queue entries for the logged-in doctor, grouped by date.
+    Returns the next N days (excluding today) with patient details.
+    """
+    # Resolve doctor
+    is_doctor_role = "doctor" in _user_roles(current_user)
+    resolved_doctor_id: Optional[uuid.UUID] = None
+    if is_doctor_role:
+        doc = db.query(Doctor).filter(Doctor.user_id == current_user.id).first()
+        if doc:
+            resolved_doctor_id = doc.id
+
+    today = date.today()
+    end_date = today + timedelta(days=days)
+
+    query = (
+        db.query(AppointmentQueue)
+        .join(Appointment, Appointment.id == AppointmentQueue.appointment_id)
+        .filter(
+            AppointmentQueue.queue_date > today,
+            AppointmentQueue.queue_date <= end_date,
+            AppointmentQueue.status.notin_(["completed", "skipped"]),
+        )
+    )
+    if resolved_doctor_id:
+        query = query.filter(AppointmentQueue.doctor_id == resolved_doctor_id)
+
+    queue_entries = query.order_by(
+        AppointmentQueue.queue_date.asc(),
+        AppointmentQueue.queue_number.asc(),
+    ).all()
+
+    # Group by date and enrich with patient/appointment info
+    from collections import defaultdict
+    grouped: dict = defaultdict(list)
+
+    for qe in queue_entries:
+        appt = db.query(Appointment).filter(Appointment.id == qe.appointment_id).first()
+        if not appt:
+            continue
+
+        patient = db.query(Patient).filter(Patient.id == appt.patient_id).first()
+        patient_age = None
+        if patient and patient.date_of_birth:
+            patient_age = (today - patient.date_of_birth).days // 365
+        elif patient and patient.age_years is not None:
+            patient_age = patient.age_years
+
+        # Resolve referring doctor name if this is a referral
+        referring_doctor_name = None
+        if appt.parent_appointment_id:
+            parent = db.query(Appointment).filter(Appointment.id == appt.parent_appointment_id).first()
+            if parent and parent.doctor_id:
+                ref_doc = db.query(Doctor).filter(Doctor.id == parent.doctor_id).first()
+                if ref_doc and ref_doc.user:
+                    referring_doctor_name = ref_doc.user.full_name
+
+        doctor_name = None
+        if appt.doctor_id:
+            doc = db.query(Doctor).filter(Doctor.id == appt.doctor_id).first()
+            if doc and doc.user:
+                doctor_name = doc.user.full_name
+
+        date_key = qe.queue_date.isoformat()
+        grouped[date_key].append({
+            "queue_id": str(qe.id),
+            "appointment_id": str(qe.appointment_id),
+            "queue_number": qe.queue_number,
+            "status": qe.status,
+            "appointment_type": appt.appointment_type,
+            "priority": appt.priority or "normal",
+            "patient_name": patient.full_name if patient else None,
+            "patient_id": str(patient.id) if patient else None,
+            "patient_reference_number": patient.patient_reference_number if patient else None,
+            "patient_gender": patient.gender if patient else None,
+            "patient_age": patient_age,
+            "chief_complaint": appt.chief_complaint,
+            "doctor_id": str(appt.doctor_id) if appt.doctor_id else None,
+            "doctor_name": doctor_name,
+            "referring_doctor_name": referring_doctor_name,
+        })
+
+    # Build sorted list of date groups
+    date_groups = []
+    for d in sorted(grouped.keys()):
+        date_groups.append({
+            "date": d,
+            "count": len(grouped[d]),
+            "items": grouped[d],
+        })
+
+    return {
+        "doctor_id": str(resolved_doctor_id) if resolved_doctor_id else None,
+        "days": days,
+        "date_groups": date_groups,
+        "total_upcoming": sum(len(g["items"]) for g in date_groups),
+    }
 
 
 @router.post("/refer", status_code=status.HTTP_201_CREATED)

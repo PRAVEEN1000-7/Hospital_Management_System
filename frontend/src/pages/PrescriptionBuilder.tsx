@@ -92,6 +92,7 @@ const PrescriptionBuilder: React.FC = () => {
   const [referDate, setReferDate] = useState('');
   const [referReason, setReferReason] = useState('');
   const [referSaving, setReferSaving] = useState(false);
+  const [referDoctorLoad, setReferDoctorLoad] = useState<number | null>(null);
 
   // Load patient if ID passed via URL
   useEffect(() => {
@@ -162,6 +163,17 @@ const PrescriptionBuilder: React.FC = () => {
       scheduleService.getDoctors().then(setReferDoctors).catch(() => {});
     }
   }, [isConsultationMode]);
+
+  // Fetch doctor load for referral warning
+  useEffect(() => {
+    if (!referDoctorId || !referDate) { setReferDoctorLoad(null); return; }
+    let cancelled = false;
+    walkInService.getDoctorLoads(referDate).then(loads => {
+      if (cancelled) return;
+      setReferDoctorLoad(loads[referDoctorId] ?? 0);
+    }).catch(() => { if (!cancelled) setReferDoctorLoad(null); });
+    return () => { cancelled = true; };
+  }, [referDoctorId, referDate]);
 
   // Patient search
   const searchPatients = useCallback(async (q: string) => {
@@ -1027,6 +1039,20 @@ const PrescriptionBuilder: React.FC = () => {
                   className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
                 />
               </div>
+              {referDoctorLoad !== null && referDoctorId && referDate && (
+                <div className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm ${
+                  referDoctorLoad >= 15 ? 'bg-red-50 text-red-700 border border-red-200' :
+                  referDoctorLoad >= 8 ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                  'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                }`}>
+                  <span className="material-symbols-outlined text-base">
+                    {referDoctorLoad >= 15 ? 'warning' : referDoctorLoad >= 8 ? 'info' : 'check_circle'}
+                  </span>
+                  <span>
+                    {referDoctors.find(d => d.doctor_id === referDoctorId)?.name || 'Selected doctor'} already has <strong>{referDoctorLoad}</strong> patient{referDoctorLoad !== 1 ? 's' : ''} on this date
+                  </span>
+                </div>
+              )}
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
                   Referral Reason
@@ -1059,6 +1085,7 @@ const PrescriptionBuilder: React.FC = () => {
                     });
                     showToast('success', result.message);
                     setShowReferModal(false);
+                    setReferDoctorLoad(null);
                     navigate('/appointments/queue');
                   } catch (err: any) {
                     showToast('error', err?.response?.data?.detail || 'Failed to refer patient');

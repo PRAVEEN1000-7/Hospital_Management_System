@@ -147,6 +147,15 @@ async def patient_prescriptions(
     )
 
 
+@router.get("/languages")
+async def get_prescription_languages(
+    current_user: User = Depends(get_current_active_user),
+):
+    """Return supported languages for prescription printing."""
+    from ..utils.prescription_translations import SUPPORTED_LANGUAGES
+    return [{"code": code, "name": name} for code, name in SUPPORTED_LANGUAGES.items()]
+
+
 @router.get("/{prescription_id}", response_model=PrescriptionResponse)
 async def get_prescription_detail(
     prescription_id: str,
@@ -258,12 +267,19 @@ async def get_rx_versions(
 @router.get("/{prescription_id}/pdf")
 async def get_prescription_pdf(
     prescription_id: str,
+    lang: str = Query("en", description="Language code for print labels"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    """Generate prescription as printable HTML."""
+    """Generate prescription as printable HTML with multi-language support."""
     from ..config import settings as app_settings
     from ..models.patient import Patient
+    from ..utils.prescription_translations import get_labels, SUPPORTED_LANGUAGES
+
+    if lang not in SUPPORTED_LANGUAGES:
+        lang = "en"
+
+    t = get_labels(lang)
 
     rx = get_prescription(db, prescription_id)
     if not rx:
@@ -303,11 +319,12 @@ async def get_prescription_pdf(
 
     from fastapi.responses import HTMLResponse
     html = f"""<!DOCTYPE html>
-<html>
+<html lang="{lang}">
 <head>
-<title>Prescription - {rx.prescription_number}</title>
+<meta charset="UTF-8">
+<title>{t['prescription']} - {rx.prescription_number}</title>
 <style>
-body {{ font-family: Arial, sans-serif; margin:0; padding:40px; color:#1e293b; }}
+body {{ font-family: 'Noto Sans', Arial, sans-serif; margin:0; padding:40px; color:#1e293b; }}
 .header {{ text-align:center; margin-bottom:30px; padding-bottom:20px; border-bottom:3px solid #137fec; }}
 .header h1 {{ margin:0; color:#137fec; font-size:24px; }}
 .header p {{ margin:4px 0; color:#64748b; font-size:13px; }}
@@ -325,62 +342,63 @@ td {{ font-size:13px; }}
 .signature p {{ margin:4px 0; font-size:13px; }}
 @media print {{ body {{ padding:20px; }} }}
 </style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;600;700&family=Noto+Sans+Devanagari:wght@400;600;700&family=Noto+Sans+Kannada:wght@400;600;700&family=Noto+Sans+Malayalam:wght@400;600;700&family=Noto+Sans+Tamil:wght@400;600;700&family=Noto+Sans+Telugu:wght@400;600;700&display=swap">
 </head>
 <body>
 <div class="header">
     <h1>{app_settings.HOSPITAL_NAME}</h1>
     <p>{app_settings.HOSPITAL_ADDRESS}, {app_settings.HOSPITAL_CITY}</p>
-    <p>Phone: {app_settings.HOSPITAL_PHONE} | Email: {app_settings.HOSPITAL_EMAIL}</p>
+    <p>{t['phone']}: {app_settings.HOSPITAL_PHONE} | {t['email']}: {app_settings.HOSPITAL_EMAIL}</p>
 </div>
 
 <div class="rx-info">
     <div>
-        <strong>PRN:</strong> {patient.patient_reference_number if patient else '—'}<br/>
-        <strong>Date:</strong> {fmt_date(rx.created_at)}
+        <strong>{t['prn']}:</strong> {patient.patient_reference_number if patient else '—'}<br/>
+        <strong>{t['date']}:</strong> {fmt_date(rx.created_at)}
     </div>
     <div style="text-align:right;">
-        <strong>Status:</strong> {rx.status.upper()}<br/>
-        <strong>Valid Until:</strong> {fmt_date(rx.valid_until) if rx.valid_until else '—'}
+        <strong>{t['status']}:</strong> {rx.status.upper()}<br/>
+        <strong>{t['valid_until']}:</strong> {fmt_date(rx.valid_until) if rx.valid_until else '—'}
     </div>
 </div>
 
 <div class="patient-box">
-    <p><strong>Patient:</strong> {patient.full_name if patient else '—'}</p>
-    <p><strong>PRN:</strong> {patient.patient_reference_number if patient else '—'} |
-       <strong>Age:</strong> {patient.age_years if patient and patient.age_years else '—'} |
-       <strong>Gender:</strong> {patient.gender if patient else '—'} |
-       <strong>Blood Group:</strong> {patient.blood_group if patient and patient.blood_group else '—'}</p>
-    {f'<p><strong>Allergies:</strong> <span style="color:#dc2626;">{patient.known_allergies}</span></p>' if patient and patient.known_allergies else ''}
+    <p><strong>{t['patient']}:</strong> {patient.full_name if patient else '—'}</p>
+    <p><strong>{t['prn']}:</strong> {patient.patient_reference_number if patient else '—'} |
+       <strong>{t['age']}:</strong> {patient.age_years if patient and patient.age_years else '—'} |
+       <strong>{t['gender']}:</strong> {patient.gender if patient else '—'} |
+       <strong>{t['blood_group']}:</strong> {patient.blood_group if patient and patient.blood_group else '—'}</p>
+    {f'<p><strong>{t["allergies"]}:</strong> <span style="color:#dc2626;">{patient.known_allergies}</span></p>' if patient and patient.known_allergies else ''}
 </div>
 
-{f'<div class="diagnosis"><strong>Diagnosis:</strong> {rx.diagnosis}</div>' if rx.diagnosis else ''}
-{f'<div class="diagnosis"><strong>Clinical Notes:</strong> {rx.clinical_notes}</div>' if rx.clinical_notes else ''}
+{f'<div class="diagnosis"><strong>{t["diagnosis"]}:</strong> {rx.diagnosis}</div>' if rx.diagnosis else ''}
+{f'<div class="diagnosis"><strong>{t["clinical_notes"]}:</strong> {rx.clinical_notes}</div>' if rx.clinical_notes else ''}
 
 <table>
 <thead>
 <tr>
-    <th style="width:5%;">#</th>
-    <th style="width:25%;">Medicine</th>
-    <th style="width:12%;text-align:center;">Dosage</th>
-    <th style="width:12%;text-align:center;">Frequency</th>
-    <th style="width:15%;text-align:center;">Duration</th>
-    <th style="width:25%;">Instructions</th>
+    <th style="width:5%;">{t['sl_no']}</th>
+    <th style="width:25%;">{t['medicine']}</th>
+    <th style="width:12%;text-align:center;">{t['dosage']}</th>
+    <th style="width:12%;text-align:center;">{t['frequency']}</th>
+    <th style="width:15%;text-align:center;">{t['duration']}</th>
+    <th style="width:25%;">{t['instructions']}</th>
 </tr>
 </thead>
 <tbody>{items_html}</tbody>
 </table>
 
-{f'<div class="advice"><strong>Advice:</strong> {rx.advice}</div>' if rx.advice else ''}
+{f'<div class="advice"><strong>{t["advice"]}:</strong> {rx.advice}</div>' if rx.advice else ''}
 
 <div class="footer">
     <div>
-        <p style="font-size:11px;color:#94a3b8;">This is a computer-generated prescription.</p>
+        <p style="font-size:11px;color:#94a3b8;">{t['computer_generated']}</p>
     </div>
     <div class="signature">
-        <p style="margin-bottom:40px;"><strong>Prescribing Doctor</strong></p>
+        <p style="margin-bottom:40px;"><strong>{t['prescribing_doctor']}</strong></p>
         <p><strong>Dr. {doctor_name}</strong></p>
         <p style="color:#64748b;">{doctor_spec}</p>
-        <p style="color:#64748b;">Reg# {doctor_reg}</p>
+        <p style="color:#64748b;">{t['reg_no']} {doctor_reg}</p>
     </div>
 </div>
 </body>

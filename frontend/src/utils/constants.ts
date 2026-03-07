@@ -22,8 +22,10 @@ export const ROLE_LABELS: Record<string, string> = {
   staff: 'Staff',
   receptionist: 'Receptionist',
   pharmacist: 'Pharmacist',
+  optical_staff: 'Optical Staff',
   cashier: 'Cashier',
   inventory_manager: 'Inventory Manager',
+  report_viewer: 'Report Viewer',
 };
 
 export const ROLE_COLORS: Record<string, string> = {
@@ -34,8 +36,10 @@ export const ROLE_COLORS: Record<string, string> = {
   staff: 'bg-gray-100 text-gray-700',
   receptionist: 'bg-purple-100 text-purple-700',
   pharmacist: 'bg-green-100 text-green-700',
+  optical_staff: 'bg-cyan-100 text-cyan-700',
   cashier: 'bg-yellow-100 text-yellow-700',
   inventory_manager: 'bg-indigo-100 text-indigo-700',
+  report_viewer: 'bg-slate-100 text-slate-700',
 };
 
 export const ROLE_TEXT_COLORS: Record<string, string> = {
@@ -46,8 +50,10 @@ export const ROLE_TEXT_COLORS: Record<string, string> = {
   staff: 'text-gray-700',
   receptionist: 'text-purple-700',
   pharmacist: 'text-green-700',
+  optical_staff: 'text-cyan-700',
   cashier: 'text-yellow-700',
   inventory_manager: 'text-indigo-700',
+  report_viewer: 'text-slate-700',
 };
 
 export interface CountryData {

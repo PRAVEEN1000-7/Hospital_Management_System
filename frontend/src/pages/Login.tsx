@@ -31,7 +31,7 @@ const Login: React.FC = () => {
   };
 
   return (
-    <main className="w-full min-h-screen flex flex-col md:flex-row overflow-hidden">
+    <main className="w-full min-h-screen flex flex-col md:flex-row overflow-x-hidden">
       {/* Left Hero Panel */}
       <section className="hidden md:flex md:w-7/12 lg:w-3/5 relative bg-primary items-center justify-center overflow-hidden">
         <div className="absolute inset-0 z-0">
@@ -71,9 +71,9 @@ const Login: React.FC = () => {
       </section>
 
       {/* Right Login Panel */}
-      <section className="flex-1 bg-white flex flex-col justify-between p-8 md:p-12 lg:p-20">
+      <section className="flex-1 bg-white flex flex-col justify-between p-6 sm:p-8 md:p-12 lg:p-20 min-h-screen md:min-h-0 overflow-y-auto">
         {/* Mobile Brand */}
-        <div className="md:hidden flex items-center gap-2 mb-12">
+        <div className="md:hidden flex items-center gap-2 mb-8 sm:mb-12">
           <span className="material-icons text-primary text-2xl">local_hospital</span>
           <span className="text-xl font-bold text-slate-800">HMS Global</span>
         </div>

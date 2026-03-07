@@ -31,6 +31,27 @@ const Register: React.FC = () => {
 
   const watchCountry = watch('country');
   const watchState = watch('state');
+  const watchDob = watch('date_of_birth');
+  const watchTitle = watch('title');
+
+  // Auto-correct title when DOB indicates a child (under 5)
+  const CHILD_TITLES = ['Baby', 'Master'];
+  const ADULT_ONLY_TITLES = ['Mr.', 'Mrs.', 'Ms.', 'Dr.', 'Prof.'];
+  const isChild = (() => {
+    if (!watchDob) return false;
+    const dob = new Date(watchDob);
+    const today = new Date();
+    let age = today.getFullYear() - dob.getFullYear();
+    const m = today.getMonth() - dob.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
+    return age < 5;
+  })();
+
+  useEffect(() => {
+    if (isChild && watchTitle && ADULT_ONLY_TITLES.includes(watchTitle)) {
+      setValue('title', 'Baby');
+    }
+  }, [isChild, watchTitle, setValue]);
 
   useEffect(() => {
     if (watchState && STATE_COUNTRY_MAP[watchState]) {
@@ -102,9 +123,14 @@ const Register: React.FC = () => {
               <label className={labelClass}>Title <span className="text-red-500">*</span></label>
               <select {...register('title')} className={selectClass}>
                 <option value="">Select title</option>
-                {TITLE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+                {TITLE_OPTIONS.map(t => (
+                  <option key={t} value={t} disabled={isChild && ADULT_ONLY_TITLES.includes(t)}>
+                    {t}{isChild && ADULT_ONLY_TITLES.includes(t) ? ' (not for children)' : ''}
+                  </option>
+                ))}
               </select>
               {errors.title && <p className={errorClass}>{errors.title.message}</p>}
+              {isChild && <p className="mt-1 text-xs text-amber-600">Child detected — use Baby or Master</p>}
             </div>
             <div>
               <label className={labelClass}>First Name <span className="text-red-500">*</span></label>

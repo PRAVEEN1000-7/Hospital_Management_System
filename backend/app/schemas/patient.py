@@ -11,18 +11,20 @@ VALID_RELATIONSHIPS = [
 
 
 VALID_TITLES = ["Mr.", "Mrs.", "Ms.", "Master", "Dr.", "Prof.", "Baby"]
+CHILD_TITLES = ["Baby", "Master"]
+ADULT_ONLY_TITLES = ["Mr.", "Mrs.", "Ms.", "Dr.", "Prof."]
 
 
 class PatientBase(BaseModel):
     title: Optional[str] = Field(None, max_length=10)
-    first_name: str = Field(..., min_length=1, max_length=100)
-    last_name: str = Field(..., min_length=1, max_length=100)
+    first_name: str = Field(..., min_length=1, max_length=100, pattern=r"^[A-Za-z\s.'-]+$")
+    last_name: str = Field(..., min_length=1, max_length=100, pattern=r"^[A-Za-z\s.'-]+$")
     date_of_birth: Optional[date] = None
     gender: str = Field(..., pattern="^(male|female|other|prefer_not_to_say|Male|Female|Other|Not Disclosed|Unknown)$")
     blood_group: Optional[str] = None
     phone_country_code: str = Field(default="+1", pattern=r"^\+[0-9]{1,4}$")
-    phone_number: str = Field(..., pattern=r"^\d{4,15}$",
-                               description="Phone number digits only (4-15 digits)")
+    phone_number: str = Field(..., pattern=r"^\d{7,15}$",
+                               description="Phone number digits only (7-15 digits)")
     email: Optional[EmailStr] = None
     address_line_1: Optional[str] = Field(None, max_length=255)
     address_line_2: Optional[str] = Field(None, max_length=255)
@@ -34,7 +36,7 @@ class PatientBase(BaseModel):
     age_months: Optional[int] = None
     marital_status: Optional[str] = None
     emergency_contact_name: Optional[str] = Field(None, max_length=200)
-    emergency_contact_phone: Optional[str] = Field(None, pattern=r"^\d{4,20}$")
+    emergency_contact_phone: Optional[str] = Field(None, pattern=r"^\d{7,20}$")
     emergency_contact_relation: Optional[str] = None
 
     @field_validator("title")
@@ -70,6 +72,15 @@ class PatientBase(BaseModel):
             raise ValueError("Invalid date of birth")
         return v
 
+    @field_validator("address_line_1")
+    @classmethod
+    def validate_address(cls, v: Optional[str]) -> Optional[str]:
+        import re
+        if v is not None and v != "":
+            if not re.search(r"[A-Za-z]", v):
+                raise ValueError("Address must contain meaningful text, not just numbers")
+        return v
+
     @field_validator("postal_code")
     @classmethod
     def validate_postal_code(cls, v: Optional[str]) -> Optional[str]:
@@ -81,11 +92,27 @@ class PatientBase(BaseModel):
 
 
 class PatientCreate(PatientBase):
-    pass
+    @model_validator(mode="after")
+    def validate_title_vs_age(self) -> "PatientCreate":
+        if self.date_of_birth and self.title:
+            age_years = (date.today() - self.date_of_birth).days / 365.25
+            if age_years < 5 and self.title in ADULT_ONLY_TITLES:
+                raise ValueError(
+                    f"For children under 5, please use Baby or Master instead of {self.title}"
+                )
+        return self
 
 
 class PatientUpdate(PatientBase):
-    pass
+    @model_validator(mode="after")
+    def validate_title_vs_age(self) -> "PatientUpdate":
+        if self.date_of_birth and self.title:
+            age_years = (date.today() - self.date_of_birth).days / 365.25
+            if age_years < 5 and self.title in ADULT_ONLY_TITLES:
+                raise ValueError(
+                    f"For children under 5, please use Baby or Master instead of {self.title}"
+                )
+        return self
 
 
 class PatientResponse(BaseModel):

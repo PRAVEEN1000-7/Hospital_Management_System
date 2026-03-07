@@ -5,9 +5,9 @@ import re
 
 
 VALID_ROLES = [
-    "super_admin", "admin", "doctor", "receptionist",
+    "super_admin", "admin", "doctor", "nurse", "receptionist",
     "pharmacist", "optical_staff", "cashier",
-    "inventory_manager", "report_viewer",
+    "inventory_manager", "report_viewer", "staff",
 ]
 
 

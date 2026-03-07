@@ -75,7 +75,8 @@ type ResetFormData = z.infer<typeof resetPasswordSchema>;
 
 const ROLES = [
   'super_admin', 'admin', 'doctor', 'nurse', 'receptionist',
-  'pharmacist', 'cashier', 'inventory_manager', 'staff',
+  'pharmacist', 'optical_staff', 'cashier', 'inventory_manager',
+  'report_viewer', 'staff',
 ];
 
 // Departments available per role. Empty array = department field hidden.
@@ -106,6 +107,8 @@ const ROLE_DEPARTMENT_MAP: Record<string, { depts: typeof ALL_DEPARTMENTS; requi
   doctor:            { depts: CLINICAL_DEPTS, required: true },
   nurse:             { depts: CLINICAL_DEPTS, required: true },
   receptionist:      { depts: ALL_DEPARTMENTS, required: false },
+  optical_staff:     { depts: [], required: false },
+  report_viewer:     { depts: [], required: false },
   staff:             { depts: ALL_DEPARTMENTS, required: false },
 };
 

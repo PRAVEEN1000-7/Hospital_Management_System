@@ -64,7 +64,9 @@ VALUES
     ('e0000000-0000-0000-0000-000000000006', NULL, 'optical_staff',     'Optical Staff',        'Optical store operations',                 true, true),
     ('e0000000-0000-0000-0000-000000000007', NULL, 'cashier',           'Cashier',              'Billing and payment operations',            true, true),
     ('e0000000-0000-0000-0000-000000000008', NULL, 'inventory_manager', 'Inventory Manager',    'Inventory and stock management',            true, true),
-    ('e0000000-0000-0000-0000-000000000009', NULL, 'report_viewer',     'Report Viewer',        'Read-only access to reports',               true, true);
+    ('e0000000-0000-0000-0000-000000000009', NULL, 'report_viewer',     'Report Viewer',        'Read-only access to reports',               true, true),
+    ('e0000000-0000-0000-0000-000000000010', NULL, 'nurse',             'Nurse',                'Nursing and patient care support',           true, true),
+    ('e0000000-0000-0000-0000-000000000011', NULL, 'staff',             'Staff',                'General staff access',                       true, true);
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 6. PERMISSIONS  (CRUD per module)

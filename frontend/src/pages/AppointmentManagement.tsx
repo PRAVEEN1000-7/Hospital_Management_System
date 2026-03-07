@@ -87,6 +87,16 @@ const AppointmentManagement: React.FC = () => {
     return `${h % 12 || 12}:${m.toString().padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
   };
 
+  // For walk-ins start_time is null — fall back to check_in_at (arrival time)
+  const getApptTime = (appt: Appointment): string | undefined => {
+    if (appt.start_time) return appt.start_time;
+    if (appt.check_in_at) {
+      const d = new Date(appt.check_in_at);
+      return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+    }
+    return undefined;
+  };
+
   const statuses: AppointmentStatus[] = ['scheduled', 'pending', 'confirmed', 'in-progress', 'completed', 'cancelled', 'no-show', 'rescheduled'];
 
   return (
@@ -204,7 +214,63 @@ const AppointmentManagement: React.FC = () => {
         </div>
       ) : (
         <>
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden mb-4">
+          {/* Mobile card view */}
+          <div className="md:hidden space-y-3 mb-4">
+            {appointments.map(appt => (
+              <div key={appt.id} className="bg-white rounded-xl border border-slate-200 p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-primary">{appt.appointment_number}</span>
+                  <AppointmentStatusBadge status={appt.status} />
+                </div>
+                <p className="font-medium text-slate-900 text-sm">{appt.patient_name || '—'}</p>
+                <p className="text-xs text-slate-500 mt-0.5">{appt.doctor_name || '—'}</p>
+                <div className="flex items-center gap-3 mt-2 text-xs text-slate-500">
+                  <span className="flex items-center gap-1">
+                    <span className="material-symbols-outlined text-sm">calendar_today</span>
+                    {new Date(appt.appointment_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="material-symbols-outlined text-sm">schedule</span>
+                    {formatTime(getApptTime(appt))}
+                    {!appt.start_time && appt.check_in_at && <span className="text-[9px] text-slate-400 ml-0.5">(arrival)</span>}
+                  </span>
+                  <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${appt.appointment_type === 'walk-in' ? 'bg-orange-50 text-orange-600' : 'bg-blue-50 text-blue-600'}`}>
+                    {appt.appointment_type}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 mt-3 pt-3 border-t border-slate-100">
+                  <button onClick={() => setDetailAppt(appt)} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg" title="View">
+                    <span className="material-symbols-outlined text-lg">visibility</span>
+                  </button>
+                  {appt.status !== 'cancelled' && appt.status !== 'completed' && (
+                    <>
+                      {(appt.status === 'scheduled' || appt.status === 'pending') && (
+                        <button onClick={() => handleStatusChange(appt.id, 'confirmed')} className="p-1.5 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Confirm">
+                          <span className="material-symbols-outlined text-lg">check_circle</span>
+                        </button>
+                      )}
+                      {appt.status === 'confirmed' && (
+                        <button onClick={() => handleStatusChange(appt.id, 'in-progress')} className="p-1.5 text-purple-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg" title="Start">
+                          <span className="material-symbols-outlined text-lg">play_circle</span>
+                        </button>
+                      )}
+                      {appt.status === 'in-progress' && (
+                        <button onClick={() => handleStatusChange(appt.id, 'completed')} className="p-1.5 text-emerald-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg" title="Complete">
+                          <span className="material-symbols-outlined text-lg">task_alt</span>
+                        </button>
+                      )}
+                      <button onClick={() => { setCancelId(appt.id); setCancelReason(''); }} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Cancel">
+                        <span className="material-symbols-outlined text-lg">cancel</span>
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop table view */}
+          <div className="hidden md:block bg-white rounded-xl border border-slate-200 overflow-hidden mb-4">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -223,7 +289,8 @@ const AppointmentManagement: React.FC = () => {
                       <td className="px-4 py-3 text-slate-600">
                         {new Date(appt.appointment_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                         <span className="text-slate-300 mx-1">·</span>
-                        {formatTime(appt.start_time || undefined)}
+                        {formatTime(getApptTime(appt))}
+                        {!appt.start_time && appt.check_in_at && <span className="ml-1 text-[10px] text-slate-400">(arrival)</span>}
                       </td>
                       <td className="px-4 py-3">
                         <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${appt.appointment_type === 'walk-in' ? 'bg-orange-50 text-orange-600' : 'bg-blue-50 text-blue-600'}`}>
@@ -296,7 +363,7 @@ const AppointmentManagement: React.FC = () => {
                 ['Patient', detailAppt.patient_name || '—'],
                 ['Doctor', detailAppt.doctor_name || '—'],
                 ['Date', new Date(detailAppt.appointment_date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })],
-                ['Time', `${formatTime(detailAppt.start_time || undefined)}`],
+                [detailAppt.start_time ? 'Time' : 'Arrival Time', formatTime(getApptTime(detailAppt))],
                 ['Type', detailAppt.appointment_type],
                 ['Consultation', detailAppt.visit_type || '—'],
                 ['Urgency', detailAppt.priority || 'normal'],

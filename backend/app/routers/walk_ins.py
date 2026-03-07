@@ -210,7 +210,7 @@ async def register_walk_in(
             patient_id=patient_id,
             doctor_id=doctor_id,
             appointment_date=today,
-            start_time=None,
+            start_time=now.astimezone().time().replace(second=0, microsecond=0),
             end_time=None,
             appointment_type="walk-in",
             visit_type="new",

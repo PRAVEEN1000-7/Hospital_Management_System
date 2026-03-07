@@ -132,7 +132,9 @@ const WalkInRegistration: React.FC = () => {
     const errs: Partial<Record<keyof RegForm, string>> = {};
     if (!regForm.title) errs.title = 'Required';
     if (!regForm.first_name.trim()) errs.first_name = 'Required';
+    else if (!/^[A-Za-z\s.'\-]+$/.test(regForm.first_name)) errs.first_name = 'Alphabets only';
     if (!regForm.last_name.trim()) errs.last_name = 'Required';
+    else if (!/^[A-Za-z\s.'\-]+$/.test(regForm.last_name)) errs.last_name = 'Alphabets only';
     if (!regForm.gender) errs.gender = 'Required';
     if (!regForm.date_of_birth) errs.date_of_birth = 'Required';
     if (!regForm.blood_group) errs.blood_group = 'Required';
@@ -143,9 +145,12 @@ const WalkInRegistration: React.FC = () => {
   const validateRegContact = (): boolean => {
     const errs: Partial<Record<keyof RegForm, string>> = {};
     if (!regForm.phone_number.trim()) errs.phone_number = 'Required';
+    else if (!/^\d{10}$/.test(regForm.phone_number)) errs.phone_number = 'Must be exactly 10 digits';
     if (!regForm.address_line_1.trim()) errs.address_line_1 = 'Required';
     if (regForm.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(regForm.email))
       errs.email = 'Invalid email';
+    if (regForm.postal_code && !/^\d{6}$/.test(regForm.postal_code))
+      errs.postal_code = 'PIN code must be exactly 6 digits';
     setRegErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -157,6 +162,19 @@ const WalkInRegistration: React.FC = () => {
 
   const handleRegSubmit = async () => {
     if (!validateRegContact()) { setRegSection('contact'); return; }
+    // Validate emergency contact phone before submitting
+    if (regForm.emergency_contact_phone) {
+      const eErr: Partial<Record<keyof RegForm, string>> = {};
+      if (!/^\d{10}$/.test(regForm.emergency_contact_phone))
+        eErr.emergency_contact_phone = 'Must be exactly 10 digits';
+      else if (regForm.emergency_contact_phone === regForm.phone_number)
+        eErr.emergency_contact_phone = 'Must differ from the patient\'s phone number';
+      if (Object.keys(eErr).length) {
+        setRegErrors(prev => ({ ...prev, ...eErr }));
+        setRegSection('emergency');
+        return;
+      }
+    }
     setRegSubmitting(true);
     try {
       const payload: Record<string, string | undefined> = {};
@@ -184,6 +202,38 @@ const WalkInRegistration: React.FC = () => {
     setRegForm(emptyReg());
     setRegErrors({});
     setRegSection('personal');
+  };
+
+  const blockNonDigit = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!/^\d$/.test(e.key) && !['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Home', 'End'].includes(e.key))
+      e.preventDefault();
+  };
+  const blockNonAlpha = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!/^[A-Za-z\s.'\-]$/.test(e.key) && !['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Home', 'End'].includes(e.key))
+      e.preventDefault();
+  };
+  const validateField = (field: keyof RegForm, value: string) => {
+    let error = '';
+    if (field === 'first_name') {
+      if (!value.trim()) error = 'Required';
+      else if (!/^[A-Za-z\s.'\-]+$/.test(value)) error = 'Alphabets only';
+    } else if (field === 'last_name') {
+      if (!value.trim()) error = 'Required';
+      else if (!/^[A-Za-z\s.'\-]+$/.test(value)) error = 'Alphabets only';
+    } else if (field === 'phone_number') {
+      if (!value) error = 'Phone is required';
+      else if (!/^\d{10}$/.test(value)) error = 'Must be exactly 10 digits';
+    } else if (field === 'emergency_contact_phone') {
+      if (value && !/^\d{10}$/.test(value)) error = 'Must be exactly 10 digits';
+      else if (value && value === regForm.phone_number) error = 'Must differ from patient phone';
+    } else if (field === 'postal_code') {
+      if (value && !/^\d{6}$/.test(value)) error = 'PIN code must be 6 digits';
+    } else if (field === 'email') {
+      if (value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) error = 'Invalid email';
+    } else if (field === 'address_line_1') {
+      if (!value.trim()) error = 'Address is required';
+    }
+    setRegErrors(prev => ({ ...prev, [field]: error || undefined }));
   };
 
   if (waitlisted) {
@@ -464,15 +514,17 @@ const WalkInRegistration: React.FC = () => {
                     <div>
                       <label className="block text-xs font-bold text-slate-500 mb-1">First Name <span className="text-red-500">*</span></label>
                       <input value={regForm.first_name} onChange={e => setReg('first_name', e.target.value)}
-                        placeholder="First name"
-                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
+                        onBlur={e => validateField('first_name', e.target.value)}
+                        placeholder="First name" maxLength={100} onKeyDown={blockNonAlpha}
+                        className={`w-full px-3 py-2 border ${regErrors.first_name ? 'border-red-400' : 'border-slate-200'} rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none`} />
                       {regErrors.first_name && <p className="text-[10px] text-red-500 mt-0.5">{regErrors.first_name}</p>}
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 mb-1">Last Name <span className="text-red-500">*</span></label>
                       <input value={regForm.last_name} onChange={e => setReg('last_name', e.target.value)}
-                        placeholder="Last name"
-                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
+                        onBlur={e => validateField('last_name', e.target.value)}
+                        placeholder="Last name" maxLength={100} onKeyDown={blockNonAlpha}
+                        className={`w-full px-3 py-2 border ${regErrors.last_name ? 'border-red-400' : 'border-slate-200'} rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none`} />
                       {regErrors.last_name && <p className="text-[10px] text-red-500 mt-0.5">{regErrors.last_name}</p>}
                     </div>
                   </div>
@@ -505,8 +557,9 @@ const WalkInRegistration: React.FC = () => {
                   <div>
                     <label className="block text-xs font-bold text-slate-500 mb-1">Email (optional)</label>
                     <input type="email" value={regForm.email} onChange={e => setReg('email', e.target.value)}
+                      onBlur={e => validateField('email', e.target.value)}
                       placeholder="patient@example.com"
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
+                      className={`w-full px-3 py-2 border ${regErrors.email ? 'border-red-400' : 'border-slate-200'} rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none`} />
                     {regErrors.email && <p className="text-[10px] text-red-500 mt-0.5">{regErrors.email}</p>}
                   </div>
                 </>
@@ -528,16 +581,18 @@ const WalkInRegistration: React.FC = () => {
                     <div className="sm:col-span-2">
                       <label className="block text-xs font-bold text-slate-500 mb-1">Phone Number <span className="text-red-500">*</span></label>
                       <input value={regForm.phone_number} onChange={e => setReg('phone_number', e.target.value)}
-                        placeholder="Phone number (digits only)"
-                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
+                        onBlur={e => validateField('phone_number', e.target.value)}
+                        placeholder="10-digit phone number" maxLength={10} onKeyDown={blockNonDigit}
+                        className={`w-full px-3 py-2 border ${regErrors.phone_number ? 'border-red-400' : 'border-slate-200'} rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none`} />
                       {regErrors.phone_number && <p className="text-[10px] text-red-500 mt-0.5">{regErrors.phone_number}</p>}
                     </div>
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-500 mb-1">Address Line 1 <span className="text-red-500">*</span></label>
                     <input value={regForm.address_line_1} onChange={e => setReg('address_line_1', e.target.value)}
+                      onBlur={e => validateField('address_line_1', e.target.value)}
                       placeholder="Street address, building..."
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
+                      className={`w-full px-3 py-2 border ${regErrors.address_line_1 ? 'border-red-400' : 'border-slate-200'} rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none`} />
                     {regErrors.address_line_1 && <p className="text-[10px] text-red-500 mt-0.5">{regErrors.address_line_1}</p>}
                   </div>
                   <div>
@@ -570,8 +625,10 @@ const WalkInRegistration: React.FC = () => {
                     <div>
                       <label className="block text-xs font-bold text-slate-500 mb-1">{regPostalLabel}</label>
                       <input value={regForm.postal_code} onChange={e => setReg('postal_code', e.target.value)}
-                        placeholder={regPostalLabel}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
+                        onBlur={e => validateField('postal_code', e.target.value)}
+                        placeholder="6-digit PIN code" maxLength={6} onKeyDown={blockNonDigit}
+                        className={`w-full px-3 py-2 border ${regErrors.postal_code ? 'border-red-400' : 'border-slate-200'} rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none`} />
+                      {regErrors.postal_code && <p className="text-[10px] text-red-500 mt-0.5">{regErrors.postal_code}</p>}
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 mb-1">Country</label>
@@ -595,7 +652,7 @@ const WalkInRegistration: React.FC = () => {
                     <div>
                       <label className="block text-xs font-bold text-slate-500 mb-1">Contact Name</label>
                       <input value={regForm.emergency_contact_name} onChange={e => setReg('emergency_contact_name', e.target.value)}
-                        placeholder="Full name"
+                        placeholder="Full name" maxLength={200} onKeyDown={blockNonAlpha}
                         className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
                     </div>
                     <div>
@@ -613,8 +670,10 @@ const WalkInRegistration: React.FC = () => {
                     <div className="sm:col-span-3">
                       <label className="block text-xs font-bold text-slate-500 mb-1">Phone Number</label>
                       <input value={regForm.emergency_contact_phone} onChange={e => setReg('emergency_contact_phone', e.target.value)}
-                        placeholder="Emergency contact number"
-                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
+                        onBlur={e => validateField('emergency_contact_phone', e.target.value)}
+                        placeholder="10-digit emergency phone" maxLength={10} onKeyDown={blockNonDigit}
+                        className={`w-full px-3 py-2 border ${regErrors.emergency_contact_phone ? 'border-red-400' : 'border-slate-200'} rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none`} />
+                      {regErrors.emergency_contact_phone && <p className="text-[10px] text-red-500 mt-0.5">{regErrors.emergency_contact_phone}</p>}
                     </div>
                   </div>
                 </>

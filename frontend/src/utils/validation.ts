@@ -30,7 +30,7 @@ export const patientSchema = z.object({
     message: 'Blood group is required',
   }),
   phone_country_code: z.string().regex(/^\+[0-9]{1,4}$/, 'Invalid country code').default('+91'),
-  phone_number: z.string().regex(/^\d{7,15}$/, 'Phone number must be 7-15 digits'),
+  phone_number: z.string().regex(/^\d{10}$/, 'Phone number must be exactly 10 digits'),
   email: z.union([z.string().email('Invalid email'), z.literal('')]).optional(),
   address_line_1: z.string()
     .min(5, 'Address must be at least 5 characters')
@@ -39,13 +39,13 @@ export const patientSchema = z.object({
   city: z.string().optional().or(z.literal('')),
   state: z.string().optional().or(z.literal('')),
   pin_code: z.union([
-    z.string().regex(/^[A-Za-z0-9 \-]{3,10}$/, 'Invalid postal code'),
+    z.string().regex(/^\d{6}$/, 'PIN code must be exactly 6 digits'),
     z.literal(''),
   ]).optional(),
   country: z.string().optional().default('India'),
   emergency_contact_name: z.string().optional().or(z.literal('')),
   emergency_contact_phone: z.union([
-    z.string().regex(/^\d{7,15}$/, 'Emergency phone must be 7-15 digits'),
+    z.string().regex(/^\d{10}$/, 'Emergency contact number must be exactly 10 digits'),
     z.literal(''),
   ]).optional(),
   emergency_contact_relation: z.union([
@@ -71,6 +71,25 @@ export const patientSchema = z.object({
         path: ['title'],
       });
     }
+    if (!isChild && (CHILD_TITLES as readonly string[]).includes(title)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Title "${title}" is only for children under 5. Please select Mr./Mrs./Ms./Dr./Prof.`,
+        path: ['title'],
+      });
+    }
+  }
+  // Emergency contact phone must differ from patient's phone
+  if (
+    data.emergency_contact_phone &&
+    data.emergency_contact_phone !== '' &&
+    data.emergency_contact_phone === data.phone_number
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Emergency contact number must be different from the patient\'s phone number',
+      path: ['emergency_contact_phone'],
+    });
   }
 });
 

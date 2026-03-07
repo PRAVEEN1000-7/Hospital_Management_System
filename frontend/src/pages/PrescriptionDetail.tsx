@@ -15,6 +15,15 @@ const PrescriptionDetail: React.FC = () => {
   const [versions, setVersions] = useState<PrescriptionVersion[]>([]);
   const [loading, setLoading] = useState(true);
   const [showVersions, setShowVersions] = useState(false);
+  const [printLang, setPrintLang] = useState('en');
+  const [languages, setLanguages] = useState<{ code: string; name: string }[]>([]);
+  const [showLangMenu, setShowLangMenu] = useState(false);
+
+  useEffect(() => {
+    prescriptionService.getPrescriptionLanguages()
+      .then(setLanguages)
+      .catch(() => setLanguages([{ code: 'en', name: 'English' }]));
+  }, []);
 
   useEffect(() => {
     if (!id) return;
@@ -61,10 +70,10 @@ const PrescriptionDetail: React.FC = () => {
     }
   };
 
-  const handlePrint = async () => {
+  const handlePrint = async (lang?: string) => {
     if (!id) return;
     try {
-      const html = await prescriptionService.getPrescriptionPdfUrl(id);
+      const html = await prescriptionService.getPrescriptionPdfUrl(id, lang || printLang);
       const win = window.open('', '_blank');
       if (win) {
         win.document.write(html);
@@ -116,12 +125,48 @@ const PrescriptionDetail: React.FC = () => {
           </h1>
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={handlePrint}
-            className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-medium hover:bg-slate-50 flex items-center gap-2"
-          >
-            <span className="material-symbols-outlined text-sm">print</span> Print
-          </button>
+          <div className="relative">
+            <div className="flex">
+              <button
+                onClick={() => handlePrint()}
+                className="px-4 py-2 rounded-l-lg border border-slate-200 text-sm font-medium hover:bg-slate-50 flex items-center gap-2"
+              >
+                <span className="material-symbols-outlined text-sm">print</span> Print
+                {printLang !== 'en' && (
+                  <span className="text-xs text-primary font-semibold">
+                    ({languages.find(l => l.code === printLang)?.name})
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => setShowLangMenu(!showLangMenu)}
+                className="px-2 py-2 rounded-r-lg border border-l-0 border-slate-200 text-sm font-medium hover:bg-slate-50 flex items-center"
+              >
+                <span className="material-symbols-outlined text-sm">translate</span>
+              </button>
+            </div>
+            {showLangMenu && (
+              <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg z-50 min-w-[180px] py-1">
+                {languages.map(lang => (
+                  <button
+                    key={lang.code}
+                    onClick={() => {
+                      setPrintLang(lang.code);
+                      setShowLangMenu(false);
+                    }}
+                    className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-50 flex items-center justify-between ${
+                      printLang === lang.code ? 'bg-primary/5 text-primary font-medium' : 'text-slate-700'
+                    }`}
+                  >
+                    <span>{lang.name}</span>
+                    {printLang === lang.code && (
+                      <span className="material-symbols-outlined text-primary text-sm">check</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           {canEdit && (
             <button
               onClick={() => navigate(`/prescriptions/${id}/edit`)}
@@ -403,7 +448,7 @@ const PrescriptionDetail: React.FC = () => {
             <h4 className="text-sm font-semibold mb-3">Quick Actions</h4>
             <div className="space-y-2">
               <button
-                onClick={handlePrint}
+                onClick={() => handlePrint()}
                 className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm font-medium hover:bg-slate-50 flex items-center gap-2"
               >
                 <span className="material-symbols-outlined text-sm">print</span> Print Prescription

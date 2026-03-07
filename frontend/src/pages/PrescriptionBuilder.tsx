@@ -225,11 +225,17 @@ const PrescriptionBuilder: React.FC = () => {
   const selectMedicine = (med: Medicine, blockIdx: number, itemIdx: number) => {
     const newBlocks = [...blocks];
     const updatedItems = [...newBlocks[blockIdx].items];
+    // Strip strength from name if it's embedded (e.g. "Paracetamol 500mg" → "Paracetamol")
+    let cleanName = med.name;
+    if (med.strength && cleanName.toLowerCase().endsWith(med.strength.toLowerCase())) {
+      cleanName = cleanName.slice(0, -med.strength.length).trim();
+    }
     updatedItems[itemIdx] = {
       ...updatedItems[itemIdx],
       medicine_id: med.id,
-      medicine_name: `${med.name}${med.strength ? ' ' + med.strength : ''}`,
+      medicine_name: cleanName,
       generic_name: med.generic_name,
+      dosage: med.strength || '',
     };
     newBlocks[blockIdx] = { ...newBlocks[blockIdx], items: updatedItems };
     setBlocks(newBlocks);
@@ -244,6 +250,14 @@ const PrescriptionBuilder: React.FC = () => {
     const updatedItems = [...newBlocks[blockIdx].items];
     updatedItems[itemIdx] = { ...updatedItems[itemIdx], [field]: value };
     newBlocks[blockIdx] = { ...newBlocks[blockIdx], items: updatedItems };
+    // Auto-add a new row when the last row has medicine_name, dosage, and frequency filled
+    if (itemIdx === updatedItems.length - 1) {
+      const lastItem = updatedItems[itemIdx];
+      if (lastItem.medicine_name?.trim() && lastItem.dosage?.trim() && lastItem.frequency?.trim()) {
+        updatedItems.push({ ...emptyItem(), display_order: updatedItems.length });
+        newBlocks[blockIdx] = { ...newBlocks[blockIdx], items: updatedItems };
+      }
+    }
     setBlocks(newBlocks);
   };
 
@@ -262,19 +276,12 @@ const PrescriptionBuilder: React.FC = () => {
     setBlocks(newBlocks);
   };
 
-  /** Auto-add a new empty row when user starts typing in the last medicine row */
+  /** Handle medicine name typing and trigger search */
   const handleMedicineNameChange = (blockIdx: number, itemIdx: number, value: string) => {
     updateItem(blockIdx, itemIdx, 'medicine_name', value);
     setMedicineSearch(value);
     setActiveMedBlockIdx(blockIdx);
     setActiveMedItemIdx(itemIdx);
-    // Auto-add new row if typing in the last item
-    if (itemIdx === blocks[blockIdx].items.length - 1 && value.length > 0) {
-      const lastItem = blocks[blockIdx].items[itemIdx];
-      if (!lastItem.medicine_name || lastItem.medicine_name === value) {
-        addItemToBlock(blockIdx);
-      }
-    }
   };
 
   const addBlock = () => {

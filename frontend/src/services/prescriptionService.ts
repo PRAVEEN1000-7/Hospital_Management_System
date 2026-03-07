@@ -96,8 +96,13 @@ const prescriptionService = {
     return res.data;
   },
 
-  async getPrescriptionPdfUrl(id: string): Promise<string> {
-    const res = await api.get(`/prescriptions/${id}/pdf`, { responseType: 'text' });
+  async getPrescriptionPdfUrl(id: string, lang = 'en'): Promise<string> {
+    const res = await api.get(`/prescriptions/${id}/pdf`, { responseType: 'text', params: { lang } });
+    return res.data;
+  },
+
+  async getPrescriptionLanguages(): Promise<{ code: string; name: string }[]> {
+    const res = await api.get<{ code: string; name: string }[]>('/prescriptions/languages');
     return res.data;
   },
 

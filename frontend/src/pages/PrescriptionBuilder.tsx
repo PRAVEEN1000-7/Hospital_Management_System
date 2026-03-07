@@ -14,6 +14,17 @@ const FREQUENCY_OPTIONS = ['1-0-0', '0-1-0', '0-0-1', '1-0-1', '1-1-0', '0-1-1',
 const DURATION_UNITS = ['days', 'weeks', 'months'];
 const ROUTE_OPTIONS = ['oral', 'topical', 'injection', 'inhalation', 'sublingual', 'rectal', 'nasal', 'ophthalmic', 'otic'];
 
+const computeAge = (p: Patient | null): string => {
+  if (!p) return 'N/A';
+  if (p.age_years) return `${p.age_years}y`;
+  if (p.date_of_birth) {
+    const diff = Date.now() - new Date(p.date_of_birth).getTime();
+    const years = Math.floor(diff / (365.25 * 24 * 60 * 60 * 1000));
+    return years > 0 ? `${years}y` : '<1y';
+  }
+  return 'N/A';
+};
+
 const emptyItem = (): PrescriptionItemCreate => ({
   medicine_name: '',
   generic_name: '',
@@ -445,7 +456,7 @@ const PrescriptionBuilder: React.FC = () => {
                     {patient.first_name} {patient.last_name}
                   </p>
                   <p className="text-xs text-slate-500">
-                    {patient.patient_reference_number} | {patient.age_years ? `${patient.age_years}y` : ''}/{patient.gender?.[0]?.toUpperCase() || ''} | {patient.blood_group || ''}
+                    {patient.patient_reference_number} | {computeAge(patient)}/{patient.gender?.[0]?.toUpperCase() || ''} | {patient.blood_group || ''}
                   </p>
                 </div>
                 <button
@@ -589,7 +600,7 @@ const PrescriptionBuilder: React.FC = () => {
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
                     <div className="bg-white rounded-lg p-2.5 border border-indigo-100 shadow-sm">
                       <span className="text-[10px] text-indigo-400 block font-semibold uppercase tracking-wide">Age/Gender</span>
-                      <span className="font-bold text-indigo-900">{patient.age_years ? `${patient.age_years}y` : 'N/A'} / {patient.gender?.[0]?.toUpperCase() || 'N/A'}</span>
+                      <span className="font-bold text-indigo-900">{computeAge(patient)} / {patient.gender?.[0]?.toUpperCase() || 'N/A'}</span>
                     </div>
                     <div className="bg-white rounded-lg p-2.5 border border-indigo-100 shadow-sm">
                       <span className="text-[10px] text-indigo-400 block font-semibold uppercase tracking-wide">Blood Group</span>

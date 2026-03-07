@@ -70,7 +70,9 @@ const Layout: React.FC = () => {
   ];
   // Patient Directory - NOT for doctors
   if (role !== 'doctor') {
-    mainNavItems.push({ to: '/patients',  label: 'Patient Directory', icon: 'group' });
+    mainNavItems.push({ to: '/patients',  label: 'Patient Directory', icon: 'group' },
+      { to: '/register', label: 'Register Patient', icon: 'person_add' },
+    );
   }
   if (role === 'super_admin' || role === 'admin') {
     mainNavItems.push({ to: '/staff', label: 'Staff Directory', icon: 'badge' });
@@ -142,17 +144,12 @@ const Layout: React.FC = () => {
   const systemNavItems: { to: string; label: string; icon: string }[] = [];
   if (role === 'super_admin') {
     systemNavItems.push(
-      { to: '/register',        label: 'Register User',   icon: 'person_add' },
       { to: '/hospital-setup',  label: 'Hospital Setup',  icon: 'local_hospital' },
       { to: '/user-management', label: 'User Management', icon: 'admin_panel_settings' },
     );
   } else if (role === 'admin') {
     systemNavItems.push(
-      { to: '/register', label: 'Register User', icon: 'person_add' },
-    );
-  } else if (role === 'receptionist') {
-    systemNavItems.push(
-      { to: '/register', label: 'Register Patient', icon: 'person_add' },
+      { to: '/user-management', label: 'User Management', icon: 'admin_panel_settings' },
     );
   }
 

@@ -37,6 +37,7 @@ class PatientBase(BaseModel):
     marital_status: Optional[str] = None
     emergency_contact_name: Optional[str] = Field(None, max_length=200)
     emergency_contact_phone: Optional[str] = Field(None, pattern=r"^\d{10}$")
+    emergency_contact_country_code: Optional[str] = Field(None, pattern=r"^\+[0-9]{1,4}$")
     emergency_contact_relation: Optional[str] = None
 
     @field_validator("title")
@@ -161,6 +162,7 @@ class PatientResponse(BaseModel):
     marital_status: Optional[str] = None
     emergency_contact_name: Optional[str] = None
     emergency_contact_phone: Optional[str] = None
+    emergency_contact_country_code: Optional[str] = None
     emergency_contact_relation: Optional[str] = None
     photo_url: Optional[str] = None
     is_active: bool

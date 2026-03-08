@@ -39,6 +39,7 @@ def list_users(
         .options(
             joinedload(User.user_roles).joinedload(UserRole.role),
             joinedload(User.hospital),
+            joinedload(User.doctor_profile),
         )
         .filter(User.is_deleted == False)
     )
@@ -80,6 +81,7 @@ def get_user_by_id(db: Session, user_id: str | uuid.UUID) -> Optional[User]:
         .options(
             joinedload(User.user_roles).joinedload(UserRole.role),
             joinedload(User.hospital),
+            joinedload(User.doctor_profile),
         )
         .filter(User.id == user_id, User.is_deleted == False)
         .first()

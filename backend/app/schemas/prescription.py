@@ -249,6 +249,14 @@ class PrescriptionResponse(BaseModel):
     # Enriched fields
     patient_name: Optional[str] = None
     patient_reference_number: Optional[str] = None
+    patient_gender: Optional[str] = None
+    patient_date_of_birth: Optional[str] = None
+    patient_age: Optional[int] = None
+    patient_blood_group: Optional[str] = None
+    patient_phone: Optional[str] = None
+    patient_email: Optional[str] = None
+    patient_known_allergies: Optional[str] = None
+    patient_chronic_conditions: Optional[str] = None
     appointment_number: Optional[str] = None
     doctor_name: Optional[str] = None
     items: list[PrescriptionItemResponse] = []

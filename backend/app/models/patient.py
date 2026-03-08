@@ -41,6 +41,7 @@ class Patient(Base):
     photo_url = Column(String(500))
     emergency_contact_name = Column(String(200))
     emergency_contact_phone = Column(String(20))
+    emergency_contact_country_code = Column(String(5), default="+91")
     emergency_contact_relation = Column(String(50))
     known_allergies = Column(Text)
     chronic_conditions = Column(Text)

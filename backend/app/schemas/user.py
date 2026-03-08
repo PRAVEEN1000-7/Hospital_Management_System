@@ -37,9 +37,26 @@ class UserCreate(BaseModel):
     @field_validator("username")
     @classmethod
     def validate_username(cls, v: str) -> str:
+        if " " in v:
+            raise ValueError("Username must not contain spaces")
         if not re.match(r"^[a-zA-Z0-9_]+$", v):
             raise ValueError("Username must contain only letters, numbers, and underscores")
         return v.lower()
+
+    @field_validator("first_name", "last_name")
+    @classmethod
+    def validate_names(cls, v: str) -> str:
+        if not re.match(r"^[A-Za-z\s.'\-]+$", v):
+            raise ValueError("Name must contain only letters, spaces, hyphens, and apostrophes")
+        return v
+
+    @field_validator("phone_number")
+    @classmethod
+    def validate_phone(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v != "":
+            if not re.match(r"^\d{10}$", v):
+                raise ValueError("Phone number must be exactly 10 digits")
+        return v
 
     @field_validator("password")
     @classmethod
@@ -126,6 +143,7 @@ class UserResponse(BaseModel):
     last_login_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    specialization: Optional[str] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -134,6 +152,11 @@ class UserResponse(BaseModel):
             # SQLAlchemy model instance
             roles = data.roles if hasattr(data, 'roles') else []
             hospital_name = data.hospital.name if hasattr(data, 'hospital') and data.hospital else None
+            # Extract specialization from doctor_profile if available
+            specialization = None
+            if hasattr(data, 'doctor_profile') and data.doctor_profile:
+                doc = data.doctor_profile[0] if isinstance(data.doctor_profile, list) else data.doctor_profile
+                specialization = getattr(doc, 'specialization', None)
             return {
                 "id": str(data.id),
                 "username": data.username,
@@ -151,6 +174,7 @@ class UserResponse(BaseModel):
                 "last_login_at": data.last_login_at,
                 "created_at": data.created_at,
                 "updated_at": data.updated_at,
+                "specialization": specialization,
             }
         if isinstance(data, dict):
             if "id" in data and not isinstance(data["id"], str):

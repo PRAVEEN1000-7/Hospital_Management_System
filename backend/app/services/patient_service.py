@@ -44,6 +44,7 @@ def create_patient(
         marital_status=patient_data.marital_status,
         emergency_contact_name=patient_data.emergency_contact_name,
         emergency_contact_phone=patient_data.emergency_contact_phone,
+        emergency_contact_country_code=getattr(patient_data, 'emergency_contact_country_code', None) or '+91',
         emergency_contact_relation=patient_data.emergency_contact_relation,
         created_by=user_id,
         updated_by=user_id,

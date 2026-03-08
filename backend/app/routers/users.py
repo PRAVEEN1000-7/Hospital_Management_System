@@ -136,6 +136,21 @@ async def get_users(
         )
 
 
+@router.get("/check-username/{username}")
+async def check_username_exists(
+    username: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_or_super_admin),
+):
+    """Check if a username already exists (for real-time form validation)"""
+    existing = (
+        db.query(User)
+        .filter(User.username == username.lower(), User.is_deleted == False)
+        .first()
+    )
+    return {"exists": existing is not None}
+
+
 @router.get("/{user_id}", response_model=UserResponse)
 async def get_user(
     user_id: str,

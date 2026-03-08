@@ -4,6 +4,7 @@ import { zodResolverV4 as zodResolver } from '../utils/zodResolverV4';
 import { z } from 'zod';
 import { format } from 'date-fns';
 import userService from '../services/userService';
+import doctorService from '../services/doctorService';
 import api from '../services/api';
 import type { UserData, UserCreateData, UserUpdateData } from '../types/user';
 import { ROLE_TEXT_COLORS, ROLE_LABELS } from '../utils/constants';
@@ -55,6 +56,15 @@ const userEditSchema = z.object({
   phone_number: z.string().optional(),
   role: z.string().min(1, 'Required'),
   is_active: z.boolean(),
+  specialization: z.string().optional(),
+  qualification: z.string().optional(),
+  registration_number: z.string().optional(),
+}).superRefine((data, ctx) => {
+  if (data.role === 'doctor') {
+    if (!data.specialization) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Specialization is required for doctors', path: ['specialization'] });
+    if (!data.qualification) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Qualification is required for doctors', path: ['qualification'] });
+    if (!data.registration_number) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Registration number is required for doctors', path: ['registration_number'] });
+  }
 });
 
 const resetPasswordSchema = z.object({
@@ -628,6 +638,11 @@ const EditUserModal: React.FC<{ user: UserData; onClose: () => void; onSuccess: 
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoError, setPhotoError] = useState('');
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [specializations, setSpecializations] = useState<string[]>([]);
+
+  useEffect(() => {
+    doctorService.getSpecializations().then(setSpecializations).catch(() => {});
+  }, []);
   
   const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm<EditFormData>({
     resolver: zodResolver(userEditSchema),
@@ -639,6 +654,9 @@ const EditUserModal: React.FC<{ user: UserData; onClose: () => void; onSuccess: 
       phone_number: user.phone_number || '',
       role: user.roles?.[0] || '',
       is_active: user.is_active,
+      specialization: user.specialization || '',
+      qualification: user.qualification || '',
+      registration_number: user.registration_number || '',
     },
   });
   
@@ -703,6 +721,11 @@ const EditUserModal: React.FC<{ user: UserData; onClose: () => void; onSuccess: 
         role: data.role,
         is_active: data.is_active,
       };
+      if (data.role === 'doctor') {
+        payload.specialization = data.specialization;
+        payload.qualification = data.qualification;
+        payload.registration_number = data.registration_number;
+      }
       await userService.updateUser(user.id, payload);
       
       // Upload photo if selected
@@ -795,6 +818,30 @@ const EditUserModal: React.FC<{ user: UserData; onClose: () => void; onSuccess: 
             </Field>
           </div>
         </section>
+
+        {/* Doctor-Specific Fields */}
+        {selectedRole === 'doctor' && (
+          <section className="space-y-4">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="w-8 h-[2px] bg-primary/20 rounded-full"></span>
+              <h3 className="text-sm font-bold text-primary uppercase tracking-wider">Doctor Details</h3>
+            </div>
+            <Field label="Specialization" error={errors.specialization?.message}>
+              <select {...register('specialization')} className="input-field">
+                <option value="">Select specialization</option>
+                {specializations.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </Field>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Qualification" error={errors.qualification?.message}>
+                <input {...register('qualification')} className="input-field" placeholder="e.g. MBBS, MD" />
+              </Field>
+              <Field label="Registration Number" error={errors.registration_number?.message}>
+                <input {...register('registration_number')} className="input-field" placeholder="e.g. MCI-12345" />
+              </Field>
+            </div>
+          </section>
+        )}
 
         {/* Status Toggle */}
         <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">

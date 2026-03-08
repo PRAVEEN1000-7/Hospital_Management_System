@@ -8,6 +8,7 @@ import doctorService from '../services/doctorService';
 import type { UserData, UserCreateData, UserUpdateData } from '../types/user';
 import { ROLE_TEXT_COLORS, ROLE_LABELS, COUNTRIES } from '../utils/constants';
 import { useToast } from '../contexts/ToastContext';
+import feLogger from '../services/loggerService';
 
 // ────────────────────────────────────────
 // Schemas
@@ -803,6 +804,7 @@ const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => void; o
       }
 
       const createdUser = await userService.createUser(payload, false);
+      feLogger.info('staff_create', `Staff member created: ${data.username} (role=${data.role})`);
 
       if (photoFile && createdUser.id) {
         try { await userService.uploadPhoto(createdUser.id, photoFile); }
@@ -1050,15 +1052,18 @@ const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onSuccess:
         payload.qualification = data.qualification;
         payload.registration_number = data.registration_number;
       }
+      feLogger.info('staff_edit', `Updating staff member: ${user.username}`);
       await userService.updateUser(user.id, payload);
       if (photoFile) {
         try { await userService.uploadPhoto(user.id, photoFile); }
         catch { toast.warning('Staff updated, but photo upload failed.'); onSuccess(); return; }
       }
+      feLogger.info('staff_edit', `Staff member updated: ${user.username}`);
       onSuccess();
     } catch (err: any) {
       const detail = err?.response?.data?.detail;
       const message = Array.isArray(detail) ? detail.map((d: any) => d.msg || d).join(', ') : (typeof detail === 'string' ? detail : 'Failed to update staff member');
+      feLogger.error('staff_edit', `Failed to update ${user.username}: ${message}`);
       onError(message);
     }
   };
@@ -1177,9 +1182,12 @@ const ResetPasswordModal: React.FC<{ user: UserData; onClose: () => void; onSucc
 
   const onSubmit = async (data: ResetFormData) => {
     try {
+      feLogger.info('password_reset', `Resetting password for user: ${user.username}`);
       await userService.resetPassword(user.id, { new_password: data.new_password });
+      feLogger.info('password_reset', `Password reset successful for user: ${user.username}`);
       onSuccess();
     } catch (err: any) {
+      feLogger.error('password_reset', `Password reset failed for ${user.username}: ${err?.response?.data?.detail || 'unknown error'}`);
       onError(err?.response?.data?.detail || 'Failed to reset password');
     }
   };

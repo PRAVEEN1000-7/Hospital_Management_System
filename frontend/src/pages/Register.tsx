@@ -8,6 +8,7 @@ import {
 } from '../utils/constants';
 import patientService from '../services/patientService';
 import { useToast } from '../contexts/ToastContext';
+import feLogger from '../services/loggerService';
 
 // All form fields as plain strings — no zod dependency in the form layer
 type FD = {
@@ -140,14 +141,17 @@ const Register: React.FC = () => {
     const errs = validateAll(data);
     if (Object.keys(errs).length > 0) {
       setFieldErrors(errs);
+      feLogger.warn('patient_registration', `Validation failed: ${Object.keys(errs).join(', ')}`);
       formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       return; // stops here — isSubmitting resets automatically via react-hook-form finally block
     }
     // Step 2: call backend
     setFieldErrors({});
     setServerError(null);
+    feLogger.info('patient_registration', 'Submitting patient registration form');
     try {
       const result = await patientService.createPatient(data as any);
+      feLogger.info('patient_registration', `Patient registered: ${result.patient_reference_number}`);
       toast.success(`Patient registered successfully! ID: ${result.patient_reference_number}`);
       setTimeout(() => navigate('/patients'), 2000);
     } catch (err: unknown) {
@@ -161,6 +165,7 @@ const Register: React.FC = () => {
           ? detail.map((d) => d.msg).join('\n')
           : (typeof detail === 'string' ? detail : null) ?? 'Registration failed. Please try again.';
       }
+      feLogger.error('patient_registration', `Registration failed: ${message}`);
       setServerError(message);
       toast.error(message);
     }

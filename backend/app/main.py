@@ -7,11 +7,12 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import SQLAlchemyError
 from .config import settings
 
-# Configure logging to show INFO level
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+# ── Centralized Logging Setup ──────────────────────────────────────────────
+# Initialise rotating-file + console logging BEFORE any other imports so that
+# every module inherits the same format and handlers. See logging_config.py
+# for full details on rotation policy (20 MB max, 1 backup).
+from .logging_config import setup_backend_logging, get_logger
+setup_backend_logging(level=logging.DEBUG if settings.DEBUG else logging.INFO)
 
 # Import routers
 from .routers import (
@@ -20,8 +21,9 @@ from .routers import (
     departments, doctors, hospital_settings as hospital_settings_router,
     walk_ins, waitlist, prescriptions,
 )
+from .routers import logs as logs_router  # frontend log ingestion endpoint
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Import models so they're registered with Base.metadata
 from .models import user, patient, appointment, patient_id_sequence, department, hospital_settings, prescription  # noqa: F401
@@ -52,6 +54,25 @@ if os.path.exists(uploads_dir):
     logger.info(f"Mounted uploads directory: {uploads_dir}")
 else:
     logger.warning(f"Uploads directory not found: {uploads_dir}")
+
+
+# ── Request Logging Middleware ───────────────────────────────────────────────
+# Logs every incoming API request with method, path, and response status code.
+import time
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = time.time()
+    response = await call_next(request)
+    duration_ms = (time.time() - start) * 1000
+    # Skip noisy health-check and static file requests
+    path = request.url.path
+    if path not in ("/health", "/") and not path.startswith("/uploads"):
+        logger.info(
+            "%s %s → %s (%.0fms)",
+            request.method, path, response.status_code, duration_ms,
+        )
+    return response
 
 
 # ---------- Global Exception Handlers ----------
@@ -104,6 +125,18 @@ app.include_router(waitlist.router, prefix="/api/v1")
 app.include_router(prescriptions.router, prefix="/api/v1")
 app.include_router(prescriptions.medicines_router, prefix="/api/v1")
 app.include_router(prescriptions.templates_router, prefix="/api/v1")
+app.include_router(logs_router.router, prefix="/api/v1")  # POST /api/v1/logs/frontend
+
+
+# ── Startup / Shutdown events ──────────────────────────────────────────────
+@app.on_event("startup")
+async def on_startup():
+    logger.info("HMS Backend server started — %s v%s", settings.APP_NAME, settings.APP_VERSION)
+
+
+@app.on_event("shutdown")
+async def on_shutdown():
+    logger.info("HMS Backend server shutting down")
 
 
 @app.get("/")

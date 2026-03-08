@@ -5,6 +5,7 @@ import { zodResolverV4 as zodResolver } from '../utils/zodResolverV4';
 import { useAuth } from '../contexts/AuthContext';
 import { loginSchema, type LoginFormData } from '../utils/validation';
 import { useToast } from '../contexts/ToastContext';
+import feLogger from '../services/loggerService';
 
 const Login: React.FC = () => {
   const { login } = useAuth();
@@ -23,12 +24,15 @@ const Login: React.FC = () => {
 
   const onSubmit = async (data: LoginFormData) => {
     setLoginError(null);
+    feLogger.info('login', `Login attempt for user: ${data.username}`);
     try {
       await login(data);
+      feLogger.info('login', `Login successful for user: ${data.username}`);
       navigate('/dashboard');
     } catch (err: unknown) {
       const axiosError = err as { response?: { data?: { detail?: string } } };
       const message = axiosError.response?.data?.detail || 'Login failed. Please try again.';
+      feLogger.warn('login', `Login failed for user: ${data.username} — ${message}`);
       setLoginError(message);
       toast.error(message);
     }

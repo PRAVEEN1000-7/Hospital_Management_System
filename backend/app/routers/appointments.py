@@ -62,6 +62,9 @@ async def book_appointment(
                     raise HTTPException(status_code=400, detail="Selected time slot is fully booked")
 
         appt = create_appointment(db, data.model_dump(), current_user.id, current_user.hospital_id)
+        logger.info("Appointment booked: %s (type=%s, patient=%s) by %s",
+                    appt.appointment_number, data.appointment_type,
+                    str(data.patient_id), current_user.username)
         enriched = enrich_appointment(db, appt)
 
         # Send confirmation email (async-safe, best effort)

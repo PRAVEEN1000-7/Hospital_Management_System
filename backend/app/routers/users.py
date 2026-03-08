@@ -99,6 +99,7 @@ async def create_new_user(
             except Exception as email_err:
                 logger.warning(f"Failed to send welcome email: {email_err}")
 
+        logger.info("User created: %s (role=%s) by %s", user.username, user_data.role, current_user.username)
         return UserResponse.model_validate(user)
     except HTTPException:
         raise
@@ -263,6 +264,8 @@ async def update_existing_user(
         # Update remaining user fields
         user = update_user(db, user_id, **update_fields)
 
+        logger.info("User updated: %s by %s (doctor_fields=%s)", target_user.username, current_user.username, list(doctor_fields.keys()) if doctor_fields else "none")
+
         # Re-fetch with all relationships to ensure fresh data in response
         fresh_user = get_user_by_id(db, user_id)
         return UserResponse.model_validate(fresh_user)
@@ -371,6 +374,7 @@ async def reset_user_password(
 
         reset_password(db, user_id, password_data.new_password)
 
+        logger.info("Password reset for user %s by admin %s", target_user.username, current_user.username)
         return {"message": "Password reset successfully"}
     except HTTPException:
         raise

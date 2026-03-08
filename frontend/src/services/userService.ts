@@ -20,6 +20,11 @@ export const userService = {
     return response.data;
   },
 
+  async checkUsername(username: string): Promise<{ exists: boolean }> {
+    const response = await api.get<{ exists: boolean }>(`/users/check-username/${encodeURIComponent(username)}`);
+    return response.data;
+  },
+
   async updateUser(id: string, data: UserUpdateData): Promise<UserData> {
     const response = await api.put<UserData>(`/users/${id}`, data);
     return response.data;

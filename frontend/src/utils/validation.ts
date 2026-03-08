@@ -1,8 +1,8 @@
 import { z } from 'zod';
 
 export const loginSchema = z.object({
-  username: z.string().min(3, 'Username must be at least 3 characters'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  username: z.string().min(1, 'Username is required'),
+  password: z.string().min(1, 'Password is required'),
 });
 
 export type LoginFormData = z.infer<typeof loginSchema>;
@@ -48,6 +48,7 @@ export const patientSchema = z.object({
     z.string().regex(/^\d{10}$/, 'Emergency contact number must be exactly 10 digits'),
     z.literal(''),
   ]).optional(),
+  emergency_contact_country_code: z.string().optional().default('+91'),
   emergency_contact_relation: z.union([
     z.enum(['Father', 'Mother', 'Husband', 'Wife', 'Son', 'Daughter', 'Brother', 'Sister', 'Friend', 'Guardian', 'Other']),
     z.literal(''),

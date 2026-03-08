@@ -251,6 +251,7 @@ CREATE TABLE patients (
     photo_url                   VARCHAR(500),
     emergency_contact_name      VARCHAR(200),
     emergency_contact_phone     VARCHAR(20),
+    emergency_contact_country_code VARCHAR(5) DEFAULT '+91',
     emergency_contact_relation  VARCHAR(50),
     known_allergies             TEXT,
     chronic_conditions          TEXT,

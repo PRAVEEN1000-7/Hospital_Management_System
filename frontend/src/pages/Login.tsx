@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
+import { zodResolverV4 as zodResolver } from '../utils/zodResolverV4';
 import { useAuth } from '../contexts/AuthContext';
 import { loginSchema, type LoginFormData } from '../utils/validation';
 import { useToast } from '../contexts/ToastContext';
@@ -11,6 +11,7 @@ const Login: React.FC = () => {
   const navigate = useNavigate();
   const toast = useToast();
   const [showPassword, setShowPassword] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
 
   const {
     register,
@@ -21,12 +22,15 @@ const Login: React.FC = () => {
   });
 
   const onSubmit = async (data: LoginFormData) => {
+    setLoginError(null);
     try {
       await login(data);
       navigate('/dashboard');
     } catch (err: unknown) {
       const axiosError = err as { response?: { data?: { detail?: string } } };
-      toast.error(axiosError.response?.data?.detail || 'Login failed. Please try again.');
+      const message = axiosError.response?.data?.detail || 'Login failed. Please try again.';
+      setLoginError(message);
+      toast.error(message);
     }
   };
 
@@ -85,6 +89,12 @@ const Login: React.FC = () => {
           </div>
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+            {loginError && (
+              <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <span className="material-icons text-red-500 text-lg mt-0.5">error_outline</span>
+                <p className="text-sm text-red-700">{loginError}</p>
+              </div>
+            )}
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2" htmlFor="username">
                 Email or Username

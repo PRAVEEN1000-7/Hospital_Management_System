@@ -1012,6 +1012,17 @@ VITE_API_BASE_URL=https://yourdomain.com/api/v1
 Rebuild frontend and restart backend:
 ```bash
 cd ~/Hospital_Management_System/frontend && npm run build
+
+---
+
+## 🔧 Database Alterations
+
+If you already have an existing database and are updating to a newer version, run these ALTER TABLE statements:
+
+### Add Emergency Contact Country Code
+```sql
+ALTER TABLE patients ADD COLUMN emergency_contact_country_code VARCHAR(5) DEFAULT '+91';
+```
 sudo systemctl restart hms-backend
 sudo systemctl reload nginx
 ```

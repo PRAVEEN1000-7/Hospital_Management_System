@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
+import { zodResolverV4 as zodResolver } from '../utils/zodResolverV4';
 import { useAuth } from '../contexts/AuthContext';
 import authService from '../services/authService';
 import doctorService from '../services/doctorService';

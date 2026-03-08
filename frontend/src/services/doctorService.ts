@@ -7,6 +7,12 @@ const doctorService = {
     const res = await api.get<DoctorProfile>('/doctors/me');
     return res.data;
   },
+
+  /** Get available specializations */
+  async getSpecializations(): Promise<string[]> {
+    const res = await api.get<string[]>('/doctors/specializations');
+    return res.data;
+  },
 };
 
 export default doctorService;

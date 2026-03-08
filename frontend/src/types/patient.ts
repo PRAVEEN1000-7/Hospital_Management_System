@@ -21,6 +21,7 @@ export interface Patient {
   marital_status: string | null;
   emergency_contact_name: string | null;
   emergency_contact_phone: string | null;
+  emergency_contact_country_code: string | null;
   emergency_contact_relation: string | null;
   photo_url: string | null;
   known_allergies: string | null;
@@ -74,5 +75,6 @@ export interface PatientCreateData {
   marital_status?: string;
   emergency_contact_name?: string;
   emergency_contact_phone?: string;
+  emergency_contact_country_code?: string;
   emergency_contact_relation?: string;
 }

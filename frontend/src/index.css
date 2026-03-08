@@ -21,6 +21,10 @@
       disabled:bg-slate-100 disabled:cursor-not-allowed transition-all;
   }
 
+  .input-field-error {
+    @apply border-red-400 bg-red-50/40 focus:ring-red-200 focus:border-red-400;
+  }
+
   .sidebar-item-active {
     @apply bg-blue-50 text-primary border-r-4 border-primary font-semibold;
   }

@@ -203,7 +203,6 @@ psql -U postgres -d hms_db -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT A
 psql -U postgres -d hms_db -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO hms_user;"
 psql -U hms_user -d hms_db -f database_hole/01_schema.sql
 psql -U hms_user -d hms_db -f database_hole/02_seed_data.sql
-psql -U hms_user -d hms_db -f database_hole/04_waitlist_table.sql
 ```
 
 **Linux:**
@@ -218,7 +217,6 @@ sudo -u postgres psql -d hms_db -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GR
 sudo -u postgres psql -d hms_db -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO hms_user;"
 psql -h localhost -U hms_user -d hms_db -f database_hole/01_schema.sql
 psql -h localhost -U hms_user -d hms_db -f database_hole/02_seed_data.sql
-psql -h localhost -U hms_user -d hms_db -f database_hole/04_waitlist_table.sql
 ```
 
 ### 4.3 — Truncate All Tables (Keep Schema)
@@ -300,7 +298,6 @@ Hospital_Management_System/
 │   ├── 01_schema.sql        # Full schema (62+ tables)
 │   ├── 02_seed_data.sql     # Seed data (3 hospitals, 10 users)
 │   ├── 03_queries.sql       # Reference only — DO NOT run
-│   └── 04_waitlist_table.sql
 ├── project-plan/            # Architecture & design docs
 ├── SETUP_GUIDE.md           # ← You are here
 └── MULTI_HOSPITAL_GUIDE.md  # Multi-hospital usage guide
@@ -359,7 +356,6 @@ psql -U postgres -c "CREATE DATABASE hms_db OWNER hms_user;"
 ```powershell
 psql -U hms_user -d hms_db -f database_hole/01_schema.sql
 psql -U hms_user -d hms_db -f database_hole/02_seed_data.sql
-psql -U hms_user -d hms_db -f database_hole/04_waitlist_table.sql
 ```
 
 > `03_queries.sql` is for reference only — do NOT run it.
@@ -557,7 +553,6 @@ sudo -u postgres psql -d hms_db -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GR
 ```bash
 psql -h localhost -U hms_user -d hms_db -f database_hole/01_schema.sql
 psql -h localhost -U hms_user -d hms_db -f database_hole/02_seed_data.sql
-psql -h localhost -U hms_user -d hms_db -f database_hole/04_waitlist_table.sql
 ```
 
 > Always use `-h localhost` to force TCP and avoid peer auth issues.

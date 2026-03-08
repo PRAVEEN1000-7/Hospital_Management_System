@@ -100,9 +100,6 @@ psql -h localhost -U hms_user -d hms_db -f database_hole/01_schema.sql
 
 # 2. Seed initial data (hospitals, departments, roles, users, sample patients)
 psql -h localhost -U hms_user -d hms_db -f database_hole/02_seed_data.sql
-
-# 3. Create waitlist table
-psql -h localhost -U hms_user -d hms_db -f database_hole/04_waitlist_table.sql
 ```
 
 > **Note:** `03_queries.sql` contains reference queries only — it does NOT need to be executed.
@@ -409,7 +406,6 @@ HMS/v1/
 │   ├── 01_schema.sql         # Full schema (62 tables)
 │   ├── 02_seed_data.sql      # Seed data (users, departments, etc.)
 │   ├── 03_queries.sql        # Reference queries (DO NOT run)
-│   ├── 04_waitlist_table.sql # Waitlist table migration
 │   └── README.md             # Database-specific setup notes
 │
 ├── project-plan/             # Architecture & design docs
@@ -432,7 +428,6 @@ psql -U hms_user -d hms_db -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;"
 $env:PGPASSWORD = "HMS@2026"
 psql -h localhost -U hms_user -d hms_db -f database_hole/01_schema.sql
 psql -h localhost -U hms_user -d hms_db -f database_hole/02_seed_data.sql
-psql -h localhost -U hms_user -d hms_db -f database_hole/04_waitlist_table.sql
 
 # 2. Backend  (Terminal 1)
 cd backend

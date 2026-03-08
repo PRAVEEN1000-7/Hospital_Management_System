@@ -13,7 +13,8 @@ INSERT INTO hospitals (id, name, code, address_line_1, city, state_province, pos
 VALUES
     ('a0000000-0000-0000-0000-000000000001', 'HMS Core Hospital',   'HOSP01', '123 Medical Center Drive', 'New York',  'NY', '10001', 'USA', '+12125551234', 'admin@hmscore.com',   'https://hmscore.com',   'America/New_York', 'USD', 'TAX-001-NYC',  'REG-HC-2020'),
     ('a0000000-0000-0000-0000-000000000002', 'HMS Apollo Branch',   'HOSP02', '456 Healthcare Ave',       'Los Angeles','CA', '90001', 'USA', '+13105559876', 'admin@hmsapollo.com', 'https://hmsapollo.com', 'America/Los_Angeles','USD','TAX-002-LA',   'REG-HA-2021'),
-    ('a0000000-0000-0000-0000-000000000003', 'HMS Max Branch',      'HOSP03', '789 Wellness Blvd',        'Chicago',   'IL', '60601', 'USA', '+13125554321', 'admin@hmsmax.com',    'https://hmsmax.com',    'America/Chicago',   'USD', 'TAX-003-CHI',  'REG-HM-2022');
+    ('a0000000-0000-0000-0000-000000000003', 'HMS Max Branch',      'HOSP03', '789 Wellness Blvd',        'Chicago',   'IL', '60601', 'USA', '+13125554321', 'admin@hmsmax.com',    'https://hmsmax.com',    'America/Chicago',   'USD', 'TAX-003-CHI',  'REG-HM-2022')
+ON CONFLICT (id) DO NOTHING;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 2. HOSPITAL SETTINGS
@@ -22,7 +23,8 @@ INSERT INTO hospital_settings (id, hospital_id, hospital_code, patient_id_start_
 VALUES
     ('b0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'HC', 1, 1, 150.00, 7),
     ('b0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000002', 'HA', 1, 1, 200.00, 7),
-    ('b0000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000003', 'HM', 1, 1, 175.00, 7);
+    ('b0000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000003', 'HM', 1, 1, 175.00, 7)
+ON CONFLICT (id) DO NOTHING;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 3. DEPARTMENTS  (for HMS Core Hospital)
@@ -38,7 +40,8 @@ VALUES
     ('c0000000-0000-0000-0000-000000000007', 'a0000000-0000-0000-0000-000000000001', 'ENT',                'ENT',  'Ear, nose, and throat',           7),
     ('c0000000-0000-0000-0000-000000000008', 'a0000000-0000-0000-0000-000000000001', 'Pharmacy',           'PHAR', 'Pharmaceutical services',         8),
     ('c0000000-0000-0000-0000-000000000009', 'a0000000-0000-0000-0000-000000000001', 'Laboratory',         'LAB',  'Pathology and diagnostics',       9),
-    ('c0000000-0000-0000-0000-000000000010', 'a0000000-0000-0000-0000-000000000001', 'Radiology',          'RAD',  'Imaging and radiology services', 10);
+    ('c0000000-0000-0000-0000-000000000010', 'a0000000-0000-0000-0000-000000000001', 'Radiology',          'RAD',  'Imaging and radiology services', 10)
+ON CONFLICT (id) DO NOTHING;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 4. TAX CONFIGURATIONS
@@ -49,7 +52,8 @@ VALUES
     ('d0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000001', 'Service Tax',   'SVCTAX', 5.00,  'service', 'service_tax',  '2025-01-01'),
     ('d0000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000001', 'GST 18%',       'GST18',  18.00, 'both',    'gst',          '2025-01-01'),
     ('d0000000-0000-0000-0000-000000000004', 'a0000000-0000-0000-0000-000000000001', 'GST 12%',       'GST12',  12.00, 'product', 'gst',          '2025-01-01'),
-    ('d0000000-0000-0000-0000-000000000005', 'a0000000-0000-0000-0000-000000000001', 'GST 5%',        'GST5',    5.00, 'product', 'gst',          '2025-01-01');
+    ('d0000000-0000-0000-0000-000000000005', 'a0000000-0000-0000-0000-000000000001', 'GST 5%',        'GST5',    5.00, 'product', 'gst',          '2025-01-01')
+ON CONFLICT (id) DO NOTHING;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 5. ROLES  (9 system roles)
@@ -64,7 +68,10 @@ VALUES
     ('e0000000-0000-0000-0000-000000000006', NULL, 'optical_staff',     'Optical Staff',        'Optical store operations',                 true, true),
     ('e0000000-0000-0000-0000-000000000007', NULL, 'cashier',           'Cashier',              'Billing and payment operations',            true, true),
     ('e0000000-0000-0000-0000-000000000008', NULL, 'inventory_manager', 'Inventory Manager',    'Inventory and stock management',            true, true),
-    ('e0000000-0000-0000-0000-000000000010', NULL, 'nurse',             'Nurse',                'Nursing and patient care support',           true, true);
+    ('e0000000-0000-0000-0000-000000000009', NULL, 'report_viewer',     'Report Viewer',        'View-only access to dashboards and reports', true, true),
+    ('e0000000-0000-0000-0000-000000000010', NULL, 'nurse',             'Nurse',                'Nursing and patient care support',           true, true),
+    ('e0000000-0000-0000-0000-000000000011', NULL, 'staff',             'Staff',                'General staff access',                       true, true)
+ON CONFLICT (id) DO NOTHING;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 6. PERMISSIONS  (CRUD per module)
@@ -124,7 +131,8 @@ VALUES
     ('f0000000-0000-0000-0000-000000000041', 'prescription', 'delete', 'prescription', 'Delete prescriptions'),
     ('f0000000-0000-0000-0000-000000000042', 'prescription', 'finalize', 'prescription', 'Finalize prescriptions'),
     ('f0000000-0000-0000-0000-000000000043', 'medicine', 'create', 'medicine', 'Create medicines'),
-    ('f0000000-0000-0000-0000-000000000044', 'medicine', 'read',   'medicine', 'View medicines');
+    ('f0000000-0000-0000-0000-000000000044', 'medicine', 'read',   'medicine', 'View medicines')
+ON CONFLICT (id) DO NOTHING;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 7. ROLE-PERMISSION MAPPINGS
@@ -132,12 +140,14 @@ VALUES
 
 -- Super Admin gets ALL permissions
 INSERT INTO role_permissions (role_id, permission_id)
-SELECT 'e0000000-0000-0000-0000-000000000001', id FROM permissions;
+SELECT 'e0000000-0000-0000-0000-000000000001', id FROM permissions
+ON CONFLICT DO NOTHING;
 
 -- Admin gets most permissions (exclude super admin-only like delete user)
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT 'e0000000-0000-0000-0000-000000000002', id FROM permissions
-WHERE module IN ('patients','appointments','prescriptions','pharmacy','billing','reports','admin','optical','inventory');
+WHERE module IN ('patients','appointments','prescriptions','pharmacy','billing','reports','admin','optical','inventory')
+ON CONFLICT DO NOTHING;
 
 -- Doctor
 INSERT INTO role_permissions (role_id, permission_id)
@@ -150,7 +160,8 @@ VALUES
     ('e0000000-0000-0000-0000-000000000003', 'f0000000-0000-0000-0000-000000000011'), -- read prescription
     ('e0000000-0000-0000-0000-000000000003', 'f0000000-0000-0000-0000-000000000012'), -- update prescription
     ('e0000000-0000-0000-0000-000000000003', 'f0000000-0000-0000-0000-000000000026'), -- view dashboard
-    ('e0000000-0000-0000-0000-000000000003', 'f0000000-0000-0000-0000-000000000036'); -- create optical rx
+    ('e0000000-0000-0000-0000-000000000003', 'f0000000-0000-0000-0000-000000000036') -- create optical rx
+ON CONFLICT DO NOTHING;
 
 -- Receptionist
 INSERT INTO role_permissions (role_id, permission_id)
@@ -162,7 +173,8 @@ VALUES
     ('e0000000-0000-0000-0000-000000000004', 'f0000000-0000-0000-0000-000000000007'), -- read appointment
     ('e0000000-0000-0000-0000-000000000004', 'f0000000-0000-0000-0000-000000000008'), -- update appointment
     ('e0000000-0000-0000-0000-000000000004', 'f0000000-0000-0000-0000-000000000009'), -- cancel appointment
-    ('e0000000-0000-0000-0000-000000000004', 'f0000000-0000-0000-0000-000000000026'); -- view dashboard
+    ('e0000000-0000-0000-0000-000000000004', 'f0000000-0000-0000-0000-000000000026') -- view dashboard
+ON CONFLICT DO NOTHING;
 
 -- Pharmacist
 INSERT INTO role_permissions (role_id, permission_id)
@@ -174,7 +186,8 @@ VALUES
     ('e0000000-0000-0000-0000-000000000005', 'f0000000-0000-0000-0000-000000000015'), -- add medicine
     ('e0000000-0000-0000-0000-000000000005', 'f0000000-0000-0000-0000-000000000016'), -- edit medicine
     ('e0000000-0000-0000-0000-000000000005', 'f0000000-0000-0000-0000-000000000023'), -- view stock
-    ('e0000000-0000-0000-0000-000000000005', 'f0000000-0000-0000-0000-000000000026'); -- view dashboard
+    ('e0000000-0000-0000-0000-000000000005', 'f0000000-0000-0000-0000-000000000026') -- view dashboard
+ON CONFLICT DO NOTHING;
 
 -- Cashier
 INSERT INTO role_permissions (role_id, permission_id)
@@ -184,7 +197,8 @@ VALUES
     ('e0000000-0000-0000-0000-000000000007', 'f0000000-0000-0000-0000-000000000018'), -- read invoice
     ('e0000000-0000-0000-0000-000000000007', 'f0000000-0000-0000-0000-000000000019'), -- edit invoice
     ('e0000000-0000-0000-0000-000000000007', 'f0000000-0000-0000-0000-000000000020'), -- record payment
-    ('e0000000-0000-0000-0000-000000000007', 'f0000000-0000-0000-0000-000000000026'); -- view dashboard
+    ('e0000000-0000-0000-0000-000000000007', 'f0000000-0000-0000-0000-000000000026') -- view dashboard
+ON CONFLICT DO NOTHING;
 
 -- Inventory Manager
 INSERT INTO role_permissions (role_id, permission_id)
@@ -196,14 +210,16 @@ VALUES
     ('e0000000-0000-0000-0000-000000000008', 'f0000000-0000-0000-0000-000000000024'), -- adjust stock
     ('e0000000-0000-0000-0000-000000000008', 'f0000000-0000-0000-0000-000000000025'), -- approve adjustment
     ('e0000000-0000-0000-0000-000000000008', 'f0000000-0000-0000-0000-000000000037'), -- manage optical products
-    ('e0000000-0000-0000-0000-000000000008', 'f0000000-0000-0000-0000-000000000026'); -- view dashboard
+    ('e0000000-0000-0000-0000-000000000008', 'f0000000-0000-0000-0000-000000000026') -- view dashboard
+ON CONFLICT DO NOTHING;
 
 -- Report Viewer
 INSERT INTO role_permissions (role_id, permission_id)
 VALUES
     ('e0000000-0000-0000-0000-000000000009', 'f0000000-0000-0000-0000-000000000026'), -- dashboard
     ('e0000000-0000-0000-0000-000000000009', 'f0000000-0000-0000-0000-000000000027'), -- view reports
-    ('e0000000-0000-0000-0000-000000000009', 'f0000000-0000-0000-0000-000000000028'); -- export reports
+    ('e0000000-0000-0000-0000-000000000009', 'f0000000-0000-0000-0000-000000000028') -- export reports
+ON CONFLICT DO NOTHING;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 8. USERS  (Super Admin + sample staff)
@@ -281,7 +297,8 @@ VALUES
      'HCS261X00010',
      'inventory@hmscore.com', 'inventory',
      '$2b$12$YVXG5t7ZUlhx9f3FSeLSMuhCycBWz8jEhe7EWXfr6H0iqHo5HHWwK',
-     'Robert', 'Taylor', '+12125550010', true, true);
+     'Robert', 'Taylor', '+12125550010', true, true)
+ON CONFLICT (id) DO NOTHING;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 9. USER-ROLE ASSIGNMENTS
@@ -297,7 +314,8 @@ VALUES
     ('10000000-0000-0000-0000-000000000007', 'e0000000-0000-0000-0000-000000000005', '10000000-0000-0000-0000-000000000001'), -- Pharmacist
     ('10000000-0000-0000-0000-000000000008', 'e0000000-0000-0000-0000-000000000007', '10000000-0000-0000-0000-000000000001'), -- Cashier
     ('10000000-0000-0000-0000-000000000009', 'e0000000-0000-0000-0000-000000000006', '10000000-0000-0000-0000-000000000001'), -- Optical Staff
-    ('10000000-0000-0000-0000-000000000010', 'e0000000-0000-0000-0000-000000000008', '10000000-0000-0000-0000-000000000001'); -- Inventory Mgr
+    ('10000000-0000-0000-0000-000000000010', 'e0000000-0000-0000-0000-000000000008', '10000000-0000-0000-0000-000000000001') -- Inventory Mgr
+ON CONFLICT DO NOTHING;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 10. DOCTORS
@@ -312,7 +330,8 @@ VALUES
      300.00, 150.00, 1, '10000000-0000-0000-0000-000000000001'),
     ('20000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000005', 'a0000000-0000-0000-0000-000000000001',
      'c0000000-0000-0000-0000-000000000005', 'Ophthalmology', 'MBBS, MS Ophthalmology', 'MED-NY-10003', 'NY State Medical Board', 12,
-     250.00, 125.00, 1, '10000000-0000-0000-0000-000000000001');
+     250.00, 125.00, 1, '10000000-0000-0000-0000-000000000001')
+ON CONFLICT (id) DO NOTHING;
 
 -- Set department heads
 UPDATE departments SET head_doctor_id = '20000000-0000-0000-0000-000000000001' WHERE id = 'c0000000-0000-0000-0000-000000000001';
@@ -352,7 +371,8 @@ VALUES
     -- Dr. Lee — afternoon (Mon, Wed, Fri)
     ('20000000-0000-0000-0000-000000000003', 1, 'afternoon', '15:00', '18:00', NULL, NULL, 20, 9, '2026-01-01'),
     ('20000000-0000-0000-0000-000000000003', 3, 'afternoon', '15:00', '18:00', NULL, NULL, 20, 9, '2026-01-01'),
-    ('20000000-0000-0000-0000-000000000003', 5, 'afternoon', '15:00', '18:00', NULL, NULL, 20, 9, '2026-01-01');
+    ('20000000-0000-0000-0000-000000000003', 5, 'afternoon', '15:00', '18:00', NULL, NULL, 20, 9, '2026-01-01')
+ON CONFLICT DO NOTHING;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 12. DOCTOR FEES
@@ -367,7 +387,8 @@ VALUES
     ('20000000-0000-0000-0000-000000000002', 'procedure',    'Echocardiogram',         500.00, '2026-01-01'),
     ('20000000-0000-0000-0000-000000000003', 'consultation', 'Eye Examination',        250.00, '2026-01-01'),
     ('20000000-0000-0000-0000-000000000003', 'follow_up',    'Eye Follow-up',          125.00, '2026-01-01'),
-    ('20000000-0000-0000-0000-000000000003', 'procedure',    'Refraction Test',         80.00, '2026-01-01');
+    ('20000000-0000-0000-0000-000000000003', 'procedure',    'Refraction Test',         80.00, '2026-01-01')
+ON CONFLICT DO NOTHING;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 13. PATIENTS  (5 sample patients)
@@ -407,7 +428,8 @@ VALUES
      '+1', '2125551009', 'james.williams@email.com',
      '500 Madison Ave', 'New York', 'NY', '10022', 'USA',
      'Susan Williams', '+12125551010', 'mother',
-     '10000000-0000-0000-0000-000000000006');
+     '10000000-0000-0000-0000-000000000006')
+ON CONFLICT (id) DO NOTHING;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 14. APPOINTMENTS  (sample bookings)
@@ -442,7 +464,8 @@ VALUES
      'APT-2026-00005', '30000000-0000-0000-0000-000000000004', '20000000-0000-0000-0000-000000000001',
      'c0000000-0000-0000-0000-000000000001', '2026-02-16', '09:15', '09:30',
      'walk_in', 'new', 'completed', 'Sore throat and cough', 150.00,
-     '10000000-0000-0000-0000-000000000006');
+     '10000000-0000-0000-0000-000000000006')
+ON CONFLICT (id) DO NOTHING;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 15. APPOINTMENT STATUS LOG
@@ -501,7 +524,8 @@ VALUES
 
     ('50000000-0000-0000-0000-000000000010', 'a0000000-0000-0000-0000-000000000001',
      'Eye Drops Moxifloxacin', 'Moxifloxacin', 'drops', 'EyeCare Pharma', '5ml', 'bottle', 1,
-     12.00, 7.00, 'd0000000-0000-0000-0000-000000000005', 15);
+     12.00, 7.00, 'd0000000-0000-0000-0000-000000000005', 15)
+ON CONFLICT (id) DO NOTHING;
 
 -- Additional sample medicines for prescription builder autocomplete
 INSERT INTO medicines (hospital_id, name, generic_name, category, strength, manufacturer, selling_price, purchase_price, unit_of_measure, reorder_level, is_active) VALUES
@@ -536,7 +560,8 @@ VALUES
     ('51000000-0000-0000-0000-000000000007', '50000000-0000-0000-0000-000000000007', 'BAT-CETI-001', '2025-10-01', '2027-10-01', 2.00, 4.00,  600, 580),
     ('51000000-0000-0000-0000-000000000008', '50000000-0000-0000-0000-000000000008', 'BAT-IBUP-001', '2025-03-01', '2027-03-01', 4.00, 6.50,  400, 370),
     ('51000000-0000-0000-0000-000000000009', '50000000-0000-0000-0000-000000000009', 'BAT-COUG-001', '2025-11-01', '2027-11-01', 5.00, 8.50,  150, 140),
-    ('51000000-0000-0000-0000-000000000010', '50000000-0000-0000-0000-000000000010', 'BAT-EYEQ-001', '2025-12-01', '2027-06-01', 7.00, 12.00, 100, 92);
+    ('51000000-0000-0000-0000-000000000010', '50000000-0000-0000-0000-000000000010', 'BAT-EYEQ-001', '2025-12-01', '2027-06-01', 7.00, 12.00, 100, 92)
+ON CONFLICT (id) DO NOTHING;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 18. PRESCRIPTIONS  (for completed appointments)
@@ -565,7 +590,8 @@ VALUES
      'Upper Respiratory Tract Infection', 'Sore throat with mild pharyngeal erythema.',
      'Warm saline gargles 3 times daily. Adequate hydration.',
      'finalized', true, '2026-02-16 10:30:00+00', '2026-03-16',
-     '10000000-0000-0000-0000-000000000003');
+     '10000000-0000-0000-0000-000000000003')
+ON CONFLICT (id) DO NOTHING;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 19. PRESCRIPTION ITEMS
@@ -608,7 +634,8 @@ VALUES
     ('70000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000001',
      'INV-2026-00003', '30000000-0000-0000-0000-000000000004', '40000000-0000-0000-0000-000000000005',
      'combined', '2026-02-16', 178.50, 8.93, 187.43, 187.43, 0.00, 'paid',
-     '10000000-0000-0000-0000-000000000008');
+     '10000000-0000-0000-0000-000000000008')
+ON CONFLICT (id) DO NOTHING;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 21. INVOICE ITEMS
@@ -643,7 +670,8 @@ VALUES
 
     ('80000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000001',
      'PAY-2026-00003', '70000000-0000-0000-0000-000000000003', '30000000-0000-0000-0000-000000000004',
-     187.43, 'upi', '2026-02-16', '11:00', 'completed', '10000000-0000-0000-0000-000000000008');
+     187.43, 'upi', '2026-02-16', '11:00', 'completed', '10000000-0000-0000-0000-000000000008')
+ON CONFLICT (id) DO NOTHING;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 23. OPTICAL PRODUCTS  (sample inventory)
@@ -670,7 +698,8 @@ VALUES
      'd0000000-0000-0000-0000-000000000001'),
     ('90000000-0000-0000-0000-000000000007', 'a0000000-0000-0000-0000-000000000001',
      'Lens Cleaning Solution 120ml', 'solution', 'ReNu', 'RENU-120', 12.00, 7.00, 100, 20,
-     'd0000000-0000-0000-0000-000000000001');
+     'd0000000-0000-0000-0000-000000000001')
+ON CONFLICT (id) DO NOTHING;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 24. SUPPLIERS  (sample)
@@ -685,7 +714,8 @@ VALUES
      'Net 15', 3, 4.2),
     ('a1000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000001',
      'OptiVision Wholesale', 'SUP-OPT',  'Mark Rivera', '+12125556003', 'wholesale@optivision.com',
-     'Net 30', 7, 4.0);
+     'Net 30', 7, 4.0)
+ON CONFLICT (id) DO NOTHING;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 25. INSURANCE PROVIDERS  (sample)
@@ -697,7 +727,8 @@ VALUES
     ('a2000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000001',
      'United Healthcare', 'UHC', 'Provider Relations', '+18005555678', 'providers@uhc.com'),
     ('a2000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000001',
-     'Aetna Insurance', 'AETNA', 'Network Services', '+18005559012', 'network@aetna.com');
+     'Aetna Insurance', 'AETNA', 'Network Services', '+18005559012', 'network@aetna.com')
+ON CONFLICT (id) DO NOTHING;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 26. NOTIFICATION TEMPLATES
@@ -713,7 +744,8 @@ VALUES
     ('a0000000-0000-0000-0000-000000000001', 'payment_receipt',      'email',  'en', 'Payment Receipt - {{invoice_number}}',
      'Dear {{patient_name}},\n\nPayment of {{amount}} received for invoice {{invoice_number}}.\n\nThank you,\nHMS Core Hospital'),
     ('a0000000-0000-0000-0000-000000000001', 'appointment_cancelled','email',  'en', 'Appointment Cancelled',
-     'Dear {{patient_name}},\n\nYour appointment on {{date}} at {{time}} with Dr. {{doctor_name}} has been cancelled.\n\nReason: {{reason}}\n\nPlease contact reception to reschedule.\n\nRegards,\nHMS Core Hospital');
+     'Dear {{patient_name}},\n\nYour appointment on {{date}} at {{time}} with Dr. {{doctor_name}} has been cancelled.\n\nReason: {{reason}}\n\nPlease contact reception to reschedule.\n\nRegards,\nHMS Core Hospital')
+ON CONFLICT DO NOTHING;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 27. ID SEQUENCES  (track current state)
@@ -728,7 +760,8 @@ VALUES
     ('a0000000-0000-0000-0000-000000000001', 'HC', 'staff',   'A', '26', '1', 10),    -- Staff sequence
     ('a0000000-0000-0000-0000-000000000001', 'HC', 'staff',   'D', '26', '1', 5),     -- Doctor staff IDs
     ('a0000000-0000-0000-0000-000000000001', 'HC', 'staff',   'S', '26', '1', 9),
-    ('a0000000-0000-0000-0000-000000000001', 'HC', 'staff',   'P', '26', '1', 7);
+    ('a0000000-0000-0000-0000-000000000001', 'HC', 'staff',   'P', '26', '1', 7)
+ON CONFLICT DO NOTHING;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 28. SAMPLE AUDIT LOGS
@@ -766,7 +799,3 @@ VALUES
 --   • ID sequences
 --   • Sample audit logs
 -- ═══════════════════════════════════════════════════════════════════════════════
-
-
-
-INSERT INTO roles (id, hospital_id, name, display_name, description, is_system, is_active) VALUES('e0000000-0000-0000-0000-000000000011', NULL, 'staff','Staff','General staff access',true, true);

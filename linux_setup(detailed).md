@@ -118,7 +118,6 @@ cd ~/Hospital_Management_System
 # Run in order — order matters!
 psql -h localhost -U hms_user -d hms_db -f database_hole/01_schema.sql
 psql -h localhost -U hms_user -d hms_db -f database_hole/02_seed_data.sql
-psql -h localhost -U hms_user -d hms_db -f database_hole/04_waitlist_table.sql
 ```
 
 > **Do NOT run** `03_queries.sql` — it's a reference file, not a migration.

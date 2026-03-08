@@ -263,7 +263,9 @@ async def update_existing_user(
         # Update remaining user fields
         user = update_user(db, user_id, **update_fields)
 
-        return UserResponse.model_validate(user)
+        # Re-fetch with all relationships to ensure fresh data in response
+        fresh_user = get_user_by_id(db, user_id)
+        return UserResponse.model_validate(fresh_user)
     except HTTPException:
         raise
     except Exception as e:

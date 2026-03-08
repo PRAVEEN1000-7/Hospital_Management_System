@@ -156,14 +156,15 @@ const WalkInQueue: React.FC = () => {
   // Fetch scheduled appointments for doctors
   useEffect(() => { fetchScheduledAppts(); }, [fetchScheduledAppts]);
 
-  // Fetch upcoming when tab switches to upcoming (doctor or reception)
+  // Fetch upcoming on mount and when tab switches to upcoming
+  useEffect(() => { fetchUpcoming(); }, [fetchUpcoming]);
   useEffect(() => {
     if (activeTab === 'upcoming' || receptionTab === 'upcoming') fetchUpcoming();
   }, [activeTab, receptionTab, fetchUpcoming]);
 
   // Auto-refresh every 15s
   useEffect(() => {
-    const timer = setInterval(() => { fetchQueue(); fetchUnassigned(); if (isDoctor) fetchScheduledAppts(); }, 15000);
+    const timer = setInterval(() => { fetchQueue(); fetchUnassigned(); fetchUpcoming(); if (isDoctor) fetchScheduledAppts(); }, 15000);
     return () => clearInterval(timer);
   }, [fetchQueue, fetchUnassigned, fetchScheduledAppts, isDoctor]);
 

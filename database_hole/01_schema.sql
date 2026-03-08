@@ -395,7 +395,7 @@ CREATE TABLE appointments (
     doctor_id                UUID          NOT NULL REFERENCES doctors(id),
     department_id            UUID          REFERENCES departments(id),
     appointment_date         DATE          NOT NULL,
-    start_time               TIME          NOT NULL,
+    start_time               TIME,
     end_time                 TIME,
     appointment_type         VARCHAR(20)   NOT NULL,                 -- 'scheduled','walk_in','emergency','follow_up'
     visit_type               VARCHAR(20)   DEFAULT 'new',            -- 'new','follow_up'

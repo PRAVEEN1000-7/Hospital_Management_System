@@ -15,6 +15,8 @@ export interface UserData {
   created_at: string;
   updated_at: string;
   specialization?: string | null;
+  qualification?: string | null;
+  registration_number?: string | null;
 }
 
 export interface UserCreateData {
@@ -45,6 +47,10 @@ export interface UserUpdateData {
   role?: string;
   phone_number?: string;
   is_active?: boolean;
+  // Doctor-specific fields
+  specialization?: string;
+  qualification?: string;
+  registration_number?: string;
 }
 
 export interface PasswordResetData {

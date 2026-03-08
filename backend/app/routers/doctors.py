@@ -45,16 +45,15 @@ async def get_specializations(
         .distinct()
         .all()
     )
-    specializations = sorted([r[0] for r in results if r[0]])
-    # Add common specializations if none exist yet
-    if not specializations:
-        specializations = [
-            "Cardiology", "Dermatology", "ENT", "General Medicine",
-            "General Surgery", "Gynecology", "Neurology", "Ophthalmology",
-            "Orthopedics", "Pediatrics", "Psychiatry", "Pulmonology",
-            "Radiology", "Urology",
-        ]
-    return specializations
+    existing = {r[0] for r in results if r[0]}
+    # Always include common specializations merged with existing ones
+    common = {
+        "Cardiology", "Dermatology", "ENT", "General Medicine",
+        "General Surgery", "Gynecology", "Neurology", "Ophthalmology",
+        "Orthopedics", "Pediatrics", "Psychiatry", "Pulmonology",
+        "Radiology", "Urology",
+    }
+    return sorted(existing | common)
 
 
 @router.get("/me", response_model=DoctorResponse)

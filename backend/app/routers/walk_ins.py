@@ -3,7 +3,7 @@ Walk-in registration router - handles walk-in patient flow.
 """
 import logging
 import uuid
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, func, case
@@ -1029,8 +1029,8 @@ async def refer_patient_to_doctor(
             patient_id=original_appt.patient_id,
             doctor_id=to_doctor_uuid,
             appointment_date=referral_date,
-            start_time=None,
-            end_time=None,
+            start_time=time(9, 0),
+            end_time=time(9, 15),
             appointment_type="referral",
             visit_type="referral",
             priority=original_appt.priority or "normal",

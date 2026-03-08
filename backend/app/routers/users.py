@@ -7,7 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile
 from sqlalchemy.orm import Session, joinedload
 from typing import Optional
 from ..database import get_db
-from ..models.user import User, UserRole
+from ..models.user import User, UserRole, Role
+from ..models.appointment import Doctor
 from ..dependencies import get_current_active_user, require_super_admin, require_admin_or_super_admin
 from ..schemas.user import (
     UserCreate,
@@ -204,6 +205,62 @@ async def update_existing_user(
                 )
 
         update_fields = user_data.model_dump(exclude_unset=True)
+
+        # Remove fields that don't map to User model columns
+        update_fields.pop("full_name", None)
+        update_fields.pop("employee_id", None)
+        update_fields.pop("department", None)
+
+        # Handle phone_number → phone mapping
+        if "phone_number" in update_fields:
+            update_fields["phone"] = update_fields.pop("phone_number")
+
+        # Handle role change via user_roles junction table
+        new_role_name = update_fields.pop("role", None)
+        if new_role_name is not None:
+            current_roles = target_user.roles
+            if new_role_name not in current_roles:
+                role_obj = db.query(Role).filter(
+                    Role.name == new_role_name,
+                    Role.hospital_id == target_user.hospital_id,
+                ).first()
+                # Fallback: try system-level role (hospital_id IS NULL)
+                if not role_obj:
+                    role_obj = db.query(Role).filter(
+                        Role.name == new_role_name,
+                        Role.hospital_id.is_(None),
+                    ).first()
+                if not role_obj:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Role '{new_role_name}' not found",
+                    )
+                # Remove existing user_roles and assign the new one
+                db.query(UserRole).filter(UserRole.user_id == target_user.id).delete()
+                new_user_role = UserRole(
+                    user_id=target_user.id,
+                    role_id=role_obj.id,
+                    assigned_by=current_user.id,
+                )
+                db.add(new_user_role)
+
+        # Handle doctor-specific fields
+        doctor_fields = {}
+        for field in ("specialization", "qualification", "registration_number"):
+            if field in update_fields:
+                doctor_fields[field] = update_fields.pop(field)
+
+        if doctor_fields:
+            doctor = db.query(Doctor).filter(
+                Doctor.user_id == target_user.id,
+                Doctor.is_deleted == False,
+            ).first()
+            if doctor:
+                for key, value in doctor_fields.items():
+                    if value is not None:
+                        setattr(doctor, key, value)
+
+        # Update remaining user fields
         user = update_user(db, user_id, **update_fields)
 
         return UserResponse.model_validate(user)

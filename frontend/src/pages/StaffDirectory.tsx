@@ -70,6 +70,15 @@ const staffEditSchema = z.object({
   country_code: z.string().optional(),
   role: z.string().min(1, 'Required'),
   is_active: z.boolean(),
+  specialization: z.string().optional(),
+  qualification: z.string().optional(),
+  registration_number: z.string().optional(),
+}).superRefine((data, ctx) => {
+  if (data.role === 'doctor') {
+    if (!data.specialization) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Specialization is required for doctors', path: ['specialization'] });
+    if (!data.qualification) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Qualification is required for doctors', path: ['qualification'] });
+    if (!data.registration_number) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Registration number is required for doctors', path: ['registration_number'] });
+  }
 });
 
 const resetPasswordSchema = z.object({
@@ -222,7 +231,7 @@ const StaffDirectory: React.FC = () => {
       const promises = Array.from(selectedUsers).map(userId => {
         if (action === 'delete') return userService.deleteUser(userId);
         const user = users.find(u => u.id === userId);
-        if (user) return userService.updateUser(userId, { ...user, is_active: action === 'activate' });
+        if (user) return userService.updateUser(userId, { is_active: action === 'activate' });
         return Promise.resolve();
       });
       await Promise.all(promises);
@@ -981,6 +990,11 @@ const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onSuccess:
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoError, setPhotoError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [specializations, setSpecializations] = useState<string[]>([]);
+
+  useEffect(() => {
+    doctorService.getSpecializations().then(setSpecializations).catch(() => {});
+  }, []);
 
   const { register, handleSubmit, watch, formState: { errors, isSubmitting, isValid } } = useForm<EditFormData>({
     resolver: zodResolverV4(staffEditSchema),
@@ -993,12 +1007,16 @@ const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onSuccess:
       country_code: '+91',
       role: user.roles?.[0] || '',
       is_active: user.is_active,
+      specialization: user.specialization || '',
+      qualification: user.qualification || '',
+      registration_number: user.registration_number || '',
     },
   });
 
   const firstName = watch('first_name', user.first_name || '');
   const lastName = watch('last_name', user.last_name || '');
   const fullName = `${firstName} ${lastName}`.trim();
+  const selectedRole = watch('role');
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1026,6 +1044,12 @@ const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onSuccess:
         email: data.email, first_name: data.first_name, last_name: data.last_name,
         phone_number: data.phone_number, role: data.role, is_active: data.is_active,
       };
+      // Include doctor-specific fields when role is doctor
+      if (data.role === 'doctor') {
+        payload.specialization = data.specialization;
+        payload.qualification = data.qualification;
+        payload.registration_number = data.registration_number;
+      }
       await userService.updateUser(user.id, payload);
       if (photoFile) {
         try { await userService.uploadPhoto(user.id, photoFile); }
@@ -1096,6 +1120,27 @@ const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onSuccess:
             </Field>
           </div>
         </section>
+
+        {/* Doctor-Specific Fields */}
+        {selectedRole === 'doctor' && (
+          <section className="space-y-4">
+            <SectionTitle>Doctor Details</SectionTitle>
+            <Field label="Specialization" error={errors.specialization?.message}>
+              <select {...register('specialization')} className={`input-field ${inputErr(errors.specialization)}`}>
+                <option value="">Select specialization</option>
+                {specializations.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </Field>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Qualification" error={errors.qualification?.message}>
+                <input {...register('qualification')} className={`input-field ${inputErr(errors.qualification)}`} placeholder="e.g. MBBS, MD" />
+              </Field>
+              <Field label="Registration Number" error={errors.registration_number?.message}>
+                <input {...register('registration_number')} className={`input-field ${inputErr(errors.registration_number)}`} placeholder="e.g. MCI-12345" />
+              </Field>
+            </div>
+          </section>
+        )}
 
         {/* Status Toggle */}
         <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">

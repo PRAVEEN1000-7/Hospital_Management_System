@@ -81,7 +81,7 @@ async def list_doctors(
     current_user: User = Depends(get_current_active_user),
 ):
     """List all active doctors (for dropdown selection)."""
-    doctors = get_doctors_list(db)
+    doctors = get_doctors_list(db, hospital_id=current_user.hospital_id)
     result = []
     for d in doctors:
         doctor_name = None

@@ -237,7 +237,7 @@ const Register: React.FC = () => {
             <span className="material-symbols-outlined text-amber-500 flex-shrink-0 text-xl mt-0.5">warning</span>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-amber-800">
-                Please fix {Object.keys(fieldErrors).length} error{Object.keys(fieldErrors).length > 1 ? 's' : ''} before submitting
+               Please fix the {Object.keys(fieldErrors).length} highlighted error{Object.keys(fieldErrors).length > 1 ? 's' : ''}  before submitting
               </p>
               <ul className="mt-2 space-y-1">
                 {(Object.entries(fieldErrors) as [string, string][]).map(([key, msg]) => (

@@ -179,6 +179,8 @@ const Layout: React.FC = () => {
   }
 
   const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path + '/');
+  // For dropdown sub-items: exact match only (prevents parent path from matching sibling child routes)
+  const isExactActive = (path: string) => location.pathname === path;
 
   const fullName = user ? `${user.first_name} ${user.last_name}`.trim() : '';
 
@@ -242,7 +244,7 @@ const Layout: React.FC = () => {
                   to={item.to}
                   onClick={() => setSidebarOpen(false)}
                   className={`flex items-center px-6 py-3 text-sm font-medium transition-all ${
-                    isActive(item.to)
+                    isExactActive(item.to)
                       ? 'sidebar-item-active'
                       : 'text-slate-500 hover:text-primary hover:bg-slate-50'
                   }`}
@@ -282,7 +284,7 @@ const Layout: React.FC = () => {
                     to={item.to}
                     onClick={() => setSidebarOpen(false)}
                     className={`flex items-center pl-10 pr-6 py-2.5 text-[13px] font-medium transition-all ${
-                      isActive(item.to)
+                      isExactActive(item.to)
                         ? 'sidebar-item-active'
                         : 'text-slate-400 hover:text-primary hover:bg-slate-50'
                     }`}
@@ -326,7 +328,7 @@ const Layout: React.FC = () => {
                     to={item.to}
                     onClick={() => setSidebarOpen(false)}
                     className={`flex items-center pl-10 pr-6 py-2.5 text-[13px] font-medium transition-all ${
-                      isActive(item.to)
+                      isExactActive(item.to)
                         ? 'sidebar-item-active'
                         : 'text-slate-400 hover:text-primary hover:bg-slate-50'
                     }`}

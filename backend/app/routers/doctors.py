@@ -29,6 +29,33 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/doctors", tags=["Doctors"])
 
 
+@router.get("/specializations")
+async def get_specializations(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Get distinct doctor specializations for the current hospital."""
+    results = (
+        db.query(Doctor.specialization)
+        .filter(
+            Doctor.hospital_id == current_user.hospital_id,
+            Doctor.is_deleted == False,
+            Doctor.specialization.isnot(None),
+        )
+        .distinct()
+        .all()
+    )
+    existing = {r[0] for r in results if r[0]}
+    # Always include common specializations merged with existing ones
+    common = {
+        "Cardiology", "Dermatology", "ENT", "General Medicine",
+        "General Surgery", "Gynecology", "Neurology", "Ophthalmology",
+        "Orthopedics", "Pediatrics", "Psychiatry", "Pulmonology",
+        "Radiology", "Urology",
+    }
+    return sorted(existing | common)
+
+
 @router.get("/me", response_model=DoctorResponse)
 async def get_my_doctor_profile(
     db: Session = Depends(get_db),

@@ -1,16 +1,18 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
+import { zodResolverV4 as zodResolver } from '../utils/zodResolverV4';
 import { useAuth } from '../contexts/AuthContext';
 import { loginSchema, type LoginFormData } from '../utils/validation';
 import { useToast } from '../contexts/ToastContext';
+import feLogger from '../services/loggerService';
 
 const Login: React.FC = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
   const toast = useToast();
   const [showPassword, setShowPassword] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
 
   const {
     register,
@@ -21,17 +23,23 @@ const Login: React.FC = () => {
   });
 
   const onSubmit = async (data: LoginFormData) => {
+    setLoginError(null);
+    feLogger.info('login', `Login attempt for user: ${data.username}`);
     try {
       await login(data);
+      feLogger.info('login', `Login successful for user: ${data.username}`);
       navigate('/dashboard');
     } catch (err: unknown) {
       const axiosError = err as { response?: { data?: { detail?: string } } };
-      toast.error(axiosError.response?.data?.detail || 'Login failed. Please try again.');
+      const message = axiosError.response?.data?.detail || 'Login failed. Please try again.';
+      feLogger.warn('login', `Login failed for user: ${data.username} — ${message}`);
+      setLoginError(message);
+      toast.error(message);
     }
   };
 
   return (
-    <main className="w-full min-h-screen flex flex-col md:flex-row overflow-hidden">
+    <main className="w-full min-h-screen flex flex-col md:flex-row overflow-x-hidden">
       {/* Left Hero Panel */}
       <section className="hidden md:flex md:w-7/12 lg:w-3/5 relative bg-primary items-center justify-center overflow-hidden">
         <div className="absolute inset-0 z-0">
@@ -71,9 +79,9 @@ const Login: React.FC = () => {
       </section>
 
       {/* Right Login Panel */}
-      <section className="flex-1 bg-white flex flex-col justify-between p-8 md:p-12 lg:p-20">
+      <section className="flex-1 bg-white flex flex-col justify-between p-6 sm:p-8 md:p-12 lg:p-20 min-h-screen md:min-h-0 overflow-y-auto">
         {/* Mobile Brand */}
-        <div className="md:hidden flex items-center gap-2 mb-12">
+        <div className="md:hidden flex items-center gap-2 mb-8 sm:mb-12">
           <span className="material-icons text-primary text-2xl">local_hospital</span>
           <span className="text-xl font-bold text-slate-800">HMS Global</span>
         </div>
@@ -85,6 +93,12 @@ const Login: React.FC = () => {
           </div>
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+            {loginError && (
+              <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <span className="material-icons text-red-500 text-lg mt-0.5">error_outline</span>
+                <p className="text-sm text-red-700">{loginError}</p>
+              </div>
+            )}
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2" htmlFor="username">
                 Email or Username

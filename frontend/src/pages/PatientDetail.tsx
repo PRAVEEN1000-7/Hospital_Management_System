@@ -203,7 +203,7 @@ const PatientDetail: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <InfoItem icon="person" label="Name" value={patient.emergency_contact_name} />
               <InfoItem icon="favorite" label="Relationship" value={patient.emergency_contact_relation || '—'} />
-              <InfoItem icon="phone" label="Mobile" value={patient.emergency_contact_phone || '—'} />
+              <InfoItem icon="phone" label="Mobile" value={patient.emergency_contact_phone ? `${patient.emergency_contact_country_code || '+91'} ${patient.emergency_contact_phone}` : '—'} />
             </div>
           </div>
         )}

@@ -39,6 +39,7 @@ def list_users(
         .options(
             joinedload(User.user_roles).joinedload(UserRole.role),
             joinedload(User.hospital),
+            joinedload(User.doctor_profile),
         )
         .filter(User.is_deleted == False)
     )
@@ -80,6 +81,7 @@ def get_user_by_id(db: Session, user_id: str | uuid.UUID) -> Optional[User]:
         .options(
             joinedload(User.user_roles).joinedload(UserRole.role),
             joinedload(User.hospital),
+            joinedload(User.doctor_profile),
         )
         .filter(User.id == user_id, User.is_deleted == False)
         .first()
@@ -173,6 +175,7 @@ def update_user(db: Session, user_id: str | uuid.UUID, **kwargs) -> Optional[Use
     """Update user fields"""
     user = get_user_by_id(db, user_id)
     if not user:
+        logger.warning("update_user: user %s not found", user_id)
         return None
     
     for key, value in kwargs.items():
@@ -181,6 +184,7 @@ def update_user(db: Session, user_id: str | uuid.UUID, **kwargs) -> Optional[Use
     
     db.commit()
     db.refresh(user)
+    logger.info("Updated user: %s (fields: %s)", user.username, list(kwargs.keys()))
     return user
 
 
@@ -188,10 +192,12 @@ def reset_password(db: Session, user_id: str | uuid.UUID, new_password: str) -> 
     """Reset user password"""
     user = get_user_by_id(db, user_id)
     if not user:
+        logger.warning("reset_password: user %s not found", user_id)
         return None
     user.password_hash = get_password_hash(new_password)
     db.commit()
     db.refresh(user)
+    logger.info("Password reset for user: %s", user.username)
     return user
 
 

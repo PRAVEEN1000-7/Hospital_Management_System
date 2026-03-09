@@ -7,12 +7,16 @@ export interface UserData {
   roles: string[];
   reference_number?: string;
   phone_number?: string;
+  phone?: string;
   avatar_url?: string;
   hospital_id?: string;
   is_active: boolean;
   last_login_at: string | null;
   created_at: string;
   updated_at: string;
+  specialization?: string | null;
+  qualification?: string | null;
+  registration_number?: string | null;
 }
 
 export interface UserCreateData {
@@ -43,6 +47,10 @@ export interface UserUpdateData {
   role?: string;
   phone_number?: string;
   is_active?: boolean;
+  // Doctor-specific fields
+  specialization?: string;
+  qualification?: string;
+  registration_number?: string;
 }
 
 export interface PasswordResetData {

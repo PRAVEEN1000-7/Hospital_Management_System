@@ -69,7 +69,7 @@ const MyAppointments: React.FC = () => {
     if (!rescheduleDate || !rescheduleDoctorId) { setRescheduleSlots([]); return; }
     setRescheduleLoading(true);
     scheduleService.getAvailableSlots(rescheduleDoctorId, rescheduleDate)
-      .then(setRescheduleSlots)
+      .then(data => setRescheduleSlots(data.slots))
       .catch(() => setRescheduleSlots([]))
       .finally(() => setRescheduleLoading(false));
   }, [rescheduleDate, rescheduleDoctorId]);
@@ -86,7 +86,7 @@ const MyAppointments: React.FC = () => {
     }
   };
 
-  const handleDownloadPdf = async (id: number) => {
+  const handleDownloadPdf = async (id: string) => {
     try {
       const html = await appointmentService.getAppointmentPdfUrl(id);
       const w = window.open('', '_blank');
@@ -98,7 +98,7 @@ const MyAppointments: React.FC = () => {
 
   const displayList = activeTab === 'upcoming' ? upcoming : past;
 
-  const formatDate = (d: string) => new Date(d).toLocaleDateString('en-US', { day_of_week: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+  const formatDate = (d: string) => new Date(d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
   const formatTime = (t?: string) => {
     if (!t) return '—';
     const [h, m] = t.split(':').map(Number);
@@ -142,7 +142,7 @@ const MyAppointments: React.FC = () => {
                 {/* Info */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="font-bold text-slate-900">{appt.appointment_id}</span>
+                    <span className="font-bold text-slate-900">{appt.appointment_number}</span>
                     <AppointmentStatusBadge status={appt.status} />
                     {appt.appointment_type === 'walk-in' && (
                       <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 bg-orange-50 text-orange-600 rounded-full">Walk-in</span>
@@ -186,25 +186,25 @@ const MyAppointments: React.FC = () => {
               {/* Expanded Details */}
               {expandedId === appt.id && (
                 <div className="mt-3 pt-3 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {appt.doctor_notes && (
+                  {appt.notes && (
                     <div className="bg-blue-50/50 rounded-lg p-3">
                       <p className="text-[10px] font-bold text-blue-400 uppercase tracking-wider mb-1">Doctor Notes</p>
-                      <p className="text-xs text-slate-700">{appt.doctor_notes}</p>
+                      <p className="text-xs text-slate-700">{appt.notes}</p>
                     </div>
                   )}
-                  {appt.diagnosis && (
+                  {appt.chief_complaint && (
                     <div className="bg-emerald-50/50 rounded-lg p-3">
-                      <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider mb-1">Diagnosis</p>
-                      <p className="text-xs text-slate-700">{appt.diagnosis}</p>
+                      <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider mb-1">Chief Complaint</p>
+                      <p className="text-xs text-slate-700">{appt.chief_complaint}</p>
                     </div>
                   )}
-                  {appt.prescription && (
+                  {appt.department_name && (
                     <div className="bg-purple-50/50 rounded-lg p-3">
-                      <p className="text-[10px] font-bold text-purple-400 uppercase tracking-wider mb-1">Prescription</p>
-                      <p className="text-xs text-slate-700">{appt.prescription}</p>
+                      <p className="text-[10px] font-bold text-purple-400 uppercase tracking-wider mb-1">Department</p>
+                      <p className="text-xs text-slate-700">{appt.department_name}</p>
                     </div>
                   )}
-                  {!appt.doctor_notes && !appt.diagnosis && !appt.prescription && (
+                  {!appt.notes && !appt.chief_complaint && !appt.department_name && (
                     <p className="text-xs text-slate-400 italic col-span-3">No clinical notes available</p>
                   )}
                 </div>
@@ -236,12 +236,12 @@ const MyAppointments: React.FC = () => {
                     <p className="text-xs text-slate-400">No slots available on this date</p>
                   ) : (
                     <div className="grid grid-cols-3 gap-2 max-h-40 overflow-y-auto">
-                      {rescheduleSlots.filter(s => s.is_available).map(s => (
-                        <button key={s.start_time} onClick={() => setRescheduleTime(s.start_time)}
+                      {rescheduleSlots.filter(s => s.available).map(s => (
+                        <button key={s.time} onClick={() => setRescheduleTime(s.time)}
                           className={`px-2 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
-                            rescheduleTime === s.start_time ? 'bg-primary text-white border-primary' : 'border-slate-200 text-slate-600 hover:border-primary'
+                            rescheduleTime === s.time ? 'bg-primary text-white border-primary' : 'border-slate-200 text-slate-600 hover:border-primary'
                           }`}>
-                          {(() => { const [h, m] = s.start_time.split(':').map(Number); return `${h % 12 || 12}:${m.toString().padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`; })()}
+                          {(() => { const [h, m] = s.time.split(':').map(Number); return `${h % 12 || 12}:${m.toString().padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`; })()}
                         </button>
                       ))}
                     </div>

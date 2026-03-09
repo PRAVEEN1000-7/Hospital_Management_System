@@ -61,16 +61,21 @@ const PatientIdCard: React.FC = () => {
 
   const generatePDF = async (): Promise<jsPDF | null> => {
     if (!frontRef.current || !backRef.current) return null;
-    const canvasOpts = { scale: 3, useCORS: true, backgroundColor: '#ffffff', logging: false, imageTimeout: 0 };
+    const canvasOpts = { scale: 4, useCORS: true, backgroundColor: '#ffffff', logging: false, imageTimeout: 0 };
     const frontCanvas = await html2canvas(frontRef.current, canvasOpts);
     const backCanvas = await html2canvas(backRef.current, canvasOpts);
     const frontImg = frontCanvas.toDataURL('image/png');
     const backImg = backCanvas.toDataURL('image/png');
 
-    // Card layout: 86×54mm cards, 5mm margin, 9mm fold gap
-    const cardW = 86, cardH = 54, margin = 5, foldGap = 9;
-    const pageW = cardW + margin * 2;                          // 96mm
-    const pageH = margin + cardH + foldGap + cardH + margin;   // 127mm
+    // Card layout: 90×58mm cards (slightly larger for readable text), 5mm margin, 9mm fold gap
+    const cardW = 90;
+    const frontAspect = frontCanvas.height / frontCanvas.width;
+    const backAspect = backCanvas.height / backCanvas.width;
+    const frontH = cardW * frontAspect;
+    const backH = cardW * backAspect;
+    const margin = 5, foldGap = 9;
+    const pageW = cardW + margin * 2;
+    const pageH = margin + frontH + foldGap + backH + margin;
 
     const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [pageW, pageH] });
 
@@ -78,18 +83,18 @@ const PatientIdCard: React.FC = () => {
     pdf.setFillColor(255, 255, 255);
     pdf.rect(0, 0, pageW, pageH, 'F');
 
-    // Front card
-    pdf.addImage(frontImg, 'PNG', margin, margin, cardW, cardH);
+    // Front card — preserves aspect ratio
+    pdf.addImage(frontImg, 'PNG', margin, margin, cardW, frontH);
 
     // Fold line
-    const foldY = margin + cardH + foldGap / 2;
+    const foldY = margin + frontH + foldGap / 2;
     pdf.setFontSize(8);
     pdf.setTextColor(170, 170, 170);
     pdf.text('- - - - - - - - - -  Fold Here  - - - - - - - - - -', pageW / 2, foldY, { align: 'center' });
 
-    // Back card
-    const backY = margin + cardH + foldGap;
-    pdf.addImage(backImg, 'PNG', margin, backY, cardW, cardH);
+    // Back card — preserves aspect ratio
+    const backY = margin + frontH + foldGap;
+    pdf.addImage(backImg, 'PNG', margin, backY, cardW, backH);
 
     return pdf;
   };
@@ -214,73 +219,71 @@ const PatientIdCard: React.FC = () => {
         <div
           ref={frontRef}
           className="print-area"
-          style={{ width: 440, height: 280, fontFamily: 'Arial, sans-serif' }}
+          style={{ width: 460, minHeight: 290, fontFamily: 'Arial, Helvetica, sans-serif' }}
         >
-          <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #e0f0ff, #b3d9ff)', borderRadius: 12, overflow: 'hidden', border: '1px solid #80bfff', position: 'relative' }}>
+          <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #e8f4ff 0%, #c4dfff 100%)', borderRadius: 14, overflow: 'hidden', border: '1.5px solid #7ab8ff', position: 'relative', boxSizing: 'border-box' }}>
             {/* Hospital Header */}
-            <div style={{ background: '#137fec', padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ color: 'white', fontWeight: 'bold', fontSize: 14 }}>{hospital.name}</span>
+            <div style={{ background: 'linear-gradient(90deg, #0d6efd, #137fec)', padding: '10px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ color: 'white', fontWeight: 'bold', fontSize: 15, letterSpacing: 0.3 }}>{hospital.name}</span>
+              <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 8, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' }}>Patient ID Card</span>
             </div>
 
             {/* PRN Bar */}
-            <div style={{ background: '#0f6dd6', padding: '5px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ color: '#b3d9ff', fontSize: 9, letterSpacing: 0.5 }}>PRN</span>
-              <span style={{ color: '#ffffff', fontSize: 13, fontWeight: 'bold', letterSpacing: 2, fontFamily: 'Consolas, monospace' }}>{patient.patient_reference_number}</span>
+            <div style={{ background: '#0b5ed7', padding: '5px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ color: '#a3cdff', fontSize: 9, letterSpacing: 1, fontWeight: 600, textTransform: 'uppercase' }}>PRN</span>
+              <span style={{ color: '#ffffff', fontSize: 14, fontWeight: 'bold', letterSpacing: 2.5, fontFamily: 'Consolas, monospace' }}>{patient.patient_reference_number}</span>
             </div>
 
             {/* Body: Photo + Info + QR */}
-            <div style={{ padding: '10px 16px', display: 'flex', gap: 12 }}>
+            <div style={{ padding: '12px 18px', display: 'flex', gap: 14, alignItems: 'flex-start' }}>
               {/* Photo */}
-              <div style={{ width: 76, height: 90, background: '#cbd5e1', borderRadius: 8, overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #93c5fd' }}>
+              <div style={{ width: 80, height: 94, background: '#e2e8f0', borderRadius: 10, overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #93c5fd', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
                 {photoUrl ? (
                   <img src={photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 ) : (
-                  <span style={{ fontSize: 26, color: '#94a3b8', fontWeight: 'bold' }}>
+                  <span style={{ fontSize: 28, color: '#94a3b8', fontWeight: 'bold' }}>
                     {patient.first_name[0]}{patient.last_name[0]}
                   </span>
                 )}
               </div>
 
               {/* Info */}
-              <div style={{ flex: 1, fontSize: 11, display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
-                <div style={{ fontWeight: 'bold', fontSize: 15, color: '#0f3b6e', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <div style={{ flex: 1, fontSize: 11, display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+                <div style={{ fontWeight: 'bold', fontSize: `${patient.first_name.length + patient.last_name.length > 24 ? 13 : 15}px`, color: '#0f3b6e', lineHeight: 1.3, wordBreak: 'break-word' }}>
                   {patient.first_name} {patient.last_name}
                 </div>
-                <div style={{ color: '#475569' }}>
+                <div style={{ color: '#475569', fontSize: 11 }}>
                   DOB: {format(new Date(patient.date_of_birth), 'dd MMM yyyy')} ({age} yrs)
                 </div>
-                <div style={{ display: 'flex', gap: 12 }}>
-                  <span style={{ color: '#475569' }}>Gender: {patient.gender}</span>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <span style={{ color: '#475569', fontSize: 11 }}>Gender: {patient.gender}</span>
                   {patient.blood_group && (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                      <span style={{ color: '#475569' }}>Blood:</span>
-                      <span style={{ background: '#ef4444', color: 'white', padding: '0 6px', borderRadius: 10, fontSize: 10, fontWeight: 'bold' }}>{patient.blood_group}</span>
-                    </span>
+                    <span style={{ color: '#475569', fontSize: 11 }}>Blood: <strong style={{ color: '#0f3b6e' }}>{patient.blood_group}</strong></span>
                   )}
                 </div>
-                <div style={{ color: '#475569' }}>
+                <div style={{ color: '#475569', fontSize: 11 }}>
                   Mobile: {patient.phone_country_code} {patient.phone_number}
                 </div>
               </div>
 
               {/* QR Code */}
-              <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-                <div style={{ background: 'white', padding: 4, borderRadius: 6, border: '1px solid #93c5fd' }}>
-                  <QRCodeSVG value={qrData} size={72} level="M" />
+              <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+                <div style={{ background: 'white', padding: 5, borderRadius: 8, border: '1px solid #93c5fd', boxShadow: '0 1px 2px rgba(0,0,0,0.06)' }}>
+                  <QRCodeSVG value={qrData} size={74} level="M" />
                 </div>
-                <span style={{ fontSize: 7, color: '#64748b', textAlign: 'center' }}>SCAN TO VERIFY</span>
+                <span style={{ fontSize: 7, color: '#64748b', textAlign: 'center', fontWeight: 600, letterSpacing: 0.5 }}>SCAN TO VERIFY</span>
               </div>
             </div>
 
             {/* Emergency Contact Footer */}
             {patient.emergency_contact_name && (
-              <div style={{ background: '#ebf5ff', borderTop: '1px solid #b3d9ff', padding: '5px 16px', fontSize: 10, color: '#64748b' }}>
-                Emergency: {patient.emergency_contact_name} ({patient.emergency_contact_relation || 'N/A'}) — {patient.emergency_contact_phone}
+              <div style={{ background: 'rgba(255,255,255,0.5)', borderTop: '1px solid #b3d9ff', padding: '5px 18px', fontSize: 10, color: '#475569' }}>
+                <strong style={{ color: '#334155' }}>Emergency:</strong> {patient.emergency_contact_name} ({patient.emergency_contact_relation || 'N/A'}) — {patient.emergency_contact_phone}
               </div>
             )}
 
             {/* Registration date footer */}
-            <div style={{ padding: '3px 16px', fontSize: 8, color: '#94a3b8', display: 'flex', justifyContent: 'space-between' }}>
+            <div style={{ padding: '4px 18px 6px', fontSize: 8, color: '#94a3b8', display: 'flex', justifyContent: 'space-between', borderTop: '1px solid rgba(147,197,253,0.4)' }}>
               <span>Registered: {format(new Date(patient.created_at), 'dd MMM yyyy')}</span>
               <span>Valid: Until Discharge</span>
             </div>
@@ -293,32 +296,33 @@ const PatientIdCard: React.FC = () => {
         <div
           ref={backRef}
           className="print-area"
-          style={{ width: 440, height: 280, fontFamily: 'Arial, sans-serif' }}
+          style={{ width: 460, minHeight: 290, fontFamily: 'Arial, Helvetica, sans-serif' }}
         >
-          <div style={{ width: '100%', height: '100%', background: 'white', borderRadius: 12, overflow: 'hidden', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ width: '100%', height: '100%', background: 'white', borderRadius: 14, overflow: 'hidden', border: '1.5px solid #e2e8f0', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
             {/* Header */}
-            <div style={{ background: '#137fec', padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ color: 'white', fontWeight: 'bold', fontSize: 14 }}>{hospital.name}</span>
+            <div style={{ background: 'linear-gradient(90deg, #0d6efd, #137fec)', padding: '10px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ color: 'white', fontWeight: 'bold', fontSize: 15, letterSpacing: 0.3 }}>{hospital.name}</span>
+              <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 8, fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase' }}>Hospital Info</span>
             </div>
 
             {/* Details */}
-            <div style={{ padding: 16, flex: 1, fontSize: 12, color: '#475569', display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <div><strong>Address:</strong> {hospital.address_line_1}{hospital.address_line_2 ? `, ${hospital.address_line_2}` : ''}</div>
-              <div><strong>City/State:</strong> {hospital.city}, {hospital.state_province}</div>
-              <div><strong>Country:</strong> {hospital.country} — {hospital.postal_code}</div>
-              <div><strong>Phone:</strong> {hospital.phone}</div>
-              <div><strong>Email:</strong> {hospital.email}</div>
-              {hospital.website && <div><strong>Website:</strong> {hospital.website}</div>}
+            <div style={{ padding: '14px 18px', flex: 1, fontSize: 12, color: '#475569', display: 'flex', flexDirection: 'column', gap: 5 }}>
+              <div style={{ lineHeight: 1.4 }}><strong style={{ color: '#334155' }}>Address:</strong> {hospital.address_line_1}{hospital.address_line_2 ? `, ${hospital.address_line_2}` : ''}</div>
+              <div><strong style={{ color: '#334155' }}>City/State:</strong> {hospital.city}, {hospital.state_province}</div>
+              <div><strong style={{ color: '#334155' }}>Country:</strong> {hospital.country} — {hospital.postal_code}</div>
+              <div><strong style={{ color: '#334155' }}>Phone:</strong> {hospital.phone}</div>
+              <div><strong style={{ color: '#334155' }}>Email:</strong> {hospital.email}</div>
+              {hospital.website && <div><strong style={{ color: '#334155' }}>Website:</strong> {hospital.website}</div>}
             </div>
 
             {/* ID Format Reference */}
-            <div style={{ padding: '8px 16px', background: '#f1f5f9', borderTop: '1px solid #e2e8f0', fontSize: 9, color: '#64748b' }}>
+            <div style={{ padding: '8px 18px', background: '#f1f5f9', borderTop: '1px solid #e2e8f0', fontSize: 9, color: '#64748b' }}>
               <div style={{ fontWeight: 'bold', marginBottom: 2 }}>PRN Format: HH-G-YY-M-C-SSSSS</div>
               <div>HH: Hospital &bull; G: Gender &bull; YY: Year &bull; M: Month &bull; C: Check &bull; SSSSS: Sequence</div>
             </div>
 
             {/* Footer */}
-            <div style={{ background: '#f8fafc', borderTop: '1px solid #e2e8f0', padding: '8px 16px', fontSize: 9, color: '#94a3b8', textAlign: 'center' }}>
+            <div style={{ background: '#f8fafc', borderTop: '1px solid #e2e8f0', padding: '8px 18px', fontSize: 9, color: '#94a3b8', textAlign: 'center' }}>
               This card is property of {hospital.name}. If found, please return to the above address.
             </div>
           </div>

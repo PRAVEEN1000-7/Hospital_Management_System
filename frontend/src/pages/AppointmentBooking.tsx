@@ -19,6 +19,7 @@ interface RegForm {
   address_line_1: string; address_line_2: string;
   city: string; state: string; postal_code: string; country: string;
   emergency_contact_name: string;
+  emergency_contact_country_code: string;
   emergency_contact_phone: string; emergency_contact_relation: string;
 }
 
@@ -29,6 +30,7 @@ const emptyReg = (): RegForm => ({
   address_line_1: '', address_line_2: '',
   city: '', state: '', postal_code: '', country: 'India',
   emergency_contact_name: '',
+  emergency_contact_country_code: '+91',
   emergency_contact_phone: '', emergency_contact_relation: '',
 });
 
@@ -100,6 +102,7 @@ const AppointmentBooking: React.FC = () => {
   };
 
   const handleRegSubmit = async () => {
+    if (!validateRegPersonal()) { setRegSection('personal'); return; }
     if (!validateRegContact()) { setRegSection('contact'); return; }
     setRegSubmitting(true);
     try {
@@ -107,6 +110,8 @@ const AppointmentBooking: React.FC = () => {
       (Object.keys(regForm) as (keyof RegForm)[]).forEach(k => {
         payload[k] = regForm[k] || undefined;
       });
+      // Map frontend field names to backend schema names
+      if (payload.state) { payload.state_province = payload.state; delete payload.state; }
       // Strip non-digit characters from phone fields (backend pattern: ^\d{4,15}$)
       if (payload.phone_number) payload.phone_number = payload.phone_number.replace(/\D/g, '');
       if (payload.emergency_contact_phone) payload.emergency_contact_phone = payload.emergency_contact_phone.replace(/\D/g, '') || undefined;
@@ -658,9 +663,15 @@ const AppointmentBooking: React.FC = () => {
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div className="sm:col-span-3">
                       <label className="block text-xs font-bold text-slate-500 mb-1">Phone Number</label>
-                      <input value={regForm.emergency_contact_phone} onChange={e => setReg('emergency_contact_phone', e.target.value)}
-                        placeholder="Emergency contact number"
-                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
+                      <div className="flex gap-2">
+                        <select value={regForm.emergency_contact_country_code} onChange={e => setReg('emergency_contact_country_code', e.target.value)}
+                          className="w-28 px-2 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none">
+                          {COUNTRIES.map(c => <option key={c.code} value={c.phoneCode}>{c.phoneCode} ({c.code})</option>)}
+                        </select>
+                        <input value={regForm.emergency_contact_phone} onChange={e => setReg('emergency_contact_phone', e.target.value)}
+                          placeholder="Emergency contact number"
+                          className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
+                      </div>
                     </div>
                   </div>
                 </>

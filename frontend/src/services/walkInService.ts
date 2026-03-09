@@ -22,9 +22,10 @@ const walkInService = {
     return res.data;
   },
 
-  async getQueueStatus(doctorId?: string): Promise<QueueStatus> {
+  async getQueueStatus(doctorId?: string, queueDate?: string): Promise<QueueStatus> {
     const params: Record<string, string> = {};
     if (doctorId) params.doctor_id = doctorId;
+    if (queueDate) params.queue_date = queueDate;
     const res = await api.get<QueueStatus>('/walk-ins/queue', { params });
     return res.data;
   },
@@ -72,13 +73,21 @@ const walkInService = {
     return res.data;
   },
 
+  /** Send a patient already in queue to the doctor's NEXT UP. Receptionist-only. */
+  async sendPatientToDoctor(queueId: string): Promise<{ ok: boolean; queue_id: string; status: string }> {
+    const res = await api.patch<{ ok: boolean; queue_id: string; status: string }>(`/walk-ins/queue/${queueId}/send-to-doctor`);
+    return res.data;
+  },
+
   /** @deprecated Use sendToDoctor instead */
   async assignDoctor(appointmentId: string, doctorId: string): Promise<Appointment> {
     return this.sendToDoctor(appointmentId, doctorId);
   },
 
-  async getDoctorLoads(): Promise<Record<string, number>> {
-    const res = await api.get<Record<string, number>>('/walk-ins/queue/doctor-loads');
+  async getDoctorLoads(targetDate?: string): Promise<Record<string, number>> {
+    const params: Record<string, string> = {};
+    if (targetDate) params.date = targetDate;
+    const res = await api.get<Record<string, number>>('/walk-ins/queue/doctor-loads', { params });
     return res.data;
   },
 
@@ -91,6 +100,54 @@ const walkInService = {
 
   async getUnassigned(): Promise<{ count: number; items: UnassignedWalkIn[] }> {
     const res = await api.get<{ count: number; items: UnassignedWalkIn[] }>('/walk-ins/unassigned');
+    return res.data;
+  },
+
+  async getUpcomingQueue(days = 7): Promise<{
+    doctor_id: string | null;
+    days: number;
+    date_groups: {
+      date: string;
+      count: number;
+      items: {
+        queue_id: string;
+        appointment_id: string;
+        queue_number: number;
+        status: string;
+        appointment_type: string;
+        priority: string;
+        patient_name: string | null;
+        patient_id: string | null;
+        patient_reference_number: string | null;
+        patient_gender: string | null;
+        patient_age: number | null;
+        chief_complaint: string | null;
+        doctor_id: string | null;
+        doctor_name: string | null;
+        referring_doctor_name: string | null;
+      }[];
+    }[];
+    total_upcoming: number;
+  }> {
+    const res = await api.get('/walk-ins/queue/upcoming', { params: { days } });
+    return res.data;
+  },
+
+  async referToDoctor(data: {
+    queue_id: string;
+    to_doctor_id: string;
+    referral_date: string;
+    referral_reason?: string;
+  }): Promise<{
+    ok: boolean;
+    referral_appointment_id: string;
+    to_doctor_name: string;
+    to_doctor_specialization: string | null;
+    referral_date: string;
+    queue_number: number;
+    message: string;
+  }> {
+    const res = await api.post('/walk-ins/refer', data);
     return res.data;
   },
 };

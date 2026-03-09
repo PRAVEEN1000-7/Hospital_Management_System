@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import walkInService from '../services/walkInService';
@@ -18,6 +19,7 @@ const PRIORITY_CONFIG: Record<string, { label: string; bg: string; text: string;
 const QUEUE_STATUS_CONFIG: Record<string, { label: string; bg: string; text: string; dot: string }> = {
   waiting:          { label: 'Waiting',         bg: 'bg-amber-50',   text: 'text-amber-700',   dot: 'bg-amber-400' },
   called:           { label: 'Called',           bg: 'bg-blue-50',    text: 'text-blue-700',    dot: 'bg-blue-500' },
+  sent_to_doctor:   { label: 'Sent to Doctor',  bg: 'bg-teal-50',    text: 'text-teal-700',    dot: 'bg-teal-500' },
   in_consultation:  { label: 'In Consultation',  bg: 'bg-purple-50',  text: 'text-purple-700',  dot: 'bg-purple-500' },
   completed:        { label: 'Completed',        bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-500' },
   skipped:          { label: 'Skipped',          bg: 'bg-slate-100',  text: 'text-slate-500',   dot: 'bg-slate-400' },
@@ -36,6 +38,7 @@ function timeAgo(iso: string | null): string {
 const WalkInQueue: React.FC = () => {
   const { user } = useAuth();
   const toast = useToast();
+  const navigate = useNavigate();
 
   const roles = user?.roles || [];
   const isDoctor = roles.includes('doctor');
@@ -56,24 +59,18 @@ const WalkInQueue: React.FC = () => {
   const [detailItem, setDetailItem] = useState<QueueItem | null>(null);
   const [unassigned, setUnassigned] = useState<UnassignedWalkIn[]>([]);
 
-  // ── Consultation Modal State ──────────────────────────────────
-  const [consultItem, setConsultItem] = useState<QueueItem | null>(null);
-  const [consultNotes, setConsultNotes] = useState('');
-  const [consultDiagnosis, setConsultDiagnosis] = useState('');
-  const [consultPrescription, setConsultPrescription] = useState('');
-  const [consultFollowUp, setConsultFollowUp] = useState('');
-  const [vitalsBp, setVitalsBp] = useState('');
-  const [vitalsPulse, setVitalsPulse] = useState('');
-  const [vitalsTemp, setVitalsTemp] = useState('');
-  const [vitalsWeight, setVitalsWeight] = useState('');
-  const [vitalsSpo2, setVitalsSpo2] = useState('');
-  const [consultSaving, setConsultSaving] = useState(false);
-
   // ── Doctor View: Tab + Scheduled Appointments ─────────────────
-  const [activeTab, setActiveTab] = useState<'queue' | 'scheduled' | 'completed'>('queue');
+  const [activeTab, setActiveTab] = useState<'queue' | 'scheduled' | 'completed' | 'upcoming'>('queue');
   const [scheduledAppts, setScheduledAppts] = useState<Appointment[]>([]);
   const [scheduledLoading, setScheduledLoading] = useState(false);
   const [notesModal, setNotesModal] = useState<{ id: string; notes: string } | null>(null);
+
+  // ── Upcoming Queue State ──────────────────────────────────────
+  const [upcomingData, setUpcomingData] = useState<Awaited<ReturnType<typeof walkInService.getUpcomingQueue>> | null>(null);
+  const [upcomingLoading, setUpcomingLoading] = useState(false);
+
+  // ── Date Picker for browsing queue by date ────────────────────
+  const [selectedDate, setSelectedDate] = useState<string>('');  // empty = today
 
   // ── Book Next Appointment Modal State ─────────────────────────
   const [bookNextItem, setBookNextItem] = useState<QueueItem | null>(null);
@@ -81,8 +78,17 @@ const WalkInQueue: React.FC = () => {
   const [bookNextTime, setBookNextTime] = useState<string>('');
   const [bookingSaving, setBookingSaving] = useState(false);
 
-  // ── Reception View: Tab for New/Ongoing/Completed ─────────────────
-  const [receptionTab, setReceptionTab] = useState<'new' | 'ongoing' | 'completed'>('new');
+  // ── Refer to Doctor Modal State ───────────────────────────────
+  const [referItem, setReferItem] = useState<QueueItem | null>(null);
+  const [referDoctorId, setReferDoctorId] = useState<string>('');
+  const [referDate, setReferDate] = useState<string>('');
+  const [referReason, setReferReason] = useState<string>('');
+  const [referSaving, setReferSaving] = useState(false);
+  const [allDoctors, setAllDoctors] = useState<DoctorOption[]>([]);
+  const [referDoctorLoad, setReferDoctorLoad] = useState<number | null>(null);
+
+  // ── Reception View: Tab for New/Ongoing/Completed/Upcoming ─────────
+  const [receptionTab, setReceptionTab] = useState<'new' | 'ongoing' | 'completed' | 'upcoming'>('new');
 
   const fetchScheduledAppts = useCallback(async () => {
     if (!isDoctor || !user?.id) return;
@@ -110,13 +116,24 @@ const WalkInQueue: React.FC = () => {
       // Doctor: backend auto-filters, no doctor_id needed
       // Reception/Admin: pass selected doctor filter
       const docId = isDoctor ? undefined : (filterDoctor || undefined);
-      const data = await walkInService.getQueueStatus(docId);
+      const dateParam = selectedDate || undefined;
+      const data = await walkInService.getQueueStatus(docId, dateParam);
       setQueueData(data);
     } catch {
       toast.error('Failed to load queue');
     }
     setLoading(false);
-  }, [filterDoctor, isDoctor]);
+  }, [filterDoctor, isDoctor, selectedDate]);
+
+  // ── Fetch upcoming queue (doctor + reception) ─────────────────────
+  const fetchUpcoming = useCallback(async () => {
+    setUpcomingLoading(true);
+    try {
+      const data = await walkInService.getUpcomingQueue(7);
+      setUpcomingData(data);
+    } catch { /* silent */ }
+    setUpcomingLoading(false);
+  }, []);
 
   // Load doctor list for filter dropdown and send modal (reception/admin only)
   useEffect(() => {
@@ -127,14 +144,27 @@ const WalkInQueue: React.FC = () => {
     }
   }, [canFilter, fetchUnassigned]);
 
+  // Load doctor list for referral modal (doctor role)
+  useEffect(() => {
+    if (isDoctor) {
+      scheduleService.getDoctors().then(setAllDoctors).catch(() => {});
+    }
+  }, [isDoctor]);
+
   useEffect(() => { fetchQueue(); }, [fetchQueue]);
 
   // Fetch scheduled appointments for doctors
   useEffect(() => { fetchScheduledAppts(); }, [fetchScheduledAppts]);
 
+  // Fetch upcoming on mount and when tab switches to upcoming
+  useEffect(() => { fetchUpcoming(); }, [fetchUpcoming]);
+  useEffect(() => {
+    if (activeTab === 'upcoming' || receptionTab === 'upcoming') fetchUpcoming();
+  }, [activeTab, receptionTab, fetchUpcoming]);
+
   // Auto-refresh every 15s
   useEffect(() => {
-    const timer = setInterval(() => { fetchQueue(); fetchUnassigned(); if (isDoctor) fetchScheduledAppts(); }, 15000);
+    const timer = setInterval(() => { fetchQueue(); fetchUnassigned(); fetchUpcoming(); if (isDoctor) fetchScheduledAppts(); }, 15000);
     return () => clearInterval(timer);
   }, [fetchQueue, fetchUnassigned, fetchScheduledAppts, isDoctor]);
 
@@ -152,9 +182,16 @@ const WalkInQueue: React.FC = () => {
       await walkInService.startConsultation(queueId);
       toast.success('Consultation started');
       fetchQueue();
-      // Open consultation modal for the item
+      // Navigate to prescription builder in consultation mode
       const item = (queueData?.items || []).find(i => i.queue_id === queueId);
-      if (item) openConsultModal(item);
+      if (item) {
+        const params = new URLSearchParams({
+          patient_id: item.patient_id || '',
+          appointment_id: item.appointment_id || '',
+          queue_id: item.queue_id,
+        });
+        navigate(`/prescriptions/new?${params.toString()}`);
+      }
     } catch { toast.error('Failed to start consultation'); }
   };
 
@@ -199,71 +236,40 @@ const WalkInQueue: React.FC = () => {
     setBookingSaving(false);
   };
 
-  // ── Consultation Modal Handlers ────────────────────────────────
-  const openConsultModal = async (item: QueueItem) => {
-    setConsultItem(item);
-    // Reset fields
-    setConsultNotes('');
-    setConsultDiagnosis('');
-    setConsultPrescription('');
-    setConsultFollowUp('');
-    setVitalsBp('');
-    setVitalsPulse('');
-    setVitalsTemp('');
-    setVitalsWeight('');
-    setVitalsSpo2('');
-    // Load existing notes if any
+  // ── Refer to Doctor Handler ─────────────────────────────────────
+  const handleReferToDoctor = async () => {
+    if (!referItem || !referDoctorId || !referDate) return;
+    setReferSaving(true);
     try {
-      const data = await walkInService.getConsultationNotes(item.queue_id);
-      if (data.clinical_notes) setConsultNotes(data.clinical_notes as string);
-      if (data.diagnosis) setConsultDiagnosis(data.diagnosis as string);
-      if (data.prescription) setConsultPrescription(data.prescription as string);
-      if (data.follow_up_date) setConsultFollowUp(data.follow_up_date as string);
-      const vitals = data.vitals as Record<string, string> | undefined;
-      if (vitals) {
-        if (vitals.bp) setVitalsBp(vitals.bp);
-        if (vitals.pulse) setVitalsPulse(vitals.pulse);
-        if (vitals.temp) setVitalsTemp(vitals.temp);
-        if (vitals.weight) setVitalsWeight(vitals.weight);
-        if (vitals.spo2) setVitalsSpo2(vitals.spo2);
-      }
-    } catch { /* no existing notes, that's fine */ }
-  };
-
-  const handleSaveConsultNotes = async () => {
-    if (!consultItem) return;
-    setConsultSaving(true);
-    try {
-      await walkInService.saveConsultationNotes(consultItem.queue_id, {
-        notes: consultNotes,
-        diagnosis: consultDiagnosis,
-        prescription: consultPrescription,
-        vitals_bp: vitalsBp,
-        vitals_pulse: vitalsPulse,
-        vitals_temp: vitalsTemp,
-        vitals_weight: vitalsWeight,
-        vitals_spo2: vitalsSpo2,
-        follow_up_date: consultFollowUp,
+      const result = await walkInService.referToDoctor({
+        queue_id: referItem.queue_id,
+        to_doctor_id: referDoctorId,
+        referral_date: referDate,
+        referral_reason: referReason || undefined,
       });
-      toast.success('Consultation notes saved');
-    } catch {
-      toast.error('Failed to save notes');
+      toast.success(result.message);
+      setReferItem(null);
+      setReferDoctorId('');
+      setReferDate('');
+      setReferReason('');
+      setReferDoctorLoad(null);
+      fetchQueue();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to refer patient');
     }
-    setConsultSaving(false);
+    setReferSaving(false);
   };
 
-  const handleCompleteFromConsult = async () => {
-    if (!consultItem) return;
-    await handleSaveConsultNotes();
-    try {
-      await walkInService.completePatient(consultItem.queue_id);
-      toast.success('Consultation completed');
-      setConsultItem(null);
-      fetchQueue();
-    } catch {
-      toast.error('Failed to complete');
-    }
-  };
+  // ── Fetch doctor load for referral warning ─────────────────────
+  useEffect(() => {
+    if (!referDoctorId || !referDate) { setReferDoctorLoad(null); return; }
+    let cancelled = false;
+    walkInService.getDoctorLoads(referDate).then(loads => {
+      if (cancelled) return;
+      setReferDoctorLoad(loads[referDoctorId] ?? 0);
+    }).catch(() => { if (!cancelled) setReferDoctorLoad(null); });
+    return () => { cancelled = true; };
+  }, [referDoctorId, referDate]);
 
   // ── Scheduled Appointment Actions (doctor view) ────────────────
   const handleScheduledStatusChange = async (id: string, newStatus: string) => {
@@ -315,6 +321,17 @@ const WalkInQueue: React.FC = () => {
     setSendingInProgress(false);
   };
 
+  // ── Send patient already in queue to doctor's NEXT UP ──────────
+  const handleSendPatientToDoctor = async (queueId: string, patientName: string) => {
+    try {
+      await walkInService.sendPatientToDoctor(queueId);
+      toast.success(`${patientName} sent to doctor's queue`);
+      fetchQueue();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to send patient');
+    }
+  };
+
   // ── Derived data ───────────────────────────────────────────────
   const activeItems = (queueData?.items || []).filter(
     i => !['completed', 'skipped'].includes(i.status),
@@ -326,8 +343,8 @@ const WalkInQueue: React.FC = () => {
   const displayItems = [...activeItems, ...completedItems];
 
   // ── Reception Tabs Derived Data ────────────────────────────────
-  // New: waiting patients + called patients (called = highlighted, waiting for reception to send)
-  const receptionNewItems = (queueData?.items || []).filter(i => ['waiting', 'called'].includes(i.status));
+  // New: waiting patients + called patients + sent_to_doctor (called = highlighted, waiting for reception to send)
+  const receptionNewItems = (queueData?.items || []).filter(i => ['waiting', 'called', 'sent_to_doctor'].includes(i.status));
   // Ongoing: only in consultation (doctor has started consultation)
   const receptionOngoingItems = (queueData?.items || []).filter(i => i.status === 'in_consultation');
   // Completed: finished consultations
@@ -356,7 +373,11 @@ const WalkInQueue: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">
-            {isDoctor ? 'Today Patients' : 'Walk-in Queue'}
+            {isDoctor
+              ? (selectedDate && selectedDate !== new Date().toISOString().split('T')[0]
+                ? `Patients — ${new Date(selectedDate + 'T00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`
+                : 'Today Patients')
+              : 'Walk-in Queue'}
           </h1>
           <p className="text-slate-500 text-sm mt-1">
             {isDoctor
@@ -365,6 +386,22 @@ const WalkInQueue: React.FC = () => {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {/* Date Picker — browse queue for any date */}
+          <div className="relative">
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => { setSelectedDate(e.target.value); setLoading(true); }}
+              className="px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary w-[150px]"
+              title="Browse queue by date"
+            />
+          </div>
+          {selectedDate && selectedDate !== new Date().toISOString().split('T')[0] && (
+            <button onClick={() => { setSelectedDate(''); setLoading(true); }}
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-primary/10 text-primary border border-primary/20 rounded-lg text-xs font-semibold hover:bg-primary/20 transition-colors">
+              <span className="material-symbols-outlined text-sm">today</span> Back to Today
+            </button>
+          )}
           <button onClick={() => { setLoading(true); fetchQueue(); if (isDoctor) fetchScheduledAppts(); }}
             className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg text-sm font-semibold hover:bg-slate-50 transition-colors">
             <span className="material-symbols-outlined text-lg">refresh</span> Refresh
@@ -420,6 +457,14 @@ const WalkInQueue: React.FC = () => {
             <span className="material-symbols-outlined text-lg">task_alt</span>
             Completed
             <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${activeTab === 'completed' ? 'bg-primary/10 text-primary' : 'bg-slate-200 text-slate-500'}`}>{completedItems.length}</span>
+          </button>
+          <button onClick={() => setActiveTab('upcoming')}
+            className={`inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-lg transition-all ${
+              activeTab === 'upcoming' ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+            }`}>
+            <span className="material-symbols-outlined text-lg">event_upcoming</span>
+            Upcoming
+            {upcomingData && <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${activeTab === 'upcoming' ? 'bg-orange-100 text-orange-600' : 'bg-slate-200 text-slate-500'}`}>{upcomingData.total_upcoming}</span>}
           </button>
         </div>
       )}
@@ -485,7 +530,14 @@ const WalkInQueue: React.FC = () => {
                           <span className="material-symbols-outlined text-sm">person</span>
                           Patient Info
                         </button>
-                        <button onClick={() => openConsultModal(currentPatient)}
+                        <button onClick={() => {
+                          const params = new URLSearchParams({
+                            patient_id: currentPatient.patient_id || '',
+                            appointment_id: currentPatient.appointment_id || '',
+                            queue_id: currentPatient.queue_id,
+                          });
+                          navigate(`/prescriptions/new?${params.toString()}`);
+                        }}
                           className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-purple-700 bg-white border border-purple-200 rounded-lg hover:bg-purple-50 transition-colors">
                           <span className="material-symbols-outlined text-sm">edit_note</span>
                           Consultation
@@ -500,13 +552,18 @@ const WalkInQueue: React.FC = () => {
                           <span className="material-symbols-outlined text-sm">event_upcoming</span>
                           Book Follow-up
                         </button>
+                        <button onClick={() => { setReferItem(currentPatient); setReferDoctorId(''); setReferDate(''); setReferReason(''); }}
+                          className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-orange-700 bg-white border border-orange-200 rounded-lg hover:bg-orange-50 transition-colors">
+                          <span className="material-symbols-outlined text-sm">send</span>
+                          Refer to Doctor
+                        </button>
                       </div>
                     </div>
                   </div>
                 );
               })()}
 
-              {/* Called Patient — Ready to Start */}
+              {/* Called Patient — Waiting for Reception to Send */}
               {(() => {
                 const calledPatient = activeItems.find(i => i.status === 'called');
                 if (!calledPatient) return null;
@@ -514,8 +571,9 @@ const WalkInQueue: React.FC = () => {
                 return (
                   <div className="bg-gradient-to-r from-blue-50 to-blue-100/50 rounded-2xl border-2 border-blue-200 p-5 shadow-sm">
                     <div className="flex items-center gap-2 mb-4">
-                      <span className="material-symbols-outlined text-blue-600">campaign</span>
-                      <span className="text-xs font-bold text-blue-700 uppercase tracking-wider">Called — Waiting to Enter</span>
+                      <span className="material-symbols-outlined text-blue-600 animate-pulse">campaign</span>
+                      <span className="text-xs font-bold text-blue-700 uppercase tracking-wider">Called — Waiting for Reception</span>
+                      <span className="text-[10px] text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full font-semibold animate-pulse">Pending Send</span>
                     </div>
                     <div className="flex flex-col lg:flex-row lg:items-center gap-4">
                       <div className="flex items-center gap-4 flex-1 min-w-0">
@@ -549,11 +607,6 @@ const WalkInQueue: React.FC = () => {
                           <span className="material-symbols-outlined text-sm">person</span>
                           Info
                         </button>
-                        <button onClick={() => handleStartConsultation(calledPatient.queue_id)}
-                          className="inline-flex items-center gap-1.5 px-5 py-2.5 text-sm font-bold text-white bg-purple-500 rounded-lg hover:bg-purple-600 transition-colors shadow-sm">
-                          <span className="material-symbols-outlined text-base">clinical_notes</span>
-                          Start Consultation
-                        </button>
                         <button onClick={() => handleSkip(calledPatient.queue_id)}
                           className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="No Show">
                           <span className="material-symbols-outlined text-lg">person_off</span>
@@ -564,27 +617,28 @@ const WalkInQueue: React.FC = () => {
                 );
               })()}
 
-              {/* Next Up — Ready to Call */}
+              {/* Next Up — Sent by Reception (only sent_to_doctor patients) */}
               {(() => {
-                const waitingPatients = activeItems.filter(i => i.status === 'waiting');
-                const nextPatient = waitingPatients[0];
+                const sentPatients = activeItems.filter(i => i.status === 'sent_to_doctor');
+                const nextPatient = sentPatients[0];
                 if (!nextPatient) return null;
                 const pri = PRIORITY_CONFIG[nextPatient.priority] || PRIORITY_CONFIG.normal;
                 const hasCalledOrConsulting = activeItems.some(i => i.status === 'called' || i.status === 'in_consultation');
                 return (
-                  <div className={`bg-white rounded-xl border-2 p-5 ${hasCalledOrConsulting ? 'border-slate-200' : 'border-amber-300 bg-amber-50/30'}`}>
+                  <div className={`bg-white rounded-xl border-2 p-5 ${hasCalledOrConsulting ? 'border-slate-200' : 'border-teal-300 bg-teal-50/30'}`}>
                     <div className="flex items-center gap-2 mb-4">
-                      <span className={`material-symbols-outlined ${hasCalledOrConsulting ? 'text-slate-500' : 'text-amber-600'}`}>hourglass_top</span>
-                      <span className={`text-xs font-bold uppercase tracking-wider ${hasCalledOrConsulting ? 'text-slate-500' : 'text-amber-700'}`}>
-                        Next Up {waitingPatients.length > 1 ? `(+${waitingPatients.length - 1} waiting)` : ''}
+                      <span className={`material-symbols-outlined ${hasCalledOrConsulting ? 'text-slate-500' : 'text-teal-600'}`}>send</span>
+                      <span className={`text-xs font-bold uppercase tracking-wider ${hasCalledOrConsulting ? 'text-slate-500' : 'text-teal-700'}`}>
+                        Next Up {sentPatients.length > 1 ? `(+${sentPatients.length - 1} ready)` : ''}
                       </span>
+                      <span className="text-[10px] text-teal-600 bg-teal-100 px-2 py-0.5 rounded-full font-semibold">Sent by Reception</span>
                     </div>
                     <div className="flex flex-col lg:flex-row lg:items-center gap-4">
                       <div className="flex items-center gap-4 flex-1 min-w-0">
                         <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-lg font-bold shrink-0 ${
                           nextPatient.priority === 'emergency' ? 'bg-red-100 text-red-700' :
                           nextPatient.priority === 'urgent' ? 'bg-amber-100 text-amber-700' :
-                          'bg-primary/10 text-primary'
+                          'bg-teal-100 text-teal-700'
                         }`}>
                           {nextPatient.queue_number}
                         </div>
@@ -627,26 +681,33 @@ const WalkInQueue: React.FC = () => {
                 );
               })()}
 
-              {/* Remaining Waiting Queue — Compact cards */}
+              {/* Remaining Waiting Queue — Patients waiting for reception to send */}
               {(() => {
-                const waitingPatients = activeItems.filter(i => i.status === 'waiting').slice(1);
+                const waitingPatients = activeItems.filter(i => i.status === 'waiting' || i.status === 'called');
                 if (waitingPatients.length === 0) return null;
                 return (
                   <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                    <div className="px-4 py-3 bg-slate-50 border-b border-slate-100">
-                      <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                        Queue ({waitingPatients.length} more waiting)
-                      </span>
+                    <div className="px-4 py-3 bg-amber-50 border-b border-amber-100">
+                      <div className="flex items-center gap-2">
+                        <span className="material-symbols-outlined text-amber-500 text-sm">hourglass_top</span>
+                        <span className="text-xs font-bold text-amber-700 uppercase tracking-wider">
+                          Waiting for Reception ({waitingPatients.length})
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-amber-600 mt-0.5">These patients will appear in Next Up once reception sends them</p>
                     </div>
                     <div className="divide-y divide-slate-100">
                       {waitingPatients.map(item => {
                         const pri = PRIORITY_CONFIG[item.priority] || PRIORITY_CONFIG.normal;
+                        const isCalled = item.status === 'called';
                         return (
                           <div key={item.queue_id} className={`flex items-center gap-3 px-4 py-3 ${
+                            isCalled ? 'bg-blue-50/50' :
                             item.priority === 'emergency' ? 'bg-red-50/30' :
                             item.priority === 'urgent' ? 'bg-amber-50/20' : ''
                           }`}>
                             <span className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold shrink-0 ${
+                              isCalled ? 'bg-blue-100 text-blue-700 ring-2 ring-blue-300' :
                               item.priority === 'emergency' ? 'bg-red-100 text-red-700' :
                               item.priority === 'urgent' ? 'bg-amber-100 text-amber-700' :
                               'bg-slate-100 text-slate-600'
@@ -656,6 +717,9 @@ const WalkInQueue: React.FC = () => {
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <p className="text-sm font-bold text-slate-900">{item.patient_name || 'Unknown'}</p>
+                                {isCalled && (
+                                  <span className="text-[10px] font-bold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded-full">Called</span>
+                                )}
                                 {item.patient_reference_number && (
                                   <span className="text-xs font-mono text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">MRN: {item.patient_reference_number}</span>
                                 )}
@@ -668,11 +732,13 @@ const WalkInQueue: React.FC = () => {
                               </div>
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
-                              <button onClick={() => handleCall(item.queue_id)}
-                                className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors">
-                                <span className="material-symbols-outlined text-sm">campaign</span>
-                                Call
-                              </button>
+                              {!isCalled && (
+                                <button onClick={() => handleCall(item.queue_id)}
+                                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors">
+                                  <span className="material-symbols-outlined text-sm">campaign</span>
+                                  Call
+                                </button>
+                              )}
                             </div>
                           </div>
                         );
@@ -749,6 +815,14 @@ const WalkInQueue: React.FC = () => {
             <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${receptionTab === 'completed' ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-200 text-slate-500'}`}>
               {receptionCompletedItems.length}
             </span>
+          </button>
+          <button onClick={() => setReceptionTab('upcoming')}
+            className={`inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-lg transition-all ${
+              receptionTab === 'upcoming' ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+            }`}>
+            <span className="material-symbols-outlined text-lg">event_upcoming</span>
+            Upcoming
+            {upcomingData && <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${receptionTab === 'upcoming' ? 'bg-orange-100 text-orange-600' : 'bg-slate-200 text-slate-500'}`}>{upcomingData.total_upcoming}</span>}
           </button>
         </div>
         {/* Doctor Filter */}
@@ -830,8 +904,114 @@ const WalkInQueue: React.FC = () => {
         </div>
       )}
 
+      {/* ── Reception Upcoming View ── */}
+      {receptionTab === 'upcoming' && (
+        <div>
+          {upcomingLoading ? (
+            <div className="text-center py-20 text-slate-400">
+              <span className="material-symbols-outlined animate-spin text-4xl">progress_activity</span>
+            </div>
+          ) : !upcomingData || upcomingData.date_groups.length === 0 ? (
+            <div className="text-center py-20 text-slate-400 bg-white rounded-xl border border-slate-200">
+              <span className="material-symbols-outlined text-5xl mb-3 block">event_available</span>
+              <p className="text-sm font-medium">No upcoming patients in the next 7 days</p>
+              <p className="text-xs mt-1">Referrals, follow-ups, and scheduled appointments will appear here</p>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {upcomingData.date_groups.map(group => {
+                const groupDate = new Date(group.date + 'T00:00');
+                const dayLabel = groupDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' });
+                return (
+                  <div key={group.date} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                    <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 bg-orange-100 rounded-lg flex items-center justify-center">
+                          <span className="material-symbols-outlined text-orange-600 text-sm">calendar_today</span>
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-slate-900">{dayLabel}</p>
+                          <p className="text-[10px] text-slate-400 uppercase tracking-wider">{group.count} patient{group.count !== 1 ? 's' : ''}</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => { setSelectedDate(group.date); setReceptionTab('new'); setLoading(true); }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-primary bg-primary/10 rounded-lg hover:bg-primary/20 transition-colors">
+                        <span className="material-symbols-outlined text-sm">visibility</span>
+                        View Queue
+                      </button>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
+                            <th className="px-5 py-2">#</th>
+                            <th className="px-4 py-2">Patient</th>
+                            <th className="px-4 py-2">Doctor</th>
+                            <th className="px-4 py-2">Type</th>
+                            <th className="px-4 py-2">Priority</th>
+                            <th className="px-4 py-2">Complaint</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                          {group.items.map(item => {
+                            const pri = PRIORITY_CONFIG[item.priority] || PRIORITY_CONFIG.normal;
+                            const typeConfig: Record<string, { label: string; bg: string; text: string }> = {
+                              referral: { label: 'Referral', bg: 'bg-orange-100', text: 'text-orange-700' },
+                              'follow-up': { label: 'Follow-up', bg: 'bg-blue-100', text: 'text-blue-700' },
+                              follow_up: { label: 'Follow-up', bg: 'bg-blue-100', text: 'text-blue-700' },
+                              scheduled: { label: 'Scheduled', bg: 'bg-green-100', text: 'text-green-700' },
+                              'walk-in': { label: 'Walk-in', bg: 'bg-slate-100', text: 'text-slate-600' },
+                              walk_in: { label: 'Walk-in', bg: 'bg-slate-100', text: 'text-slate-600' },
+                            };
+                            const apptType = typeConfig[item.appointment_type] || { label: item.appointment_type, bg: 'bg-slate-100', text: 'text-slate-600' };
+                            return (
+                              <tr key={item.queue_id} className="hover:bg-slate-50/50">
+                                <td className="px-5 py-2.5 text-sm font-bold text-slate-400">{item.queue_number}</td>
+                                <td className="px-4 py-2.5">
+                                  <p className="text-sm font-semibold text-slate-900">{item.patient_name || 'Unknown'}</p>
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    {item.patient_reference_number && <span className="text-[10px] font-mono text-slate-400">MRN: {item.patient_reference_number}</span>}
+                                    {item.patient_gender && <span className="text-[10px] text-slate-400 capitalize">{item.patient_gender}</span>}
+                                    {item.patient_age != null && <span className="text-[10px] text-slate-400">{item.patient_age}y</span>}
+                                  </div>
+                                </td>
+                                <td className="px-4 py-2.5">
+                                  <p className="text-sm text-slate-700">{item.doctor_name || '—'}</p>
+                                  {item.referring_doctor_name && (
+                                    <p className="text-[10px] text-orange-600 flex items-center gap-0.5 mt-0.5">
+                                      <span className="material-symbols-outlined" style={{ fontSize: 10 }}>person</span>
+                                      Ref: Dr. {item.referring_doctor_name}
+                                    </p>
+                                  )}
+                                </td>
+                                <td className="px-4 py-2.5">
+                                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${apptType.bg} ${apptType.text}`}>{apptType.label}</span>
+                                </td>
+                                <td className="px-4 py-2.5">
+                                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${pri.bg} ${pri.text}`}>{pri.label}</span>
+                                </td>
+                                <td className="px-4 py-2.5">
+                                  <p className="text-xs text-slate-500 truncate max-w-[200px]" title={item.chief_complaint || ''}>
+                                    {item.chief_complaint || <span className="text-slate-300">—</span>}
+                                  </p>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Queue Table */}
-      {loading ? (
+      {receptionTab !== 'upcoming' && (loading ? (
         <div className="text-center py-20 text-slate-400">
           <span className="material-symbols-outlined animate-spin text-4xl">progress_activity</span>
         </div>
@@ -875,12 +1055,14 @@ const WalkInQueue: React.FC = () => {
                   const recentComplete = isRecentlyCompleted(item);
                   const isCalled = item.status === 'called';
                   const isInConsultation = item.status === 'in_consultation';
+                  const isSentToDoctor = item.status === 'sent_to_doctor';
                   const isCompleted = ['completed', 'skipped'].includes(item.status);
                   return (
                     <tr key={item.queue_id}
                       className={`border-b border-slate-100 transition-colors ${
                         isInConsultation ? 'bg-purple-50/50' :
                         isCalled ? 'bg-blue-50 ring-2 ring-blue-200 ring-inset animate-pulse' :
+                        isSentToDoctor ? 'bg-teal-50/40' :
                         recentComplete ? 'bg-emerald-50/50 animate-pulse' :
                         isCompleted && receptionTab === 'completed' ? 'hover:bg-slate-50/50' :
                         item.priority === 'emergency' ? 'bg-red-50/30' :
@@ -890,6 +1072,7 @@ const WalkInQueue: React.FC = () => {
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center justify-center w-8 h-8 rounded-lg text-sm font-bold ${
                           isCalled ? 'bg-blue-500 text-white ring-2 ring-blue-300' :
+                          isSentToDoctor ? 'bg-teal-100 text-teal-700' :
                           isCompleted ? 'bg-emerald-100 text-emerald-700' :
                           item.priority === 'emergency' ? 'bg-red-100 text-red-700' :
                           item.priority === 'urgent' ? 'bg-amber-100 text-amber-700' :
@@ -971,20 +1154,37 @@ const WalkInQueue: React.FC = () => {
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
                           {/* Send to Doctor: for reception/admin on waiting OR called items */}
-                          {canFilter && (item.status === 'waiting' || item.status === 'called') && (
-                            <button onClick={() => {
-                              setSendModalId(item.appointment_id);
-                              setSendDoctorId(item.doctor_id || '');
-                              setSendModalPatientName(item.patient_name || 'Patient');
-                            }}
-                              className={`w-8 h-8 flex items-center justify-center rounded-lg hover:scale-105 active:scale-95 transition-all shadow-sm ${
+                          {canFilter && (item.status === 'waiting' || item.status === 'called') && item.doctor_id && (
+                            <button onClick={() => handleSendPatientToDoctor(item.queue_id, item.patient_name || 'Patient')}
+                              className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg hover:scale-105 active:scale-95 transition-all shadow-sm text-xs font-semibold ${
                                 isCalled 
                                   ? 'bg-blue-500 text-white ring-2 ring-blue-300 animate-pulse' 
                                   : 'bg-primary text-white hover:bg-primary/90'
                               }`}
-                              title={isCalled ? 'Doctor Called - Send to Queue' : 'Send to Doctor'}>
-                              <span className="material-symbols-outlined text-lg">send</span>
+                              title={isCalled ? 'Doctor Called — Send Now!' : 'Send to Doctor'}>
+                              <span className="material-symbols-outlined text-base">send</span>
+                              {isCalled ? 'Send Now' : 'Send'}
                             </button>
+                          )}
+                          {/* Assign doctor: for unassigned items */}
+                          {canFilter && (item.status === 'waiting' || item.status === 'called') && !item.doctor_id && (
+                            <button onClick={() => {
+                              setSendModalId(item.appointment_id);
+                              setSendDoctorId('');
+                              setSendModalPatientName(item.patient_name || 'Patient');
+                            }}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-orange-500 text-white hover:bg-orange-600 hover:scale-105 active:scale-95 transition-all shadow-sm text-xs font-semibold"
+                              title="Assign & Send to Doctor">
+                              <span className="material-symbols-outlined text-base">person_add</span>
+                              Assign
+                            </button>
+                          )}
+                          {/* Sent to Doctor badge */}
+                          {item.status === 'sent_to_doctor' && (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold rounded-lg bg-teal-100 text-teal-700">
+                              <span className="material-symbols-outlined text-sm">check_circle</span>
+                              Sent to Doctor
+                            </span>
                           )}
                           {/* In Consultation status indicator */}
                           {isInConsultation && (
@@ -1007,7 +1207,7 @@ const WalkInQueue: React.FC = () => {
             </table>
           </div>
         </div>
-      )}
+      ))}
       </>)}
 
       {/* ── Scheduled Appointments Tab (Doctor only) ─────────────── */}
@@ -1168,7 +1368,107 @@ const WalkInQueue: React.FC = () => {
                           <span className="material-symbols-outlined text-sm">person</span>
                           Patient Info
                         </button>
+                        {item.status === 'completed' && (
+                          <button onClick={() => { setReferItem(item); setReferDoctorId(''); setReferDate(''); setReferReason(''); }}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded-lg hover:bg-orange-100 transition-colors">
+                            <span className="material-symbols-outlined text-sm">send</span>
+                            Refer
+                          </button>
+                        )}
                       </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Doctor Upcoming View — Future bookings grouped by date ── */}
+      {isDoctor && activeTab === 'upcoming' && (
+        <div>
+          {upcomingLoading ? (
+            <div className="text-center py-20 text-slate-400">
+              <span className="material-symbols-outlined animate-spin text-4xl">progress_activity</span>
+            </div>
+          ) : !upcomingData || upcomingData.date_groups.length === 0 ? (
+            <div className="text-center py-20 text-slate-400 bg-white rounded-xl border border-slate-200">
+              <span className="material-symbols-outlined text-5xl mb-3 block">event_available</span>
+              <p className="text-sm font-medium">No upcoming patients in the next 7 days</p>
+              <p className="text-xs mt-1">Referrals, follow-ups, and scheduled appointments will appear here</p>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {upcomingData.date_groups.map(group => {
+                const groupDate = new Date(group.date + 'T00:00');
+                const dayLabel = groupDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' });
+                return (
+                  <div key={group.date} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                    <div className="px-5 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 bg-orange-100 rounded-lg flex items-center justify-center">
+                          <span className="material-symbols-outlined text-orange-600 text-sm">calendar_today</span>
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-slate-900">{dayLabel}</p>
+                          <p className="text-[10px] text-slate-400 uppercase tracking-wider">{group.count} patient{group.count !== 1 ? 's' : ''}</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => { setSelectedDate(group.date); setActiveTab('queue'); setLoading(true); }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-primary bg-primary/10 rounded-lg hover:bg-primary/20 transition-colors">
+                        <span className="material-symbols-outlined text-sm">visibility</span>
+                        View Queue
+                      </button>
+                    </div>
+                    <div className="divide-y divide-slate-100">
+                      {group.items.map(item => {
+                        const pri = PRIORITY_CONFIG[item.priority] || PRIORITY_CONFIG.normal;
+                        const typeConfig: Record<string, { label: string; bg: string; text: string }> = {
+                          referral: { label: 'Referral', bg: 'bg-orange-100', text: 'text-orange-700' },
+                          'follow-up': { label: 'Follow-up', bg: 'bg-blue-100', text: 'text-blue-700' },
+                          'follow_up': { label: 'Follow-up', bg: 'bg-blue-100', text: 'text-blue-700' },
+                          scheduled: { label: 'Scheduled', bg: 'bg-green-100', text: 'text-green-700' },
+                          'walk-in': { label: 'Walk-in', bg: 'bg-slate-100', text: 'text-slate-600' },
+                          walk_in: { label: 'Walk-in', bg: 'bg-slate-100', text: 'text-slate-600' },
+                        };
+                        const apptType = typeConfig[item.appointment_type] || { label: item.appointment_type, bg: 'bg-slate-100', text: 'text-slate-600' };
+                        return (
+                          <div key={item.queue_id} className="flex items-center gap-3 px-5 py-3 hover:bg-slate-50/50">
+                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold shrink-0 ${
+                              item.priority === 'emergency' ? 'bg-red-100 text-red-700' :
+                              item.priority === 'urgent' ? 'bg-amber-100 text-amber-700' :
+                              'bg-slate-100 text-slate-600'
+                            }`}>
+                              {item.queue_number}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="text-sm font-bold text-slate-900">{item.patient_name || 'Unknown'}</p>
+                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${apptType.bg} ${apptType.text}`}>{apptType.label}</span>
+                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${pri.bg} ${pri.text}`}>{pri.label}</span>
+                              </div>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                {item.patient_reference_number && (
+                                  <span className="text-xs font-mono text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded">MRN: {item.patient_reference_number}</span>
+                                )}
+                                {item.patient_gender && <span className="text-xs text-slate-500 font-medium capitalize">{item.patient_gender}</span>}
+                                {item.patient_age != null && <span className="text-xs text-slate-500 font-medium">{item.patient_age}y</span>}
+                                {item.chief_complaint && (
+                                  <span className="text-xs text-slate-400 truncate max-w-[200px]" title={item.chief_complaint}>{item.chief_complaint}</span>
+                                )}
+                              </div>
+                              {item.referring_doctor_name && (
+                                <p className="text-[10px] text-orange-600 mt-0.5 flex items-center gap-1">
+                                  <span className="material-symbols-outlined" style={{ fontSize: 11 }}>person</span>
+                                  Referred by Dr. {item.referring_doctor_name}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 );
@@ -1419,6 +1719,18 @@ const WalkInQueue: React.FC = () => {
                   <span className="material-symbols-outlined text-base">campaign</span> Call Patient
                 </button>
               )}
+              {canFilter && (detailItem.status === 'waiting' || detailItem.status === 'called') && detailItem.doctor_id && (
+                <button onClick={() => { handleSendPatientToDoctor(detailItem.queue_id, detailItem.patient_name || 'Patient'); setDetailItem(null); }}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-teal-500 rounded-lg hover:bg-teal-600 shadow-sm transition-colors">
+                  <span className="material-symbols-outlined text-base">send</span> Send to Doctor
+                </button>
+              )}
+              {canActOnQueue && detailItem.status === 'sent_to_doctor' && (
+                <button onClick={() => { handleStartConsultation(detailItem.queue_id); setDetailItem(null); }}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-purple-500 rounded-lg hover:bg-purple-600 shadow-sm transition-colors">
+                  <span className="material-symbols-outlined text-base">clinical_notes</span> Start Consultation
+                </button>
+              )}
               {canActOnQueue && detailItem.status === 'called' && (
                 <button onClick={() => { handleStartConsultation(detailItem.queue_id); setDetailItem(null); }}
                   className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-purple-500 rounded-lg hover:bg-purple-600 shadow-sm transition-colors">
@@ -1426,7 +1738,15 @@ const WalkInQueue: React.FC = () => {
                 </button>
               )}
               {canActOnQueue && detailItem.status === 'in_consultation' && (
-                <button onClick={() => { openConsultModal(detailItem); setDetailItem(null); }}
+                <button onClick={() => {
+                  const params = new URLSearchParams({
+                    patient_id: detailItem.patient_id || '',
+                    appointment_id: detailItem.appointment_id || '',
+                    queue_id: detailItem.queue_id,
+                  });
+                  navigate(`/prescriptions/new?${params.toString()}`);
+                  setDetailItem(null);
+                }}
                   className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-purple-500 rounded-lg hover:bg-purple-600 shadow-sm transition-colors">
                   <span className="material-symbols-outlined text-base">edit_note</span> Open Consultation
                 </button>
@@ -1447,152 +1767,6 @@ const WalkInQueue: React.FC = () => {
                 className="px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 rounded-lg transition-colors">
                 Close
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Consultation Modal */}
-      {consultItem && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setConsultItem(null)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[92vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
-            {/* Header */}
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-12 h-12 bg-purple-50 rounded-xl flex items-center justify-center">
-                <span className="material-symbols-outlined text-purple-600 text-2xl">clinical_notes</span>
-              </div>
-              <div className="min-w-0 flex-1">
-                <h3 className="text-lg font-bold text-slate-900">Consultation — {consultItem.patient_name || 'Patient'}</h3>
-                <div className="flex items-center gap-3 mt-0.5">
-                  <span className="text-xs text-slate-400 font-mono">Token #{consultItem.queue_number}</span>
-                  {consultItem.patient_reference_number && (
-                    <span className="text-xs text-slate-400 font-mono">MRN: {consultItem.patient_reference_number}</span>
-                  )}
-                  {consultItem.patient_age != null && (
-                    <span className="text-xs text-slate-400">{consultItem.patient_age}y, {consultItem.patient_gender || ''}</span>
-                  )}
-                </div>
-              </div>
-              <button onClick={() => setConsultItem(null)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg">
-                <span className="material-symbols-outlined text-xl">close</span>
-              </button>
-            </div>
-
-            {/* Clinical Alerts */}
-            {(consultItem.patient_known_allergies || consultItem.patient_chronic_conditions) && (
-              <div className="flex gap-3 mb-5">
-                {consultItem.patient_known_allergies && (
-                  <div className="flex-1 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                    <div className="flex items-center gap-1 mb-1">
-                      <span className="material-symbols-outlined text-red-500" style={{ fontSize: 14 }}>warning</span>
-                      <span className="text-[10px] font-bold text-red-600 uppercase">Allergies</span>
-                    </div>
-                    <p className="text-xs text-red-800">{consultItem.patient_known_allergies}</p>
-                  </div>
-                )}
-                {consultItem.patient_chronic_conditions && (
-                  <div className="flex-1 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
-                    <div className="flex items-center gap-1 mb-1">
-                      <span className="material-symbols-outlined text-blue-500" style={{ fontSize: 14 }}>monitor_heart</span>
-                      <span className="text-[10px] font-bold text-blue-600 uppercase">Chronic Conditions</span>
-                    </div>
-                    <p className="text-xs text-blue-800">{consultItem.patient_chronic_conditions}</p>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Chief Complaint */}
-            {consultItem.chief_complaint && (
-              <div className="mb-5 bg-amber-50 rounded-xl p-3">
-                <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wider mb-1">Chief Complaint</p>
-                <p className="text-sm text-amber-900">{consultItem.chief_complaint}</p>
-              </div>
-            )}
-
-            {/* Vitals Section */}
-            <div className="mb-5">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">
-                <span className="material-symbols-outlined text-xs align-text-bottom mr-1">vital_signs</span>
-                Vitals
-              </p>
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                <div>
-                  <label className="text-[10px] font-semibold text-slate-500 block mb-1">BP (mmHg)</label>
-                  <input type="text" value={vitalsBp} onChange={(e) => setVitalsBp(e.target.value)} placeholder="120/80"
-                    className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-semibold text-slate-500 block mb-1">Pulse (bpm)</label>
-                  <input type="text" value={vitalsPulse} onChange={(e) => setVitalsPulse(e.target.value)} placeholder="72"
-                    className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-semibold text-slate-500 block mb-1">Temp (°F)</label>
-                  <input type="text" value={vitalsTemp} onChange={(e) => setVitalsTemp(e.target.value)} placeholder="98.6"
-                    className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-semibold text-slate-500 block mb-1">Weight (kg)</label>
-                  <input type="text" value={vitalsWeight} onChange={(e) => setVitalsWeight(e.target.value)} placeholder="70"
-                    className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-semibold text-slate-500 block mb-1">SpO2 (%)</label>
-                  <input type="text" value={vitalsSpo2} onChange={(e) => setVitalsSpo2(e.target.value)} placeholder="98"
-                    className="w-full px-2.5 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
-                </div>
-              </div>
-            </div>
-
-            {/* Clinical Notes */}
-            <div className="mb-5">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Clinical Notes</label>
-              <textarea value={consultNotes} onChange={(e) => setConsultNotes(e.target.value)} rows={3}
-                placeholder="Examination findings, observations, symptoms..."
-                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm resize-none focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
-            </div>
-
-            {/* Diagnosis */}
-            <div className="mb-5">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Diagnosis</label>
-              <textarea value={consultDiagnosis} onChange={(e) => setConsultDiagnosis(e.target.value)} rows={2}
-                placeholder="Primary & secondary diagnosis..."
-                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm resize-none focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
-            </div>
-
-            {/* Prescription */}
-            <div className="mb-5">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Prescription / Treatment Plan</label>
-              <textarea value={consultPrescription} onChange={(e) => setConsultPrescription(e.target.value)} rows={3}
-                placeholder="Medications, dosage, instructions..."
-                className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm resize-none focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
-            </div>
-
-            {/* Follow-up Date */}
-            <div className="mb-5">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Follow-up Date</label>
-              <input type="date" value={consultFollowUp} onChange={(e) => setConsultFollowUp(e.target.value)}
-                className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
-            </div>
-
-            {/* Footer */}
-            <div className="flex justify-between items-center mt-6 pt-4 border-t border-slate-100">
-              <button onClick={() => setConsultItem(null)} className="px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 rounded-lg">
-                Close
-              </button>
-              <div className="flex gap-3">
-                <button onClick={handleSaveConsultNotes} disabled={consultSaving}
-                  className="inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold text-primary border border-primary rounded-lg hover:bg-primary/5 disabled:opacity-50 transition-colors">
-                  <span className="material-symbols-outlined text-base">save</span>
-                  {consultSaving ? 'Saving...' : 'Save Notes'}
-                </button>
-                <button onClick={handleCompleteFromConsult} disabled={consultSaving}
-                  className="inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 disabled:opacity-50 shadow-sm transition-colors">
-                  <span className="material-symbols-outlined text-base">task_alt</span>
-                  Save &amp; Complete
-                </button>
-              </div>
             </div>
           </div>
         </div>
@@ -1654,6 +1828,100 @@ const WalkInQueue: React.FC = () => {
                 className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-primary rounded-xl hover:bg-primary/90 disabled:opacity-50 shadow-sm transition-all">
                 <span className="material-symbols-outlined text-base">check</span>
                 {bookingSaving ? 'Booking...' : 'Confirm Booking'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ── Refer to Doctor Modal ──────────────────────────────────────── */}
+      {referItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center">
+                  <span className="material-symbols-outlined text-orange-600">send</span>
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">Refer to Another Doctor</h3>
+                  <p className="text-xs text-slate-500">{referItem.patient_name}</p>
+                </div>
+              </div>
+              <button onClick={() => setReferItem(null)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                  Select Doctor / Specialist <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={referDoctorId}
+                  onChange={(e) => setReferDoctorId(e.target.value)}
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none">
+                  <option value="">— Choose a doctor —</option>
+                  {allDoctors
+                    .filter(d => d.doctor_id !== referItem.doctor_id)
+                    .map(d => (
+                      <option key={d.doctor_id} value={d.doctor_id}>
+                        {d.name}{d.specialization ? ` — ${d.specialization}` : ''}
+                      </option>
+                    ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                  Appointment Date <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={referDate}
+                  onChange={(e) => setReferDate(e.target.value)}
+                  min={new Date().toISOString().split('T')[0]}
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                />
+              </div>
+              {referDoctorLoad !== null && referDoctorId && referDate && (
+                <div className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm ${
+                  referDoctorLoad >= 15 ? 'bg-red-50 text-red-700 border border-red-200' :
+                  referDoctorLoad >= 8 ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                  'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                }`}>
+                  <span className="material-symbols-outlined text-base">
+                    {referDoctorLoad >= 15 ? 'warning' : referDoctorLoad >= 8 ? 'info' : 'check_circle'}
+                  </span>
+                  <span>
+                    {allDoctors.find(d => d.doctor_id === referDoctorId)?.name || 'Selected doctor'} already has <strong>{referDoctorLoad}</strong> patient{referDoctorLoad !== 1 ? 's' : ''} on this date
+                  </span>
+                </div>
+              )}
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                  Referral Reason
+                </label>
+                <textarea
+                  value={referReason}
+                  onChange={(e) => setReferReason(e.target.value)}
+                  rows={2}
+                  placeholder="e.g. Needs cardiology evaluation for chest pain..."
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
+              <button onClick={() => setReferItem(null)}
+                className="px-4 py-2.5 text-sm font-medium text-slate-500 hover:bg-slate-100 rounded-lg transition-colors">
+                Cancel
+              </button>
+              <button
+                onClick={handleReferToDoctor}
+                disabled={!referDoctorId || !referDate || referSaving}
+                className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-orange-500 rounded-xl hover:bg-orange-600 disabled:opacity-50 shadow-sm transition-all">
+                <span className="material-symbols-outlined text-base">send</span>
+                {referSaving ? 'Referring...' : 'Confirm Referral'}
               </button>
             </div>
           </div>

@@ -7,8 +7,9 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile
 from sqlalchemy.orm import Session, joinedload
 from typing import Optional
 from ..database import get_db
-from ..models.user import User, UserRole
-from ..dependencies import get_current_active_user, require_super_admin
+from ..models.user import User, UserRole, Role
+from ..models.appointment import Doctor
+from ..dependencies import get_current_active_user, require_super_admin, require_admin_or_super_admin
 from ..schemas.user import (
     UserCreate,
     UserUpdate,
@@ -36,9 +37,15 @@ async def create_new_user(
     user_data: UserCreate,
     send_email: bool = Query(False),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_super_admin),
+    current_user: User = Depends(require_admin_or_super_admin),
 ):
-    """Create a new user (Super Admin only)"""
+    """Create a new user (Admin or Super Admin)"""
+    # Only super_admin can create other super_admins
+    if user_data.role == "super_admin" and "super_admin" not in current_user.roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only Super Admin can create Super Admin accounts",
+        )
     try:
         # Check username uniqueness
         existing = db.query(User).filter(User.username == user_data.username.lower()).first()
@@ -92,6 +99,7 @@ async def create_new_user(
             except Exception as email_err:
                 logger.warning(f"Failed to send welcome email: {email_err}")
 
+        logger.info("User created: %s (role=%s) by %s", user.username, user_data.role, current_user.username)
         return UserResponse.model_validate(user)
     except HTTPException:
         raise
@@ -110,9 +118,9 @@ async def get_users(
     limit: int = Query(10, ge=1, le=100),
     search: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_super_admin),
+    current_user: User = Depends(require_admin_or_super_admin),
 ):
-    """List all users (Super Admin only)"""
+    """List all users (Admin or Super Admin)"""
     try:
         result = list_users(db, page, limit, search)
         return UserListResponse(
@@ -130,13 +138,28 @@ async def get_users(
         )
 
 
+@router.get("/check-username/{username}")
+async def check_username_exists(
+    username: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_or_super_admin),
+):
+    """Check if a username already exists (for real-time form validation)"""
+    existing = (
+        db.query(User)
+        .filter(User.username == username.lower(), User.is_deleted == False)
+        .first()
+    )
+    return {"exists": existing is not None}
+
+
 @router.get("/{user_id}", response_model=UserResponse)
 async def get_user(
     user_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_super_admin),
+    current_user: User = Depends(require_admin_or_super_admin),
 ):
-    """Get user by ID (Super Admin only)"""
+    """Get user by ID (Admin or Super Admin)"""
     user = get_user_by_id(db, user_id)
     if not user:
         raise HTTPException(
@@ -151,15 +174,22 @@ async def update_existing_user(
     user_id: str,
     user_data: UserUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_super_admin),
+    current_user: User = Depends(require_admin_or_super_admin),
 ):
-    """Update user (Super Admin only)"""
+    """Update user (Admin or Super Admin)"""
     try:
         target_user = get_user_by_id(db, user_id)
         if not target_user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found",
+            )
+
+        # Only super_admin can edit super_admin accounts
+        if "super_admin" in target_user.roles and "super_admin" not in current_user.roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only Super Admin can modify Super Admin accounts",
             )
 
         # Check email uniqueness if email is being changed
@@ -176,9 +206,69 @@ async def update_existing_user(
                 )
 
         update_fields = user_data.model_dump(exclude_unset=True)
+
+        # Remove fields that don't map to User model columns
+        update_fields.pop("full_name", None)
+        update_fields.pop("employee_id", None)
+        update_fields.pop("department", None)
+
+        # Handle phone_number → phone mapping
+        if "phone_number" in update_fields:
+            update_fields["phone"] = update_fields.pop("phone_number")
+
+        # Handle role change via user_roles junction table
+        new_role_name = update_fields.pop("role", None)
+        if new_role_name is not None:
+            current_roles = target_user.roles
+            if new_role_name not in current_roles:
+                role_obj = db.query(Role).filter(
+                    Role.name == new_role_name,
+                    Role.hospital_id == target_user.hospital_id,
+                ).first()
+                # Fallback: try system-level role (hospital_id IS NULL)
+                if not role_obj:
+                    role_obj = db.query(Role).filter(
+                        Role.name == new_role_name,
+                        Role.hospital_id.is_(None),
+                    ).first()
+                if not role_obj:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Role '{new_role_name}' not found",
+                    )
+                # Remove existing user_roles and assign the new one
+                db.query(UserRole).filter(UserRole.user_id == target_user.id).delete()
+                new_user_role = UserRole(
+                    user_id=target_user.id,
+                    role_id=role_obj.id,
+                    assigned_by=current_user.id,
+                )
+                db.add(new_user_role)
+
+        # Handle doctor-specific fields
+        doctor_fields = {}
+        for field in ("specialization", "qualification", "registration_number"):
+            if field in update_fields:
+                doctor_fields[field] = update_fields.pop(field)
+
+        if doctor_fields:
+            doctor = db.query(Doctor).filter(
+                Doctor.user_id == target_user.id,
+                Doctor.is_deleted == False,
+            ).first()
+            if doctor:
+                for key, value in doctor_fields.items():
+                    if value is not None:
+                        setattr(doctor, key, value)
+
+        # Update remaining user fields
         user = update_user(db, user_id, **update_fields)
 
-        return UserResponse.model_validate(user)
+        logger.info("User updated: %s by %s (doctor_fields=%s)", target_user.username, current_user.username, list(doctor_fields.keys()) if doctor_fields else "none")
+
+        # Re-fetch with all relationships to ensure fresh data in response
+        fresh_user = get_user_by_id(db, user_id)
+        return UserResponse.model_validate(fresh_user)
     except HTTPException:
         raise
     except Exception as e:
@@ -194,9 +284,9 @@ async def update_existing_user(
 async def delete_existing_user(
     user_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_super_admin),
+    current_user: User = Depends(require_admin_or_super_admin),
 ):
-    """Soft delete user (Super Admin only)"""
+    """Soft delete user (Admin or Super Admin)"""
     try:
         if str(current_user.id) == user_id:
             raise HTTPException(
@@ -209,6 +299,13 @@ async def delete_existing_user(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found",
+            )
+
+        # Prevent admin from deleting super_admin accounts
+        if "super_admin" in target_user.roles and "super_admin" not in current_user.roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only Super Admin can delete Super Admin accounts",
             )
 
         # Prevent deleting the last super admin
@@ -243,9 +340,9 @@ async def upload_user_photo(
     user_id: str,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_super_admin),
+    current_user: User = Depends(require_admin_or_super_admin),
 ):
-    """Upload user profile photo (Super Admin only)"""
+    """Upload user profile photo (Admin or Super Admin)"""
     try:
         result = save_user_photo(db, user_id, file)
         return result
@@ -264,9 +361,9 @@ async def reset_user_password(
     user_id: str,
     password_data: PasswordReset,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_super_admin),
+    current_user: User = Depends(require_admin_or_super_admin),
 ):
-    """Reset user password (Super Admin only)"""
+    """Reset user password (Admin or Super Admin)"""
     try:
         target_user = get_user_by_id(db, user_id)
         if not target_user:
@@ -277,6 +374,7 @@ async def reset_user_password(
 
         reset_password(db, user_id, password_data.new_password)
 
+        logger.info("Password reset for user %s by admin %s", target_user.username, current_user.username)
         return {"message": "Password reset successfully"}
     except HTTPException:
         raise

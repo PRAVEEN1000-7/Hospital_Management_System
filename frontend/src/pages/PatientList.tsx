@@ -259,6 +259,7 @@ const PatientList: React.FC = () => {
               <option value="">All Blood Groups</option>
               <option value="A+">A+</option>
               <option value="A-">A-</option>
+              <option value="A1B+">A1B+</option>
               <option value="B+">B+</option>
               <option value="B-">B-</option>
               <option value="AB+">AB+</option>

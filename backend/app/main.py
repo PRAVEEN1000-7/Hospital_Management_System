@@ -7,24 +7,26 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import SQLAlchemyError
 from .config import settings
 
-# Configure logging to show INFO level
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+# ── Centralized Logging Setup ──────────────────────────────────────────────
+# Initialise rotating-file + console logging BEFORE any other imports so that
+# every module inherits the same format and handlers. See logging_config.py
+# for full details on rotation policy (20 MB max, 1 backup).
+from .logging_config import setup_backend_logging, get_logger
+setup_backend_logging(level=logging.DEBUG if settings.DEBUG else logging.INFO)
 
 # Import routers
 from .routers import (
     auth, hospital, users, patients,
     appointments, schedules, appointment_settings, appointment_reports,
     departments, doctors, hospital_settings as hospital_settings_router,
-    walk_ins, waitlist,
+    walk_ins, waitlist, prescriptions,
 )
+from .routers import logs as logs_router  # frontend log ingestion endpoint
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Import models so they're registered with Base.metadata
-from .models import user, patient, appointment, patient_id_sequence, department, hospital_settings  # noqa: F401
+from .models import user, patient, appointment, patient_id_sequence, department, hospital_settings, prescription  # noqa: F401
 
 # NOTE: We do NOT call Base.metadata.create_all() — the new hms_db schema
 # is managed via the SQL migration files (01_schema.sql, 02_seed_data.sql).
@@ -54,13 +56,45 @@ else:
     logger.warning(f"Uploads directory not found: {uploads_dir}")
 
 
+# ── Request Logging Middleware ───────────────────────────────────────────────
+# Logs every incoming API request with method, path, and response status code.
+import time
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = time.time()
+    response = await call_next(request)
+    duration_ms = (time.time() - start) * 1000
+    # Skip noisy health-check and static file requests
+    path = request.url.path
+    if path not in ("/health", "/") and not path.startswith("/uploads"):
+        logger.info(
+            "%s %s → %s (%.0fms)",
+            request.method, path, response.status_code, duration_ms,
+        )
+    return response
+
+
 # ---------- Global Exception Handlers ----------
+def _cors_headers(request: Request) -> dict:
+    """Build CORS headers matching CORSMiddleware config so error responses include them."""
+    origin = request.headers.get("origin", "")
+    if origin in settings.CORS_ORIGINS:
+        return {
+            "access-control-allow-origin": origin,
+            "access-control-allow-credentials": "true",
+            "vary": "Origin",
+        }
+    return {}
+
+
 @app.exception_handler(SQLAlchemyError)
 async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError):
     logger.error(f"Database error: {exc}")
     return JSONResponse(
         status_code=500,
         content={"detail": "A database error occurred. Please try again later."},
+        headers=_cors_headers(request),
     )
 
 
@@ -70,6 +104,7 @@ async def generic_exception_handler(request: Request, exc: Exception):
     return JSONResponse(
         status_code=500,
         content={"detail": "An internal server error occurred."},
+        headers=_cors_headers(request),
     )
 
 
@@ -87,6 +122,21 @@ app.include_router(doctors.router, prefix="/api/v1")
 app.include_router(hospital_settings_router.router, prefix="/api/v1")
 app.include_router(walk_ins.router, prefix="/api/v1")
 app.include_router(waitlist.router, prefix="/api/v1")
+app.include_router(prescriptions.router, prefix="/api/v1")
+app.include_router(prescriptions.medicines_router, prefix="/api/v1")
+app.include_router(prescriptions.templates_router, prefix="/api/v1")
+app.include_router(logs_router.router, prefix="/api/v1")  # POST /api/v1/logs/frontend
+
+
+# ── Startup / Shutdown events ──────────────────────────────────────────────
+@app.on_event("startup")
+async def on_startup():
+    logger.info("HMS Backend server started — %s v%s", settings.APP_NAME, settings.APP_VERSION)
+
+
+@app.on_event("shutdown")
+async def on_shutdown():
+    logger.info("HMS Backend server shutting down")
 
 
 @app.get("/")

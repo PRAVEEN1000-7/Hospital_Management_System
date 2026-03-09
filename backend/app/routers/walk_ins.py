@@ -3,7 +3,7 @@ Walk-in registration router - handles walk-in patient flow.
 """
 import logging
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, func, case
@@ -42,6 +42,14 @@ class ConsultationNotesPayload(BaseModel):
     vitals_weight: Optional[str] = None
     vitals_spo2: Optional[str] = None
     follow_up_date: Optional[str] = None
+
+
+class ReferralPayload(BaseModel):
+    """Payload for referring a patient to another doctor."""
+    queue_id: str
+    to_doctor_id: str
+    referral_date: str  # YYYY-MM-DD
+    referral_reason: Optional[str] = None
 
 
 def _user_roles(user: User) -> list:
@@ -98,7 +106,7 @@ def _next_position(db: Session, doctor_id: uuid.UUID, queue_date: date) -> int:
         .filter(
             AppointmentQueue.doctor_id == doctor_id,
             AppointmentQueue.queue_date == queue_date,
-            AppointmentQueue.status.in_(["waiting", "called"]),
+            AppointmentQueue.status.in_(["waiting", "called", "sent_to_doctor"]),
         )
         .scalar()
     )
@@ -202,7 +210,7 @@ async def register_walk_in(
             patient_id=patient_id,
             doctor_id=doctor_id,
             appointment_date=today,
-            start_time=None,
+            start_time=now.astimezone().time().replace(second=0, microsecond=0),
             end_time=None,
             appointment_type="walk-in",
             visit_type="new",
@@ -254,16 +262,25 @@ async def register_walk_in(
 @router.get("/queue")
 async def get_queue_status(
     doctor_id: Optional[str] = Query(None),
+    queue_date: Optional[str] = Query(None, description="Date in YYYY-MM-DD format. Defaults to today."),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
     """
-    Get the current walk-in queue.
+    Get the walk-in queue for a specific date.
     - Receptionist / admin: sees all doctors, can filter by doctor_id.
     - Doctor: auto-filtered to their own queue.
     Display order: urgency priority (emergency > urgent > normal), then queue_number.
     Queue number remains the original sequential token number.
     """
+    # Parse queue_date or default to today
+    target_date = date.today()
+    if queue_date:
+        try:
+            target_date = datetime.strptime(queue_date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid queue_date format. Use YYYY-MM-DD")
+
     today = date.today()
 
     # Auto-detect doctor role → filter to own queue
@@ -282,11 +299,11 @@ async def get_queue_status(
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid doctor_id")
 
-    # Query queue entries for today
+    # Query queue entries for the target date
     query = (
         db.query(AppointmentQueue)
         .join(Appointment, Appointment.id == AppointmentQueue.appointment_id)
-        .filter(AppointmentQueue.queue_date == today)
+        .filter(AppointmentQueue.queue_date == target_date)
     )
     if resolved_doctor_id:
         query = query.filter(AppointmentQueue.doctor_id == resolved_doctor_id)
@@ -346,7 +363,7 @@ async def get_queue_status(
                 patient_emergency_contact_relation = patient.emergency_contact_relation
                 # Compute age from date_of_birth or stored age_years
                 if patient.date_of_birth:
-                    age_delta = today - patient.date_of_birth
+                    age_delta = date.today() - patient.date_of_birth
                     patient_age = age_delta.days // 365
                 elif patient.age_years is not None:
                     patient_age = patient.age_years
@@ -387,13 +404,13 @@ async def get_queue_status(
             "consultation_end_at": appt.consultation_end_at.isoformat() if appt and appt.consultation_end_at else None,
         })
 
-    total_waiting = sum(1 for i in items if i["status"] in ("waiting", "called"))
+    total_waiting = sum(1 for i in items if i["status"] in ("waiting", "called", "sent_to_doctor"))
     total_in_progress = sum(1 for i in items if i["status"] == "in_consultation")
     total_completed = sum(1 for i in items if i["status"] == "completed")
 
     return {
         "doctor_id": str(resolved_doctor_id) if resolved_doctor_id else None,
-        "queue_date": today.isoformat(),
+        "queue_date": target_date.isoformat(),
         "total_waiting": total_waiting,
         "total_in_progress": total_in_progress,
         "total_completed": total_completed,
@@ -430,6 +447,43 @@ async def call_patient(
     return {"ok": True, "queue_id": str(qe.id), "status": "called"}
 
 
+@router.patch("/queue/{queue_id}/send-to-doctor")
+async def send_to_doctor_queue(
+    queue_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Receptionist confirms sending a patient to the doctor.
+    Changes queue status from 'waiting' or 'called' to 'sent_to_doctor'.
+    Only then will the patient appear in the doctor's NEXT UP section.
+    """
+    if not (_is_receptionist(current_user) or _is_admin_or_super(current_user)):
+        raise HTTPException(
+            status_code=403,
+            detail="Only receptionists or admins can send patients to doctor",
+        )
+
+    try:
+        q_uuid = uuid.UUID(queue_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid queue_id")
+
+    qe = db.query(AppointmentQueue).filter(AppointmentQueue.id == q_uuid).first()
+    if not qe:
+        raise HTTPException(status_code=404, detail="Queue entry not found")
+
+    if qe.status not in ("waiting", "called"):
+        raise HTTPException(
+            status_code=400,
+            detail="Only 'waiting' or 'called' patients can be sent to doctor",
+        )
+
+    qe.status = "sent_to_doctor"
+    db.commit()
+    return {"ok": True, "queue_id": str(qe.id), "status": "sent_to_doctor"}
+
+
 @router.patch("/queue/{queue_id}/start-consultation")
 async def start_consultation(
     queue_id: str,
@@ -448,8 +502,8 @@ async def start_consultation(
 
     _require_queue_actor(db, current_user, qe)
 
-    if qe.status not in ("waiting", "called"):
-        raise HTTPException(status_code=400, detail="Patient must be in 'waiting' or 'called' status to start consultation")
+    if qe.status not in ("waiting", "called", "sent_to_doctor"):
+        raise HTTPException(status_code=400, detail="Patient must be in 'waiting', 'called', or 'sent_to_doctor' status to start consultation")
 
     qe.status = "in_consultation"
 
@@ -751,22 +805,290 @@ async def get_unassigned_walkins(
 
 @router.get("/queue/doctor-loads")
 async def get_doctor_queue_loads(
+    target_date: Optional[str] = Query(None, alias="date", description="Date in YYYY-MM-DD. Defaults to today."),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    """Return today's queue load per doctor (waiting count) for the Send-to-Doctor modal."""
-    today = date.today()
+    """Return queue load per doctor (total patient count) for the Send-to-Doctor / referral modal."""
+    load_date = date.today()
+    if target_date:
+        try:
+            load_date = datetime.strptime(target_date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+
     loads = (
         db.query(
             AppointmentQueue.doctor_id,
-            func.count(AppointmentQueue.id).label("waiting_count"),
+            func.count(AppointmentQueue.id).label("patient_count"),
         )
         .filter(
-            AppointmentQueue.queue_date == today,
-            AppointmentQueue.status.in_(["waiting", "called"]),
+            AppointmentQueue.queue_date == load_date,
+            AppointmentQueue.status.notin_(["skipped"]),
         )
         .group_by(AppointmentQueue.doctor_id)
         .all()
     )
-    load_map = {str(row.doctor_id): row.waiting_count for row in loads}
+    load_map = {str(row.doctor_id): row.patient_count for row in loads}
     return load_map
+
+
+@router.get("/queue/upcoming")
+async def get_upcoming_queue(
+    days: int = Query(7, ge=1, le=30, description="Number of days ahead to look"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Get upcoming queue entries for the logged-in doctor, grouped by date.
+    Returns the next N days (excluding today) with patient details.
+    """
+    # Resolve doctor
+    is_doctor_role = "doctor" in _user_roles(current_user)
+    resolved_doctor_id: Optional[uuid.UUID] = None
+    if is_doctor_role:
+        doc = db.query(Doctor).filter(Doctor.user_id == current_user.id).first()
+        if doc:
+            resolved_doctor_id = doc.id
+
+    today = date.today()
+    end_date = today + timedelta(days=days)
+
+    query = (
+        db.query(AppointmentQueue)
+        .join(Appointment, Appointment.id == AppointmentQueue.appointment_id)
+        .filter(
+            AppointmentQueue.queue_date > today,
+            AppointmentQueue.queue_date <= end_date,
+            AppointmentQueue.status.notin_(["completed", "skipped"]),
+        )
+    )
+    if resolved_doctor_id:
+        query = query.filter(AppointmentQueue.doctor_id == resolved_doctor_id)
+
+    queue_entries = query.order_by(
+        AppointmentQueue.queue_date.asc(),
+        AppointmentQueue.queue_number.asc(),
+    ).all()
+
+    # Group by date and enrich with patient/appointment info
+    from collections import defaultdict
+    grouped: dict = defaultdict(list)
+
+    for qe in queue_entries:
+        appt = db.query(Appointment).filter(Appointment.id == qe.appointment_id).first()
+        if not appt:
+            continue
+
+        patient = db.query(Patient).filter(Patient.id == appt.patient_id).first()
+        patient_age = None
+        if patient and patient.date_of_birth:
+            patient_age = (today - patient.date_of_birth).days // 365
+        elif patient and patient.age_years is not None:
+            patient_age = patient.age_years
+
+        # Resolve referring doctor name if this is a referral
+        referring_doctor_name = None
+        if appt.parent_appointment_id:
+            parent = db.query(Appointment).filter(Appointment.id == appt.parent_appointment_id).first()
+            if parent and parent.doctor_id:
+                ref_doc = db.query(Doctor).filter(Doctor.id == parent.doctor_id).first()
+                if ref_doc and ref_doc.user:
+                    referring_doctor_name = ref_doc.user.full_name
+
+        doctor_name = None
+        if appt.doctor_id:
+            doc = db.query(Doctor).filter(Doctor.id == appt.doctor_id).first()
+            if doc and doc.user:
+                doctor_name = doc.user.full_name
+
+        date_key = qe.queue_date.isoformat()
+        grouped[date_key].append({
+            "queue_id": str(qe.id),
+            "appointment_id": str(qe.appointment_id),
+            "queue_number": qe.queue_number,
+            "status": qe.status,
+            "appointment_type": appt.appointment_type,
+            "priority": appt.priority or "normal",
+            "patient_name": patient.full_name if patient else None,
+            "patient_id": str(patient.id) if patient else None,
+            "patient_reference_number": patient.patient_reference_number if patient else None,
+            "patient_gender": patient.gender if patient else None,
+            "patient_age": patient_age,
+            "chief_complaint": appt.chief_complaint,
+            "doctor_id": str(appt.doctor_id) if appt.doctor_id else None,
+            "doctor_name": doctor_name,
+            "referring_doctor_name": referring_doctor_name,
+        })
+
+    # Build sorted list of date groups
+    date_groups = []
+    for d in sorted(grouped.keys()):
+        date_groups.append({
+            "date": d,
+            "count": len(grouped[d]),
+            "items": grouped[d],
+        })
+
+    return {
+        "doctor_id": str(resolved_doctor_id) if resolved_doctor_id else None,
+        "days": days,
+        "date_groups": date_groups,
+        "total_upcoming": sum(len(g["items"]) for g in date_groups),
+    }
+
+
+@router.post("/refer", status_code=status.HTTP_201_CREATED)
+async def refer_patient_to_doctor(
+    data: ReferralPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Refer a patient to another doctor/specialist.
+    Creates a new 'referral' appointment and adds to the target doctor's queue
+    for the specified date.
+    """
+    try:
+        # ── Validate queue entry ──
+        try:
+            q_uuid = uuid.UUID(data.queue_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid queue_id")
+
+        qe = db.query(AppointmentQueue).filter(AppointmentQueue.id == q_uuid).first()
+        if not qe:
+            raise HTTPException(status_code=404, detail="Queue entry not found")
+
+        # Only the assigned doctor (or admin) can refer
+        _require_queue_actor(db, current_user, qe)
+
+        original_appt = db.query(Appointment).filter(Appointment.id == qe.appointment_id).first()
+        if not original_appt:
+            raise HTTPException(status_code=404, detail="Original appointment not found")
+
+        # ── Validate target doctor ──
+        try:
+            to_doctor_uuid = uuid.UUID(data.to_doctor_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid to_doctor_id")
+
+        to_doctor = db.query(Doctor).filter(Doctor.id == to_doctor_uuid).first()
+        if not to_doctor:
+            raise HTTPException(status_code=404, detail="Target doctor not found")
+
+        # Prevent self-referral
+        if qe.doctor_id == to_doctor_uuid:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot refer patient to the same doctor",
+            )
+
+        # ── Validate referral date ──
+        try:
+            referral_date = datetime.strptime(data.referral_date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+
+        today = date.today()
+        if referral_date < today:
+            raise HTTPException(status_code=400, detail="Referral date cannot be in the past")
+
+        # Check if target doctor is on leave on the referral date
+        if is_doctor_on_leave(db, to_doctor_uuid, referral_date):
+            raise HTTPException(
+                status_code=400,
+                detail="Target doctor is on leave on the selected date",
+            )
+
+        # ── Check duplicate: patient not already in target doctor's queue for that date ──
+        existing_queue = (
+            db.query(AppointmentQueue)
+            .join(Appointment, Appointment.id == AppointmentQueue.appointment_id)
+            .filter(
+                AppointmentQueue.doctor_id == to_doctor_uuid,
+                AppointmentQueue.queue_date == referral_date,
+                AppointmentQueue.status.notin_(["completed", "skipped"]),
+                Appointment.patient_id == original_appt.patient_id,
+            )
+            .first()
+        )
+        if existing_queue:
+            raise HTTPException(
+                status_code=409,
+                detail="Patient is already in the target doctor's queue for this date",
+            )
+
+        now = datetime.now(timezone.utc)
+
+        # ── Create referral appointment ──
+        appt_number = generate_appointment_number("referral")
+        referral_appt = Appointment(
+            hospital_id=original_appt.hospital_id,
+            appointment_number=appt_number,
+            patient_id=original_appt.patient_id,
+            doctor_id=to_doctor_uuid,
+            appointment_date=referral_date,
+            start_time=time(9, 0),
+            end_time=time(9, 15),
+            appointment_type="referral",
+            visit_type="referral",
+            priority=original_appt.priority or "normal",
+            status="scheduled",
+            chief_complaint=original_appt.chief_complaint,
+            parent_appointment_id=original_appt.id,
+            notes=f"Referral from Dr. queue. Reason: {data.referral_reason or 'Specialist consultation'}" if data.referral_reason else None,
+            check_in_at=now if referral_date == today else None,
+            created_by=current_user.id,
+        )
+        db.add(referral_appt)
+        db.flush()
+
+        # ── Add to target doctor's queue for the referral date ──
+        q_num = _next_queue_number(db, to_doctor_uuid, referral_date)
+        q_pos = _next_position(db, to_doctor_uuid, referral_date)
+        new_queue = AppointmentQueue(
+            appointment_id=referral_appt.id,
+            doctor_id=to_doctor_uuid,
+            queue_date=referral_date,
+            queue_number=q_num,
+            position=q_pos,
+            status="waiting",
+        )
+        db.add(new_queue)
+
+        # ── Mark current consultation as completed ──
+        if qe.status == "in_consultation":
+            qe.status = "completed"
+            original_appt.status = "completed"
+            original_appt.consultation_end_at = now
+
+        db.commit()
+        db.refresh(referral_appt)
+
+        # Build response
+        to_doctor_name = to_doctor.user.full_name if to_doctor.user else "Doctor"
+        patient = db.query(Patient).filter(Patient.id == original_appt.patient_id).first()
+
+        return {
+            "ok": True,
+            "referral_appointment_id": str(referral_appt.id),
+            "referral_appointment_number": referral_appt.appointment_number,
+            "to_doctor_name": to_doctor_name,
+            "to_doctor_specialization": to_doctor.specialization,
+            "referral_date": referral_date.isoformat(),
+            "queue_number": new_queue.queue_number,
+            "queue_position": new_queue.position,
+            "patient_name": patient.full_name if patient else None,
+            "message": f"Patient referred to {to_doctor_name} for {referral_date.isoformat()} (Token #{new_queue.queue_number})",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Referral failed: {e}")
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Referral failed: {str(e)}",
+        )

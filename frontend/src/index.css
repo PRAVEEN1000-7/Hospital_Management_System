@@ -12,6 +12,11 @@
   * {
     @apply border-slate-200;
   }
+  /* Hide browser native password reveal (Edge / Chrome) */
+  input::-ms-reveal,
+  input::-ms-clear {
+    display: none;
+  }
 }
 
 @layer components {
@@ -19,6 +24,10 @@
     @apply w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm
       focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary
       disabled:bg-slate-100 disabled:cursor-not-allowed transition-all;
+  }
+
+  .input-field-error {
+    @apply border-red-400 bg-red-50/40 focus:ring-red-200 focus:border-red-400;
   }
 
   .sidebar-item-active {

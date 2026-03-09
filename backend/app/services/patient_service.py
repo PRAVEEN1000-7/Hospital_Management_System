@@ -3,7 +3,7 @@ Patient service — works with new hms_db UUID schema.
 """
 import uuid
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from sqlalchemy import or_, and_, func
 from math import ceil
 from typing import Optional
 from ..config import settings
@@ -44,6 +44,7 @@ def create_patient(
         marital_status=patient_data.marital_status,
         emergency_contact_name=patient_data.emergency_contact_name,
         emergency_contact_phone=patient_data.emergency_contact_phone,
+        emergency_contact_country_code=getattr(patient_data, 'emergency_contact_country_code', None) or '+91',
         emergency_contact_relation=patient_data.emergency_contact_relation,
         created_by=user_id,
         updated_by=user_id,
@@ -84,13 +85,34 @@ def list_patients(
     if hospital_id:
         query = query.filter(Patient.hospital_id == hospital_id)
     if search:
+        search = search.strip()
+        # Full-name concat match (e.g. "Alex Johnson")
+        full_name = func.concat(Patient.first_name, ' ', Patient.last_name)
         search_filter = or_(
             Patient.first_name.ilike(f"%{search}%"),
             Patient.last_name.ilike(f"%{search}%"),
             Patient.phone_number.ilike(f"%{search}%"),
             Patient.email.ilike(f"%{search}%"),
             Patient.patient_reference_number.ilike(f"%{search}%"),
+            full_name.ilike(f"%{search}%"),
         )
+        # Multi-word: each word must match at least one field
+        words = search.split()
+        if len(words) > 1:
+            per_word_filters = []
+            for word in words:
+                w = word.strip()
+                if not w:
+                    continue
+                per_word_filters.append(or_(
+                    Patient.first_name.ilike(f"%{w}%"),
+                    Patient.last_name.ilike(f"%{w}%"),
+                    Patient.phone_number.ilike(f"%{w}%"),
+                    Patient.email.ilike(f"%{w}%"),
+                    Patient.patient_reference_number.ilike(f"%{w}%"),
+                ))
+            if per_word_filters:
+                search_filter = or_(search_filter, and_(*per_word_filters))
         query = query.filter(search_filter)
     total = query.count()
     offset = (page - 1) * limit

@@ -28,6 +28,11 @@ import WaitlistManagement from './pages/WaitlistManagement';
 import AppointmentReports from './pages/AppointmentReports';
 import AppointmentSettings from './pages/AppointmentSettings';
 
+// Prescription pages
+import PrescriptionList from './pages/PrescriptionList';
+import PrescriptionBuilder from './pages/PrescriptionBuilder';
+import PrescriptionDetail from './pages/PrescriptionDetail';
+
 const App: React.FC = () => {
   return (
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
@@ -48,9 +53,21 @@ const App: React.FC = () => {
           >
             {/* ── General ── */}
             <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/patients" element={<PatientList />} />
-            <Route path="/patients/:id" element={<PatientDetail />} />
-            <Route path="/patients/:id/id-card" element={<PatientIdCard />} />
+            <Route path="/patients" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'receptionist', 'nurse', 'pharmacist', 'cashier', 'optical_staff', 'inventory_manager']}>
+                <PatientList />
+              </ProtectedRoute>
+            } />
+            <Route path="/patients/:id" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'receptionist', 'nurse', 'pharmacist', 'cashier', 'optical_staff', 'inventory_manager']}>
+                <PatientDetail />
+              </ProtectedRoute>
+            } />
+            <Route path="/patients/:id/id-card" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'receptionist']}>
+                <PatientIdCard />
+              </ProtectedRoute>
+            } />
             <Route path="/profile" element={<Profile />} />
 
             {/* ── Admin / Super-admin only ── */}
@@ -109,13 +126,35 @@ const App: React.FC = () => {
               </ProtectedRoute>
             } />
             <Route path="/appointments/reports" element={
-              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor', 'receptionist']}>
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor', 'receptionist', 'report_viewer']}>
                 <AppointmentReports />
               </ProtectedRoute>
             } />
             <Route path="/appointments/settings" element={
               <ProtectedRoute allowedRoles={['super_admin', 'admin']}>
                 <AppointmentSettings />
+              </ProtectedRoute>
+            } />
+
+            {/* ── Prescription Routes ── */}
+            <Route path="/prescriptions" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor', 'nurse', 'pharmacist']}>
+                <PrescriptionList />
+              </ProtectedRoute>
+            } />
+            <Route path="/prescriptions/new" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor']}>
+                <PrescriptionBuilder />
+              </ProtectedRoute>
+            } />
+            <Route path="/prescriptions/:id" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor', 'nurse', 'pharmacist']}>
+                <PrescriptionDetail />
+              </ProtectedRoute>
+            } />
+            <Route path="/prescriptions/:id/edit" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor']}>
+                <PrescriptionBuilder />
               </ProtectedRoute>
             } />
           </Route>

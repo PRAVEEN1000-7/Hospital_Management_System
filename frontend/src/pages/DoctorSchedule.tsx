@@ -33,6 +33,12 @@ const DoctorSchedulePage: React.FC = () => {
   const [leaveCategory, setLeaveCategory] = useState('Personal');
   const [leaveReason, setLeaveReason] = useState('');
 
+  // Edit schedule form
+  const [editSlot, setEditSlot] = useState<DoctorSchedule | null>(null);
+  const [editStartTime, setEditStartTime] = useState('');
+  const [editEndTime, setEditEndTime] = useState('');
+  const [editMaxPatients, setEditMaxPatients] = useState(20);
+
   useEffect(() => {
     if (isAdmin) {
       scheduleService.getDoctors().then(setDoctors).catch(() => {});
@@ -89,6 +95,29 @@ const DoctorSchedulePage: React.FC = () => {
       fetchData();
     } catch {
       toast.error('Failed to delete schedule');
+    }
+  };
+
+  const openEditSlot = (s: DoctorSchedule) => {
+    setEditSlot(s);
+    setEditStartTime(s.start_time.slice(0, 5));
+    setEditEndTime(s.end_time.slice(0, 5));
+    setEditMaxPatients(s.max_patients ?? 20);
+  };
+
+  const handleUpdateSchedule = async () => {
+    if (!editSlot) return;
+    try {
+      await scheduleService.updateSchedule(editSlot.id, {
+        start_time: editStartTime,
+        end_time: editEndTime,
+        max_patients: editMaxPatients,
+      });
+      toast.success('Schedule slot updated');
+      setEditSlot(null);
+      fetchData();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to update schedule');
     }
   };
 
@@ -223,10 +252,16 @@ const DoctorSchedulePage: React.FC = () => {
                           </div>
                         </div>
                         {!isBlocked && (
-                        <button onClick={() => handleDeleteSchedule(s.id)}
-                          className="text-slate-400 hover:text-red-500 transition-colors p-1">
-                          <span className="material-symbols-outlined text-lg">delete</span>
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => openEditSlot(s)}
+                            className="text-slate-400 hover:text-primary transition-colors p-1" title="Edit slot">
+                            <span className="material-symbols-outlined text-lg">edit</span>
+                          </button>
+                          <button onClick={() => handleDeleteSchedule(s.id)}
+                            className="text-slate-400 hover:text-red-500 transition-colors p-1" title="Delete slot">
+                            <span className="material-symbols-outlined text-lg">delete</span>
+                          </button>
+                        </div>
                         )}
                       </div>
                     ))}
@@ -410,6 +445,47 @@ const DoctorSchedulePage: React.FC = () => {
                 <span className="material-symbols-outlined text-base">event_busy</span>
                 Add Leave
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Edit Schedule Modal */}
+      {editSlot && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setEditSlot(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100">
+              <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center">
+                <span className="material-symbols-outlined text-primary text-xl">edit_calendar</span>
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Edit Schedule Slot</h3>
+                <p className="text-[11px] text-slate-400">{WEEKDAYS[editSlot.day_of_week]}</p>
+              </div>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">Start Time</label>
+                  <input type="time" value={editStartTime} onChange={(e) => setEditStartTime(e.target.value)}
+                    className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">End Time</label>
+                  <input type="time" value={editEndTime} onChange={(e) => setEditEndTime(e.target.value)}
+                    className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">Max Patients</label>
+                <input type="number" min={1} max={100} value={editMaxPatients} onChange={(e) => setEditMaxPatients(Number(e.target.value))}
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-100">
+              <button onClick={() => setEditSlot(null)}
+                className="px-4 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-100 rounded-lg transition-colors">Cancel</button>
+              <button onClick={handleUpdateSchedule}
+                className="px-5 py-2 text-sm font-bold text-white bg-primary rounded-xl hover:bg-primary/90 transition-colors shadow-sm">Save Changes</button>
             </div>
           </div>
         </div>

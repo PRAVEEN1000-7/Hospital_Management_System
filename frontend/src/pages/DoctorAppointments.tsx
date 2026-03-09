@@ -114,7 +114,7 @@ const DoctorAppointments: React.FC = () => {
       ) : filtered.length === 0 ? (
         <div className="text-center py-20 text-slate-400 bg-white rounded-xl border border-slate-200">
           <span className="material-symbols-outlined text-5xl mb-3 block">event_available</span>
-          <p className="text-sm font-medium">No appointments for {new Date(selectedDate).toLocaleDateString('en-US', { day_of_week: 'long', month: 'long', day: 'numeric' })}</p>
+          <p className="text-sm font-medium">No appointments for {new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -138,13 +138,13 @@ const DoctorAppointments: React.FC = () => {
                       <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${appt.priority === 'emergency' ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'}`}>{appt.priority}</span>
                     )}
                   </div>
-                  <p className="text-sm text-slate-500">{appt.appointment_id} · {appt.visit_type || 'General'}</p>
+                  <p className="text-sm text-slate-500">{appt.appointment_number} · {appt.visit_type || 'General'}</p>
                   {appt.chief_complaint && <p className="text-xs text-slate-400 mt-1">{appt.chief_complaint}</p>}
-                  {appt.doctor_notes && <p className="text-xs text-blue-500 mt-1 italic"><span className="material-symbols-outlined text-xs align-text-bottom mr-0.5">note</span>{appt.doctor_notes}</p>}
+                  {appt.notes && <p className="text-xs text-blue-500 mt-1 italic"><span className="material-symbols-outlined text-xs align-text-bottom mr-0.5">note</span>{appt.notes}</p>}
                 </div>
                 {/* Actions */}
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  <button onClick={() => setNotesModal({ id: appt.id, notes: appt.doctor_notes || '' })}
+                  <button onClick={() => setNotesModal({ id: appt.id, notes: appt.notes || '' })}
                     className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg transition-colors" title="Add Notes">
                     <span className="material-symbols-outlined text-lg">edit_note</span>
                   </button>

@@ -55,6 +55,9 @@ async def create_new_patient(
             user_id=current_user.id,
             hospital_id=current_user.hospital_id,
         )
+        logger.info("Patient registered: %s (PRN=%s) by user %s",
+                    f"{patient.first_name} {patient.last_name}",
+                    db_patient.patient_reference_number, current_user.username)
         return PatientResponse.model_validate(db_patient)
     except HTTPException:
         raise

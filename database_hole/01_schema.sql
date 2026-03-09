@@ -251,6 +251,7 @@ CREATE TABLE patients (
     photo_url                   VARCHAR(500),
     emergency_contact_name      VARCHAR(200),
     emergency_contact_phone     VARCHAR(20),
+    emergency_contact_country_code VARCHAR(5) DEFAULT '+91',
     emergency_contact_relation  VARCHAR(50),
     known_allergies             TEXT,
     chronic_conditions          TEXT,
@@ -394,7 +395,7 @@ CREATE TABLE appointments (
     doctor_id                UUID          NOT NULL REFERENCES doctors(id),
     department_id            UUID          REFERENCES departments(id),
     appointment_date         DATE          NOT NULL,
-    start_time               TIME          NOT NULL,
+    start_time               TIME,
     end_time                 TIME,
     appointment_type         VARCHAR(20)   NOT NULL,                 -- 'scheduled','walk_in','emergency','follow_up'
     visit_type               VARCHAR(20)   DEFAULT 'new',            -- 'new','follow_up'
@@ -447,6 +448,32 @@ CREATE TABLE appointment_queue (
     UNIQUE (doctor_id, queue_date, queue_number)
 );
 
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 5.4 waitlists  (overflow when doctor slots are full)
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE waitlists (
+    id                      UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    hospital_id             UUID        NOT NULL REFERENCES hospitals(id),
+    patient_id              UUID        NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+    doctor_id               UUID        NOT NULL REFERENCES doctors(id),
+    department_id           UUID        REFERENCES departments(id),
+    preferred_date          DATE        NOT NULL,
+    preferred_time          TIME,
+    appointment_type        VARCHAR(20) NOT NULL DEFAULT 'walk-in',   -- walk-in, scheduled
+    priority                VARCHAR(10) DEFAULT 'normal',             -- normal, urgent, emergency
+    chief_complaint         TEXT,
+    reason                  TEXT,
+    status                  VARCHAR(20) DEFAULT 'waiting',            -- waiting, notified, booked, cancelled, expired
+    position                INTEGER     NOT NULL DEFAULT 0,
+    booked_appointment_id   UUID        REFERENCES appointments(id),
+    notified_at             TIMESTAMPTZ,
+    expires_at              TIMESTAMPTZ,
+    created_by              UUID        REFERENCES users(id),
+    created_at              TIMESTAMPTZ DEFAULT NOW(),
+    updated_at              TIMESTAMPTZ DEFAULT NOW(),
+    is_deleted              BOOLEAN     DEFAULT false
+);
+
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- PHASE 2 — CLINICAL (Prescriptions, Pharmacy, Optical)
 -- ═══════════════════════════════════════════════════════════════════════════════
@@ -494,6 +521,13 @@ CREATE TABLE prescriptions (
     diagnosis             TEXT,
     clinical_notes        TEXT,
     advice                TEXT,
+    vitals_bp             VARCHAR(20),
+    vitals_pulse          VARCHAR(10),
+    vitals_temp           VARCHAR(10),
+    vitals_weight         VARCHAR(10),
+    vitals_spo2           VARCHAR(10),
+    follow_up_date        DATE,
+    queue_id              UUID        REFERENCES appointment_queue(id),
     version               INTEGER     DEFAULT 1,
     status                VARCHAR(20) DEFAULT 'draft',  -- 'draft','finalized','dispensed','partially_dispensed'
     is_finalized          BOOLEAN     DEFAULT false,
@@ -1372,6 +1406,21 @@ CREATE INDEX idx_medicines_barcode ON medicines(barcode) WHERE barcode IS NOT NU
 -- Medicine batches
 CREATE INDEX idx_batches_expiry ON medicine_batches(expiry_date) WHERE is_active = true;
 CREATE INDEX idx_batches_stock  ON medicine_batches(medicine_id, is_active, current_quantity);
+
+-- Prescriptions
+CREATE INDEX idx_prescriptions_patient     ON prescriptions(patient_id);
+CREATE INDEX idx_prescriptions_doctor      ON prescriptions(doctor_id);
+CREATE INDEX idx_prescriptions_appointment ON prescriptions(appointment_id);
+CREATE INDEX idx_prescriptions_status      ON prescriptions(status);
+CREATE INDEX idx_prescriptions_created     ON prescriptions(created_at);
+CREATE INDEX idx_prescription_items_rx     ON prescription_items(prescription_id);
+CREATE INDEX idx_prescription_templates_doctor ON prescription_templates(doctor_id);
+CREATE INDEX idx_prescription_versions_rx  ON prescription_versions(prescription_id);
+
+-- Waitlists
+CREATE INDEX idx_waitlist_doctor_date ON waitlists(doctor_id, preferred_date) WHERE is_deleted = false;
+CREATE INDEX idx_waitlist_patient     ON waitlists(patient_id, preferred_date) WHERE is_deleted = false;
+CREATE INDEX idx_waitlist_status      ON waitlists(status);
 
 -- Invoices
 CREATE INDEX idx_invoices_patient     ON invoices(patient_id, invoice_date DESC) WHERE is_deleted = false;

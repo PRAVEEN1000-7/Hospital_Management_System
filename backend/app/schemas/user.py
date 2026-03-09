@@ -5,9 +5,9 @@ import re
 
 
 VALID_ROLES = [
-    "super_admin", "admin", "doctor", "receptionist",
+    "super_admin", "admin", "doctor", "nurse", "receptionist",
     "pharmacist", "optical_staff", "cashier",
-    "inventory_manager", "report_viewer",
+    "inventory_manager", "report_viewer", "staff",
 ]
 
 
@@ -37,9 +37,26 @@ class UserCreate(BaseModel):
     @field_validator("username")
     @classmethod
     def validate_username(cls, v: str) -> str:
+        if " " in v:
+            raise ValueError("Username must not contain spaces")
         if not re.match(r"^[a-zA-Z0-9_]+$", v):
             raise ValueError("Username must contain only letters, numbers, and underscores")
         return v.lower()
+
+    @field_validator("first_name", "last_name")
+    @classmethod
+    def validate_names(cls, v: str) -> str:
+        if not re.match(r"^[A-Za-z\s.'\-]+$", v):
+            raise ValueError("Name must contain only letters, spaces, hyphens, and apostrophes")
+        return v
+
+    @field_validator("phone_number")
+    @classmethod
+    def validate_phone(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v != "":
+            if not re.match(r"^\d{10}$", v):
+                raise ValueError("Phone number must be exactly 10 digits")
+        return v
 
     @field_validator("password")
     @classmethod
@@ -84,6 +101,11 @@ class UserUpdate(BaseModel):
     phone_number: Optional[str] = Field(None, max_length=20)
     is_active: Optional[bool] = None
 
+    # Doctor-specific fields (optional, used when editing a doctor)
+    specialization: Optional[str] = Field(None, max_length=100)
+    qualification: Optional[str] = Field(None, max_length=255)
+    registration_number: Optional[str] = Field(None, max_length=50)
+
     @field_validator("role")
     @classmethod
     def validate_role(cls, v: Optional[str]) -> Optional[str]:
@@ -126,6 +148,9 @@ class UserResponse(BaseModel):
     last_login_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    specialization: Optional[str] = None
+    qualification: Optional[str] = None
+    registration_number: Optional[str] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -134,6 +159,15 @@ class UserResponse(BaseModel):
             # SQLAlchemy model instance
             roles = data.roles if hasattr(data, 'roles') else []
             hospital_name = data.hospital.name if hasattr(data, 'hospital') and data.hospital else None
+            # Extract doctor fields from doctor_profile if available
+            specialization = None
+            qualification = None
+            registration_number = None
+            if hasattr(data, 'doctor_profile') and data.doctor_profile:
+                doc = data.doctor_profile[0] if isinstance(data.doctor_profile, list) else data.doctor_profile
+                specialization = getattr(doc, 'specialization', None)
+                qualification = getattr(doc, 'qualification', None)
+                registration_number = getattr(doc, 'registration_number', None)
             return {
                 "id": str(data.id),
                 "username": data.username,
@@ -151,6 +185,9 @@ class UserResponse(BaseModel):
                 "last_login_at": data.last_login_at,
                 "created_at": data.created_at,
                 "updated_at": data.updated_at,
+                "specialization": specialization,
+                "qualification": qualification,
+                "registration_number": registration_number,
             }
         if isinstance(data, dict):
             if "id" in data and not isinstance(data["id"], str):

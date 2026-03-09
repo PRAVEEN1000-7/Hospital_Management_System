@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
@@ -13,11 +13,22 @@ const STATUS_OPTIONS = [
   { value: 'partially_dispensed', label: 'Partially Dispensed' },
 ];
 
+const TYPE_OPTIONS = [
+  { value: '', label: 'All Types' },
+  { value: 'general', label: 'General' },
+  { value: 'optical', label: 'Optical' },
+];
+
 const statusColor: Record<string, string> = {
   draft: 'bg-yellow-100 text-yellow-700',
   finalized: 'bg-blue-100 text-blue-700',
   dispensed: 'bg-green-100 text-green-700',
   partially_dispensed: 'bg-orange-100 text-orange-700',
+};
+
+const typeColor: Record<string, string> = {
+  general: 'bg-slate-100 text-slate-600',
+  optical: 'bg-teal-100 text-teal-700',
 };
 
 const PrescriptionList: React.FC = () => {
@@ -32,8 +43,22 @@ const PrescriptionList: React.FC = () => {
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
+  const [showNewMenu, setShowNewMenu] = useState(false);
+  const newMenuRef = useRef<HTMLDivElement>(null);
 
   const role = user?.roles?.[0];
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (newMenuRef.current && !newMenuRef.current.contains(e.target as Node)) {
+        setShowNewMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   const fetchPrescriptions = useCallback(async () => {
     setLoading(true);
@@ -42,10 +67,11 @@ const PrescriptionList: React.FC = () => {
       let res: PaginatedResponse<PrescriptionListItem>;
 
       if (isDoctor) {
-        res = await prescriptionService.getMyPrescriptions(page, 10, statusFilter || undefined);
+        res = await prescriptionService.getMyPrescriptions(page, 10, statusFilter || undefined, typeFilter || undefined);
       } else {
         res = await prescriptionService.getPrescriptions(page, 10, {
           status: statusFilter || undefined,
+          type: typeFilter || undefined,
           search: search || undefined,
         });
       }
@@ -58,7 +84,7 @@ const PrescriptionList: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [page, search, statusFilter, role]);
+  }, [page, search, statusFilter, typeFilter, role]);
 
   useEffect(() => { fetchPrescriptions(); }, [fetchPrescriptions]);
 
@@ -89,13 +115,40 @@ const PrescriptionList: React.FC = () => {
           <p className="text-sm text-slate-500 mt-1">{total} prescription{total !== 1 ? 's' : ''} found</p>
         </div>
         {(role === 'doctor' || role === 'super_admin' || role === 'admin') && (
-          <button
-            onClick={() => navigate('/prescriptions/new')}
-            className="bg-primary hover:bg-primary/90 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
-          >
-            <span className="material-symbols-outlined text-sm">add</span>
-            New Prescription
-          </button>
+          <div className="relative" ref={newMenuRef}>
+            <button
+              onClick={() => setShowNewMenu(!showNewMenu)}
+              className="bg-primary hover:bg-primary/90 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
+            >
+              <span className="material-symbols-outlined text-sm">add</span>
+              New Prescription
+              <span className="material-symbols-outlined text-sm">expand_more</span>
+            </button>
+            {showNewMenu && (
+              <div className="absolute right-0 mt-1 w-56 bg-white border border-slate-200 rounded-lg shadow-xl z-20 overflow-hidden">
+                <button
+                  onClick={() => { navigate('/prescriptions/new'); setShowNewMenu(false); }}
+                  className="w-full text-left px-4 py-3 hover:bg-slate-50 flex items-center gap-3 border-b border-slate-100"
+                >
+                  <span className="material-symbols-outlined text-primary text-lg">medication</span>
+                  <div>
+                    <p className="text-sm font-medium text-slate-900">General Prescription</p>
+                    <p className="text-[10px] text-slate-400">Medicines, dosage, diagnosis</p>
+                  </div>
+                </button>
+                <button
+                  onClick={() => { navigate('/prescriptions/optical/new'); setShowNewMenu(false); }}
+                  className="w-full text-left px-4 py-3 hover:bg-slate-50 flex items-center gap-3"
+                >
+                  <span className="material-symbols-outlined text-teal-600 text-lg">visibility</span>
+                  <div>
+                    <p className="text-sm font-medium text-slate-900">Optical Prescription</p>
+                    <p className="text-[10px] text-slate-400">Eye power, lens, refraction</p>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
         )}
       </div>
 
@@ -123,6 +176,15 @@ const PrescriptionList: React.FC = () => {
               <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
           </select>
+          <select
+            value={typeFilter}
+            onChange={e => { setTypeFilter(e.target.value); setPage(1); }}
+            className="input-field w-full sm:w-40"
+          >
+            {TYPE_OPTIONS.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -145,6 +207,7 @@ const PrescriptionList: React.FC = () => {
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">PRN</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Patient</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Doctor</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Type</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Diagnosis</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Items</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
@@ -165,6 +228,11 @@ const PrescriptionList: React.FC = () => {
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-700">{rx.patient_name || '—'}</td>
                     <td className="px-4 py-3 text-sm text-slate-700">{rx.doctor_name || '—'}</td>
+                    <td className="px-4 py-3">
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase ${typeColor[rx.prescription_type] || 'bg-slate-100 text-slate-600'}`}>
+                        {rx.prescription_type === 'optical' ? '👁 Optical' : 'General'}
+                      </span>
+                    </td>
                     <td className="px-4 py-3 text-sm text-slate-500 max-w-[200px] truncate">
                       {rx.diagnosis || '—'}
                     </td>
@@ -191,7 +259,11 @@ const PrescriptionList: React.FC = () => {
                         {!rx.is_finalized && (
                           <>
                             <button
-                              onClick={() => navigate(`/prescriptions/${rx.id}/edit`)}
+                              onClick={() => navigate(
+                                rx.prescription_type === 'optical'
+                                  ? `/prescriptions/optical/${rx.id}/edit`
+                                  : `/prescriptions/${rx.id}/edit`
+                              )}
                               className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-primary transition-colors"
                               title="Edit"
                             >

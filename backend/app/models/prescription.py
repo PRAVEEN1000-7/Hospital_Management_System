@@ -53,6 +53,7 @@ class Prescription(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=False)
     prescription_number = Column(String(30), unique=True, nullable=False, index=True)
+    prescription_type = Column(String(20), default="general")  # 'general' or 'optical'
     appointment_id = Column(UUID(as_uuid=True), ForeignKey("appointments.id"), nullable=True)
     patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id"), nullable=False)
     doctor_id = Column(UUID(as_uuid=True), ForeignKey("doctors.id"), nullable=False)
@@ -66,6 +67,23 @@ class Prescription(Base):
     vitals_weight = Column(String(10))   # e.g. "70"
     vitals_spo2 = Column(String(10))     # e.g. "98"
     follow_up_date = Column(Date)
+    # Optical prescription fields
+    right_sphere = Column(String(20))
+    right_cylinder = Column(String(20))
+    right_axis = Column(String(20))
+    right_add = Column(String(20))
+    right_va = Column(String(20))         # visual acuity
+    right_ipd = Column(String(20))        # inter-pupillary distance
+    left_sphere = Column(String(20))
+    left_cylinder = Column(String(20))
+    left_axis = Column(String(20))
+    left_add = Column(String(20))
+    left_va = Column(String(20))
+    left_ipd = Column(String(20))
+    lens_type = Column(String(50))        # e.g. 'single_vision','bifocal','progressive','contact'
+    lens_material = Column(String(50))
+    lens_coating = Column(String(100))
+    optical_notes = Column(Text)
     queue_id = Column(UUID(as_uuid=True), ForeignKey("appointment_queue.id"), nullable=True)
     version = Column(Integer, default=1)
     status = Column(String(20), default="draft")  # 'draft','finalized','dispensed','partially_dispensed'

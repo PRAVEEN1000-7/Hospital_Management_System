@@ -81,6 +81,7 @@ async def list_all_prescriptions(
     doctor_id: Optional[str] = None,
     patient_id: Optional[str] = None,
     status_filter: Optional[str] = Query(None, alias="status"),
+    prescription_type: Optional[str] = Query(None, alias="type"),
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
     search: Optional[str] = None,
@@ -92,7 +93,8 @@ async def list_all_prescriptions(
         db, page, limit,
         hospital_id=current_user.hospital_id,
         doctor_id=doctor_id, patient_id=patient_id,
-        status=status_filter, date_from=date_from, date_to=date_to,
+        status=status_filter, prescription_type=prescription_type,
+        date_from=date_from, date_to=date_to,
         search=search,
     )
     enriched = enrich_prescriptions(db, rows)
@@ -107,6 +109,7 @@ async def my_prescriptions(
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100),
     status_filter: Optional[str] = Query(None, alias="status"),
+    prescription_type: Optional[str] = Query(None, alias="type"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
@@ -119,6 +122,7 @@ async def my_prescriptions(
     total, pg, lim, tp, rows = list_prescriptions(
         db, page, limit, hospital_id=current_user.hospital_id,
         doctor_id=str(doctor.id), status=status_filter,
+        prescription_type=prescription_type,
     )
     enriched = enrich_prescriptions(db, rows)
     return PaginatedPrescriptionResponse(

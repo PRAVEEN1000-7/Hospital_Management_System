@@ -122,6 +122,11 @@ const PrescriptionDetail: React.FC = () => {
             <span className={`text-xs px-2.5 py-1 rounded-full border font-medium ${statusColor[rx.status] || ''}`}>
               {rx.status?.replace('_', ' ')}
             </span>
+            {rx.prescription_type === 'optical' && (
+              <span className="text-xs px-2.5 py-1 rounded-full bg-teal-100 text-teal-700 border border-teal-300 font-medium">
+                Optical
+              </span>
+            )}
           </h1>
         </div>
         <div className="flex gap-2">
@@ -169,7 +174,11 @@ const PrescriptionDetail: React.FC = () => {
           </div>
           {canEdit && (
             <button
-              onClick={() => navigate(`/prescriptions/${id}/edit`)}
+              onClick={() => navigate(
+                rx.prescription_type === 'optical'
+                  ? `/prescriptions/optical/${id}/edit`
+                  : `/prescriptions/${id}/edit`
+              )}
               className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-medium hover:bg-slate-50 flex items-center gap-2"
             >
               <span className="material-symbols-outlined text-sm">edit</span> Edit
@@ -327,11 +336,99 @@ const PrescriptionDetail: React.FC = () => {
             )}
           </div>
 
+          {/* Optical Refraction Details */}
+          {rx.prescription_type === 'optical' && (rx.right_sphere || rx.left_sphere || rx.lens_type) && (
+            <div className="bg-white rounded-xl border-2 border-teal-200 p-6 shadow-sm">
+              <h3 className="font-bold mb-5 flex items-center gap-2 text-teal-800">
+                <span className="material-symbols-outlined text-teal-600">visibility</span>
+                Refraction / Power Details
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                {/* Right Eye */}
+                <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
+                  <h4 className="text-xs font-bold text-blue-700 uppercase tracking-wide mb-3 flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-blue-200 text-blue-800 flex items-center justify-center text-[10px] font-bold">R</span>
+                    Right Eye (OD)
+                  </h4>
+                  <div className="grid grid-cols-3 gap-3">
+                    {[
+                      { label: 'SPH', value: rx.right_sphere },
+                      { label: 'CYL', value: rx.right_cylinder },
+                      { label: 'Axis', value: rx.right_axis },
+                      { label: 'Add', value: rx.right_add },
+                      { label: 'VA', value: rx.right_va },
+                      { label: 'IPD', value: rx.right_ipd },
+                    ].map(f => (
+                      <div key={f.label} className="bg-white rounded-lg p-2 text-center border border-blue-100">
+                        <p className="text-[9px] text-blue-500 font-semibold uppercase">{f.label}</p>
+                        <p className="text-sm font-bold text-slate-900">{f.value || '—'}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Left Eye */}
+                <div className="p-4 bg-green-50 rounded-xl border border-green-200">
+                  <h4 className="text-xs font-bold text-green-700 uppercase tracking-wide mb-3 flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-green-200 text-green-800 flex items-center justify-center text-[10px] font-bold">L</span>
+                    Left Eye (OS)
+                  </h4>
+                  <div className="grid grid-cols-3 gap-3">
+                    {[
+                      { label: 'SPH', value: rx.left_sphere },
+                      { label: 'CYL', value: rx.left_cylinder },
+                      { label: 'Axis', value: rx.left_axis },
+                      { label: 'Add', value: rx.left_add },
+                      { label: 'VA', value: rx.left_va },
+                      { label: 'IPD', value: rx.left_ipd },
+                    ].map(f => (
+                      <div key={f.label} className="bg-white rounded-lg p-2 text-center border border-green-100">
+                        <p className="text-[9px] text-green-500 font-semibold uppercase">{f.label}</p>
+                        <p className="text-sm font-bold text-slate-900">{f.value || '—'}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Lens recommendation */}
+              {(rx.lens_type || rx.lens_material || rx.lens_coating) && (
+                <div className="p-4 bg-teal-50 rounded-xl border border-teal-200">
+                  <h4 className="text-xs font-bold text-teal-700 uppercase tracking-wide mb-2 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-teal-600" style={{ fontSize: '16px' }}>eyeglasses</span>
+                    Lens Recommendation
+                  </h4>
+                  <div className="grid grid-cols-3 gap-3">
+                    {[
+                      { label: 'Type', value: rx.lens_type?.replace('_', ' ') },
+                      { label: 'Material', value: rx.lens_material },
+                      { label: 'Coating', value: rx.lens_coating },
+                    ].map(f => (
+                      <div key={f.label}>
+                        <p className="text-[10px] text-teal-600 font-semibold uppercase">{f.label}</p>
+                        <p className="text-sm font-medium text-slate-800 capitalize">{f.value || '—'}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Optical notes */}
+              {rx.optical_notes && (
+                <div className="mt-4">
+                  <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Optical Notes</h4>
+                  <p className="text-sm text-slate-700 whitespace-pre-wrap">{rx.optical_notes}</p>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Medicines */}
           <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
             <h3 className="font-semibold mb-4 flex items-center gap-2">
               <span className="material-symbols-outlined text-primary text-sm">medication</span>
-              Medicines ({rx.items?.length || 0})
+              {rx.prescription_type === 'optical' ? 'Eye Drops / Medicines' : 'Medicines'} ({rx.items?.length || 0})
             </h3>
 
             <div className="border border-slate-200 rounded-lg overflow-hidden">

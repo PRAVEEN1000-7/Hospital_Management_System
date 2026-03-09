@@ -32,6 +32,7 @@ import AppointmentSettings from './pages/AppointmentSettings';
 import PrescriptionList from './pages/PrescriptionList';
 import PrescriptionBuilder from './pages/PrescriptionBuilder';
 import PrescriptionDetail from './pages/PrescriptionDetail';
+import OpticalPrescriptionBuilder from './pages/OpticalPrescriptionBuilder';
 
 const App: React.FC = () => {
   return (
@@ -145,6 +146,16 @@ const App: React.FC = () => {
             <Route path="/prescriptions/new" element={
               <ProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor']}>
                 <PrescriptionBuilder />
+              </ProtectedRoute>
+            } />
+            <Route path="/prescriptions/optical/new" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor']}>
+                <OpticalPrescriptionBuilder />
+              </ProtectedRoute>
+            } />
+            <Route path="/prescriptions/optical/:id/edit" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor']}>
+                <OpticalPrescriptionBuilder />
               </ProtectedRoute>
             } />
             <Route path="/prescriptions/:id" element={

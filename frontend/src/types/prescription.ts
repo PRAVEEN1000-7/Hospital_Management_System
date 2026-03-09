@@ -1,9 +1,11 @@
 // —— Prescription Types ——————————————————————————————————————————
 
 export type PrescriptionStatus = 'draft' | 'finalized' | 'dispensed' | 'partially_dispensed';
+export type PrescriptionType = 'general' | 'optical';
 export type DurationUnit = 'days' | 'weeks' | 'months';
 export type MedicineRoute = 'oral' | 'topical' | 'injection' | 'inhalation' | 'sublingual' | 'rectal' | 'nasal' | 'ophthalmic' | 'otic';
 export type MedicineCategory = 'tablet' | 'capsule' | 'syrup' | 'injection' | 'cream' | 'drops' | 'ointment' | 'inhaler' | 'powder' | 'suspension';
+export type LensType = 'single_vision' | 'bifocal' | 'progressive' | 'contact';
 
 // —— Prescription Item ——————————————————————————————————————————
 
@@ -48,6 +50,7 @@ export interface Prescription {
   id: string;
   hospital_id: string;
   prescription_number: string;
+  prescription_type: PrescriptionType;
   appointment_id: string | null;
   patient_id: string;
   doctor_id: string;
@@ -60,6 +63,23 @@ export interface Prescription {
   vitals_weight: string | null;
   vitals_spo2: string | null;
   follow_up_date: string | null;
+  // Optical fields
+  right_sphere: string | null;
+  right_cylinder: string | null;
+  right_axis: string | null;
+  right_add: string | null;
+  right_va: string | null;
+  right_ipd: string | null;
+  left_sphere: string | null;
+  left_cylinder: string | null;
+  left_axis: string | null;
+  left_add: string | null;
+  left_va: string | null;
+  left_ipd: string | null;
+  lens_type: LensType | null;
+  lens_material: string | null;
+  lens_coating: string | null;
+  optical_notes: string | null;
   queue_id: string | null;
   version: number;
   status: PrescriptionStatus;
@@ -89,6 +109,7 @@ export interface Prescription {
 export interface PrescriptionListItem {
   id: string;
   prescription_number: string;
+  prescription_type: PrescriptionType;
   patient_id: string;
   doctor_id: string;
   diagnosis: string | null;
@@ -107,6 +128,7 @@ export interface PrescriptionCreate {
   patient_id: string;
   doctor_id?: string | null;
   appointment_id?: string | null;
+  prescription_type?: PrescriptionType;
   diagnosis?: string | null;
   clinical_notes?: string | null;
   advice?: string | null;
@@ -116,6 +138,23 @@ export interface PrescriptionCreate {
   vitals_weight?: string | null;
   vitals_spo2?: string | null;
   follow_up_date?: string | null;
+  // Optical fields
+  right_sphere?: string | null;
+  right_cylinder?: string | null;
+  right_axis?: string | null;
+  right_add?: string | null;
+  right_va?: string | null;
+  right_ipd?: string | null;
+  left_sphere?: string | null;
+  left_cylinder?: string | null;
+  left_axis?: string | null;
+  left_add?: string | null;
+  left_va?: string | null;
+  left_ipd?: string | null;
+  lens_type?: LensType | null;
+  lens_material?: string | null;
+  lens_coating?: string | null;
+  optical_notes?: string | null;
   queue_id?: string | null;
   valid_until?: string | null;
   items: PrescriptionItemCreate[];
@@ -133,6 +172,23 @@ export interface PrescriptionUpdate {
   follow_up_date?: string | null;
   valid_until?: string | null;
   items?: PrescriptionItemCreate[] | null;
+  // Optical fields
+  right_sphere?: string | null;
+  right_cylinder?: string | null;
+  right_axis?: string | null;
+  right_add?: string | null;
+  right_va?: string | null;
+  right_ipd?: string | null;
+  left_sphere?: string | null;
+  left_cylinder?: string | null;
+  left_axis?: string | null;
+  left_add?: string | null;
+  left_va?: string | null;
+  left_ipd?: string | null;
+  lens_type?: LensType | null;
+  lens_material?: string | null;
+  lens_coating?: string | null;
+  optical_notes?: string | null;
 }
 
 // —— Medicine ———————————————————————————————————————————————————

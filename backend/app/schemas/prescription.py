@@ -8,8 +8,10 @@ from datetime import date, datetime
 
 
 VALID_PRESCRIPTION_STATUSES = ["draft", "finalized", "dispensed", "partially_dispensed"]
+VALID_PRESCRIPTION_TYPES = ["general", "optical"]
 VALID_DURATION_UNITS = ["days", "weeks", "months"]
 VALID_ROUTES = ["oral", "topical", "injection", "inhalation", "sublingual", "rectal", "nasal", "ophthalmic", "otic"]
+VALID_LENS_TYPES = ["single_vision", "bifocal", "progressive", "contact"]
 VALID_MEDICINE_CATEGORIES = ["tablet", "capsule", "syrup", "injection", "cream", "drops", "ointment", "inhaler", "powder", "suspension"]
 
 
@@ -192,12 +194,44 @@ class PrescriptionCreate(BaseModel):
     patient_id: str
     doctor_id: Optional[str] = None  # Defaults to current doctor
     appointment_id: Optional[str] = None
+    prescription_type: str = Field(default="general", max_length=20)
     diagnosis: Optional[str] = None
     clinical_notes: Optional[str] = None
     advice: Optional[str] = None
     vitals_bp: Optional[str] = None
     vitals_pulse: Optional[str] = None
     vitals_temp: Optional[str] = None
+    # Optical fields
+    right_sphere: Optional[str] = None
+    right_cylinder: Optional[str] = None
+    right_axis: Optional[str] = None
+    right_add: Optional[str] = None
+    right_va: Optional[str] = None
+    right_ipd: Optional[str] = None
+    left_sphere: Optional[str] = None
+    left_cylinder: Optional[str] = None
+    left_axis: Optional[str] = None
+    left_add: Optional[str] = None
+    left_va: Optional[str] = None
+    left_ipd: Optional[str] = None
+    lens_type: Optional[str] = None
+    lens_material: Optional[str] = None
+    lens_coating: Optional[str] = None
+    optical_notes: Optional[str] = None
+
+    @field_validator("prescription_type")
+    @classmethod
+    def validate_prescription_type(cls, v: str) -> str:
+        if v not in VALID_PRESCRIPTION_TYPES:
+            raise ValueError(f"Must be one of: {', '.join(VALID_PRESCRIPTION_TYPES)}")
+        return v
+
+    @field_validator("lens_type")
+    @classmethod
+    def validate_lens_type(cls, v: Optional[str]) -> Optional[str]:
+        if v and v not in VALID_LENS_TYPES:
+            raise ValueError(f"Must be one of: {', '.join(VALID_LENS_TYPES)}")
+        return v
     vitals_weight: Optional[str] = None
     vitals_spo2: Optional[str] = None
     follow_up_date: Optional[date] = None
@@ -218,12 +252,30 @@ class PrescriptionUpdate(BaseModel):
     follow_up_date: Optional[date] = None
     valid_until: Optional[date] = None
     items: Optional[list[PrescriptionItemCreate]] = None
+    # Optical fields
+    right_sphere: Optional[str] = None
+    right_cylinder: Optional[str] = None
+    right_axis: Optional[str] = None
+    right_add: Optional[str] = None
+    right_va: Optional[str] = None
+    right_ipd: Optional[str] = None
+    left_sphere: Optional[str] = None
+    left_cylinder: Optional[str] = None
+    left_axis: Optional[str] = None
+    left_add: Optional[str] = None
+    left_va: Optional[str] = None
+    left_ipd: Optional[str] = None
+    lens_type: Optional[str] = None
+    lens_material: Optional[str] = None
+    lens_coating: Optional[str] = None
+    optical_notes: Optional[str] = None
 
 
 class PrescriptionResponse(BaseModel):
     id: str
     hospital_id: str
     prescription_number: str
+    prescription_type: str = "general"
     appointment_id: Optional[str] = None
     patient_id: str
     doctor_id: str
@@ -236,6 +288,23 @@ class PrescriptionResponse(BaseModel):
     vitals_weight: Optional[str] = None
     vitals_spo2: Optional[str] = None
     follow_up_date: Optional[date] = None
+    # Optical fields
+    right_sphere: Optional[str] = None
+    right_cylinder: Optional[str] = None
+    right_axis: Optional[str] = None
+    right_add: Optional[str] = None
+    right_va: Optional[str] = None
+    right_ipd: Optional[str] = None
+    left_sphere: Optional[str] = None
+    left_cylinder: Optional[str] = None
+    left_axis: Optional[str] = None
+    left_add: Optional[str] = None
+    left_va: Optional[str] = None
+    left_ipd: Optional[str] = None
+    lens_type: Optional[str] = None
+    lens_material: Optional[str] = None
+    lens_coating: Optional[str] = None
+    optical_notes: Optional[str] = None
     queue_id: Optional[str] = None
     version: int = 1
     status: str = "draft"
@@ -266,6 +335,7 @@ class PrescriptionResponse(BaseModel):
 class PrescriptionListItem(BaseModel):
     id: str
     prescription_number: str
+    prescription_type: str = "general"
     patient_id: str
     doctor_id: str
     diagnosis: Optional[str] = None

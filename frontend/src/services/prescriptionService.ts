@@ -16,6 +16,7 @@ interface PrescriptionFilters {
   doctor_id?: string;
   patient_id?: string;
   status?: string;
+  type?: string;
   date_from?: string;
   date_to?: string;
   search?: string;
@@ -38,10 +39,11 @@ const prescriptionService = {
   },
 
   async getMyPrescriptions(
-    page = 1, limit = 10, status?: string,
+    page = 1, limit = 10, status?: string, type?: string,
   ): Promise<PaginatedResponse<PrescriptionListItem>> {
     const params: Record<string, string | number> = { page, limit };
     if (status) params.status = status;
+    if (type) params.type = type;
     const res = await api.get<PaginatedResponse<PrescriptionListItem>>('/prescriptions/my-prescriptions', { params });
     return res.data;
   },

@@ -72,6 +72,7 @@ def create_prescription(
     rx = Prescription(
         hospital_id=hospital_id,
         prescription_number=rx_number,
+        prescription_type=data.get("prescription_type", "general"),
         patient_id=patient_id,
         doctor_id=doctor_id,
         appointment_id=appointment_id,
@@ -84,6 +85,23 @@ def create_prescription(
         vitals_weight=data.get("vitals_weight"),
         vitals_spo2=data.get("vitals_spo2"),
         follow_up_date=data.get("follow_up_date"),
+        # Optical fields
+        right_sphere=data.get("right_sphere"),
+        right_cylinder=data.get("right_cylinder"),
+        right_axis=data.get("right_axis"),
+        right_add=data.get("right_add"),
+        right_va=data.get("right_va"),
+        right_ipd=data.get("right_ipd"),
+        left_sphere=data.get("left_sphere"),
+        left_cylinder=data.get("left_cylinder"),
+        left_axis=data.get("left_axis"),
+        left_add=data.get("left_add"),
+        left_va=data.get("left_va"),
+        left_ipd=data.get("left_ipd"),
+        lens_type=data.get("lens_type"),
+        lens_material=data.get("lens_material"),
+        lens_coating=data.get("lens_coating"),
+        optical_notes=data.get("optical_notes"),
         queue_id=uuid.UUID(data["queue_id"]) if data.get("queue_id") else None,
         valid_until=data.get("valid_until"),
         status="draft",
@@ -156,6 +174,7 @@ def list_prescriptions(
     doctor_id: Optional[str | uuid.UUID] = None,
     patient_id: Optional[str | uuid.UUID] = None,
     status: Optional[str] = None,
+    prescription_type: Optional[str] = None,
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
     search: Optional[str] = None,
@@ -178,6 +197,9 @@ def list_prescriptions(
 
     if status:
         q = q.filter(Prescription.status == status)
+
+    if prescription_type:
+        q = q.filter(Prescription.prescription_type == prescription_type)
 
     if date_from:
         q = q.filter(func.date(Prescription.created_at) >= date_from)
@@ -226,7 +248,10 @@ def update_prescription(
     # Update top-level fields
     for k in ["diagnosis", "clinical_notes", "advice", "valid_until",
               "vitals_bp", "vitals_pulse", "vitals_temp", "vitals_weight", "vitals_spo2",
-              "follow_up_date"]:
+              "follow_up_date",
+              "right_sphere", "right_cylinder", "right_axis", "right_add", "right_va", "right_ipd",
+              "left_sphere", "left_cylinder", "left_axis", "left_add", "left_va", "left_ipd",
+              "lens_type", "lens_material", "lens_coating", "optical_notes"]:
         if k in data and data[k] is not None:
             setattr(rx, k, data[k])
 

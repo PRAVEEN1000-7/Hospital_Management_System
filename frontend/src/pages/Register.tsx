@@ -10,6 +10,28 @@ import patientService from '../services/patientService';
 import { useToast } from '../contexts/ToastContext';
 import feLogger from '../services/loggerService';
 
+const FIELD_LABELS: Partial<Record<string, string>> = {
+  title: 'Title',
+  first_name: 'First Name',
+  last_name: 'Last Name',
+  date_of_birth: 'Date of Birth',
+  gender: 'Gender',
+  blood_group: 'Blood Group',
+  phone_country_code: 'Country Code',
+  phone_number: 'Mobile Number',
+  email: 'Email',
+  address_line_1: 'Address Line 1',
+  address_line_2: 'Address Line 2',
+  city: 'City',
+  state: 'State',
+  pin_code: 'PIN Code',
+  country: 'Country',
+  emergency_contact_name: 'Emergency Contact Name',
+  emergency_contact_phone: 'Emergency Contact Phone',
+  emergency_contact_country_code: 'Emergency Country Code',
+  emergency_contact_relation: 'Emergency Relationship',
+};
+
 // All form fields as plain strings — no zod dependency in the form layer
 type FD = {
   title: string; first_name: string; last_name: string;
@@ -18,7 +40,7 @@ type FD = {
   address_line_1: string; address_line_2: string; city: string;
   state: string; pin_code: string; country: string;
   emergency_contact_name: string; emergency_contact_phone: string;
-  emergency_contact_relation: string;
+  emergency_contact_country_code: string; emergency_contact_relation: string;
 };
 
 const Register: React.FC = () => {
@@ -43,7 +65,7 @@ const Register: React.FC = () => {
       email: '', address_line_1: '', address_line_2: '', city: '',
       state: '', pin_code: '', country: 'India',
       emergency_contact_name: '', emergency_contact_phone: '',
-      emergency_contact_relation: '',
+      emergency_contact_country_code: '+91', emergency_contact_relation: ''
     },
   });
 
@@ -212,10 +234,19 @@ const Register: React.FC = () => {
         {/* Validation error banner — shown when Submit is clicked with field errors */}
         {Object.keys(fieldErrors).length > 0 && (
           <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 flex items-start gap-3">
-            <span className="material-symbols-outlined text-amber-500 flex-shrink-0 text-xl">warning</span>
-            <div>
-              <p className="text-sm font-semibold text-amber-800">Please fix the errors below</p>
-              <p className="text-sm text-amber-700 mt-0.5">{Object.keys(fieldErrors).length} field{Object.keys(fieldErrors).length > 1 ? 's need' : ' needs'} attention. Fields with errors have a red border.</p>
+            <span className="material-symbols-outlined text-amber-500 flex-shrink-0 text-xl mt-0.5">warning</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-amber-800">
+               Please fix the {Object.keys(fieldErrors).length} highlighted error{Object.keys(fieldErrors).length > 1 ? 's' : ''}  before submitting
+              </p>
+              <ul className="mt-2 space-y-1">
+                {(Object.entries(fieldErrors) as [string, string][]).map(([key, msg]) => (
+                  <li key={key} className="flex items-start gap-1.5 text-xs text-amber-700">
+                    <span className="material-symbols-outlined text-[13px] mt-0.5 shrink-0">arrow_right</span>
+                    <span><span className="font-semibold">{FIELD_LABELS[key] ?? key}:</span> {msg}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
           </div>
         )}
@@ -423,16 +454,28 @@ const Register: React.FC = () => {
               </select>
               <p className={hintClass}>How is this person related to the patient?</p>
             </div>
-            <div>
+            <div className="lg:col-span-1">
               <label className={labelClass}>Contact Mobile</label>
-              <input
-                {...register('emergency_contact_phone')}
-                type="tel"
-                className={fieldErrors.emergency_contact_phone ? inputErrorClass : inputClass}
-                placeholder="Emergency contact number"
-                maxLength={10}
-                onKeyDown={blockNonDigit}
-              />
+              <div className="flex gap-2">
+                <select
+                  {...register('emergency_contact_country_code')}
+                  className={`w-32 shrink-0 ${selectClass}`}
+                >
+                  {COUNTRIES.map(c => (
+                    <option key={c.code} value={c.phoneCode}>
+                      {c.phoneCode} ({c.name})
+                    </option>
+                  ))}
+                </select>
+                <input
+                  {...register('emergency_contact_phone')}
+                  type="tel"
+                  className={`flex-1 ${fieldErrors.emergency_contact_phone ? inputErrorClass : inputClass}`}
+                  placeholder="10-digit number"
+                  maxLength={10}
+                  onKeyDown={blockNonDigit}
+                />
+              </div>
               {fieldErrors.emergency_contact_phone
                 ? <p className={errorClass}><span className="material-symbols-outlined text-xs">error</span>{fieldErrors.emergency_contact_phone}</p>
                 : <p className={hintClass}>10 digits — must differ from the patient's phone number</p>}

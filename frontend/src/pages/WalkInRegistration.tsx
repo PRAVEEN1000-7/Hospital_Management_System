@@ -134,9 +134,9 @@ const WalkInRegistration: React.FC = () => {
     const errs: Partial<Record<keyof RegForm, string>> = {};
     if (!regForm.title) errs.title = 'Required';
     if (!regForm.first_name.trim()) errs.first_name = 'Required';
-    else if (!/^[A-Za-z\s.'\-]+$/.test(regForm.first_name)) errs.first_name = 'Alphabets only';
+    else if (!/^[A-Za-z][A-Za-z\s'-]*$/.test(regForm.first_name.trim())) errs.first_name = 'Must start with a letter — only letters, spaces, hyphens and apostrophes';
     if (!regForm.last_name.trim()) errs.last_name = 'Required';
-    else if (!/^[A-Za-z\s.'\-]+$/.test(regForm.last_name)) errs.last_name = 'Alphabets only';
+    else if (!/^[A-Za-z][A-Za-z\s'-]*$/.test(regForm.last_name.trim())) errs.last_name = 'Must start with a letter — only letters, spaces, hyphens and apostrophes';
     if (!regForm.gender) errs.gender = 'Required';
     if (!regForm.date_of_birth) errs.date_of_birth = 'Required';
     if (!regForm.blood_group) errs.blood_group = 'Required';

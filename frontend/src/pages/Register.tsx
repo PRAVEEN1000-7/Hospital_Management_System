@@ -48,6 +48,10 @@ const Register: React.FC = () => {
   const toast = useToast();
   const [serverError, setServerError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof FD, string>>>({}); 
+  // Tracks whether Submit has been clicked at least once
+  // Before first submit: no inline errors ever shown (clean UX)
+  // After first submit: errors update live as user corrects each field
+  const submittedRef = React.useRef(false);
   const formRef = React.useRef<HTMLFormElement>(null);
 
   const {
@@ -74,9 +78,16 @@ const Register: React.FC = () => {
   const watchDob = watch('date_of_birth');
   const watchTitle = watch('title');
 
-  // Clear errors when the user edits the form
+  // Clear server error on any change.
+  // After first submit: re-validate live so each field's error clears the moment it is fixed.
+  // Before first submit: no inline errors shown at all — pristine form experience.
   useEffect(() => {
-    const subscription = watch(() => { setServerError(null); setFieldErrors({}); });
+    const subscription = watch((values) => {
+      setServerError(null);
+      if (submittedRef.current) {
+        setFieldErrors(validateAll(values as FD));
+      }
+    });
     return () => subscription.unsubscribe();
   }, [watch]);
 
@@ -95,7 +106,10 @@ const Register: React.FC = () => {
 
   useEffect(() => {
     if (isChild && watchTitle && ADULT_ONLY_TITLES.includes(watchTitle)) {
-      setValue('title', 'Baby');
+      setValue('title', '');
+    }
+    if (!isChild && watchTitle && CHILD_TITLES.includes(watchTitle)) {
+      setValue('title', '');
     }
   }, [isChild, watchTitle, setValue]);
 
@@ -126,9 +140,11 @@ const Register: React.FC = () => {
     const e: Partial<Record<keyof FD, string>> = {};
     if (!d.title) e.title = 'Title is required';
     if (!d.first_name.trim()) e.first_name = 'First name is required';
-    else if (!/^[A-Za-z\s.'-]+$/.test(d.first_name)) e.first_name = 'Letters only — no numbers or special characters';
+    else if (!/^[A-Za-z]/.test(d.first_name.trim())) e.first_name = 'Must start with a letter';
+    else if (!/^[A-Za-z][A-Za-z\s'-]*$/.test(d.first_name.trim())) e.first_name = 'Only letters, spaces, hyphens and apostrophes allowed';
     if (!d.last_name.trim()) e.last_name = 'Last name is required';
-    else if (!/^[A-Za-z\s.'-]+$/.test(d.last_name)) e.last_name = 'Letters only — no numbers or special characters';
+    else if (!/^[A-Za-z]/.test(d.last_name.trim())) e.last_name = 'Must start with a letter';
+    else if (!/^[A-Za-z][A-Za-z\s'-]*$/.test(d.last_name.trim())) e.last_name = 'Only letters, spaces, hyphens and apostrophes allowed';
     if (!d.date_of_birth) e.date_of_birth = 'Date of birth is required';
     else if (new Date(d.date_of_birth) >= new Date()) e.date_of_birth = 'Date of birth must be in the past';
     if (!d.gender) e.gender = 'Gender is required';
@@ -150,15 +166,17 @@ const Register: React.FC = () => {
       let ageYears = new Date().getFullYear() - dob.getFullYear();
       const mm = new Date().getMonth() - dob.getMonth();
       if (mm < 0 || (mm === 0 && new Date().getDate() < dob.getDate())) ageYears--;
-      if (ageYears < 5 && ADULT_TITLES_V.includes(d.title))
-        e.title = `For children under 5, use Baby or Master instead of ${d.title}`;
-      if (ageYears >= 5 && CHILD_TITLES_V.includes(d.title))
+      const isChild = ageYears < 5;
+      if (isChild && ADULT_TITLES_V.includes(d.title))
+        e.title = `Children under 5 must use "Baby" or "Master" instead of "${d.title}"`;
+      if (!isChild && CHILD_TITLES_V.includes(d.title))
         e.title = `"${d.title}" is only for children under 5`;
     }
     return e;
   };
 
   const onSubmit = async (data: FD) => {
+    submittedRef.current = true;
     // Step 1: run local validation — no network call until everything is clean
     const errs = validateAll(data);
     if (Object.keys(errs).length > 0) {
@@ -202,7 +220,7 @@ const Register: React.FC = () => {
   const hintClass = 'mt-1 text-xs text-slate-400';
 
   const blockNonAlpha = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (!/^[A-Za-z\s.'\\-]$/.test(e.key) && !['Backspace','Delete','ArrowLeft','ArrowRight','Tab','Home','End'].includes(e.key)) {
+    if (!/^[A-Za-z\s'\-]$/.test(e.key) && !['Backspace','Delete','ArrowLeft','ArrowRight','Tab','Home','End'].includes(e.key)) {
       e.preventDefault();
     }
   };
@@ -261,11 +279,15 @@ const Register: React.FC = () => {
               <label className={labelClass}>Title <span className="text-red-500">*</span></label>
               <select {...register('title')} className={fieldErrors.title ? selectErrorClass : selectClass}>
                 <option value="">Select title</option>
-                {TITLE_OPTIONS.map(t => (
-                  <option key={t} value={t} disabled={isChild && ADULT_ONLY_TITLES.includes(t)}>
-                    {t}{isChild && ADULT_ONLY_TITLES.includes(t) ? ' (not for children)' : ''}
-                  </option>
-                ))}
+                {TITLE_OPTIONS.map(t => {
+                  const disableAdult = isChild && ADULT_ONLY_TITLES.includes(t);
+                  const disableChild = !!(watchDob && !isChild && CHILD_TITLES.includes(t));
+                  return (
+                    <option key={t} value={t} disabled={disableAdult || disableChild}>
+                      {t}{disableAdult ? ' (not for children)' : ''}{disableChild ? ' (children only)' : ''}
+                    </option>
+                  );
+                })}
               </select>
               {fieldErrors.title
                 ? <p className={errorClass}><span className="material-symbols-outlined text-xs">error</span>{fieldErrors.title}</p>
@@ -284,7 +306,7 @@ const Register: React.FC = () => {
               />
               {fieldErrors.first_name
                 ? <p className={errorClass}><span className="material-symbols-outlined text-xs">error</span>{fieldErrors.first_name}</p>
-                : <p className={hintClass}>Alphabets only — no numbers or special characters</p>}
+                : <p className={hintClass}>Letters only — must start with an alphabet</p>}
             </div>
             <div>
               <label className={labelClass}>Last Name <span className="text-red-500">*</span></label>
@@ -297,7 +319,7 @@ const Register: React.FC = () => {
               />
               {fieldErrors.last_name
                 ? <p className={errorClass}><span className="material-symbols-outlined text-xs">error</span>{fieldErrors.last_name}</p>
-                : <p className={hintClass}>Alphabets only — no numbers or special characters</p>}
+                : <p className={hintClass}>Letters only — must start with an alphabet</p>}
             </div>
             <div>
               <label className={labelClass}>Gender <span className="text-red-500">*</span></label>

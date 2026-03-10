@@ -335,6 +335,26 @@ async def delete_existing_user(
         )
 
 
+@router.post("/me/upload-photo", response_model=dict)
+async def upload_my_photo(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Upload own profile photo — any authenticated user"""
+    try:
+        result = save_user_photo(db, current_user.id, file)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error uploading photo for user {current_user.id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to upload photo.",
+        )
+
+
 @router.post("/{user_id}/upload-photo", response_model=dict)
 async def upload_user_photo(
     user_id: str,

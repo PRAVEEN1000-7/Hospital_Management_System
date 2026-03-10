@@ -42,6 +42,20 @@ export const ROLE_COLORS: Record<string, string> = {
   report_viewer: 'bg-slate-100 text-slate-700',
 };
 
+export const ROLE_ICONS: Record<string, string> = {
+  super_admin: 'admin_panel_settings',
+  admin: 'manage_accounts',
+  doctor: 'stethoscope',
+  nurse: 'medical_services',
+  staff: 'badge',
+  receptionist: 'support_agent',
+  pharmacist: 'medication',
+  optical_staff: 'visibility',
+  cashier: 'payments',
+  inventory_manager: 'inventory',
+  report_viewer: 'analytics',
+};
+
 export const ROLE_TEXT_COLORS: Record<string, string> = {
   super_admin: 'text-red-700',
   admin: 'text-orange-700',

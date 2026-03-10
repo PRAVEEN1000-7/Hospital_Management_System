@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { NavLink, useNavigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { formatRole } from '../../utils/constants';
+import { formatRole, ROLE_ICONS } from '../../utils/constants';
 import hospitalService from '../../services/hospitalService';
+import userService from '../../services/userService';
 
 const Layout: React.FC = () => {
   const { user, logout } = useAuth();
@@ -386,8 +387,11 @@ const Layout: React.FC = () => {
         {/* User Card at Bottom */}
         <div className="p-4 border-t border-slate-100 space-y-2">
           <div className="flex items-center gap-3 p-2 rounded-lg bg-slate-50">
-            <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold">
-              {initials}
+            <div className="w-8 h-8 rounded-full overflow-hidden bg-primary/10 text-primary flex items-center justify-center text-xs font-bold shrink-0">
+              {user?.avatar_url
+                ? <img src={userService.getPhotoUrl(user.avatar_url) ?? ''} alt={fullName} className="w-full h-full object-cover" />
+                : <span className="material-symbols-outlined text-[16px]">{ROLE_ICONS[user?.roles?.[0] || ''] || 'person'}</span>
+              }
             </div>
             <div className="flex-1 overflow-hidden">
               <p className="text-xs font-bold text-slate-900 truncate">{fullName}</p>
@@ -494,8 +498,11 @@ const Layout: React.FC = () => {
                 aria-expanded={userMenuOpen}
                 aria-haspopup="true"
               >
-                <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold">
-                  {initials}
+                <div className="w-8 h-8 rounded-full overflow-hidden bg-primary/10 text-primary flex items-center justify-center text-xs font-bold">
+                  {user?.avatar_url
+                    ? <img src={userService.getPhotoUrl(user.avatar_url) ?? ''} alt={fullName} className="w-full h-full object-cover" />
+                    : <span className="material-symbols-outlined text-[16px]">{ROLE_ICONS[user?.roles?.[0] || ''] || 'person'}</span>
+                  }
                 </div>
                 <span className="text-xs font-bold text-slate-700 hidden sm:block">{fullName}</span>
                 <span className={`material-symbols-outlined text-slate-400 text-[16px] hidden sm:block transition-transform duration-200 ${userMenuOpen ? 'rotate-180' : ''}`}>expand_more</span>

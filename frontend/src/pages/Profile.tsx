@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolverV4 as zodResolver } from '../utils/zodResolverV4';
 import { useAuth } from '../contexts/AuthContext';
 import authService from '../services/authService';
 import doctorService from '../services/doctorService';
+import userService from '../services/userService';
 import { changePasswordSchema } from '../utils/validation';
-import { ROLE_LABELS, ROLE_COLORS } from '../utils/constants';
+import { ROLE_LABELS, ROLE_COLORS, ROLE_ICONS } from '../utils/constants';
 import { useToast } from '../contexts/ToastContext';
 import type { DoctorProfile as DoctorProfileType } from '../types/doctor';
 
@@ -16,13 +17,15 @@ type ChangePasswordData = {
 };
 
 const Profile: React.FC = () => {
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const toast = useToast();
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [showCurrent, setShowCurrent] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [doctorProfile, setDoctorProfile] = useState<DoctorProfileType | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isDoctor = user?.roles?.includes('doctor');
 
@@ -59,6 +62,31 @@ const Profile: React.FC = () => {
     }
   };
 
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const allowed = ['image/jpeg', 'image/png', 'image/gif'];
+    if (!allowed.includes(file.type)) {
+      toast.error('Only JPG, PNG, or GIF images are allowed');
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('Photo must be 2 MB or smaller');
+      return;
+    }
+    setUploading(true);
+    try {
+      const result = await userService.uploadMyPhoto(file);
+      updateUser({ avatar_url: result.avatar_url });
+      toast.success('Profile photo updated');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to upload photo');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   if (!user) return null;
 
   const roleLabel = ROLE_LABELS[user.roles?.[0] || ''] || user.roles?.[0] || '';
@@ -75,8 +103,43 @@ const Profile: React.FC = () => {
     <div className="max-w-2xl mx-auto">
       {/* Hero Banner */}
       <div className="bg-primary rounded-t-xl p-8 text-center text-white">
-        <div className="w-20 h-20 bg-white/20 backdrop-blur rounded-full flex items-center justify-center mx-auto mb-4">
-          <span className="text-2xl font-bold">{initials}</span>
+        {/* Avatar with camera overlay */}
+        <div className="relative inline-block mb-4">
+          <div className={`w-24 h-24 rounded-full flex items-center justify-center mx-auto overflow-hidden ring-4 ring-white/30 ${
+            user?.avatar_url ? '' : 'bg-white/20'
+          }`}>
+            {user?.avatar_url ? (
+              <img
+                src={userService.getPhotoUrl(user.avatar_url) ?? ''}
+                alt={fullName}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <span className="material-symbols-outlined text-5xl text-white">
+                {ROLE_ICONS[user?.roles?.[0] || ''] || 'person'}
+              </span>
+            )}
+          </div>
+          {/* Camera button */}
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="absolute bottom-0 right-0 w-8 h-8 bg-white text-primary rounded-full flex items-center justify-center shadow-md hover:bg-slate-100 transition-colors disabled:opacity-60"
+            title="Change profile photo"
+          >
+            {uploading
+              ? <span className="material-symbols-outlined text-sm animate-spin">progress_activity</span>
+              : <span className="material-symbols-outlined text-sm">photo_camera</span>
+            }
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/gif"
+            className="hidden"
+            onChange={handlePhotoChange}
+          />
         </div>
         <h1 className="text-xl font-bold">{fullName}</h1>
         <span className="inline-block mt-2 px-3 py-1 text-xs font-semibold rounded-full bg-white/20 text-white">

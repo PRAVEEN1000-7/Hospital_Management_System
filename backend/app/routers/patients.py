@@ -91,12 +91,27 @@ async def list_patients(
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100),
     search: Optional[str] = None,
+    gender: Optional[str] = None,
+    blood_group: Optional[str] = None,
+    city: Optional[str] = None,
+    status: Optional[str] = None,
+    sort_by: Optional[str] = None,
+    sort_order: str = Query('desc', pattern='^(asc|desc)$'),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    """List all patients with pagination and search"""
+    """List all patients with pagination, search, filters and sorting"""
     try:
-        result = list_patients_service(db, page, limit, search, hospital_id=current_user.hospital_id)
+        result = list_patients_service(
+            db, page, limit, search,
+            hospital_id=current_user.hospital_id,
+            gender=gender,
+            blood_group=blood_group,
+            city=city,
+            status=status,
+            sort_by=sort_by,
+            sort_order=sort_order,
+        )
         return result
     except Exception as e:
         logger.error(f"Error listing patients: {e}", exc_info=True)

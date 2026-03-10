@@ -45,6 +45,7 @@ export interface PatientListItem {
   city: string | null;
   blood_group: string | null;
   created_at: string;
+  updated_at: string;
 }
 
 export interface PaginatedResponse<T> {

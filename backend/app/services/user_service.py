@@ -273,7 +273,7 @@ def save_user_photo(db: Session, user_id: str | uuid.UUID, file: UploadFile) -> 
     
     return {
         "message": "Photo uploaded successfully",
-        "photo_url": user.avatar_url,
+        "avatar_url": user.avatar_url,
         "filename": filename
     }
 

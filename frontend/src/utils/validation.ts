@@ -17,11 +17,11 @@ export const patientSchema = z.object({
   first_name: z.string()
     .min(1, 'First name is required')
     .max(100)
-    .regex(/^[A-Za-z\s.'-]+$/, 'Name should contain only alphabets'),
+    .regex(/^[A-Za-z][A-Za-z\s'-]*$/, 'Name must start with a letter and contain only letters, spaces, hyphens or apostrophes'),
   last_name: z.string()
     .min(1, 'Last name is required')
     .max(100)
-    .regex(/^[A-Za-z\s.'-]+$/, 'Name should contain only alphabets'),
+    .regex(/^[A-Za-z][A-Za-z\s'-]*$/, 'Name must start with a letter and contain only letters, spaces, hyphens or apostrophes'),
   date_of_birth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format (YYYY-MM-DD)'),
   gender: z.enum(['Male', 'Female', 'Other'], {
     message: 'Gender is required',

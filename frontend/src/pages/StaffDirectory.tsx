@@ -323,18 +323,11 @@ const StaffDirectory: React.FC = () => {
                 </button>
               )}
             </div>
-            <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary text-sm font-medium text-slate-700">
+            <select value={sortBy} onChange={e => { setSortBy(e.target.value); setPage(1); }} className="px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary text-sm font-medium text-slate-700">
               <option value="default">Default Order</option>
-              <option value="created_at">Registration Date</option>
-              <option value="reference_number">Reference #</option>
-              <option value="first_name">First Name</option>
-              <option value="last_name">Last Name</option>
-              <option value="email">Email</option>
-              <option value="role">Role</option>
-              <option value="phone_number">Phone</option>
-              <option value="is_active">Status</option>
               <option value="last_login_at">Last Login</option>
               <option value="updated_at">Last Updated</option>
+              <option value="created_at">Registration Date</option>
             </select>
             <select value={sortOrder} onChange={e => setSortOrder(e.target.value as 'asc' | 'desc')} className="px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary text-sm font-medium text-slate-700" disabled={sortBy === 'default'}>
               <option value="asc">↑ Ascending</option>

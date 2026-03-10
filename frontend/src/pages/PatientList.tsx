@@ -1,15 +1,16 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import patientService from '../services/patientService';
 import type { Patient } from '../types/patient';
 import { format } from 'date-fns';
 
 const PatientList: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState(() => searchParams.get('search') || '');
+  const [searchInput, setSearchInput] = useState(() => searchParams.get('search') || '');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
@@ -25,51 +26,13 @@ const PatientList: React.FC = () => {
   const fetchPatients = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await patientService.getPatients(page, limit, search);
-      let filteredData = [...response.data];
-      
-      // Apply filters
-      if (genderFilter) {
-        filteredData = filteredData.filter(p => p.gender?.toLowerCase() === genderFilter.toLowerCase());
-      }
-      if (bloodGroupFilter) {
-        filteredData = filteredData.filter(p => p.blood_group === bloodGroupFilter);
-      }
-      if (cityFilter) {
-        filteredData = filteredData.filter(p => p.city?.toLowerCase().includes(cityFilter.toLowerCase()));
-      }
-      if (statusFilter) {
-        const isDeleted = statusFilter === 'inactive';
-        filteredData = filteredData.filter(p => p.is_deleted === isDeleted);
-      }
-      
-      // Client-side sorting
-      let sortedData = [...filteredData];
-      if (sortBy !== 'default') {
-        sortedData.sort((a, b) => {
-          let aVal: any = a[sortBy as keyof Patient];
-          let bVal: any = b[sortBy as keyof Patient];
-          
-          // Handle null/undefined
-          if (aVal === null || aVal === undefined) return sortOrder === 'asc' ? 1 : -1;
-          if (bVal === null || bVal === undefined) return sortOrder === 'asc' ? -1 : 1;
-          
-          // Convert to comparable values
-          if (sortBy === 'date_of_birth' || sortBy === 'created_at' || sortBy === 'updated_at') {
-            aVal = new Date(aVal).getTime();
-            bVal = new Date(bVal).getTime();
-          } else if (typeof aVal === 'string') {
-            aVal = aVal.toLowerCase();
-            bVal = bVal.toLowerCase();
-          }
-          
-          if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1;
-          if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
-          return 0;
-        });
-      }
-      
-      setPatients(sortedData);
+      const response = await patientService.getPatients(
+        page, limit, search,
+        { gender: genderFilter, blood_group: bloodGroupFilter, city: cityFilter, status: statusFilter },
+        sortBy !== 'default' ? sortBy : undefined,
+        sortOrder,
+      );
+      setPatients(response.data);
       setTotalPages(response.total_pages);
       setTotal(response.total);
     } catch (err) {
@@ -92,6 +55,12 @@ const PatientList: React.FC = () => {
     searchTimeoutRef.current = setTimeout(() => {
       setSearch(searchInput);
       setPage(1);
+      // Sync URL params
+      if (searchInput) {
+        setSearchParams({ search: searchInput }, { replace: true });
+      } else {
+        setSearchParams({}, { replace: true });
+      }
     }, 500);
     
     return () => {
@@ -99,7 +68,17 @@ const PatientList: React.FC = () => {
         clearTimeout(searchTimeoutRef.current);
       }
     };
-  }, [searchInput]);
+  }, [searchInput, setSearchParams]);
+
+  // Sync from URL when navigating from header search
+  useEffect(() => {
+    const urlSearch = searchParams.get('search') || '';
+    if (urlSearch !== searchInput) {
+      setSearchInput(urlSearch);
+      setSearch(urlSearch);
+      setPage(1);
+    }
+  }, [searchParams]);
 
   const handleDelete = async (id: string, name: string) => {
     if (!window.confirm(`Are you sure you want to delete patient "${name}"?`)) return;
@@ -195,7 +174,7 @@ const PatientList: React.FC = () => {
               />
               {searchInput && (
                 <button
-                  onClick={() => { setSearch(''); setSearchInput(''); setPage(1); }}
+                  onClick={() => { setSearch(''); setSearchInput(''); setPage(1); setSearchParams({}, { replace: true }); }}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                 >
                   <span className="material-icons text-lg">close</span>
@@ -205,20 +184,11 @@ const PatientList: React.FC = () => {
             <div className="lg:col-span-4">
               <select
                 value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
+                onChange={(e) => { setSortBy(e.target.value); setPage(1); }}
                 className="w-full px-3 py-2 bg-background-light border-none rounded-lg focus:ring-2 focus:ring-primary/40 text-sm font-medium text-slate-700"
               >
                 <option value="default">Default Order</option>
                 <option value="created_at">Registration Date</option>
-                <option value="patient_reference_number">PRN</option>
-                <option value="first_name">First Name</option>
-                <option value="last_name">Last Name</option>
-                <option value="date_of_birth">Date of Birth</option>
-                <option value="gender">Gender</option>
-                <option value="blood_group">Blood Group</option>
-                <option value="primary_phone">Phone</option>
-                <option value="email">Email</option>
-                <option value="city">City</option>
                 <option value="updated_at">Last Updated</option>
               </select>
             </div>
@@ -366,7 +336,9 @@ const PatientList: React.FC = () => {
                   <th className="px-4 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Name</th>
                   <th className="px-4 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Gender</th>
                   <th className="px-4 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider hidden sm:table-cell">Blood</th>
-                  <th className="px-4 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider hidden lg:table-cell">Registered</th>
+                  <th className="px-4 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider hidden lg:table-cell">
+                    {sortBy === 'updated_at' ? 'Last Updated' : 'Registered'}
+                  </th>
                   <th className="px-4 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider w-24">Actions</th>
                 </tr>
               </thead>
@@ -405,7 +377,11 @@ const PatientList: React.FC = () => {
                       )}
                     </td>
                     <td className="px-4 py-4 hidden lg:table-cell">
-                      <span className="text-sm">{format(new Date(patient.created_at), 'MMM dd, yyyy')}</span>
+                      {sortBy === 'updated_at' ? (
+                        <span className="text-sm">{format(new Date(patient.updated_at), 'MMM dd, yyyy, hh:mm a')}</span>
+                      ) : (
+                        <span className="text-sm">{format(new Date(patient.created_at), 'MMM dd, yyyy, hh:mm a')}</span>
+                      )}
                     </td>
                     <td className="px-4 py-4">
                       <div className="flex items-center justify-end gap-1">

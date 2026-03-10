@@ -134,9 +134,9 @@ const WalkInRegistration: React.FC = () => {
     const errs: Partial<Record<keyof RegForm, string>> = {};
     if (!regForm.title) errs.title = 'Required';
     if (!regForm.first_name.trim()) errs.first_name = 'Required';
-    else if (!/^[A-Za-z\s.'\-]+$/.test(regForm.first_name)) errs.first_name = 'Alphabets only';
+    else if (!/^[A-Za-z][A-Za-z\s'-]*$/.test(regForm.first_name.trim())) errs.first_name = 'Must start with a letter — only letters, spaces, hyphens and apostrophes';
     if (!regForm.last_name.trim()) errs.last_name = 'Required';
-    else if (!/^[A-Za-z\s.'\-]+$/.test(regForm.last_name)) errs.last_name = 'Alphabets only';
+    else if (!/^[A-Za-z][A-Za-z\s'-]*$/.test(regForm.last_name.trim())) errs.last_name = 'Must start with a letter — only letters, spaces, hyphens and apostrophes';
     if (!regForm.gender) errs.gender = 'Required';
     if (!regForm.date_of_birth) errs.date_of_birth = 'Required';
     if (!regForm.blood_group) errs.blood_group = 'Required';
@@ -352,7 +352,12 @@ const WalkInRegistration: React.FC = () => {
             <input type="text" value={patientSearch}
               onChange={(e) => { setPatientSearch(e.target.value); setSelectedPatient(null); }}
               placeholder="Search by name, PRN, or phone..."
-              className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
+              className="w-full pl-10 pr-9 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
+            {patientSearch && (
+              <button type="button" onClick={() => { setPatientSearch(''); setSelectedPatient(null); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                <span className="material-symbols-outlined text-lg">close</span>
+              </button>
+            )}
           </div>
           {patientLoading && <p className="text-xs text-slate-400 mt-1.5 flex items-center gap-1"><span className="material-symbols-outlined text-sm animate-spin">progress_activity</span>Searching...</p>}
           {patients.length > 0 && !selectedPatient && (

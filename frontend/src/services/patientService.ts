@@ -2,9 +2,19 @@ import api, { API_BASE_URL } from './api';
 import type { Patient, PatientCreateData, PaginatedResponse } from '../types/patient';
 
 export const patientService = {
-  async getPatients(page = 1, limit = 10, search = ''): Promise<PaginatedResponse<Patient>> {
+  async getPatients(
+    page = 1, limit = 10, search = '',
+    filters?: { gender?: string; blood_group?: string; city?: string; status?: string },
+    sortBy?: string,
+    sortOrder: 'asc' | 'desc' = 'desc',
+  ): Promise<PaginatedResponse<Patient>> {
     const params: Record<string, string | number> = { page, limit };
     if (search) params.search = search;
+    if (filters?.gender) params.gender = filters.gender;
+    if (filters?.blood_group) params.blood_group = filters.blood_group;
+    if (filters?.city) params.city = filters.city;
+    if (filters?.status) params.status = filters.status;
+    if (sortBy) { params.sort_by = sortBy; params.sort_order = sortOrder; }
     const response = await api.get<PaginatedResponse<Patient>>('/patients', { params });
     return response.data;
   },

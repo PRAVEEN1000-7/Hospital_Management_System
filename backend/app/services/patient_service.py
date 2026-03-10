@@ -80,6 +80,12 @@ def list_patients(
     db: Session, page: int = 1, limit: int = 10,
     search: Optional[str] = None,
     hospital_id: Optional[uuid.UUID] = None,
+    gender: Optional[str] = None,
+    blood_group: Optional[str] = None,
+    city: Optional[str] = None,
+    status: Optional[str] = None,
+    sort_by: Optional[str] = None,
+    sort_order: str = 'desc',
 ) -> PaginatedPatientResponse:
     query = db.query(Patient).filter(Patient.is_active == True, Patient.is_deleted == False)
     if hospital_id:
@@ -88,14 +94,19 @@ def list_patients(
         search = search.strip()
         # Full-name concat match (e.g. "Alex Johnson")
         full_name = func.concat(Patient.first_name, ' ', Patient.last_name)
-        search_filter = or_(
+        # Only include email in search when the term looks like an email (contains @)
+        # This prevents domain-only searches like 'gmail' from matching unintended patients
+        include_email = '@' in search
+        base_conditions = [
             Patient.first_name.ilike(f"%{search}%"),
             Patient.last_name.ilike(f"%{search}%"),
             Patient.phone_number.ilike(f"%{search}%"),
-            Patient.email.ilike(f"%{search}%"),
             Patient.patient_reference_number.ilike(f"%{search}%"),
             full_name.ilike(f"%{search}%"),
-        )
+        ]
+        if include_email:
+            base_conditions.append(Patient.email.ilike(f"%{search}%"))
+        search_filter = or_(*base_conditions)
         # Multi-word: each word must match at least one field
         words = search.split()
         if len(words) > 1:
@@ -104,19 +115,35 @@ def list_patients(
                 w = word.strip()
                 if not w:
                     continue
-                per_word_filters.append(or_(
+                word_conditions = [
                     Patient.first_name.ilike(f"%{w}%"),
                     Patient.last_name.ilike(f"%{w}%"),
                     Patient.phone_number.ilike(f"%{w}%"),
-                    Patient.email.ilike(f"%{w}%"),
                     Patient.patient_reference_number.ilike(f"%{w}%"),
-                ))
+                ]
+                if '@' in w:
+                    word_conditions.append(Patient.email.ilike(f"%{w}%"))
+                per_word_filters.append(or_(*word_conditions))
             if per_word_filters:
                 search_filter = or_(search_filter, and_(*per_word_filters))
         query = query.filter(search_filter)
+    # Server-side filters (applied before pagination — fixes empty page bug)
+    if gender:
+        query = query.filter(Patient.gender.ilike(gender))
+    if blood_group:
+        query = query.filter(Patient.blood_group == blood_group)
+    if city:
+        query = query.filter(Patient.city.ilike(f"%{city}%"))
+    if status:
+        is_deleted = status == 'inactive'
+        query = query.filter(Patient.is_deleted == is_deleted)
     total = query.count()
     offset = (page - 1) * limit
-    patients = query.order_by(Patient.created_at.desc()).offset(offset).limit(limit).all()
+    # Build ORDER BY — only allow known safe column names to prevent injection
+    _sortable = {'created_at': Patient.created_at, 'updated_at': Patient.updated_at}
+    sort_col = _sortable.get(sort_by, Patient.created_at)
+    order_clause = sort_col.asc() if sort_order == 'asc' else sort_col.desc()
+    patients = query.order_by(order_clause).offset(offset).limit(limit).all()
     total_pages = ceil(total / limit) if limit > 0 else 0
     return PaginatedPatientResponse(
         total=total, page=page, limit=limit, total_pages=total_pages,

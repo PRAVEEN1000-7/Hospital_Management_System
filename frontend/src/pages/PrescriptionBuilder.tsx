@@ -486,9 +486,14 @@ const PrescriptionBuilder: React.FC = () => {
                     value={patientSearch}
                     onChange={e => setPatientSearch(e.target.value)}
                     placeholder="Search patient by name, phone, or PRN..."
-                    className="input-field pl-10"
+                    className="input-field pl-10 pr-9"
                     autoFocus
                   />
+                  {patientSearch && (
+                    <button type="button" onClick={() => setPatientSearch('')} className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600">
+                      <span className="material-symbols-outlined text-lg">close</span>
+                    </button>
+                  )}
                 </div>
                 {patientResults.length > 0 && (
                   <div className="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
@@ -981,11 +986,16 @@ const PrescriptionBuilder: React.FC = () => {
               </span>
               <input
                 type="text"
-                className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                className="w-full pl-10 pr-9 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
                 placeholder="Search medicines..."
                 value={medicineSearch}
                 onChange={e => { setMedicineSearch(e.target.value); setActiveMedBlockIdx(null); setActiveMedItemIdx(null); }}
               />
+              {medicineSearch && (
+                <button type="button" onClick={() => setMedicineSearch('')} className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600">
+                  <span className="material-symbols-outlined text-lg">close</span>
+                </button>
+              )}
             </div>
             {activeMedBlockIdx === null && medicineResults.length > 0 && (
               <div className="mt-2 space-y-1 max-h-48 overflow-y-auto">

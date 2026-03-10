@@ -176,7 +176,12 @@ const AppointmentManagement: React.FC = () => {
           <div className="relative lg:col-span-2">
             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-lg">search</span>
             <input value={searchInput} onChange={(e) => setSearchInput(e.target.value)} onKeyDown={handleKeyDown}
-              placeholder="Search patient or appointment #..." className="w-full pl-10 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
+              placeholder="Search patient or appointment #..." className="w-full pl-10 pr-9 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
+            {searchInput && (
+              <button onClick={() => { setSearchInput(''); setSearch(''); setPage(1); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                <span className="material-symbols-outlined text-lg">close</span>
+              </button>
+            )}
           </div>
           <select value={filterDoctor} onChange={(e) => { setFilterDoctor(e.target.value as any); setPage(1); }}
             className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none">

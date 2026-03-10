@@ -56,7 +56,6 @@ const Layout: React.FC = () => {
     e.preventDefault();
     if (searchQuery.trim()) {
       navigate(`/patients?search=${encodeURIComponent(searchQuery.trim())}`);
-      setSearchQuery('');
       setSidebarOpen(false);
     }
   }, [searchQuery, navigate]);
@@ -445,13 +444,18 @@ const Layout: React.FC = () => {
                 <span className="material-symbols-outlined text-lg">search</span>
               </span>
               <input
-                className="w-48 lg:w-64 pl-10 pr-3 py-1.5 border border-slate-200 bg-slate-50 rounded-lg text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+                className="w-48 lg:w-64 pl-10 pr-9 py-1.5 border border-slate-200 bg-slate-50 rounded-lg text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none"
                 placeholder="Search patients..."
-                type="search"
+                type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 aria-label="Search patients"
               />
+              {searchQuery && (
+                <button type="button" onClick={() => { setSearchQuery(''); navigate('/patients', { replace: true }); }} className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600">
+                  <span className="material-symbols-outlined text-lg">close</span>
+                </button>
+              )}
             </form>
             {/* Mobile search - navigates to patients page */}
             <button

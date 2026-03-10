@@ -111,8 +111,13 @@ const PrescriptionList: React.FC = () => {
               value={searchInput}
               onChange={e => setSearchInput(e.target.value)}
               placeholder="Search by patient name, Rx number, diagnosis..."
-              className="input-field pl-10"
+              className="input-field pl-10 pr-9"
             />
+            {searchInput && (
+              <button onClick={() => { setSearchInput(''); setSearch(''); setPage(1); }} className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600">
+                <span className="material-symbols-outlined text-lg">close</span>
+              </button>
+            )}
           </div>
           <select
             value={statusFilter}

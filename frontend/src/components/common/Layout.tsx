@@ -102,6 +102,10 @@ const Layout: React.FC = () => {
   if (role === 'super_admin' || role === 'admin') {
     mainNavItems.push({ to: '/staff', label: 'Staff Directory', icon: 'badge' });
   }
+  // Analytics - admin only
+  if (role === 'super_admin' || role === 'admin') {
+    mainNavItems.push({ to: '/analytics', label: 'Analytics', icon: 'monitoring' });
+  }
 
   // ── Appointment navigation ── fully role-driven
   const appointmentItems: { to: string; label: string; icon: string }[] = [];
@@ -114,7 +118,6 @@ const Layout: React.FC = () => {
       { to: '/appointments/doctor-schedule', label: 'Doctor Schedule',     icon: 'calendar_month' },
       { to: '/appointments/manage',          label: 'Manage Appointments', icon: 'event_note' },
       { to: '/appointments/waitlist',        label: 'Waitlist',            icon: 'playlist_add' },
-      { to: '/appointments/reports',         label: 'Reports',             icon: 'analytics' },
       { to: '/appointments/settings',        label: 'Settings',            icon: 'tune' },
     );
   } else if (role === 'doctor') {
@@ -135,13 +138,6 @@ const Layout: React.FC = () => {
       { to: '/appointments/queue',   label: 'Walk-in Queue',       icon: 'queue' },
       { to: '/appointments/manage',  label: 'Manage Appointments', icon: 'event_note' },
       { to: '/appointments/waitlist',label: 'Waitlist',            icon: 'playlist_add' },
-      { to: '/appointments/reports', label: 'Reports',             icon: 'analytics' },
-    );
-  }
-  // report_viewer only sees Reports
-  else if (role === 'report_viewer') {
-    appointmentItems.push(
-      { to: '/appointments/reports', label: 'Appointment Reports', icon: 'analytics' },
     );
   }
   // pharmacist, cashier, inventory_manager, optical_staff — no appointment items

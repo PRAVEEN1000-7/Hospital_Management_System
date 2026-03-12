@@ -33,6 +33,17 @@ import PrescriptionList from './pages/PrescriptionList';
 import PrescriptionBuilder from './pages/PrescriptionBuilder';
 import PrescriptionDetail from './pages/PrescriptionDetail';
 
+// Billing pages
+import InvoiceList from './pages/InvoiceList';
+import InvoiceCreate from './pages/InvoiceCreate';
+import InvoiceDetail from './pages/InvoiceDetail';
+import PaymentList from './pages/PaymentList';
+import RefundList from './pages/RefundList';
+import SettlementList from './pages/SettlementList';
+import InsuranceClaims from './pages/InsuranceClaims';
+import CreditNotes from './pages/CreditNotes';
+import InsuranceProviders from './pages/InsuranceProviders';
+
 const App: React.FC = () => {
   return (
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
@@ -155,6 +166,53 @@ const App: React.FC = () => {
             <Route path="/prescriptions/:id/edit" element={
               <ProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor']}>
                 <PrescriptionBuilder />
+              </ProtectedRoute>
+            } />
+
+            {/* ── Billing Routes ── */}
+            <Route path="/billing/invoices" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'cashier', 'pharmacist', 'doctor']}>
+                <InvoiceList />
+              </ProtectedRoute>
+            } />
+            <Route path="/billing/invoices/new" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'cashier', 'pharmacist']}>
+                <InvoiceCreate />
+              </ProtectedRoute>
+            } />
+            <Route path="/billing/invoices/:id" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'cashier', 'pharmacist', 'doctor']}>
+                <InvoiceDetail />
+              </ProtectedRoute>
+            } />
+            <Route path="/billing/payments" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'cashier', 'pharmacist', 'doctor']}>
+                <PaymentList />
+              </ProtectedRoute>
+            } />
+            <Route path="/billing/refunds" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'cashier', 'pharmacist']}>
+                <RefundList />
+              </ProtectedRoute>
+            } />
+            <Route path="/billing/settlements" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'cashier', 'pharmacist']}>
+                <SettlementList />
+              </ProtectedRoute>
+            } />
+            <Route path="/billing/insurance-claims" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin']}>
+                <InsuranceClaims />
+              </ProtectedRoute>
+            } />
+            <Route path="/billing/credit-notes" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin']}>
+                <CreditNotes />
+              </ProtectedRoute>
+            } />
+            <Route path="/billing/insurance-providers" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin']}>
+                <InsuranceProviders />
               </ProtectedRoute>
             } />
           </Route>

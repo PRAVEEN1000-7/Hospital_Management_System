@@ -4,11 +4,13 @@ import { format, differenceInYears } from 'date-fns';
 import patientService from '../services/patientService';
 import type { Patient } from '../types/patient';
 import { useToast } from '../contexts/ToastContext';
+import { useAuth } from '../contexts/AuthContext';
 
 const PatientDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const toast = useToast();
+  const { user } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [patient, setPatient] = useState<Patient | null>(null);
   const [loading, setLoading] = useState(true);
@@ -76,6 +78,9 @@ const PatientDetail: React.FC = () => {
   const age = differenceInYears(new Date(), new Date(patient.date_of_birth));
   const photoUrl = patientService.getPhotoUrl(patient.photo_url);
   const initials = `${patient.first_name[0]}${patient.last_name[0]}`.toUpperCase();
+  const userRole = user?.roles?.[0];
+  const canEditPatient = ['super_admin', 'admin', 'receptionist'].includes(userRole ?? '');
+  const canViewIdCard = ['super_admin', 'admin', 'receptionist', 'doctor'].includes(userRole ?? '');
 
   return (
     <div>
@@ -86,13 +91,15 @@ const PatientDetail: React.FC = () => {
           <span className="text-sm font-semibold">Back to Patients</span>
         </button>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => navigate(`/patients/${id}/id-card`)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold transition-colors active:scale-95"
-          >
-            <span className="material-icons text-lg">badge</span>
-            View ID Card
-          </button>
+          {canViewIdCard && (
+            <button
+              onClick={() => navigate(`/patients/${id}/id-card`)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold transition-colors active:scale-95"
+            >
+              <span className="material-icons text-lg">badge</span>
+              View ID Card
+            </button>
+          )}
         </div>
       </div>
 
@@ -108,9 +115,13 @@ const PatientDetail: React.FC = () => {
               )}
             </div>
             <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+              onClick={() => canEditPatient && fileInputRef.current?.click()}
+              disabled={uploading || !canEditPatient}
+              className={`absolute inset-0 rounded-full bg-black/40 flex items-center justify-center transition-opacity ${
+                canEditPatient
+                  ? 'opacity-0 group-hover:opacity-100 cursor-pointer'
+                  : 'hidden'
+              }`}
             >
               <span className="material-icons text-white">camera_alt</span>
             </button>

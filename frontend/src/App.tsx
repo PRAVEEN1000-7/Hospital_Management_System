@@ -57,17 +57,17 @@ const App: React.FC = () => {
             {/* ── General ── */}
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/patients" element={
-              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'receptionist', 'nurse', 'pharmacist', 'cashier', 'optical_staff', 'inventory_manager']}>
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'receptionist', 'nurse', 'pharmacist', 'cashier', 'optical_staff', 'inventory_manager', 'doctor']}>
                 <PatientList />
               </ProtectedRoute>
             } />
             <Route path="/patients/:id" element={
-              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'receptionist', 'nurse', 'pharmacist', 'cashier', 'optical_staff', 'inventory_manager']}>
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'receptionist', 'nurse', 'pharmacist', 'cashier', 'optical_staff', 'inventory_manager', 'doctor']}>
                 <PatientDetail />
               </ProtectedRoute>
             } />
             <Route path="/patients/:id/id-card" element={
-              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'receptionist']}>
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'receptionist', 'doctor']}>
                 <PatientIdCard />
               </ProtectedRoute>
             } />

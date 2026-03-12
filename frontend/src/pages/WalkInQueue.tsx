@@ -504,7 +504,7 @@ const WalkInQueue: React.FC = () => {
                           <p className="text-lg font-bold text-slate-900 truncate">{currentPatient.patient_name || 'Unknown'}</p>
                           <div className="flex items-center gap-3 mt-1.5 flex-wrap">
                             {currentPatient.patient_reference_number && (
-                              <span className="text-sm font-mono text-slate-600 bg-slate-100 px-2 py-0.5 rounded">MRN: {currentPatient.patient_reference_number}</span>
+                              <span className="text-sm font-mono text-slate-600 bg-slate-100 px-2 py-0.5 rounded">PRN: {currentPatient.patient_reference_number}</span>
                             )}
                             {currentPatient.patient_gender && (
                               <span className="text-sm text-slate-600 font-medium capitalize">{currentPatient.patient_gender}</span>
@@ -584,7 +584,7 @@ const WalkInQueue: React.FC = () => {
                           <p className="text-lg font-bold text-slate-900 truncate">{calledPatient.patient_name || 'Unknown'}</p>
                           <div className="flex items-center gap-3 mt-1.5 flex-wrap">
                             {calledPatient.patient_reference_number && (
-                              <span className="text-sm font-mono text-slate-600 bg-slate-100 px-2 py-0.5 rounded">MRN: {calledPatient.patient_reference_number}</span>
+                              <span className="text-sm font-mono text-slate-600 bg-slate-100 px-2 py-0.5 rounded">PRN: {calledPatient.patient_reference_number}</span>
                             )}
                             {calledPatient.patient_gender && (
                               <span className="text-sm text-slate-600 font-medium capitalize">{calledPatient.patient_gender}</span>
@@ -646,7 +646,7 @@ const WalkInQueue: React.FC = () => {
                           <p className="font-bold text-slate-900">{nextPatient.patient_name || 'Unknown'}</p>
                           <div className="flex items-center gap-3 mt-1.5 flex-wrap">
                             {nextPatient.patient_reference_number && (
-                              <span className="text-sm font-mono text-slate-500 bg-slate-50 px-2 py-0.5 rounded">MRN: {nextPatient.patient_reference_number}</span>
+                              <span className="text-sm font-mono text-slate-500 bg-slate-50 px-2 py-0.5 rounded">PRN: {nextPatient.patient_reference_number}</span>
                             )}
                             {nextPatient.patient_gender && (
                               <span className="text-sm text-slate-500 font-medium capitalize">{nextPatient.patient_gender}</span>
@@ -721,7 +721,7 @@ const WalkInQueue: React.FC = () => {
                                   <span className="text-[10px] font-bold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded-full">Called</span>
                                 )}
                                 {item.patient_reference_number && (
-                                  <span className="text-xs font-mono text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">MRN: {item.patient_reference_number}</span>
+                                  <span className="text-xs font-mono text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">PRN: {item.patient_reference_number}</span>
                                 )}
                               </div>
                               <div className="flex items-center gap-2 mt-0.5">
@@ -971,7 +971,7 @@ const WalkInQueue: React.FC = () => {
                                 <td className="px-4 py-2.5">
                                   <p className="text-sm font-semibold text-slate-900">{item.patient_name || 'Unknown'}</p>
                                   <div className="flex items-center gap-2 mt-0.5">
-                                    {item.patient_reference_number && <span className="text-[10px] font-mono text-slate-400">MRN: {item.patient_reference_number}</span>}
+                                    {item.patient_reference_number && <span className="text-[10px] font-mono text-slate-400">PRN: {item.patient_reference_number}</span>}
                                     {item.patient_gender && <span className="text-[10px] text-slate-400 capitalize">{item.patient_gender}</span>}
                                     {item.patient_age != null && <span className="text-[10px] text-slate-400">{item.patient_age}y</span>}
                                   </div>
@@ -1342,7 +1342,7 @@ const WalkInQueue: React.FC = () => {
                           </div>
                           <div className="flex items-center gap-3 flex-wrap">
                             {item.patient_reference_number && (
-                              <span className="text-sm font-mono text-slate-500 bg-slate-50 px-2 py-0.5 rounded">MRN: {item.patient_reference_number}</span>
+                              <span className="text-sm font-mono text-slate-500 bg-slate-50 px-2 py-0.5 rounded">PRN: {item.patient_reference_number}</span>
                             )}
                             {item.patient_gender && (
                               <span className="text-sm text-slate-500 font-medium capitalize">{item.patient_gender}</span>
@@ -1451,7 +1451,7 @@ const WalkInQueue: React.FC = () => {
                               </div>
                               <div className="flex items-center gap-2 mt-0.5">
                                 {item.patient_reference_number && (
-                                  <span className="text-xs font-mono text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded">MRN: {item.patient_reference_number}</span>
+                                  <span className="text-xs font-mono text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded">PRN: {item.patient_reference_number}</span>
                                 )}
                                 {item.patient_gender && <span className="text-xs text-slate-500 font-medium capitalize">{item.patient_gender}</span>}
                                 {item.patient_age != null && <span className="text-xs text-slate-500 font-medium">{item.patient_age}y</span>}
@@ -1569,7 +1569,7 @@ const WalkInQueue: React.FC = () => {
               <div className="min-w-0 flex-1">
                 <h3 className="text-lg font-bold text-slate-900 truncate">{detailItem.patient_name || 'Unknown Patient'}</h3>
                 {detailItem.patient_reference_number && (
-                  <p className="text-xs text-slate-400 font-mono">MRN: {detailItem.patient_reference_number}</p>
+                  <p className="text-xs text-slate-400 font-mono">PRN: {detailItem.patient_reference_number}</p>
                 )}
               </div>
               <button onClick={() => setDetailItem(null)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors">

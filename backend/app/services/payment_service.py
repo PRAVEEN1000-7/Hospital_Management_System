@@ -148,7 +148,10 @@ def list_payments(
     # Date-range shorthand takes priority over explicit from/to
     if date_range:
         now = datetime.now(timezone.utc)
-        if date_range == "24h":
+        if date_range == "1h":
+            cutoff = now - timedelta(hours=1)
+            query = query.filter(Payment.created_at >= cutoff)
+        elif date_range == "24h":
             cutoff = now - timedelta(hours=24)
             query = query.filter(Payment.created_at >= cutoff)
         elif date_range == "7d":

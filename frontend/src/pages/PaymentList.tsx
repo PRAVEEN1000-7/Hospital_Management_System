@@ -5,21 +5,16 @@ import paymentService from '../services/paymentService';
 import type { PaymentListItem, PaymentMode } from '../types/billing';
 
 const MODE_LABELS: Record<string, string> = {
-  cash: 'Cash', card: 'Card', debit_card: 'Debit Card', credit_card: 'Credit Card',
-  upi: 'UPI', wallet: 'Wallet', bank_transfer: 'Bank Transfer',
-  online: 'Online', cheque: 'Cheque', insurance: 'Insurance',
+  cash: 'Cash',
+  upi: 'UPI',
+  debit_card: 'Debit Card',
+  credit_card: 'Credit Card',
 };
 const MODE_COLORS: Record<string, string> = {
   cash: 'bg-green-100 text-green-700',
-  card: 'bg-blue-100 text-blue-700',
+  upi: 'bg-purple-100 text-purple-700',
   debit_card: 'bg-blue-100 text-blue-700',
   credit_card: 'bg-violet-100 text-violet-700',
-  upi: 'bg-purple-100 text-purple-700',
-  wallet: 'bg-cyan-100 text-cyan-700',
-  bank_transfer: 'bg-indigo-100 text-indigo-700',
-  online: 'bg-teal-100 text-teal-700',
-  cheque: 'bg-amber-100 text-amber-700',
-  insurance: 'bg-pink-100 text-pink-700',
 };
 
 const fmt = (n: number) =>
@@ -43,27 +38,8 @@ const PaymentList: React.FC = () => {
   const applyDateRange = (range: string) => {
     setDateRange(range);
     setPage(1);
-    if (!range) {
-      setDateFrom('');
-      setDateTo('');
-      return;
-    }
-    const now = new Date();
-    const toStr = (d: Date) => d.toISOString().slice(0, 10);
-    const today = toStr(now);
-    if (range === '24h') {
-      const d = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-      setDateFrom(toStr(d)); setDateTo(today);
-    } else if (range === '7d') {
-      const d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      setDateFrom(toStr(d)); setDateTo(today);
-    } else if (range === '30d') {
-      const d = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-      setDateFrom(toStr(d)); setDateTo(today);
-    } else if (range === '1y') {
-      const d = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
-      setDateFrom(toStr(d)); setDateTo(today);
-    }
+    setDateFrom('');
+    setDateTo('');
   };
 
   // Pre-filter from invoice detail
@@ -145,6 +121,7 @@ const PaymentList: React.FC = () => {
             className="px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary/30"
           >
             <option value="">All Time</option>
+            <option value="1h">Last Hour</option>
             <option value="24h">Last 24 Hours</option>
             <option value="7d">Last 7 Days</option>
             <option value="30d">Last 30 Days</option>
@@ -156,7 +133,10 @@ const PaymentList: React.FC = () => {
             className="px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary/30"
           >
             <option value="">All Modes</option>
-            {Object.entries(MODE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            <option value="cash">Cash</option>
+            <option value="upi">UPI</option>
+            <option value="debit_card">Debit Card</option>
+            <option value="credit_card">Credit Card</option>
           </select>
           <div className="flex items-center gap-2">
             <label className="text-xs text-slate-500">From</label>
@@ -213,8 +193,8 @@ const PaymentList: React.FC = () => {
                     <td className="px-4 py-3 font-medium text-slate-800">{p.patient_name}</td>
                     <td className="px-4 py-3 text-slate-500">{new Date(p.payment_date).toLocaleDateString('en-IN')}</td>
                     <td className="px-4 py-3 text-center">
-                      <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold ${MODE_COLORS[p.payment_mode]}`}>
-                        {MODE_LABELS[p.payment_mode]}
+                      <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold ${MODE_COLORS[p.payment_mode] ?? 'bg-slate-100 text-slate-600'}`}>
+                        {MODE_LABELS[p.payment_mode] ?? p.payment_mode}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right font-bold text-green-700">₹{fmt(Number(p.amount))}</td>

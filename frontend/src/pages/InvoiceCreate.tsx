@@ -39,12 +39,6 @@ const PAYMENT_MODES: { value: PaymentMode; label: string }[] = [
   { value: 'upi', label: 'UPI' },
   { value: 'debit_card', label: 'Debit Card' },
   { value: 'credit_card', label: 'Credit Card' },
-  { value: 'card', label: 'Card (Other)' },
-  { value: 'wallet', label: 'Wallet' },
-  { value: 'bank_transfer', label: 'Bank Transfer' },
-  { value: 'online', label: 'Online' },
-  { value: 'cheque', label: 'Cheque' },
-  { value: 'insurance', label: 'Insurance' },
 ];
 
 const emptyLine = (type: InvoiceItemType = 'service'): LineItem => ({
@@ -448,7 +442,7 @@ const InvoiceCreate: React.FC = () => {
                     <input
                       type="number"
                       min={0.01} step="0.01"
-                      value={line.quantity}
+                    value={line.quantity || ''}
                       onChange={e => updateLine(idx, { quantity: parseFloat(e.target.value) || 0 })}
                       className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-primary/30 bg-white text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                     />
@@ -461,7 +455,7 @@ const InvoiceCreate: React.FC = () => {
                     <input
                       type="number"
                       min={0} step="0.01"
-                      value={line.unit_price}
+                    value={line.unit_price || ''}
                       onChange={e => updateLine(idx, { unit_price: parseFloat(e.target.value) || 0 })}
                       className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-primary/30 bg-white text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                     />
@@ -472,7 +466,7 @@ const InvoiceCreate: React.FC = () => {
                     <input
                       type="number"
                       min={0} max={100} step="0.01"
-                      value={line.discount_percent}
+                    value={line.discount_percent || ''}
                       onChange={e => updateLine(idx, { discount_percent: parseFloat(e.target.value) || 0 })}
                       className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-primary/30 bg-white text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                     />
@@ -543,9 +537,9 @@ const InvoiceCreate: React.FC = () => {
               <input
                 type="number"
                 min={0} step="0.01"
-                value={headerDiscount}
+                value={headerDiscount || ''}
                 onChange={e => setHeaderDiscount(parseFloat(e.target.value) || 0)}
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
               />
               {headerDiscount > 0 && (
                 <div className="mt-2">
@@ -579,7 +573,7 @@ const InvoiceCreate: React.FC = () => {
                     <label className="block text-xs font-medium text-slate-600 mb-1">Payment Mode</label>
                     <select
                       value={payMode}
-                      onChange={e => setPayMode(e.target.value as PaymentMode)}
+                      onChange={e => { setPayMode(e.target.value as PaymentMode); setCashReceived(0); }}
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
                     >
                       {PAYMENT_MODES.map(m => (
@@ -608,7 +602,7 @@ const InvoiceCreate: React.FC = () => {
                           min={0} step="0.01"
                           value={cashReceived || ''}
                           onChange={e => setCashReceived(parseFloat(e.target.value) || 0)}
-                          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                         />
                       </div>
                       {cashReceived > 0 && (

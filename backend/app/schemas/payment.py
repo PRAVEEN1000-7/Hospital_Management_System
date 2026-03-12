@@ -6,7 +6,7 @@ from typing import Optional
 from datetime import date, time, datetime
 from decimal import Decimal
 
-VALID_PAYMENT_MODES = ["cash", "card", "debit_card", "credit_card", "upi", "wallet", "bank_transfer", "online", "cheque", "insurance"]
+VALID_PAYMENT_MODES = ["cash", "upi", "debit_card", "credit_card"]
 VALID_PAYMENT_STATUSES = ["pending", "completed", "failed", "reversed"]
 
 

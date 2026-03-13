@@ -177,6 +177,8 @@ def list_refunds(
     page: int = 1,
     limit: int = 10,
     status: Optional[str] = None,
+    invoice_id: Optional[str] = None,
+    patient_id: Optional[str] = None,
 ) -> PaginatedRefundResponse:
     query = (
         db.query(Refund)
@@ -189,6 +191,16 @@ def list_refunds(
     )
     if status:
         query = query.filter(Refund.status == status)
+    if invoice_id:
+        try:
+            query = query.filter(Refund.invoice_id == uuid.UUID(invoice_id))
+        except (ValueError, AttributeError):
+            pass
+    if patient_id:
+        try:
+            query = query.filter(Refund.patient_id == uuid.UUID(patient_id))
+        except (ValueError, AttributeError):
+            pass
     total = query.count()
     rows = query.order_by(Refund.created_at.desc()).offset((page - 1) * limit).limit(limit).all()
 

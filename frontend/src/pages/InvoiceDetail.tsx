@@ -4,11 +4,12 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import invoiceService from '../services/invoiceService';
 import paymentService from '../services/paymentService';
+import refundService from '../services/refundService';
 import { patientService } from '../services/patientService';
 import hospitalService from '../services/hospitalService';
 import type { HospitalDetails } from '../services/hospitalService';
 import type { Patient } from '../types/patient';
-import type { Invoice, PaymentListItem, PaymentMode, InvoiceStatus } from '../types/billing';
+import type { Invoice, PaymentListItem, PaymentMode, InvoiceStatus, RefundReasonCode } from '../types/billing';
 
 const STATUS_COLORS: Record<InvoiceStatus, string> = {
   draft: 'bg-slate-100 text-slate-600',
@@ -59,6 +60,14 @@ const InvoiceDetail: React.FC = () => {
 
   // Void confirm
   const [showVoidConfirm, setShowVoidConfirm] = useState(false);
+
+  // Refund request modal
+  const [showRefundModal, setShowRefundModal] = useState(false);
+  const [refundPaymentId, setRefundPaymentId] = useState('');
+  const [refundAmount, setRefundAmount] = useState<number | ''>('');
+  const [refundReasonCode, setRefundReasonCode] = useState<string>('billing_error');
+  const [refundReasonDetail, setRefundReasonDetail] = useState('');
+  const [refundSaving, setRefundSaving] = useState(false);
 
   const printRef = useRef<HTMLDivElement>(null);
 
@@ -116,6 +125,34 @@ const InvoiceDetail: React.FC = () => {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       showToast('error', msg || 'Failed to void invoice');
       setShowVoidConfirm(false);
+    }
+  };
+
+  const handleRequestRefund = async () => {
+    if (!invoice) return;
+    if (!refundPaymentId) { showToast('error', 'Please select the payment to refund'); return; }
+    if (!refundAmount || Number(refundAmount) <= 0) { showToast('error', 'Refund amount must be greater than zero'); return; }
+    setRefundSaving(true);
+    try {
+      await refundService.request({
+        invoice_id: invoice.id,
+        payment_id: refundPaymentId,
+        patient_id: invoice.patient_id,
+        amount: Number(refundAmount),
+        reason_code: refundReasonCode as RefundReasonCode,
+        reason_detail: refundReasonDetail || undefined,
+      });
+      showToast('success', 'Refund request submitted — awaiting admin approval');
+      setShowRefundModal(false);
+      setRefundPaymentId('');
+      setRefundAmount('');
+      setRefundReasonCode('billing_error');
+      setRefundReasonDetail('');
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      showToast('error', msg || 'Failed to submit refund request');
+    } finally {
+      setRefundSaving(false);
     }
   };
 
@@ -231,7 +268,14 @@ const InvoiceDetail: React.FC = () => {
             )}
             {canMutate && ['partially_paid', 'paid'].includes(invoice.status) && (
               <button
-                onClick={() => navigate(`/billing/refunds?invoice_id=${invoice.id}`)}
+                onClick={() => {
+                  const completedPays = payments.filter(p => p.status === 'completed');
+                  setRefundPaymentId(completedPays.length === 1 ? completedPays[0].id : '');
+                  setRefundAmount('');
+                  setRefundReasonCode('billing_error');
+                  setRefundReasonDetail('');
+                  setShowRefundModal(true);
+                }}
                 className="flex items-center gap-1.5 px-3 py-2 border border-amber-300 text-amber-700 bg-amber-50 rounded-lg text-sm font-medium hover:bg-amber-100"
               >
                 <span className="material-symbols-outlined text-[16px]">currency_exchange</span>
@@ -559,6 +603,90 @@ const InvoiceDetail: React.FC = () => {
               </button>
               <button
                 onClick={() => setShowPayModal(false)}
+                className="flex-1 py-2.5 border border-slate-200 text-slate-600 rounded-lg font-medium text-sm hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Request Refund Modal ── */}
+      {showRefundModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 no-print">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-lg font-bold text-slate-900">Request Refund</h3>
+              <button onClick={() => setShowRefundModal(false)} className="text-slate-400 hover:text-slate-600">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Payment to Refund *</label>
+                {payments.filter(p => p.status === 'completed').length === 0 ? (
+                  <p className="text-sm text-red-500">No completed payments found for this invoice.</p>
+                ) : (
+                  <select
+                    value={refundPaymentId}
+                    onChange={e => setRefundPaymentId(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  >
+                    <option value="">Select payment…</option>
+                    {payments.filter(p => p.status === 'completed').map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.payment_number} — {p.payment_mode.replace('_', ' ')} — ₹{fmt(p.amount)} ({new Date(p.payment_date).toLocaleDateString('en-IN')})
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Refund Amount (₹) *</label>
+                <input
+                  type="number" min={0.01} step="0.01"
+                  value={refundAmount}
+                  onChange={e => setRefundAmount(parseFloat(e.target.value) || '')}
+                  placeholder="Enter amount"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Reason *</label>
+                <select
+                  value={refundReasonCode}
+                  onChange={e => setRefundReasonCode(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                >
+                  <option value="billing_error">Billing Error</option>
+                  <option value="service_not_provided">Service Not Provided</option>
+                  <option value="patient_request">Patient Request</option>
+                  <option value="duplicate">Duplicate</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Additional Details</label>
+                <textarea
+                  rows={2}
+                  value={refundReasonDetail}
+                  onChange={e => setRefundReasonDetail(e.target.value)}
+                  placeholder="Describe the reason for refund…"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+                />
+              </div>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={handleRequestRefund}
+                disabled={refundSaving || payments.filter(p => p.status === 'completed').length === 0}
+                className="flex-1 py-2.5 bg-amber-500 text-white rounded-lg font-semibold text-sm hover:bg-amber-600 disabled:opacity-60"
+              >
+                {refundSaving ? 'Submitting…' : 'Submit Refund Request'}
+              </button>
+              <button
+                onClick={() => setShowRefundModal(false)}
                 className="flex-1 py-2.5 border border-slate-200 text-slate-600 rounded-lg font-medium text-sm hover:bg-slate-50"
               >
                 Cancel

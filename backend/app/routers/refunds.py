@@ -65,13 +65,18 @@ async def list_all_refunds(
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100),
     status: Optional[str] = None,
+    invoice_id: Optional[str] = None,
+    patient_id: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    """List all refunds with optional status filter."""
+    """List all refunds with optional status, invoice, and patient filters."""
     _require_billing_staff(current_user)
     try:
-        return list_refunds(db, current_user.hospital_id, page, limit, status=status)
+        return list_refunds(
+            db, current_user.hospital_id, page, limit,
+            status=status, invoice_id=invoice_id, patient_id=patient_id,
+        )
     except Exception as e:
         logger.error(f"Error listing refunds: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to retrieve refunds")

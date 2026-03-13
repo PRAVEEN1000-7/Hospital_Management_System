@@ -2,8 +2,8 @@
 
 **Author**: Engineering Team  
 **Date**: 2026-03-07  
-**Branch**: `pavithrang`  
-**Status**: 🟡 In Progress  
+**Branch**: `billing_invoice_sakthivel`  
+**Status**: 🟢 Implemented and hardened through workflow audit  
 **Module**: Phase 3 — Billing & Invoice  
 
 ---
@@ -54,7 +54,7 @@ Patient Visit
 | **Invoice CRUD** | Create, read, update, void, issue invoices |
 | **Invoice Items** | Add/remove line items (consultation, medicine, service) |
 | **Tax Calculation** | Auto-apply tax configs to invoice items |
-| **Payments** | Record payments (cash, card, UPI, cheque, insurance) |
+| **Payments** | Record payments (cash, UPI, debit card, credit card) |
 | **Refunds** | Request → Approve → Process workflow |
 | **Daily Settlements** | Cashier end-of-day close and verify |
 | **Tax Configurations** | CRUD for tax rules per hospital |
@@ -92,7 +92,7 @@ The following tables are **already defined** in `database_hole/01_schema.sql`. N
 invoice.status:        draft | issued | partially_paid | paid | overdue | cancelled | void
 invoice.invoice_type:  opd | pharmacy | optical | combined
 invoice_item.item_type: consultation | medicine | optical_product | service | procedure
-payment.payment_mode:  cash | card | upi | wallet | bank_transfer | online | cheque | insurance
+payment.payment_mode:  cash | upi | debit_card | credit_card
 payment.status:        pending | completed | failed | reversed
 refund.status:         pending | approved | processed | rejected
 refund.reason_code:    service_not_provided | billing_error | patient_request | duplicate | other
@@ -312,6 +312,14 @@ paid
 - Requires admin/super_admin approval (`status = 'approved'`)
 - Once approved, cashier marks as `processed`
 - On rejection: `status = 'rejected'` — no money movement
+- Financial totals change only when refund is `processed`
+- After a processed refund:
+  - `payment.refunded_amount` increases by the processed refund amount
+  - `payment.net_amount = payment.amount - refunded_amount`
+  - fully refunded payments become `reversed`
+  - invoice `paid_amount` is recomputed from net payments
+  - invoice status becomes `issued` when net paid = 0, `partially_paid` when `0 < net paid < total`, `paid` when fully covered
+- Refund workflow should be accessible from the invoice detail page to reduce page switching for billing roles
 
 ### Invoice Number Format
 
@@ -363,44 +371,44 @@ def generate_refund_number() -> str:
 
 ### Backend
 
-- [ ] `models/invoice.py` — Invoice, InvoiceItem SQLAlchemy models
-- [ ] `models/payment.py` — Payment SQLAlchemy model
-- [ ] `models/refund.py` — Refund SQLAlchemy model
-- [ ] `models/settlement.py` — DailySettlement SQLAlchemy model
-- [ ] `models/tax_config.py` — TaxConfiguration SQLAlchemy model
-- [ ] `schemas/invoice.py` — Pydantic schemas (Create, Update, Response, ListItem, Paginated)
-- [ ] `schemas/payment.py` — Pydantic schemas
-- [ ] `schemas/refund.py` — Pydantic schemas
-- [ ] `schemas/settlement.py` — Pydantic schemas
-- [ ] `schemas/tax_config.py` — Pydantic schemas
-- [ ] `services/invoice_service.py` — Business logic
-- [ ] `services/payment_service.py` — Business logic
-- [ ] `services/refund_service.py` — Business logic
-- [ ] `services/settlement_service.py` — Business logic
-- [ ] `services/tax_service.py` — Business logic
-- [ ] `routers/invoices.py` — 9 endpoints
-- [ ] `routers/payments.py` — 4 endpoints
-- [ ] `routers/refunds.py` — 6 endpoints
-- [ ] `routers/settlements.py` — 5 endpoints
-- [ ] `routers/tax_configurations.py` — 5 endpoints
-- [ ] `main.py` — Register all 5 new routers
+- [x] `models/invoice.py` — Invoice, InvoiceItem SQLAlchemy models
+- [x] `models/payment.py` — Payment SQLAlchemy model
+- [x] `models/refund.py` — Refund SQLAlchemy model
+- [x] `models/settlement.py` — DailySettlement SQLAlchemy model
+- [x] `models/tax_config.py` — TaxConfiguration SQLAlchemy model
+- [x] `schemas/invoice.py` — Pydantic schemas (Create, Update, Response, ListItem, Paginated)
+- [x] `schemas/payment.py` — Pydantic schemas, including refund-aware payment list fields
+- [x] `schemas/refund.py` — Pydantic schemas
+- [x] `schemas/settlement.py` — Pydantic schemas
+- [x] `schemas/tax_config.py` — Pydantic schemas
+- [x] `services/invoice_service.py` — Business logic
+- [x] `services/payment_service.py` — Business logic, including payment/refund reconciliation values
+- [x] `services/refund_service.py` — Business logic and invoice status recalculation after processed refunds
+- [x] `services/settlement_service.py` — Business logic
+- [x] `services/tax_service.py` — Business logic
+- [x] `routers/invoices.py` — 9 endpoints
+- [x] `routers/payments.py` — 4 endpoints
+- [x] `routers/refunds.py` — 6 endpoints with invoice/patient filters
+- [x] `routers/settlements.py` — 5 endpoints
+- [x] `routers/tax_configurations.py` — 5 endpoints
+- [x] `main.py` — Register all 5 new routers
 
 ### Frontend
 
-- [ ] `types/billing.ts` — TypeScript interfaces
-- [ ] `services/invoiceService.ts` — API calls
-- [ ] `services/paymentService.ts` — API calls
-- [ ] `services/refundService.ts` — API calls
-- [ ] `services/settlementService.ts` — API calls
-- [ ] `services/taxService.ts` — API calls
-- [ ] `pages/InvoiceList.tsx` — List with stats, filters, pagination
-- [ ] `pages/InvoiceCreate.tsx` — Create form with dynamic line items
-- [ ] `pages/InvoiceDetail.tsx` — Detail view + payment panel + print
-- [ ] `pages/PaymentList.tsx` — Payment history
-- [ ] `pages/RefundList.tsx` — Refund management
-- [ ] `pages/SettlementList.tsx` — Daily settlement
-- [ ] `components/common/Layout.tsx` — Add Billing nav section
-- [ ] `App.tsx` — Add all billing routes
+- [x] `types/billing.ts` — TypeScript interfaces
+- [x] `services/invoiceService.ts` — API calls
+- [x] `services/paymentService.ts` — API calls
+- [x] `services/refundService.ts` — API calls
+- [x] `services/settlementService.ts` — API calls
+- [x] `services/taxService.ts` — API calls
+- [x] `pages/InvoiceList.tsx` — List with stats, filters, pagination
+- [x] `pages/InvoiceCreate.tsx` — Create form with dynamic line items
+- [x] `pages/InvoiceDetail.tsx` — Detail view + payment panel + print + inline refund workflow/history
+- [x] `pages/PaymentList.tsx` — Payment history with gross/refunded/net summaries
+- [x] `pages/RefundList.tsx` — Refund management with approve/reject/process modals
+- [x] `pages/SettlementList.tsx` — Daily settlement
+- [x] `components/common/Layout.tsx` — Add Billing nav section
+- [x] `App.tsx` — Add all billing routes
 
 ---
 
@@ -433,8 +441,11 @@ def generate_refund_number() -> str:
    - On paid invoice → click "Refund"
    - Select payment, enter reason, amount
    - Verify refund created as `pending`
-   - Login as admin → approve refund
-   - Mark as processed
+  - Login as admin → approve refund
+  - Cashier/admin marks as processed
+  - Verify on the same invoice detail page that payment history shows `Amount / Refunded / Net`
+  - Verify full refund changes payment status to `reversed`
+  - Verify invoice status becomes `issued` after a full refund and `partially_paid` after a partial refund
 
 5. **Daily Settlement**
    - Cashier creates settlement for today
@@ -472,3 +483,7 @@ curl -X POST http://localhost:8000/api/v1/payments \
 | 2026-03-07 | Engineering | Backend models, schemas, services, routers implemented |
 | 2026-03-07 | Engineering | Frontend types, services, pages implemented |
 | 2026-03-07 | Engineering | Layout and routing updated |
+| 2026-03-13 | Engineering | Payment modes reduced to cash, UPI, debit card, credit card only |
+| 2026-03-13 | Engineering | Refund workflow moved inline to invoice detail: request, review, approve/reject, process |
+| 2026-03-13 | Engineering | Payment list enhanced with gross, refunded, and net figures |
+| 2026-03-13 | Engineering | Full refund reconciliation clarified: full processed refund makes payment `reversed` and invoice status `issued` |

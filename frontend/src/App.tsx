@@ -33,6 +33,9 @@ import PrescriptionList from './pages/PrescriptionList';
 import PrescriptionBuilder from './pages/PrescriptionBuilder';
 import PrescriptionDetail from './pages/PrescriptionDetail';
 
+// Analytics
+import AnalyticsDashboard from './pages/analytics/AnalyticsDashboard';
+
 const App: React.FC = () => {
   return (
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
@@ -126,7 +129,7 @@ const App: React.FC = () => {
               </ProtectedRoute>
             } />
             <Route path="/appointments/reports" element={
-              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor', 'receptionist', 'report_viewer']}>
+              <ProtectedRoute allowedRoles={['super_admin', 'admin']}>
                 <AppointmentReports />
               </ProtectedRoute>
             } />
@@ -155,6 +158,13 @@ const App: React.FC = () => {
             <Route path="/prescriptions/:id/edit" element={
               <ProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor']}>
                 <PrescriptionBuilder />
+              </ProtectedRoute>
+            } />
+
+            {/* ── Analytics ── */}
+            <Route path="/analytics" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin']}>
+                <AnalyticsDashboard />
               </ProtectedRoute>
             } />
           </Route>

@@ -14,12 +14,14 @@ const PatientList: React.FC = () => {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
-  const [sortBy, setSortBy] = useState('default');
+  const [sortBy, setSortBy] = useState('created_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [genderFilter, setGenderFilter] = useState('');
   const [bloodGroupFilter, setBloodGroupFilter] = useState('');
   const [cityFilter, setCityFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const limit = 10;
   const searchTimeoutRef = useRef<number | null>(null);
 
@@ -29,7 +31,7 @@ const PatientList: React.FC = () => {
       const response = await patientService.getPatients(
         page, limit, search,
         { gender: genderFilter, blood_group: bloodGroupFilter, city: cityFilter, status: statusFilter },
-        sortBy !== 'default' ? sortBy : undefined,
+        sortBy,
         sortOrder,
       );
       setPatients(response.data);
@@ -80,13 +82,17 @@ const PatientList: React.FC = () => {
     }
   }, [searchParams]);
 
-  const handleDelete = async (id: string, name: string) => {
-    if (!window.confirm(`Are you sure you want to delete patient "${name}"?`)) return;
+  const handleDelete = async () => {
+    if (!deleteConfirm) return;
+    setIsDeleting(true);
     try {
-      await patientService.deletePatient(id);
+      await patientService.deletePatient(deleteConfirm.id);
       fetchPatients();
     } catch (err) {
       // Silent fail - deletion error will not show
+    } finally {
+      setIsDeleting(false);
+      setDeleteConfirm(null);
     }
   };
 
@@ -151,9 +157,14 @@ const PatientList: React.FC = () => {
           </div>
         </div>
         <div className="bg-white p-4 rounded-xl border border-slate-200">
-          <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">Search Active</p>
+          <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">Active Filters</p>
           <div className="flex items-end gap-2">
-            <span className="text-2xl font-bold">{search ? 'Yes' : 'No'}</span>
+            <span className="text-2xl font-bold">
+              {[genderFilter, bloodGroupFilter, cityFilter, statusFilter, search].filter(Boolean).length || '—'}
+            </span>
+            {[genderFilter, bloodGroupFilter, cityFilter, statusFilter, search].filter(Boolean).length > 0 && (
+              <span className="text-slate-400 text-xs pb-1">applied</span>
+            )}
           </div>
         </div>
       </div>
@@ -187,9 +198,10 @@ const PatientList: React.FC = () => {
                 onChange={(e) => { setSortBy(e.target.value); setPage(1); }}
                 className="w-full px-3 py-2 bg-background-light border-none rounded-lg focus:ring-2 focus:ring-primary/40 text-sm font-medium text-slate-700"
               >
-                <option value="default">Default Order</option>
                 <option value="created_at">Registration Date</option>
                 <option value="updated_at">Last Updated</option>
+                <option value="first_name">Name</option>
+                <option value="patient_reference_number">PRN</option>
               </select>
             </div>
             <div className="lg:col-span-3">
@@ -197,10 +209,17 @@ const PatientList: React.FC = () => {
                 value={sortOrder}
                 onChange={(e) => setSortOrder(e.target.value as 'asc' | 'desc')}
                 className="w-full px-3 py-2 bg-background-light border-none rounded-lg focus:ring-2 focus:ring-primary/40 text-sm font-medium text-slate-700"
-                disabled={sortBy === 'default'}
               >
-                <option value="asc">↑ Ascending</option>
-                <option value="desc">↓ Descending</option>
+                {sortBy === 'first_name' || sortBy === 'patient_reference_number'
+                  ? (<>
+                      <option value="asc">A → Z</option>
+                      <option value="desc">Z → A</option>
+                    </>)
+                  : (<>
+                      <option value="desc">↓ Newest First</option>
+                      <option value="asc">↑ Oldest First</option>
+                    </>)
+                }
               </select>
             </div>
           </div>
@@ -307,9 +326,10 @@ const PatientList: React.FC = () => {
                 setCityFilter('');
                 setStatusFilter('');
               }}
-              className="text-xs text-slate-500 hover:text-slate-700 font-medium underline"
+              className="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 text-slate-600 rounded text-xs font-semibold hover:bg-slate-200 transition-colors"
             >
-              Clear All Filters
+              <span className="material-icons text-sm">filter_alt_off</span>
+              Clear All
             </button>
           </div>
         )}
@@ -393,7 +413,7 @@ const PatientList: React.FC = () => {
                           <span className="material-icons text-base">visibility</span>
                         </button>
                         <button
-                          onClick={() => handleDelete(patient.id, `${patient.first_name} ${patient.last_name}`)}
+                          onClick={() => setDeleteConfirm({ id: patient.id, name: `${patient.first_name} ${patient.last_name}` })}
                           className="p-1.5 hover:bg-red-50 rounded-lg text-slate-400 hover:text-red-600 transition-colors"
                           title="Delete"
                         >
@@ -452,6 +472,40 @@ const PatientList: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="delete-dialog-title">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => !isDeleting && setDeleteConfirm(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex flex-col items-center text-center">
+              <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center mb-4">
+                <span className="material-symbols-outlined text-red-500 text-3xl">delete</span>
+              </div>
+              <h3 id="delete-dialog-title" className="text-lg font-bold text-slate-900 mb-1">Delete Patient</h3>
+              <p className="text-sm text-slate-500 mb-6">
+                Are you sure you want to delete <span className="font-semibold text-slate-700">{deleteConfirm.name}</span>?
+              </p>
+              <div className="flex gap-3 w-full">
+                <button
+                  onClick={() => setDeleteConfirm(null)}
+                  disabled={isDeleting}
+                  className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDelete}
+                  disabled={isDeleting}
+                  className="flex-1 px-4 py-2.5 rounded-lg bg-red-600 text-sm font-semibold text-white hover:bg-red-700 transition-colors active:scale-[0.98] disabled:opacity-60"
+                >
+                  {isDeleting ? 'Deleting...' : 'Delete'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

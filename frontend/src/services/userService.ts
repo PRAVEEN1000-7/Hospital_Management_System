@@ -3,9 +3,14 @@ import type { UserData, UserCreateData, UserUpdateData, PasswordResetData } from
 import type { PaginatedResponse } from '../types/patient';
 
 export const userService = {
-  async getUsers(page = 1, limit = 10, search = ''): Promise<PaginatedResponse<UserData>> {
-    const params: Record<string, string | number> = { page, limit };
+  async getUsers(
+    page = 1, limit = 10, search = '',
+    role?: string, isActive?: boolean,
+  ): Promise<PaginatedResponse<UserData>> {
+    const params: Record<string, string | number | boolean> = { page, limit };
     if (search) params.search = search;
+    if (role) params.role = role;
+    if (isActive !== undefined) params.is_active = isActive;
     const response = await api.get<PaginatedResponse<UserData>>('/users', { params });
     return response.data;
   },

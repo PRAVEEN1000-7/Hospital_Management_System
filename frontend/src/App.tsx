@@ -33,8 +33,6 @@ import PrescriptionList from './pages/PrescriptionList';
 import PrescriptionBuilder from './pages/PrescriptionBuilder';
 import PrescriptionDetail from './pages/PrescriptionDetail';
 
-// Analytics
-import AnalyticsDashboard from './pages/analytics/AnalyticsDashboard';
 
 const App: React.FC = () => {
   return (
@@ -161,10 +159,10 @@ const App: React.FC = () => {
               </ProtectedRoute>
             } />
 
-            {/* ── Analytics ── */}
+            {/* ── Analytics (temporary fallback until analytics branch is merged) ── */}
             <Route path="/analytics" element={
               <ProtectedRoute allowedRoles={['super_admin', 'admin']}>
-                <AnalyticsDashboard />
+                <Navigate to="/appointments/reports" replace />
               </ProtectedRoute>
             } />
           </Route>

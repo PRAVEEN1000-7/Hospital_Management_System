@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import prescriptionService from '../services/prescriptionService';
@@ -22,6 +22,7 @@ const statusColor: Record<string, string> = {
 
 const PrescriptionList: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const { showToast } = useToast();
 
@@ -30,7 +31,7 @@ const PrescriptionList: React.FC = () => {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [total, setTotal] = useState(0);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(() => searchParams.get('search') || '');
   const [statusFilter, setStatusFilter] = useState('');
 
   const role = user?.roles?.[0];
@@ -63,11 +64,30 @@ const PrescriptionList: React.FC = () => {
   useEffect(() => { fetchPrescriptions(); }, [fetchPrescriptions]);
 
   // Debounced search
-  const [searchInput, setSearchInput] = useState('');
+  const [searchInput, setSearchInput] = useState(() => searchParams.get('search') || '');
   useEffect(() => {
     const timer = setTimeout(() => { setSearch(searchInput); setPage(1); }, 400);
     return () => clearTimeout(timer);
   }, [searchInput]);
+
+  // Sync from URL when global header search updates the query.
+  useEffect(() => {
+    const urlSearch = searchParams.get('search') || '';
+    if (urlSearch !== searchInput) {
+      setSearchInput(urlSearch);
+      setSearch(urlSearch);
+      setPage(1);
+    }
+  }, [searchParams, searchInput]);
+
+  // Keep URL in sync with table search state.
+  useEffect(() => {
+    if (search) {
+      setSearchParams({ search }, { replace: true });
+    } else {
+      setSearchParams({}, { replace: true });
+    }
+  }, [search, setSearchParams]);
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this prescription?')) return;

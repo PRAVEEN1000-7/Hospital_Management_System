@@ -74,11 +74,19 @@ const AppointmentBooking: React.FC = () => {
   const setReg = (field: keyof RegForm, value: string) =>
     setRegForm(f => ({ ...f, [field]: value }));
 
+  const blockNonAlpha = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!/^[A-Za-z]$/.test(e.key) && !['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Home', 'End'].includes(e.key)) {
+      e.preventDefault();
+    }
+  };
+
   const validateRegPersonal = (): boolean => {
     const errs: Partial<Record<keyof RegForm, string>> = {};
     if (!regForm.title) errs.title = 'Required';
     if (!regForm.first_name.trim()) errs.first_name = 'Required';
+    else if (!/^[A-Za-z]+$/.test(regForm.first_name.trim())) errs.first_name = 'Only letters (A–Z) allowed';
     if (!regForm.last_name.trim()) errs.last_name = 'Required';
+    else if (!/^[A-Za-z]+$/.test(regForm.last_name.trim())) errs.last_name = 'Only letters (A–Z) allowed';
     if (!regForm.gender) errs.gender = 'Required';
     if (!regForm.date_of_birth) errs.date_of_birth = 'Required';
     if (!regForm.blood_group) errs.blood_group = 'Required';
@@ -525,14 +533,14 @@ const AppointmentBooking: React.FC = () => {
                     <div>
                       <label className="block text-xs font-bold text-slate-500 mb-1">First Name <span className="text-red-500">*</span></label>
                       <input value={regForm.first_name} onChange={e => setReg('first_name', e.target.value)}
-                        placeholder="First name"
+                        placeholder="First name" onKeyDown={blockNonAlpha} maxLength={100}
                         className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
                       {regErrors.first_name && <p className="text-[10px] text-red-500 mt-0.5">{regErrors.first_name}</p>}
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-slate-500 mb-1">Last Name <span className="text-red-500">*</span></label>
                       <input value={regForm.last_name} onChange={e => setReg('last_name', e.target.value)}
-                        placeholder="Last name"
+                        placeholder="Last name" onKeyDown={blockNonAlpha} maxLength={100}
                         className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
                       {regErrors.last_name && <p className="text-[10px] text-red-500 mt-0.5">{regErrors.last_name}</p>}
                     </div>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useToast } from '../contexts/ToastContext';
 import appointmentService from '../services/appointmentService';
 import scheduleService from '../services/scheduleService';
@@ -7,14 +8,15 @@ import type { Appointment, DoctorOption, AppointmentStatus, AppointmentStats } f
 
 const AppointmentManagement: React.FC = () => {
   const toast = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [doctors, setDoctors] = useState<DoctorOption[]>([]);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [search, setSearch] = useState('');
-  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState(() => searchParams.get('search') || '');
+  const [searchInput, setSearchInput] = useState(() => searchParams.get('search') || '');
   const [filterDoctor, setFilterDoctor] = useState<string>('');
   const [filterDate, setFilterDate] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('');
@@ -45,6 +47,25 @@ const AppointmentManagement: React.FC = () => {
 
   useEffect(() => { scheduleService.getDoctors().then(setDoctors).catch(() => {}); }, []);
   useEffect(() => { fetchAppointments(); }, [fetchAppointments]);
+
+  // Sync from URL when global header search updates the query.
+  useEffect(() => {
+    const urlSearch = searchParams.get('search') || '';
+    if (urlSearch !== searchInput) {
+      setSearchInput(urlSearch);
+      setSearch(urlSearch);
+      setPage(1);
+    }
+  }, [searchParams, searchInput]);
+
+  // Keep URL in sync with table search state.
+  useEffect(() => {
+    if (search) {
+      setSearchParams({ search }, { replace: true });
+    } else {
+      setSearchParams({}, { replace: true });
+    }
+  }, [search, setSearchParams]);
 
   // Fetch stats
   useEffect(() => {

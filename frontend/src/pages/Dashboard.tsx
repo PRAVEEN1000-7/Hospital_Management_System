@@ -226,7 +226,7 @@ const Dashboard: React.FC = () => {
           { label: 'Total Patients', value: totalPatients.toLocaleString(), icon: 'group', iconColor: 'text-blue-500' },
           { label: 'Active Staff', value: activeUsers.toLocaleString(), icon: 'badge', iconColor: 'text-purple-500' },
           { label: 'System Status', value: 'Online', icon: 'check_circle', iconColor: 'text-emerald-500' },
-          { label: 'Pending Tasks', value: '—', icon: 'receipt_long', iconColor: 'text-amber-500' },
+          { label: 'Pending Tasks', value: '0', icon: 'receipt_long', iconColor: 'text-amber-500' },
         ];
       case 'receptionist':
         return [
@@ -347,27 +347,27 @@ const Dashboard: React.FC = () => {
         ))}
       </div>
 
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Left Column */}
-        <div className="lg:col-span-2 space-y-8">
-          {/* Quick Actions */}
-          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-            <h3 className="font-bold text-slate-900 mb-6">Quick Actions</h3>
-            <div className={`grid grid-cols-1 sm:grid-cols-${Math.min(quickActions.length, 3)} gap-4`}>
-              {quickActions.map((action) => (
-                <button key={action.to} onClick={() => navigate(action.to)} className={ACTION_BTN}>
-                  <span className={`material-symbols-outlined ${action.iconColor} mb-2 text-2xl`}>{action.icon}</span>
-                  <p className="text-sm font-bold text-slate-900 group-hover:text-primary transition-colors">{action.label}</p>
-                  <p className="text-[10px] text-slate-400 mt-1">{action.desc}</p>
-                </button>
-              ))}
-            </div>
-          </div>
+      {/* Quick Actions — full width */}
+      <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm mb-8">
+        <h3 className="font-bold text-slate-900 mb-6">Quick Actions</h3>
+        <div className={`grid grid-cols-1 sm:grid-cols-${Math.min(quickActions.length, 3)} gap-4`}>
+          {quickActions.map((action) => (
+            <button key={action.to} onClick={() => navigate(action.to)} className={ACTION_BTN}>
+              <span className={`material-symbols-outlined ${action.iconColor} mb-2 text-2xl`}>{action.icon}</span>
+              <p className="text-sm font-bold text-slate-900 group-hover:text-primary transition-colors">{action.label}</p>
+              <p className="text-[10px] text-slate-400 mt-1">{action.desc}</p>
+            </button>
+          ))}
+        </div>
+      </div>
 
-          {/* Activity / Info Section — role-aware */}
+      {/* Workspace + Info — 70/30 for all roles */}
+      <div className="grid grid-cols-1 lg:grid-cols-10 gap-6 items-start">
+
+        {/* Workspace Panel — 70% */}
+        <div className="lg:col-span-7 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           {isDoctor ? (
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <>
               <div className="p-6 border-b border-slate-100 flex items-center justify-between">
                 <h3 className="font-bold text-slate-900">My Practice Info</h3>
                 <button onClick={() => navigate('/profile')} className="text-primary text-xs font-bold hover:underline">View Profile</button>
@@ -406,14 +406,12 @@ const Dashboard: React.FC = () => {
                   </div>
                 )}
               </div>
-            </div>
+            </>
           ) : (
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <>
               <div className="p-6 border-b border-slate-100 flex items-center justify-between">
                 <h3 className="font-bold text-slate-900">Your Workspace</h3>
-                {role !== 'report_viewer' && (
-                  <button onClick={() => navigate('/patients')} className="text-primary text-xs font-bold hover:underline">View Patients</button>
-                )}
+                <button onClick={() => navigate('/patients')} className="text-primary text-xs font-bold hover:underline">View Patients</button>
               </div>
               <div className="p-6">
                 <div className="grid grid-cols-2 gap-4">
@@ -425,18 +423,6 @@ const Dashboard: React.FC = () => {
                     <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Total Patients</p>
                     <p className="text-sm font-semibold text-slate-800">{totalPatients.toLocaleString()}</p>
                   </div>
-                  {isReceptionist && (
-                    <>
-                      <div className="p-4 rounded-lg bg-amber-50">
-                        <p className="text-[10px] font-bold text-amber-500 uppercase mb-1">Queue Waiting</p>
-                        <p className="text-sm font-semibold text-amber-700">{queueWaiting}</p>
-                      </div>
-                      <div className="p-4 rounded-lg bg-purple-50">
-                        <p className="text-[10px] font-bold text-purple-500 uppercase mb-1">Waitlisted</p>
-                        <p className="text-sm font-semibold text-purple-700">{waitlistWaiting}</p>
-                      </div>
-                    </>
-                  )}
                   {isAdmin && (
                     <>
                       <div className="p-4 rounded-lg bg-purple-50">
@@ -449,16 +435,28 @@ const Dashboard: React.FC = () => {
                       </div>
                     </>
                   )}
+                  {isReceptionist && (
+                    <>
+                      <div className="p-4 rounded-lg bg-amber-50">
+                        <p className="text-[10px] font-bold text-amber-500 uppercase mb-1">Queue Waiting</p>
+                        <p className="text-sm font-semibold text-amber-700">{queueWaiting}</p>
+                      </div>
+                      <div className="p-4 rounded-lg bg-purple-50">
+                        <p className="text-[10px] font-bold text-purple-500 uppercase mb-1">Waitlisted</p>
+                        <p className="text-sm font-semibold text-purple-700">{waitlistWaiting}</p>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
-            </div>
+            </>
           )}
         </div>
 
-        {/* Right Sidebar */}
-        <div className="space-y-8">
+        {/* Info / Status Sidebar — 30% */}
+        <div className="lg:col-span-3 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
           {isDoctor ? (
-            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+            <>
               <h3 className="font-bold text-slate-900 mb-6">My Status</h3>
               <div className="space-y-4">
                 <div className="flex items-center justify-between text-xs">
@@ -487,9 +485,9 @@ const Dashboard: React.FC = () => {
                   <span className="font-bold text-purple-600">{waitlistWaiting}</span>
                 </div>
               </div>
-            </div>
+            </>
           ) : (
-            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+            <>
               <h3 className="font-bold text-slate-900 mb-6">System Info</h3>
               <div className="space-y-4">
                 <div className="flex items-center justify-between text-xs">
@@ -500,32 +498,14 @@ const Dashboard: React.FC = () => {
                   <span className="font-bold text-emerald-600">Online</span>
                 </div>
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-600">Version</span>
-                  <span className="font-bold text-slate-700">v1.0.0</span>
-                </div>
-                <div className="flex items-center justify-between text-xs">
                   <span className="text-slate-600">Your Role</span>
                   <span className="font-bold text-primary">{formatRole(role)}</span>
                 </div>
               </div>
-            </div>
-          )}
-
-          {/* Quick Links */}
-          {quickLinks.length > 0 && (
-            <div className="bg-slate-900 p-6 rounded-xl shadow-xl">
-              <h3 className="font-bold text-white text-sm mb-4">Quick Links</h3>
-              <div className="space-y-3">
-                {quickLinks.map((link) => (
-                  <button key={link.to} onClick={() => navigate(link.to)} className={LINK_BTN}>
-                    <span className={`material-symbols-outlined ${link.iconColor} text-sm`}>{link.icon}</span>
-                    <span className="text-[11px] text-white font-medium">{link.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
+            </>
           )}
         </div>
+
       </div>
     </div>
   );

@@ -1,0 +1,135 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply font-display text-slate-700 bg-background-light;
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  * {
+    @apply border-slate-200;
+  }
+}
+
+@layer components {
+  .input-field {
+    @apply w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm
+      focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary
+      disabled:bg-slate-100 disabled:cursor-not-allowed transition-all;
+  }
+
+  .sidebar-item-active {
+    @apply bg-blue-50 text-primary border-r-4 border-primary font-semibold;
+  }
+}
+
+/* Toast Animation */
+@keyframes slide-in {
+  from {
+    transform: translateX(400px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-in {
+  animation: slide-in 0.3s ease-out;
+}
+
+/* Custom Scrollbar */
+.custom-scrollbar::-webkit-scrollbar { width: 4px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+
+/* Password Strength Meter */
+.password-strength-meter {
+  height: 4px;
+  border-radius: 2px;
+  background: #e2e8f0;
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 0;
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+
+  .print-area {
+    visibility: visible !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  .print-area,
+  .print-area * {
+    visibility: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  .print-fold-line {
+    visibility: visible !important;
+  }
+
+  /* Container for print layout */
+  .print-area:first-of-type {
+    position: fixed !important;
+    left: 50% !important;
+    top: 25mm !important;
+    transform: translateX(-50%) !important;
+    margin: 0 !important;
+    z-index: 1000;
+  }
+
+  /* Fold line */
+  .print-fold-line {
+    position: fixed !important;
+    left: 50% !important;
+    top: 95mm !important;
+    transform: translateX(-50%) !important;
+    text-align: center !important;
+    font-size: 11pt !important;
+    color: #888 !important;
+    width: 440px !important;
+    background: white !important;
+    padding: 4px 0 !important;
+    z-index: 1001;
+  }
+
+  /* Back of card */
+  .print-area:last-of-type {
+    position: fixed !important;
+    left: 50% !important;
+    top: 105mm !important;
+    transform: translateX(-50%) !important;
+    margin: 0 !important;
+    z-index: 1000;
+  }
+}
+

@@ -1,0 +1,138 @@
+HMS Database Architecture — hms_db
+=====================================
+Connection : postgresql://hms_user:HMS%402026@localhost:5432/hms_db
+Engine     : PostgreSQL 15+ with pgcrypto extension
+PKs        : UUID via gen_random_uuid() on every table
+Timestamps : TIMESTAMPTZ (UTC) everywhere
+Money      : DECIMAL(12,2)
+Soft deletes: is_deleted + deleted_at on major entities
+SQL files  : database_hole/01_schema.sql, 02_seed_data.sql, 04_waitlist_table.sql
+
+=====================================
+63 Tables across 6 Phases
+=====================================
+Phase              Module           Tables
+─────              ──────           ──────
+0 — Foundation     Hospitals        hospitals, departments, hospital_settings, tax_configurations
+0 — Auth           RBAC             users, roles, permissions, user_roles, role_permissions, refresh_tokens
+1 — Core           Patients         patients, patient_consents, patient_documents
+1 — Core           Doctors          doctors, doctor_schedules, doctor_leaves, doctor_fees
+1 — Core           Appointments     appointments, appointment_status_log, appointment_queue
+1 — Core           Waitlist         waitlists  (added via 04_waitlist_table.sql)
+2 — Clinical       Prescriptions    prescriptions, prescription_items, prescription_templates, prescription_versions
+2 — Clinical       Lab              lab_orders
+2 — Clinical       Medicines        medicines, medicine_batches
+2 — Clinical       Pharmacy         pharmacy_dispensing, pharmacy_dispensing_items, pharmacy_returns, pharmacy_return_items
+2 — Optical        Optical          optical_products, optical_prescriptions, optical_orders, optical_order_items, optical_repairs
+3 — Billing        Invoices         invoices, invoice_items, payments, refunds, credit_notes, daily_settlements
+3 — Insurance      Insurance        insurance_providers, insurance_policies, insurance_claims, pre_authorizations
+4 — Inventory      Supply Chain     suppliers, purchase_orders, purchase_order_items, goods_receipt_notes, grn_items
+4 — Inventory      Stock            stock_movements, stock_adjustments, cycle_counts, cycle_count_items
+5 — Support        Notifications    notifications, notification_templates, notification_queue
+5 — Support        Audit            audit_logs
+5 — ID System      ID Generation    id_sequences, id_cards, password_emails
+
+Plus: 2 PL/pgSQL functions (hms_calculate_checksum, hms_generate_id) and 31 indexes (27 in schema + 4 on waitlists).
+
+=====================================
+Seed Data Summary  (02_seed_data.sql)
+=====================================
+Table                    Rows
+─────                    ────
+hospitals                3     (HMS Core NY, Apollo LA, Max Chicago)
+hospital_settings        3
+departments              10
+tax_configurations       5
+roles                    9
+permissions              37
+role_permissions         dynamic  (Super Admin gets all 37 via SELECT; Admin, Doctor, etc. get subsets)
+users                    10    (role-specific passwords — see below)
+user_roles               10
+doctors                  3     (dr.smith, dr.patel, dr.lee)
+doctor_schedules         24
+doctor_fees              9
+patients                 5
+appointments             5
+appointment_status_log   8
+medicines                10
+medicine_batches         10
+prescriptions            3
+prescription_items       6
+invoices                 3
+invoice_items            9
+payments                 3
+optical_products         7
+suppliers                3
+insurance_providers      3
+notification_templates   5
+id_sequences             9
+audit_logs               5
+
+Default Credentials (per seed):
+  superadmin   → Super@123         (must_change_password = false)
+  hospadmin    → Admin@123         (must_change_password = true)
+  dr.smith     → Doctor@123        (must_change_password = true)
+  dr.patel     → Doctor@123        (must_change_password = true)
+  dr.lee       → Doctor@123        (must_change_password = true)
+  reception1   → Receptionist@123  (must_change_password = true)
+  pharmacist1  → Pharmacist@123    (must_change_password = true)
+  cashier1     → Cashier@123       (must_change_password = true)
+  optical1     → Optical@123       (must_change_password = true)
+  inventory1   → Inventory@123     (must_change_password = true)
+
+=====================================
+Backend Implementation Status
+=====================================
+The backend is fully rewritten to work with the new database.
+
+19 SQLAlchemy Models (backend/app/models/):
+  user.py               → Hospital, User, Role, Permission, UserRole, RolePermission, RefreshToken
+  appointment.py        → Doctor, DoctorSchedule, DoctorLeave, DoctorFee, Appointment, AppointmentStatusLog, AppointmentQueue, Waitlist
+  department.py         → Department
+  patient.py            → Patient
+  hospital_settings.py  → HospitalSettings
+  patient_id_sequence.py→ IdSequence
+
+13 Routers / 78 Endpoints (backend/app/routers/):
+  auth.py                  /api/v1/auth                  4 endpoints   (login, logout, refresh, me)
+  hospital.py              /api/v1/hospital               8 endpoints   (status, CRUD, logo upload)
+  users.py                 /api/v1/users                  7 endpoints   (CRUD, photo upload, password reset)
+  patients.py              /api/v1/patients                5 endpoints   (CRUD)
+  appointments.py          /api/v1/appointments           10 endpoints   (CRUD, reschedule, status, PDF)
+  schedules.py             /api/v1/schedules              10 endpoints   (doctor schedules, available slots, leaves)
+  appointment_settings.py  /api/v1/appointment-settings    2 endpoints   (get, update)
+  appointment_reports.py   /api/v1/appointment-reports     2 endpoints   (statistics, enhanced stats)
+  departments.py           /api/v1/departments             5 endpoints   (CRUD)
+  doctors.py               /api/v1/doctors                 6 endpoints   (CRUD, me)
+  hospital_settings.py     /api/v1/hospital-settings       2 endpoints   (get, update)
+  walk_ins.py              /api/v1/walk-ins               10 endpoints   (create, queue mgmt, assign, loads)
+  waitlist.py              /api/v1/waitlist                 7 endpoints   (CRUD, book, stats)
+
+11 Service Modules (backend/app/services/):
+  auth_service.py, user_service.py, patient_service.py, doctor_service.py,
+  appointment_service.py, schedule_service.py, department_service.py,
+  hospital_service.py, settings_service.py, patient_id_service.py,
+  waitlist_service.py, email_service.py
+
+=====================================
+Database Reset Quick Reference
+=====================================
+
+# Drop & recreate entire database (nuclear):
+  psql -U postgres -c "DROP DATABASE IF EXISTS hms_db;"
+  psql -U postgres -c "DROP USER IF EXISTS hms_user;"
+  psql -U postgres -c "CREATE USER hms_user WITH PASSWORD 'HMS@2026';"
+  psql -U postgres -c "CREATE DATABASE hms_db OWNER hms_user;"
+  psql -U hms_user -d hms_db -f database_hole/01_schema.sql
+  psql -U hms_user -d hms_db -f database_hole/02_seed_data.sql
+  psql -U hms_user -d hms_db -f database_hole/04_waitlist_table.sql
+
+# Truncate all records (keep schema):
+  psql -U hms_user -d hms_db -c "DO \$\$ DECLARE r RECORD; BEGIN FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname='public') LOOP EXECUTE 'TRUNCATE TABLE public.' || quote_ident(r.tablename) || ' CASCADE'; END LOOP; END \$\$;"
+  psql -U hms_user -d hms_db -f database_hole/02_seed_data.sql
+
+# Verify:
+  psql -U hms_user -d hms_db -c "SELECT COUNT(*) AS table_count FROM information_schema.tables WHERE table_schema='public';"
+  -- Expected: 63
+
+See SETUP_GUIDE.md → "Database Reset Commands" section for detailed options.

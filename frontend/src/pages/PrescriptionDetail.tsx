@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import prescriptionService from '../services/prescriptionService';
-import type { Prescription, PrescriptionListItem } from '../types/prescription';
+import type { Prescription, PrescriptionVersion } from '../types/prescription';
 
 const PrescriptionDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -12,7 +12,7 @@ const PrescriptionDetail: React.FC = () => {
   const { showToast } = useToast();
 
   const [prescription, setPrescription] = useState<Prescription | null>(null);
-  const [versions, setVersions] = useState<PrescriptionListItem[]>([]);
+  const [versions, setVersions] = useState<PrescriptionVersion[]>([]);
   const [loading, setLoading] = useState(true);
   const [showVersions, setShowVersions] = useState(false);
   const [printLang, setPrintLang] = useState('en');
@@ -29,12 +29,7 @@ const PrescriptionDetail: React.FC = () => {
     if (!id) return;
     setLoading(true);
     prescriptionService.getPrescription(id)
-      .then(rx => {
-        setPrescription(rx);
-        prescriptionService.getPatientPrescriptions(rx.patient_id, 1, 50)
-          .then(res => setVersions(res.data.filter(p => p.id !== rx.id)))
-          .catch(() => {});
-      })
+      .then(setPrescription)
       .catch(() => {
         showToast('error', 'Prescription not found');
         navigate('/prescriptions');
@@ -42,7 +37,16 @@ const PrescriptionDetail: React.FC = () => {
       .finally(() => setLoading(false));
   }, [id]);
 
-
+  const loadVersions = async () => {
+    if (!id) return;
+    try {
+      const v = await prescriptionService.getPrescriptionVersions(id);
+      setVersions(v);
+      setShowVersions(true);
+    } catch {
+      showToast('error', 'Failed to load versions');
+    }
+  };
 
   const handleFinalize = async () => {
     if (!id || !prescription) return;
@@ -408,7 +412,7 @@ const PrescriptionDetail: React.FC = () => {
           {/* Version History */}
           <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
             <button
-              onClick={() => setShowVersions(!showVersions)}
+              onClick={() => showVersions ? setShowVersions(false) : loadVersions()}
               className="w-full flex justify-between items-center"
             >
               <h4 className="text-sm font-semibold flex items-center gap-2">
@@ -423,33 +427,17 @@ const PrescriptionDetail: React.FC = () => {
             {showVersions && (
               <div className="mt-3 space-y-2">
                 {versions.length > 0 ? versions.map(v => (
-                  <button
-                    key={v.id}
-                    onClick={() => navigate(`/prescriptions/${v.id}`)}
-                    className="w-full text-left p-2.5 bg-slate-50 hover:bg-blue-50 border border-slate-100 hover:border-blue-200 rounded-lg transition-colors group"
-                  >
-                    <div className="flex justify-between items-start gap-1">
-                      <span className="text-xs font-semibold text-slate-700 group-hover:text-primary">
-                        {v.prescription_number}
-                      </span>
-                      <span className="text-[10px] text-slate-400 shrink-0">
-                        {new Date(v.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  <div key={v.id} className="p-2 bg-slate-50 rounded-lg">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-medium">Version {v.version}</span>
+                      <span className="text-[10px] text-slate-400">
+                        {new Date(v.created_at).toLocaleDateString()}
                       </span>
                     </div>
-                    {v.diagnosis && (
-                      <p className="text-[10px] text-slate-500 mt-0.5 truncate">{v.diagnosis}</p>
-                    )}
-                    <span className={`mt-1 inline-block text-[9px] px-1.5 py-0.5 rounded-full font-medium border ${
-                      v.status === 'finalized' ? 'bg-blue-50 text-blue-600 border-blue-200' :
-                      v.status === 'dispensed' ? 'bg-green-50 text-green-600 border-green-200' :
-                      v.status === 'partially_dispensed' ? 'bg-orange-50 text-orange-600 border-orange-200' :
-                      'bg-yellow-50 text-yellow-600 border-yellow-200'
-                    }`}>
-                      {v.status?.replace('_', ' ')}
-                    </span>
-                  </button>
+                    {v.change_reason && <p className="text-[10px] text-slate-500 mt-0.5">{v.change_reason}</p>}
+                  </div>
                 )) : (
-                  <p className="text-xs text-slate-400 text-center py-2">No previous prescriptions</p>
+                  <p className="text-xs text-slate-400">No previous versions</p>
                 )}
               </div>
             )}

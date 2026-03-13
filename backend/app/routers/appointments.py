@@ -19,10 +19,6 @@ from ..schemas.appointment import (
     PaginatedAppointmentResponse,
     AppointmentStatusUpdate,
     AppointmentReschedule,
-    FollowUpCreate,
-    ReferralCreate,
-    DoctorLeaveWithWaitlist,
-    WaitlistCreate,
 )
 from ..services.appointment_service import (
     create_appointment,
@@ -155,13 +151,12 @@ async def my_appointments(
 @router.get("/doctor/{doctor_id}/today")
 async def doctor_today(
     doctor_id: str,
-    target_date: Optional[date] = Query(None, alias="date"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    query_date = target_date or date.today()
+    today = date.today()
     _, _, _, _, rows = list_appointments(
-        db, 1, 200, doctor_id=doctor_id, date_from=query_date, date_to=query_date,
+        db, 1, 100, doctor_id=doctor_id, date_from=today, date_to=today,
     )
     return enrich_appointments(db, rows)
 
@@ -269,206 +264,7 @@ async def change_status(
     return enrich_appointment(db, appt)
 
 
-# ── Follow-up booking ─────────────────────────────────────────────────────────
-
-@router.post("/{appointment_id}/follow-up", response_model=AppointmentResponse, status_code=status.HTTP_201_CREATED)
-async def book_follow_up(
-    appointment_id: str,
-    data: FollowUpCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
-):
-    """
-    Doctor creates a follow-up appointment for the same patient on a future date.
-    The new appointment is linked via parent_appointment_id and appears in the
-    doctor's schedule on the specified date.
-    """
-    parent = get_appointment(db, appointment_id)
-    if not parent:
-        raise HTTPException(status_code=404, detail="Appointment not found")
-
-    from ..services.appointment_service import generate_appointment_number
-    from ..models.appointment import Appointment as ApptModel
-
-    appt_number = generate_appointment_number("follow_up")
-    new_appt = ApptModel(
-        hospital_id=parent.hospital_id,
-        appointment_number=appt_number,
-        patient_id=parent.patient_id,
-        doctor_id=parent.doctor_id,
-        department_id=parent.department_id,
-        appointment_date=data.follow_up_date,
-        start_time=data.start_time,
-        appointment_type="scheduled",
-        visit_type="follow_up",
-        priority="normal",
-        status="scheduled",
-        chief_complaint=data.chief_complaint or parent.chief_complaint,
-        notes=data.notes,
-        parent_appointment_id=parent.id,
-        created_by=current_user.id,
-    )
-    db.add(new_appt)
-    db.commit()
-    db.refresh(new_appt)
-    logger.info("Follow-up booked: %s → %s on %s", appointment_id, appt_number, data.follow_up_date)
-    return enrich_appointment(db, new_appt)
-
-
-# ── Patient referral ──────────────────────────────────────────────────────────
-
-@router.post("/{appointment_id}/refer", response_model=AppointmentResponse, status_code=status.HTTP_201_CREATED)
-async def refer_patient(
-    appointment_id: str,
-    data: ReferralCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
-):
-    """
-    Doctor refers a patient to another doctor on a preferred date.
-    Creates a new scheduled appointment linked to the original via parent_appointment_id.
-    The target doctor sees it in their schedule on that date.
-    """
-    source = get_appointment(db, appointment_id)
-    if not source:
-        raise HTTPException(status_code=404, detail="Appointment not found")
-
-    import uuid as _uuid
-    try:
-        to_doc_id = _uuid.UUID(data.to_doctor_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid to_doctor_id")
-
-    target_doctor = db.query(Doctor).filter(Doctor.id == to_doc_id, Doctor.is_active == True).first()
-    if not target_doctor:
-        raise HTTPException(status_code=404, detail="Target doctor not found")
-
-    from ..services.appointment_service import generate_appointment_number
-    from ..models.appointment import Appointment as ApptModel
-
-    appt_number = generate_appointment_number("referral")
-    new_appt = ApptModel(
-        hospital_id=source.hospital_id,
-        appointment_number=appt_number,
-        patient_id=source.patient_id,
-        doctor_id=to_doc_id,
-        department_id=target_doctor.department_id,
-        appointment_date=data.preferred_date,
-        start_time=data.preferred_time,
-        appointment_type="scheduled",
-        visit_type="referral",
-        priority="normal",
-        status="scheduled",
-        chief_complaint=data.chief_complaint or source.chief_complaint,
-        notes=f"Referred from {source.appointment_number}. Reason: {data.reason or ''}",
-        parent_appointment_id=source.id,
-        created_by=current_user.id,
-    )
-    db.add(new_appt)
-    db.commit()
-    db.refresh(new_appt)
-    logger.info("Referral created: %s → %s (doctor %s) on %s", appointment_id, appt_number, data.to_doctor_id, data.preferred_date)
-    return enrich_appointment(db, new_appt)
-
-
-# ── Doctor leave + auto-move appointments to waitlist ─────────────────────────
-
-@router.post("/doctor-leave-with-waitlist")
-async def mark_leave_move_to_waitlist(
-    data: DoctorLeaveWithWaitlist,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
-):
-    """
-    Mark doctor as on leave for a date AND automatically move all their
-    scheduled appointments on that day to the waitlist.
-    Returns a summary of appointments moved.
-    """
-    from ..services.schedule_service import create_doctor_leave, is_doctor_on_leave
-    from ..models.appointment import Appointment as ApptModel, Waitlist
-    import uuid as _uuid
-
-    # Resolve doctor id
-    try:
-        doc_uuid = _uuid.UUID(data.doctor_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid doctor_id")
-
-    doctor = db.query(Doctor).filter(Doctor.id == doc_uuid).first()
-    if not doctor:
-        raise HTTPException(status_code=404, detail="Doctor not found")
-
-    # Create leave record (idempotent — skip if already on leave)
-    if not is_doctor_on_leave(db, doc_uuid, data.leave_date):
-        create_doctor_leave(db, {
-            "doctor_id": data.doctor_id,
-            "leave_date": data.leave_date,
-            "leave_type": data.leave_type,
-            "reason": data.reason,
-            "status": "approved",
-        }, approved_by=current_user.id)
-
-    # Find all non-cancelled appointments for that doctor on that date
-    affected_appts = db.query(ApptModel).filter(
-        ApptModel.doctor_id == doc_uuid,
-        ApptModel.appointment_date == data.leave_date,
-        ApptModel.status.notin_(["cancelled", "completed", "no-show"]),
-        ApptModel.is_deleted == False,
-    ).all()
-
-    moved = []
-    for appt in affected_appts:
-        # Update appointment status to cancelled (doctor leave)
-        appt.status = "cancelled"
-        appt.cancel_reason = f"Doctor on leave: {data.reason or 'scheduled leave'}"
-
-        # Check duplicate on waitlist
-        existing_wl = db.query(Waitlist).filter(
-            Waitlist.patient_id == appt.patient_id,
-            Waitlist.doctor_id == appt.doctor_id,
-            Waitlist.preferred_date == data.leave_date,
-            Waitlist.is_deleted == False,
-        ).first()
-        if existing_wl:
-            moved.append({"appointment_id": str(appt.id), "waitlist_id": str(existing_wl.id), "skipped_duplicate": True})
-            continue
-
-        from sqlalchemy import func as sqlfunc
-        max_pos = db.query(sqlfunc.max(Waitlist.position)).filter(
-            Waitlist.doctor_id == doc_uuid,
-            Waitlist.preferred_date == data.leave_date,
-            Waitlist.is_deleted == False,
-        ).scalar() or 0
-
-        wl_entry = Waitlist(
-            hospital_id=appt.hospital_id,
-            patient_id=appt.patient_id,
-            doctor_id=appt.doctor_id,
-            department_id=appt.department_id,
-            preferred_date=data.leave_date,
-            preferred_time=appt.start_time,
-            appointment_type=appt.appointment_type,
-            priority=appt.priority or "normal",
-            chief_complaint=appt.chief_complaint,
-            reason=f"Auto-moved from appointment {appt.appointment_number} — doctor on leave",
-            status="waiting",
-            position=max_pos + 1,
-            created_by=current_user.id,
-        )
-        db.add(wl_entry)
-        db.flush()
-        moved.append({"appointment_id": str(appt.id), "waitlist_id": str(wl_entry.id), "skipped_duplicate": False})
-
-    db.commit()
-    return {
-        "leave_created": True,
-        "doctor_id": data.doctor_id,
-        "leave_date": str(data.leave_date),
-        "appointments_moved": len(moved),
-        "details": moved,
-    }
-
-
+@router.get("/{appointment_id}/pdf")
 async def get_appointment_pdf(
     appointment_id: str,
     db: Session = Depends(get_db),

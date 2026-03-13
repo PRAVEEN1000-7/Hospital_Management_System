@@ -200,28 +200,6 @@ class AppointmentReschedule(BaseModel):
     reason: Optional[str] = None
 
 
-class FollowUpCreate(BaseModel):
-    follow_up_date: date
-    start_time: Optional[time] = None
-    chief_complaint: Optional[str] = None
-    notes: Optional[str] = None
-
-
-class ReferralCreate(BaseModel):
-    to_doctor_id: str
-    preferred_date: date
-    preferred_time: Optional[time] = None
-    reason: Optional[str] = None
-    chief_complaint: Optional[str] = None
-
-
-class DoctorLeaveWithWaitlist(BaseModel):
-    doctor_id: str
-    leave_date: date
-    leave_type: str = "full_day"
-    reason: Optional[str] = None
-
-
 class AppointmentResponse(BaseModel):
     id: str
     appointment_number: str

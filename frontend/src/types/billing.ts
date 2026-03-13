@@ -194,6 +194,8 @@ export interface PaymentListItem {
   payment_reference?: string;
   payment_date: string;
   status: PaymentStatus;
+  refunded_amount: number;
+  net_amount: number;
   created_at: string;
 }
 

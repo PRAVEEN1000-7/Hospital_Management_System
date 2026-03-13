@@ -20,6 +20,16 @@ const MODE_COLORS: Record<string, string> = {
 const fmt = (n: number) =>
   new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
 
+const getRefundedAmount = (p: PaymentListItem): number => {
+  if (typeof p.refunded_amount === 'number') return Number(p.refunded_amount);
+  return p.status === 'reversed' ? Number(p.amount) : 0;
+};
+
+const getNetAmount = (p: PaymentListItem): number => {
+  if (typeof p.net_amount === 'number') return Number(p.net_amount);
+  return p.status === 'reversed' ? 0 : Number(p.amount);
+};
+
 const PaymentList: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -75,7 +85,9 @@ const PaymentList: React.FC = () => {
   useEffect(() => { load(); }, [load]);
 
   // Summary stats
-  const totalAmount = payments.filter(p => p.status === 'completed').reduce((s, p) => s + Number(p.amount), 0);
+  const grossCollected = payments.reduce((s, p) => s + Number(p.amount || 0), 0);
+  const totalRefunded = payments.reduce((s, p) => s + getRefundedAmount(p), 0);
+  const netCollected = payments.reduce((s, p) => s + getNetAmount(p), 0);
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -101,10 +113,18 @@ const PaymentList: React.FC = () => {
       {!invoiceId && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
           <div className="bg-white rounded-xl border border-slate-200 p-4">
-            <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Total Collected</p>
-            <p className="text-2xl font-bold text-green-600 mt-1">₹{fmt(totalAmount)}</p>
+            <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Net Collected</p>
+            <p className="text-2xl font-bold text-green-600 mt-1">₹{fmt(netCollected)}</p>
           </div>
           <div className="bg-white rounded-xl border border-slate-200 p-4">
+            <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Gross Payments</p>
+            <p className="text-2xl font-bold text-slate-800 mt-1">₹{fmt(grossCollected)}</p>
+          </div>
+          <div className="bg-white rounded-xl border border-slate-200 p-4">
+            <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Refunded</p>
+            <p className="text-2xl font-bold text-red-600 mt-1">₹{fmt(totalRefunded)}</p>
+          </div>
+          <div className="bg-white rounded-xl border border-slate-200 p-4 sm:col-span-3">
             <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Transactions</p>
             <p className="text-2xl font-bold text-slate-800 mt-1">{total}</p>
           </div>
@@ -181,6 +201,8 @@ const PaymentList: React.FC = () => {
                   <th className="text-left px-4 py-3 font-semibold text-slate-600">Date</th>
                   <th className="text-center px-4 py-3 font-semibold text-slate-600">Mode</th>
                   <th className="text-right px-4 py-3 font-semibold text-slate-600">Amount</th>
+                  <th className="text-right px-4 py-3 font-semibold text-slate-600">Refunded</th>
+                  <th className="text-right px-4 py-3 font-semibold text-slate-600">Net</th>
                   <th className="text-center px-4 py-3 font-semibold text-slate-600">Status</th>
                 </tr>
               </thead>
@@ -198,6 +220,8 @@ const PaymentList: React.FC = () => {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right font-bold text-green-700">₹{fmt(Number(p.amount))}</td>
+                    <td className="px-4 py-3 text-right font-semibold text-red-600">₹{fmt(getRefundedAmount(p))}</td>
+                    <td className="px-4 py-3 text-right font-bold text-slate-800">₹{fmt(getNetAmount(p))}</td>
                     <td className="px-4 py-3 text-center">
                       <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${p.status === 'completed' ? 'bg-green-100 text-green-700' : p.status === 'reversed' ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-500'}`}>
                         {p.status}

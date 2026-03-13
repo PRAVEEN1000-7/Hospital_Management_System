@@ -317,6 +317,8 @@ const RefundList: React.FC = () => {
           </div>
         </div>
       )}
+    </div>
+  );
 };
 
 export default RefundList;

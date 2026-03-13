@@ -14,7 +14,7 @@ class PaymentCreate(BaseModel):
     invoice_id: str
     patient_id: str
     amount: Decimal = Field(..., gt=0, decimal_places=2)
-    payment_mode: str = Field(..., description="cash | card | upi | wallet | bank_transfer | online | cheque | insurance")
+    payment_mode: str = Field(..., description="cash | upi | debit_card | credit_card")
     payment_reference: Optional[str] = Field(None, max_length=100)
     payment_date: Optional[date] = None   # defaults to today
     notes: Optional[str] = None
@@ -39,6 +39,8 @@ class PaymentListItem(BaseModel):
     payment_reference: Optional[str] = None
     payment_date: date
     status: str
+    refunded_amount: Decimal = Decimal("0")
+    net_amount: Decimal
     created_at: datetime
 
     model_config = {"from_attributes": True}

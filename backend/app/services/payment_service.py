@@ -126,7 +126,11 @@ def list_payments(
 ) -> PaginatedPaymentResponse:
     query = (
         db.query(Payment)
-        .options(joinedload(Payment.invoice), joinedload(Payment.patient))
+        .options(
+            joinedload(Payment.invoice),
+            joinedload(Payment.patient),
+            joinedload(Payment.refunds),
+        )
         .filter(Payment.hospital_id == hospital_id)
     )
     if payment_mode:
@@ -183,6 +187,12 @@ def list_payments(
         if p.patient:
             patient_name = f"{p.patient.first_name} {p.patient.last_name}".strip()
         invoice_number = p.invoice.invoice_number if p.invoice else ""
+        refunded_amount = sum(
+            (r.amount or Decimal("0"))
+            for r in (p.refunds or [])
+            if r.status == "processed"
+        )
+        net_amount = max(Decimal("0"), (p.amount or Decimal("0")) - refunded_amount)
         items.append(PaymentListItem(
             id=str(p.id),
             payment_number=p.payment_number,
@@ -195,6 +205,8 @@ def list_payments(
             payment_reference=p.payment_reference,
             payment_date=p.payment_date,
             status=p.status,
+            refunded_amount=refunded_amount,
+            net_amount=net_amount,
             created_at=p.created_at,
         ))
 

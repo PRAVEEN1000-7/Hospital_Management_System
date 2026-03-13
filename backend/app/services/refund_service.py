@@ -146,9 +146,14 @@ def process_refund(
         invoice.balance_amount = round(
             (invoice.total_amount or Decimal("0")) - invoice.paid_amount, 2
         )
-        # Revert status from paid → partially_paid if balance is now > 0
-        if invoice.status == "paid" and invoice.balance_amount > Decimal("0"):
-            invoice.status = "partially_paid"
+        # Keep invoice state machine consistent after refund adjustments.
+        if invoice.status not in ("draft", "void", "cancelled"):
+            if invoice.paid_amount <= Decimal("0"):
+                invoice.status = "issued"
+            elif invoice.paid_amount < (invoice.total_amount or Decimal("0")):
+                invoice.status = "partially_paid"
+            else:
+                invoice.status = "paid"
         # Mark the source payment as reversed if fully refunded
         if refund.payment_id:
             payment = db.query(Payment).filter(Payment.id == refund.payment_id).first()

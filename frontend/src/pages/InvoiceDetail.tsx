@@ -9,7 +9,7 @@ import { patientService } from '../services/patientService';
 import hospitalService from '../services/hospitalService';
 import type { HospitalDetails } from '../services/hospitalService';
 import type { Patient } from '../types/patient';
-import type { Invoice, PaymentListItem, PaymentMode, InvoiceStatus, RefundReasonCode } from '../types/billing';
+import type { Invoice, PaymentListItem, PaymentMode, InvoiceStatus, RefundReasonCode, RefundListItem } from '../types/billing';
 
 const STATUS_COLORS: Record<InvoiceStatus, string> = {
   draft: 'bg-slate-100 text-slate-600',
@@ -44,6 +44,7 @@ const InvoiceDetail: React.FC = () => {
 
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [payments, setPayments] = useState<PaymentListItem[]>([]);
+  const [refunds, setRefunds] = useState<RefundListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [hospital, setHospital] = useState<HospitalDetails | null>(null);
   const [patient, setPatient] = useState<Patient | null>(null);
@@ -73,17 +74,21 @@ const InvoiceDetail: React.FC = () => {
 
   const role = user?.roles?.[0];
   const canMutate = ['super_admin', 'admin', 'cashier', 'pharmacist'].includes(role || '');
+  const isAdmin = ['super_admin', 'admin'].includes(role || '');
+  const isBillingStaff = ['super_admin', 'admin', 'cashier', 'pharmacist'].includes(role || '');
 
   const load = useCallback(async () => {
     if (!id) return;
     setLoading(true);
     try {
-      const [inv, payRes] = await Promise.all([
+      const [inv, payRes, refundRes] = await Promise.all([
         invoiceService.getById(id),
         paymentService.getByInvoice(id),
+        refundService.list(1, 100, { invoice_id: id }),
       ]);
       setInvoice(inv);
       setPayments(payRes.items);
+      setRefunds(refundRes.items);
       setPayAmount(inv.balance_amount);
       // Fetch hospital + patient in parallel
       const [h, pat] = await Promise.all([
@@ -132,6 +137,12 @@ const InvoiceDetail: React.FC = () => {
     if (!invoice) return;
     if (!refundPaymentId) { showToast('error', 'Please select the payment to refund'); return; }
     if (!refundAmount || Number(refundAmount) <= 0) { showToast('error', 'Refund amount must be greater than zero'); return; }
+    const selectedPayment = payments.find(p => p.id === refundPaymentId);
+    const availableRefundable = selectedPayment ? Number(selectedPayment.net_amount ?? selectedPayment.amount) : 0;
+    if (Number(refundAmount) > availableRefundable) {
+      showToast('error', `Refund amount cannot exceed refundable amount (₹${fmt(availableRefundable)})`);
+      return;
+    }
     setRefundSaving(true);
     try {
       await refundService.request({
@@ -148,11 +159,45 @@ const InvoiceDetail: React.FC = () => {
       setRefundAmount('');
       setRefundReasonCode('billing_error');
       setRefundReasonDetail('');
+      await load();
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       showToast('error', msg || 'Failed to submit refund request');
     } finally {
       setRefundSaving(false);
+    }
+  };
+
+  const handleApproveRefund = async (refundId: string) => {
+    try {
+      await refundService.approve(refundId);
+      showToast('success', 'Refund approved');
+      await load();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      showToast('error', msg || 'Failed to approve refund');
+    }
+  };
+
+  const handleRejectRefund = async (refundId: string) => {
+    try {
+      await refundService.reject(refundId);
+      showToast('success', 'Refund rejected');
+      await load();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      showToast('error', msg || 'Failed to reject refund');
+    }
+  };
+
+  const handleProcessRefund = async (refundId: string) => {
+    try {
+      await refundService.process(refundId);
+      showToast('success', 'Refund processed');
+      await load();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      showToast('error', msg || 'Failed to process refund');
     }
   };
 
@@ -469,6 +514,8 @@ const InvoiceDetail: React.FC = () => {
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Mode</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Reference</th>
                     <th className="text-right px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Amount</th>
+                    <th className="text-right px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Refunded</th>
+                    <th className="text-right px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Net</th>
                     <th className="text-center px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Status</th>
                   </tr>
                 </thead>
@@ -480,11 +527,84 @@ const InvoiceDetail: React.FC = () => {
                       <td className="px-4 py-3 capitalize text-slate-600">{p.payment_mode.replace('_', ' ')}</td>
                       <td className="px-4 py-3 text-slate-400 text-xs">{p.payment_reference || '—'}</td>
                       <td className="px-4 py-3 text-right font-semibold text-green-700">₹{fmt(p.amount)}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-red-600">₹{fmt(Number(p.refunded_amount || 0))}</td>
+                      <td className="px-4 py-3 text-right font-bold text-slate-900">₹{fmt(Number(p.net_amount ?? p.amount))}</td>
                       <td className="px-4 py-3 text-center">
                         <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${p.status === 'completed' ? 'bg-green-100 text-green-700' : p.status === 'reversed' ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-500'}`}>
-                          {p.status}
+                          {p.status === 'completed' && Number(p.refunded_amount || 0) > 0 ? 'partially_refunded' : p.status}
                         </span>
                       </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Refund History */}
+          {refunds.length > 0 && (
+            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden mb-4">
+              <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
+                <p className="text-sm font-semibold text-slate-700">Refund History</p>
+                <p className="text-xs text-slate-500">Stay on this invoice to complete refund workflow</p>
+              </div>
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Refund #</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Reason</th>
+                    <th className="text-right px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Amount</th>
+                    <th className="text-center px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Status</th>
+                    {isBillingStaff && <th className="text-center px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Actions</th>}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {refunds.map(r => (
+                    <tr key={r.id}>
+                      <td className="px-4 py-3 font-mono text-xs text-primary">{r.refund_number}</td>
+                      <td className="px-4 py-3 text-xs text-slate-600">{r.reason_code.replace('_', ' ')}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-amber-700">₹{fmt(r.amount)}</td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${r.status === 'processed' ? 'bg-green-100 text-green-700' : r.status === 'approved' ? 'bg-blue-100 text-blue-700' : r.status === 'rejected' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-700'}`}>
+                          {r.status}
+                        </span>
+                      </td>
+                      {isBillingStaff && (
+                        <td className="px-4 py-3 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            {r.status === 'pending' && isAdmin && (
+                              <>
+                                <button
+                                  onClick={() => handleApproveRefund(r.id)}
+                                  className="px-2 py-1 bg-blue-50 text-blue-600 border border-blue-200 rounded text-xs font-medium hover:bg-blue-100"
+                                >
+                                  Approve
+                                </button>
+                                <button
+                                  onClick={() => handleRejectRefund(r.id)}
+                                  className="px-2 py-1 bg-red-50 text-red-600 border border-red-200 rounded text-xs font-medium hover:bg-red-100"
+                                >
+                                  Reject
+                                </button>
+                              </>
+                            )}
+                            {r.status === 'approved' && (
+                              <button
+                                onClick={() => handleProcessRefund(r.id)}
+                                className="px-2 py-1 bg-green-50 text-green-600 border border-green-200 rounded text-xs font-medium hover:bg-green-100"
+                              >
+                                Process
+                              </button>
+                            )}
+                            {r.status === 'pending' && !isAdmin && (
+                              <span className="text-slate-400 text-xs italic">Awaiting approval</span>
+                            )}
+                            {['processed', 'rejected'].includes(r.status) && (
+                              <span className="text-slate-300 text-xs">—</span>
+                            )}
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -636,16 +756,23 @@ const InvoiceDetail: React.FC = () => {
                     <option value="">Select payment…</option>
                     {payments.filter(p => p.status === 'completed').map(p => (
                       <option key={p.id} value={p.id}>
-                        {p.payment_number} — {p.payment_mode.replace('_', ' ')} — ₹{fmt(p.amount)} ({new Date(p.payment_date).toLocaleDateString('en-IN')})
+                        {p.payment_number} — {p.payment_mode.replace('_', ' ')} — Paid ₹{fmt(p.amount)} · Refundable ₹{fmt(Number(p.net_amount ?? p.amount))}
                       </option>
                     ))}
                   </select>
                 )}
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Refund Amount (₹) *</label>
+                <label className="block text-xs font-medium text-slate-600 mb-1">
+                  Refund Amount (₹) *
+                  {refundPaymentId && (
+                    <span className="ml-2 text-[11px] text-slate-500">
+                      Max refundable: ₹{fmt(Number(payments.find(p => p.id === refundPaymentId)?.net_amount ?? 0))}
+                    </span>
+                  )}
+                </label>
                 <input
-                  type="number" min={0.01} step="0.01"
+                  type="number" min={0.01} step="0.01" max={refundPaymentId ? Number(payments.find(p => p.id === refundPaymentId)?.net_amount ?? 0) : undefined}
                   value={refundAmount}
                   onChange={e => setRefundAmount(parseFloat(e.target.value) || '')}
                   placeholder="Enter amount"

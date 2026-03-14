@@ -46,7 +46,6 @@ function getQuickActions(role: string, isSuperAdmin: boolean): QuickAction[] {
     case 'doctor':
       return [
         { icon: 'queue', iconColor: 'text-amber-500', label: 'My Queue', desc: 'View your patient queue', to: '/appointments/queue' },
-        { icon: 'note_add', iconColor: 'text-blue-500', label: 'New Prescription', desc: 'Create a prescription', to: '/prescriptions/new' },
         { icon: 'person', iconColor: 'text-purple-500', label: 'My Profile', desc: 'Update your information', to: '/profile' },
       ];
     case 'receptionist':
@@ -57,7 +56,6 @@ function getQuickActions(role: string, isSuperAdmin: boolean): QuickAction[] {
       ];
     case 'pharmacist':
       return [
-        { icon: 'list_alt', iconColor: 'text-primary', label: 'Prescriptions', desc: 'View pending prescriptions', to: '/prescriptions' },
         { icon: 'group', iconColor: 'text-emerald-500', label: 'Patient Directory', desc: 'Look up patient records', to: '/patients' },
         { icon: 'person', iconColor: 'text-purple-500', label: 'My Profile', desc: 'Update your information', to: '/profile' },
       ];
@@ -101,7 +99,6 @@ function getQuickLinks(role: string): QuickLink[] {
     case 'doctor':
       return [
         { icon: 'queue', iconColor: 'text-amber-400', label: 'Walk-in Queue', to: '/appointments/queue' },
-        { icon: 'list_alt', iconColor: 'text-blue-400', label: 'My Prescriptions', to: '/prescriptions' },
         { icon: 'person', iconColor: 'text-purple-400', label: 'My Profile', to: '/profile' },
       ];
     case 'receptionist':
@@ -112,7 +109,6 @@ function getQuickLinks(role: string): QuickLink[] {
       ];
     case 'pharmacist':
       return [
-        { icon: 'list_alt', iconColor: 'text-blue-400', label: 'Prescriptions', to: '/prescriptions' },
         { icon: 'group', iconColor: 'text-emerald-400', label: 'Patients', to: '/patients' },
       ];
     case 'cashier':

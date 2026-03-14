@@ -10,7 +10,9 @@ from .appointment import (
     Doctor, DoctorSchedule, DoctorLeave, DoctorFee,
     Appointment, AppointmentStatusLog, AppointmentQueue,
 )
-from .prescription import (
-    Medicine, Prescription, PrescriptionItem,
-    PrescriptionTemplate, PrescriptionVersion,
+from .pharmacy import (
+    Medicine, MedicineBatch, Supplier,
+    PurchaseOrder, PurchaseOrderItem,
+    PharmacySale, PharmacySaleItem,
+    StockAdjustment,
 )

@@ -18,13 +18,14 @@ from .routers import (
     auth, hospital, users, patients,
     appointments, schedules, appointment_settings, appointment_reports,
     departments, doctors, hospital_settings as hospital_settings_router,
-    walk_ins, waitlist, prescriptions,
+    walk_ins, waitlist, pharmacy,
 )
 
 logger = logging.getLogger(__name__)
 
 # Import models so they're registered with Base.metadata
-from .models import user, patient, appointment, patient_id_sequence, department, hospital_settings, prescription  # noqa: F401
+from .models import user, patient, appointment, patient_id_sequence, department, hospital_settings  # noqa: F401
+from .models import pharmacy as pharmacy_models  # noqa: F401
 
 # NOTE: We do NOT call Base.metadata.create_all() — the new hms_db schema
 # is managed via the SQL migration files (01_schema.sql, 02_seed_data.sql).
@@ -101,9 +102,10 @@ app.include_router(doctors.router, prefix="/api/v1")
 app.include_router(hospital_settings_router.router, prefix="/api/v1")
 app.include_router(walk_ins.router, prefix="/api/v1")
 app.include_router(waitlist.router, prefix="/api/v1")
-app.include_router(prescriptions.router, prefix="/api/v1")
-app.include_router(prescriptions.medicines_router, prefix="/api/v1")
-app.include_router(prescriptions.templates_router, prefix="/api/v1")
+app.include_router(pharmacy.router, prefix="/api/v1")
+app.include_router(pharmacy.suppliers_router, prefix="/api/v1")
+app.include_router(pharmacy.purchase_orders_router, prefix="/api/v1")
+app.include_router(pharmacy.sales_router, prefix="/api/v1")
 
 
 @app.get("/")

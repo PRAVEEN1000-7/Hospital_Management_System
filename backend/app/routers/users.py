@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session, joinedload
 from typing import Optional
 from ..database import get_db
 from ..models.user import User, UserRole
-from ..dependencies import get_current_active_user, require_super_admin
+from ..dependencies import get_current_active_user, require_super_admin, require_admin_or_super_admin
 from ..schemas.user import (
     UserCreate,
     UserUpdate,
@@ -36,9 +36,15 @@ async def create_new_user(
     user_data: UserCreate,
     send_email: bool = Query(False),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_super_admin),
+    current_user: User = Depends(require_admin_or_super_admin),
 ):
-    """Create a new user (Super Admin only)"""
+    """Create a new user (Admin or Super Admin)"""
+    # Only super_admin can create other super_admins
+    if user_data.role == "super_admin" and "super_admin" not in current_user.roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only Super Admin can create Super Admin accounts",
+        )
     try:
         # Check username uniqueness
         existing = db.query(User).filter(User.username == user_data.username.lower()).first()
@@ -110,9 +116,9 @@ async def get_users(
     limit: int = Query(10, ge=1, le=100),
     search: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_super_admin),
+    current_user: User = Depends(require_admin_or_super_admin),
 ):
-    """List all users (Super Admin only)"""
+    """List all users (Admin or Super Admin)"""
     try:
         result = list_users(db, page, limit, search)
         return UserListResponse(
@@ -134,9 +140,9 @@ async def get_users(
 async def get_user(
     user_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_super_admin),
+    current_user: User = Depends(require_admin_or_super_admin),
 ):
-    """Get user by ID (Super Admin only)"""
+    """Get user by ID (Admin or Super Admin)"""
     user = get_user_by_id(db, user_id)
     if not user:
         raise HTTPException(
@@ -151,15 +157,22 @@ async def update_existing_user(
     user_id: str,
     user_data: UserUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_super_admin),
+    current_user: User = Depends(require_admin_or_super_admin),
 ):
-    """Update user (Super Admin only)"""
+    """Update user (Admin or Super Admin)"""
     try:
         target_user = get_user_by_id(db, user_id)
         if not target_user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found",
+            )
+
+        # Only super_admin can edit super_admin accounts
+        if "super_admin" in target_user.roles and "super_admin" not in current_user.roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only Super Admin can modify Super Admin accounts",
             )
 
         # Check email uniqueness if email is being changed
@@ -194,9 +207,9 @@ async def update_existing_user(
 async def delete_existing_user(
     user_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_super_admin),
+    current_user: User = Depends(require_admin_or_super_admin),
 ):
-    """Soft delete user (Super Admin only)"""
+    """Soft delete user (Admin or Super Admin)"""
     try:
         if str(current_user.id) == user_id:
             raise HTTPException(
@@ -209,6 +222,13 @@ async def delete_existing_user(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found",
+            )
+
+        # Prevent admin from deleting super_admin accounts
+        if "super_admin" in target_user.roles and "super_admin" not in current_user.roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only Super Admin can delete Super Admin accounts",
             )
 
         # Prevent deleting the last super admin
@@ -243,9 +263,9 @@ async def upload_user_photo(
     user_id: str,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_super_admin),
+    current_user: User = Depends(require_admin_or_super_admin),
 ):
-    """Upload user profile photo (Super Admin only)"""
+    """Upload user profile photo (Admin or Super Admin)"""
     try:
         result = save_user_photo(db, user_id, file)
         return result
@@ -264,9 +284,9 @@ async def reset_user_password(
     user_id: str,
     password_data: PasswordReset,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_super_admin),
+    current_user: User = Depends(require_admin_or_super_admin),
 ):
-    """Reset user password (Super Admin only)"""
+    """Reset user password (Admin or Super Admin)"""
     try:
         target_user = get_user_by_id(db, user_id)
         if not target_user:

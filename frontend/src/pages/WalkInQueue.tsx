@@ -181,16 +181,6 @@ const WalkInQueue: React.FC = () => {
       await walkInService.startConsultation(queueId);
       toast.success('Consultation started');
       fetchQueue();
-      // Navigate to prescription builder in consultation mode
-      const item = (queueData?.items || []).find(i => i.queue_id === queueId);
-      if (item) {
-        const params = new URLSearchParams({
-          patient_id: item.patient_id || '',
-          appointment_id: item.appointment_id || '',
-          queue_id: item.queue_id,
-        });
-        navigate(`/prescriptions/new?${params.toString()}`);
-      }
     } catch { toast.error('Failed to start consultation'); }
   };
 
@@ -528,18 +518,6 @@ const WalkInQueue: React.FC = () => {
                           className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
                           <span className="material-symbols-outlined text-sm">person</span>
                           Patient Info
-                        </button>
-                        <button onClick={() => {
-                          const params = new URLSearchParams({
-                            patient_id: currentPatient.patient_id || '',
-                            appointment_id: currentPatient.appointment_id || '',
-                            queue_id: currentPatient.queue_id,
-                          });
-                          navigate(`/prescriptions/new?${params.toString()}`);
-                        }}
-                          className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-purple-700 bg-white border border-purple-200 rounded-lg hover:bg-purple-50 transition-colors">
-                          <span className="material-symbols-outlined text-sm">edit_note</span>
-                          Consultation
                         </button>
                         <button onClick={() => handleComplete(currentPatient.queue_id)}
                           className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 transition-colors shadow-sm">
@@ -1734,20 +1712,6 @@ const WalkInQueue: React.FC = () => {
                 <button onClick={() => { handleStartConsultation(detailItem.queue_id); setDetailItem(null); }}
                   className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-purple-500 rounded-lg hover:bg-purple-600 shadow-sm transition-colors">
                   <span className="material-symbols-outlined text-base">clinical_notes</span> Start Consultation
-                </button>
-              )}
-              {canActOnQueue && detailItem.status === 'in_consultation' && (
-                <button onClick={() => {
-                  const params = new URLSearchParams({
-                    patient_id: detailItem.patient_id || '',
-                    appointment_id: detailItem.appointment_id || '',
-                    queue_id: detailItem.queue_id,
-                  });
-                  navigate(`/prescriptions/new?${params.toString()}`);
-                  setDetailItem(null);
-                }}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-purple-500 rounded-lg hover:bg-purple-600 shadow-sm transition-colors">
-                  <span className="material-symbols-outlined text-base">edit_note</span> Open Consultation
                 </button>
               )}
               {canActOnQueue && detailItem.status === 'in_consultation' && (

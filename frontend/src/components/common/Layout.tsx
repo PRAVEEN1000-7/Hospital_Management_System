@@ -19,8 +19,8 @@ const Layout: React.FC = () => {
   const [appointmentsOpen, setAppointmentsOpen] = useState(
     () => location.pathname.startsWith('/appointments')
   );
-  const [prescriptionsOpen, setPrescriptionsOpen] = useState(
-    () => location.pathname.startsWith('/prescriptions')
+  const [pharmacyOpen, setPharmacyOpen] = useState(
+    () => location.pathname.startsWith('/pharmacy')
   );
 
   useEffect(() => {
@@ -39,8 +39,8 @@ const Layout: React.FC = () => {
     if (location.pathname.startsWith('/appointments')) {
       setAppointmentsOpen(true);
     }
-    if (location.pathname.startsWith('/prescriptions')) {
-      setPrescriptionsOpen(true);
+    if (location.pathname.startsWith('/pharmacy')) {
+      setPharmacyOpen(true);
     }
   }, [location.pathname]);
 
@@ -146,22 +146,16 @@ const Layout: React.FC = () => {
   }
   // pharmacist, cashier, inventory_manager, optical_staff — no appointment items
 
-  // ── Prescription navigation ── role-driven
-  const prescriptionItems: { to: string; label: string; icon: string }[] = [];
-
-  if (role === 'super_admin' || role === 'admin') {
-    prescriptionItems.push(
-      { to: '/prescriptions',     label: 'All Prescriptions', icon: 'list_alt' },
-      { to: '/prescriptions/new', label: 'New Prescription',  icon: 'note_add' },
-    );
-  } else if (role === 'doctor') {
-    prescriptionItems.push(
-      { to: '/prescriptions',     label: 'My Prescriptions',  icon: 'list_alt' },
-      { to: '/prescriptions/new', label: 'New Prescription',  icon: 'note_add' },
-    );
-  } else if (role === 'nurse' || role === 'pharmacist') {
-    prescriptionItems.push(
-      { to: '/prescriptions', label: 'Prescriptions', icon: 'list_alt' },
+  // ── Pharmacy navigation ── role-driven
+  const pharmacyItems: { to: string; label: string; icon: string }[] = [];
+  if (role === 'super_admin' || role === 'admin' || role === 'pharmacist') {
+    pharmacyItems.push(
+      { to: '/pharmacy',                label: 'Dashboard',         icon: 'space_dashboard' },
+      { to: '/pharmacy/medicines',      label: 'Medicines',         icon: 'medication' },
+      { to: '/pharmacy/suppliers',      label: 'Suppliers',         icon: 'local_shipping' },
+      { to: '/pharmacy/purchase-orders',label: 'Purchase Orders',   icon: 'inventory_2' },
+      { to: '/pharmacy/sales',          label: 'Sales',             icon: 'point_of_sale' },
+      { to: '/pharmacy/stock-adjustments', label: 'Stock Adjustments', icon: 'tune' },
     );
   }
 
@@ -295,38 +289,39 @@ const Layout: React.FC = () => {
             </div>
           )}
 
-          {/* ══ PRESCRIPTIONS — collapsible ══ */}
-          {prescriptionItems.length > 0 && (
+          {/* ══ PHARMACY — collapsible ══ */}
+          {pharmacyItems.length > 0 && (
             <div className="mt-4">
               <div className="px-6 mb-1">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Prescriptions</span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Pharmacy</span>
               </div>
               <button
-                onClick={() => setPrescriptionsOpen(!prescriptionsOpen)}
-                aria-expanded={prescriptionsOpen}
-                aria-controls="prescriptions-menu"
+                onClick={() => setPharmacyOpen(!pharmacyOpen)}
+                aria-expanded={pharmacyOpen}
+                aria-controls="pharmacy-menu"
                 className={`w-full flex items-center justify-between px-6 py-2.5 text-sm font-medium transition-all ${
-                  location.pathname.startsWith('/prescriptions')
+                  location.pathname.startsWith('/pharmacy')
                     ? 'text-primary bg-primary/5'
                     : 'text-slate-500 hover:text-primary hover:bg-slate-50'
                 }`}
               >
                 <div className="flex items-center">
-                  <span className="material-symbols-outlined mr-3 text-[20px]">prescriptions</span>
-                  Prescriptions
+                  <span className="material-symbols-outlined mr-3 text-[20px]">local_pharmacy</span>
+                  Pharmacy
                 </div>
-                <span className={`material-symbols-outlined text-[18px] transition-transform duration-200 ${prescriptionsOpen ? 'rotate-180' : ''}`}>
+                <span className={`material-symbols-outlined text-[18px] transition-transform duration-200 ${pharmacyOpen ? 'rotate-180' : ''}`}>
                   expand_more
                 </span>
               </button>
-              <div id="prescriptions-menu" className={`overflow-hidden transition-all duration-200 ${prescriptionsOpen ? 'max-h-[700px] opacity-100' : 'max-h-0 opacity-0'}`}>
-                {prescriptionItems.map((item) => (
+              <div id="pharmacy-menu" className={`overflow-hidden transition-all duration-200 ${pharmacyOpen ? 'max-h-[700px] opacity-100' : 'max-h-0 opacity-0'}`}>
+                {pharmacyItems.map((item) => (
                   <NavLink
                     key={item.to}
                     to={item.to}
+                    end={item.to === '/pharmacy'}
                     onClick={() => setSidebarOpen(false)}
                     className={`flex items-center pl-10 pr-6 py-2.5 text-[13px] font-medium transition-all ${
-                      isActive(item.to)
+                      (item.to === '/pharmacy' ? location.pathname === '/pharmacy' : isActive(item.to))
                         ? 'sidebar-item-active'
                         : 'text-slate-400 hover:text-primary hover:bg-slate-50'
                     }`}
@@ -427,7 +422,6 @@ const Layout: React.FC = () => {
             <h1 className="text-base sm:text-lg font-bold text-slate-900 truncate">
               {mainNavItems.find(i => isActive(i.to))?.label ||
               appointmentItems.find(i => isActive(i.to))?.label ||
-              prescriptionItems.find(i => isActive(i.to))?.label ||
               systemNavItems.find(i => isActive(i.to))?.label ||
               (isActive('/profile') ? 'My Profile' : 'HMS')}
             </h1>
@@ -505,7 +499,7 @@ const Layout: React.FC = () => {
                   {/* User info header */}
                   <div className="px-4 py-3 border-b border-slate-100">
                     <p className="text-sm font-bold text-slate-900 truncate">{fullName}</p>
-                    <p className="text-[11px] text-slate-500">{user?.username} &middot; {formatRole(user?.roles?.[0] || '')}</p>
+                    <p className="text-[11px] text-slate-500">{formatRole(user?.roles?.[0] || '')}</p>
                   </div>
 
                   <div className="py-1">

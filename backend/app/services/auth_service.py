@@ -17,7 +17,8 @@ def authenticate_user(db: Session, username: str, password: str) -> Tuple[Option
     Authenticate by username and password. Eagerly loads roles.
     Returns (user, reason) where reason is:
       - 'success' if authenticated
-      - 'invalid_credentials' if user not found or wrong password
+            - 'invalid_username' if user not found
+            - 'invalid_password' if password is wrong
       - 'account_inactive' if account is deactivated
       - 'account_locked' if account is temporarily locked
     """
@@ -33,7 +34,7 @@ def authenticate_user(db: Session, username: str, password: str) -> Tuple[Option
     
     if not user:
         logger.warning(f"AUTH: No user found with username='{username}'")
-        return None, "invalid_credentials"
+        return None, "invalid_username"
     
     logger.info(f"AUTH: Found user '{username}', is_active={user.is_active}, is_deleted={user.is_deleted}, locked_until={user.locked_until}")
     
@@ -41,7 +42,7 @@ def authenticate_user(db: Session, username: str, password: str) -> Tuple[Option
         logger.warning(f"AUTH: Password verification FAILED for user '{username}'")
         user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
         db.commit()
-        return None, "invalid_credentials"
+        return None, "invalid_password"
     
     if not user.is_active:
         logger.warning(f"AUTH: User '{username}' is not active")

@@ -1,4 +1,4 @@
-﻿"""
+"""
 Appointments router â€“ CRUD, reschedule, cancel, status updates.
 """
 import logging

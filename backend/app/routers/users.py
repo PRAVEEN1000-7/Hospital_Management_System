@@ -117,12 +117,14 @@ async def get_users(
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100),
     search: Optional[str] = None,
+    role: Optional[str] = None,
+    is_active: Optional[bool] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin_or_super_admin),
 ):
     """List all users (Admin or Super Admin)"""
     try:
-        result = list_users(db, page, limit, search)
+        result = list_users(db, page, limit, search, role, is_active)
         return UserListResponse(
             total=result["total"],
             page=result["page"],

@@ -140,11 +140,9 @@ const Register: React.FC = () => {
     const e: Partial<Record<keyof FD, string>> = {};
     if (!d.title) e.title = 'Title is required';
     if (!d.first_name.trim()) e.first_name = 'First name is required';
-    else if (!/^[A-Za-z]/.test(d.first_name.trim())) e.first_name = 'Must start with a letter';
-    else if (!/^[A-Za-z][A-Za-z\s'-]*$/.test(d.first_name.trim())) e.first_name = 'Only letters, spaces, hyphens and apostrophes allowed';
+    else if (!/^[A-Za-z]+$/.test(d.first_name.trim())) e.first_name = 'Only letters (A–Z) allowed — no numbers, spaces or symbols';
     if (!d.last_name.trim()) e.last_name = 'Last name is required';
-    else if (!/^[A-Za-z]/.test(d.last_name.trim())) e.last_name = 'Must start with a letter';
-    else if (!/^[A-Za-z][A-Za-z\s'-]*$/.test(d.last_name.trim())) e.last_name = 'Only letters, spaces, hyphens and apostrophes allowed';
+    else if (!/^[A-Za-z]+$/.test(d.last_name.trim())) e.last_name = 'Only letters (A–Z) allowed — no numbers, spaces or symbols';
     if (!d.date_of_birth) e.date_of_birth = 'Date of birth is required';
     else if (new Date(d.date_of_birth) >= new Date()) e.date_of_birth = 'Date of birth must be in the past';
     if (!d.gender) e.gender = 'Gender is required';
@@ -220,7 +218,7 @@ const Register: React.FC = () => {
   const hintClass = 'mt-1 text-xs text-slate-400';
 
   const blockNonAlpha = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (!/^[A-Za-z\s'\-]$/.test(e.key) && !['Backspace','Delete','ArrowLeft','ArrowRight','Tab','Home','End'].includes(e.key)) {
+    if (!/^[A-Za-z]$/.test(e.key) && !['Backspace','Delete','ArrowLeft','ArrowRight','Tab','Home','End'].includes(e.key)) {
       e.preventDefault();
     }
   };

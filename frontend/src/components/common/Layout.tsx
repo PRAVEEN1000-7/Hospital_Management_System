@@ -15,6 +15,7 @@ const Layout: React.FC = () => {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const searchDebounceRef = useRef<number | null>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const notificationsRef = useRef<HTMLDivElement>(null);
   const [appointmentsOpen, setAppointmentsOpen] = useState(
@@ -52,13 +53,66 @@ const Layout: React.FC = () => {
     navigate('/login');
   };
 
+  const getGlobalSearchContext = useCallback(() => {
+    if (location.pathname.startsWith('/appointments/manage')) {
+      return { path: '/appointments/manage', placeholder: 'Search appointments...' };
+    }
+    if (location.pathname.startsWith('/prescriptions')) {
+      return { path: '/prescriptions', placeholder: 'Search prescriptions...' };
+    }
+    if (location.pathname.startsWith('/user-management')) {
+      return { path: '/user-management', placeholder: 'Search users...' };
+    }
+    if (location.pathname.startsWith('/staff')) {
+      return { path: '/staff', placeholder: 'Search staff...' };
+    }
+    return { path: '/patients', placeholder: 'Search patients...' };
+  }, [location.pathname]);
+
   const handleSearch = useCallback((e: React.FormEvent) => {
     e.preventDefault();
-    if (searchQuery.trim()) {
-      navigate(`/patients?search=${encodeURIComponent(searchQuery.trim())}`);
+    const trimmed = searchQuery.trim();
+    const { path } = getGlobalSearchContext();
+    if (trimmed) {
+      navigate(`${path}?search=${encodeURIComponent(trimmed)}`);
       setSidebarOpen(false);
+    } else {
+      navigate(path);
     }
-  }, [searchQuery, navigate]);
+  }, [searchQuery, navigate, getGlobalSearchContext]);
+
+  // Keep global search input in sync with URL query when route changes
+  useEffect(() => {
+    const urlSearch = new URLSearchParams(location.search).get('search') || '';
+    setSearchQuery(urlSearch);
+  }, [location.pathname, location.search]);
+
+  // Dynamic global search with debounce
+  useEffect(() => {
+    if (location.pathname.startsWith('/register')) return;
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+    }
+
+    searchDebounceRef.current = setTimeout(() => {
+      const trimmed = searchQuery.trim();
+      const { path } = getGlobalSearchContext();
+      const hasSearchParam = new URLSearchParams(location.search).has('search');
+      if (!trimmed) {
+        if (hasSearchParam) {
+          navigate(path, { replace: true });
+        }
+        return;
+      }
+      navigate(`${path}?search=${encodeURIComponent(trimmed)}`, { replace: true });
+    }, 350) as unknown as number;
+
+    return () => {
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current);
+      }
+    };
+  }, [searchQuery, location.pathname, location.search, getGlobalSearchContext, navigate]);
 
   // Close user menu on outside click
   useEffect(() => {
@@ -83,6 +137,8 @@ const Layout: React.FC = () => {
   }, [notificationsOpen]);
 
   const role = user?.roles?.[0];
+  const isRegisterPatientPage = location.pathname.startsWith('/register');
+  const globalSearchContext = getGlobalSearchContext();
 
   // Receptionist and Doctor get flat appointment links (no dropdown)
   const isFlatNav = role === 'receptionist' || role === 'doctor';
@@ -438,33 +494,37 @@ const Layout: React.FC = () => {
             </h1>
           </div>
           <div className="flex items-center gap-2 sm:gap-4 shrink-0">
-            {/* Search - form-based, navigates to patient search */}
-            <form onSubmit={handleSearch} className="relative hidden sm:block" role="search">
-              <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 pointer-events-none">
-                <span className="material-symbols-outlined text-lg">search</span>
-              </span>
-              <input
-                className="w-48 lg:w-64 pl-10 pr-9 py-1.5 border border-slate-200 bg-slate-50 rounded-lg text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none"
-                placeholder="Search patients..."
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                aria-label="Search patients"
-              />
-              {searchQuery && (
-                <button type="button" onClick={() => { setSearchQuery(''); navigate('/patients', { replace: true }); }} className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600">
-                  <span className="material-symbols-outlined text-lg">close</span>
+            {!isRegisterPatientPage && (
+              <>
+                {/* Search - form-based, navigates to patient search */}
+                <form onSubmit={handleSearch} className="relative hidden sm:block" role="search">
+                  <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 pointer-events-none">
+                    <span className="material-symbols-outlined text-lg">search</span>
+                  </span>
+                  <input
+                    className="w-48 lg:w-64 pl-10 pr-9 py-1.5 border border-slate-200 bg-slate-50 rounded-lg text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+                    placeholder={globalSearchContext.placeholder}
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    aria-label="Search patients"
+                  />
+                  {searchQuery && (
+                    <button type="button" onClick={() => { setSearchQuery(''); navigate(globalSearchContext.path, { replace: true }); }} className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600">
+                      <span className="material-symbols-outlined text-lg">close</span>
+                    </button>
+                  )}
+                </form>
+                {/* Mobile search - navigates to patients page */}
+                <button
+                  className="sm:hidden p-2 text-slate-400 hover:bg-slate-100 rounded-full transition-colors"
+                  onClick={() => navigate(globalSearchContext.path)}
+                  aria-label="Search patients"
+                >
+                  <span className="material-symbols-outlined">search</span>
                 </button>
-              )}
-            </form>
-            {/* Mobile search - navigates to patients page */}
-            <button
-              className="sm:hidden p-2 text-slate-400 hover:bg-slate-100 rounded-full transition-colors"
-              onClick={() => navigate('/patients')}
-              aria-label="Search patients"
-            >
-              <span className="material-symbols-outlined">search</span>
-            </button>
+              </>
+            )}
 
             {/* Notifications */}
             <div className="relative" ref={notificationsRef}>
@@ -518,7 +578,7 @@ const Layout: React.FC = () => {
                   {/* User info header */}
                   <div className="px-4 py-3 border-b border-slate-100">
                     <p className="text-sm font-bold text-slate-900 truncate">{fullName}</p>
-                    <p className="text-[11px] text-slate-500">{user?.username} &middot; {formatRole(user?.roles?.[0] || '')}</p>
+                    <p className="text-[11px] text-slate-500">{formatRole(user?.roles?.[0] || '')}</p>
                   </div>
 
                   <div className="py-1">

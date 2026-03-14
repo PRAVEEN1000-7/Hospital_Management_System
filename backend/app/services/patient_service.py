@@ -140,7 +140,12 @@ def list_patients(
     total = query.count()
     offset = (page - 1) * limit
     # Build ORDER BY — only allow known safe column names to prevent injection
-    _sortable = {'created_at': Patient.created_at, 'updated_at': Patient.updated_at}
+    _sortable = {
+        'created_at': Patient.created_at,
+        'updated_at': Patient.updated_at,
+        'first_name': Patient.first_name,
+        'patient_reference_number': Patient.patient_reference_number,
+    }
     sort_col = _sortable.get(sort_by, Patient.created_at)
     order_clause = sort_col.asc() if sort_order == 'asc' else sort_col.desc()
     patients = query.order_by(order_clause).offset(offset).limit(limit).all()

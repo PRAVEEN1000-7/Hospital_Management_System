@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useForm } from 'react-hook-form';
+import { useSearchParams } from 'react-router-dom';
 import { zodResolverV4 } from '../utils/zodResolverV4';
 import { z } from 'zod';
 import { format, formatDistanceToNow } from 'date-fns';
@@ -17,11 +18,11 @@ const staffCreateSchema = z.object({
   first_name: z.string()
     .min(1, 'First name is required')
     .max(100, 'Max 100 characters')
-    .regex(/^[A-Za-z ]+$/, 'First name can only contain letters — no numbers or special characters'),
+    .regex(/^[A-Za-z]+$/, 'Only letters (A–Z) allowed — no numbers, spaces or symbols'),
   last_name: z.string()
     .min(1, 'Last name is required')
     .max(100, 'Max 100 characters')
-    .regex(/^[A-Za-z ]+$/, 'Last name can only contain letters — no numbers or special characters'),
+    .regex(/^[A-Za-z]+$/, 'Only letters (A–Z) allowed — no numbers, spaces or symbols'),
   email: z.string()
     .min(1, 'Email is required')
     .email('Please enter a valid email address (e.g. user@hospital.com)'),
@@ -65,8 +66,8 @@ const staffCreateSchema = z.object({
 
 const staffEditSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
-  first_name: z.string().min(1, 'Required').max(100).regex(/^[A-Za-z ]+$/, 'Only letters allowed'),
-  last_name: z.string().min(1, 'Required').max(100).regex(/^[A-Za-z ]+$/, 'Only letters allowed'),
+  first_name: z.string().min(1, 'Required').max(100).regex(/^[A-Za-z]+$/, 'Only letters (A–Z) allowed'),
+  last_name: z.string().min(1, 'Required').max(100).regex(/^[A-Za-z]+$/, 'Only letters (A–Z) allowed'),
   phone_number: z.string().optional().refine(val => !val || /^\d{10}$/.test(val), { message: 'Phone must be exactly 10 digits' }),
   country_code: z.string().optional(),
   role: z.string().min(1, 'Required'),
@@ -106,6 +107,17 @@ const ROLES = [
 /** Returns CSS class for error state on input/select */
 const inputErr = (err: any) => err ? 'input-field-error' : '';
 
+// Maps UI department label → backend role value for server-side filtering
+const DEPT_TO_ROLE: Record<string, string> = {
+  'Medical': 'doctor',
+  'Nursing': 'nurse',
+  'Pharmacy': 'pharmacist',
+  'Front Desk': 'receptionist',
+  'Finance': 'cashier',
+  'Inventory': 'inventory_manager',
+  'Administration': 'admin',
+};
+
 const getDepartment = (role: string, specialization?: string | null): string => {
   const deptMap: Record<string, string> = {
     doctor: 'Medical', nurse: 'Nursing', pharmacist: 'Pharmacy',
@@ -121,10 +133,11 @@ const getDepartment = (role: string, specialization?: string | null): string => 
 // ────────────────────────────────────────
 const StaffDirectory: React.FC = () => {
   const toast = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [users, setUsers] = useState<UserData[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState(() => searchParams.get('search') || '');
+  const [searchInput, setSearchInput] = useState(() => searchParams.get('search') || '');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
@@ -149,20 +162,12 @@ const StaffDirectory: React.FC = () => {
   const fetchUsers = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await userService.getUsers(page, 10, search);
-      let filtered = res.data;
+      // Resolve server-side filters: explicit role takes priority; otherwise derive from department
+      const effectiveRole = roleFilter || DEPT_TO_ROLE[departmentFilter] || undefined;
+      const isActive = statusFilter === 'active' ? true : statusFilter === 'inactive' ? false : undefined;
 
-      if (roleFilter) filtered = filtered.filter(u => u.roles?.[0] === roleFilter);
-      if (departmentFilter) {
-        filtered = filtered.filter(u => {
-          const dept = getDepartment(u.roles?.[0] || '', u.specialization);
-          return dept.toLowerCase().includes(departmentFilter.toLowerCase());
-        });
-      }
-      if (statusFilter) {
-        const isActive = statusFilter === 'active';
-        filtered = filtered.filter(u => u.is_active === isActive);
-      }
+      const res = await userService.getUsers(page, 10, search, effectiveRole, isActive);
+      let filtered = res.data;
 
       if (sortBy !== 'default') {
         filtered.sort((a, b) => {
@@ -201,6 +206,25 @@ const StaffDirectory: React.FC = () => {
     searchTimeoutRef.current = setTimeout(() => { setSearch(searchInput); setPage(1); }, 500) as unknown as number;
     return () => { if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current); };
   }, [searchInput]);
+
+  // Sync search state from URL when global header search updates it.
+  useEffect(() => {
+    const urlSearch = searchParams.get('search') || '';
+    if (urlSearch !== searchInput) {
+      setSearchInput(urlSearch);
+      setSearch(urlSearch);
+      setPage(1);
+    }
+  }, [searchParams, searchInput]);
+
+  // Keep URL query in sync with page-level search box.
+  useEffect(() => {
+    if (search) {
+      setSearchParams({ search }, { replace: true });
+    } else {
+      setSearchParams({}, { replace: true });
+    }
+  }, [search, setSearchParams]);
 
   // Close bulk menu on outside click
   useEffect(() => {
@@ -645,6 +669,12 @@ const Field: React.FC<{ label: string; error?: string; children: React.ReactNode
 
 // ────────────────────────────────────────
 // Create Staff Modal
+const blockNonAlpha = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  if (!/^[A-Za-z]$/.test(e.key) && !['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Home', 'End'].includes(e.key)) {
+    e.preventDefault();
+  }
+};
+
 // ────────────────────────────────────────
 const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => void; onError: (msg: string) => void }> = ({ onClose, onSuccess, onError }) => {
   const toast = useToast();
@@ -855,10 +885,10 @@ const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => void; o
           <SectionTitle>Personal Information</SectionTitle>
           <div className="grid grid-cols-2 gap-4">
             <Field label="First Name *" error={errors.first_name?.message}>
-              <input {...register('first_name')} className={`input-field ${inputErr(errors.first_name)}`} placeholder="e.g. Sarah" autoFocus />
+              <input {...register('first_name')} className={`input-field ${inputErr(errors.first_name)}`} placeholder="e.g. Sarah" autoFocus onKeyDown={blockNonAlpha} />
             </Field>
             <Field label="Last Name *" error={errors.last_name?.message}>
-              <input {...register('last_name')} className={`input-field ${inputErr(errors.last_name)}`} placeholder="e.g. Jenkins" />
+              <input {...register('last_name')} className={`input-field ${inputErr(errors.last_name)}`} placeholder="e.g. Jenkins" onKeyDown={blockNonAlpha} />
             </Field>
           </div>
           <Field label="Email Address *" error={errors.email?.message}>
@@ -1085,10 +1115,10 @@ const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onSuccess:
           </Field>
           <div className="grid grid-cols-2 gap-4">
             <Field label="First Name" error={errors.first_name?.message}>
-              <input {...register('first_name')} className={`input-field ${inputErr(errors.first_name)}`} placeholder="e.g. Sarah" />
+              <input {...register('first_name')} className={`input-field ${inputErr(errors.first_name)}`} placeholder="e.g. Sarah" onKeyDown={blockNonAlpha} />
             </Field>
             <Field label="Last Name" error={errors.last_name?.message}>
-              <input {...register('last_name')} className={`input-field ${inputErr(errors.last_name)}`} placeholder="e.g. Jenkins" />
+              <input {...register('last_name')} className={`input-field ${inputErr(errors.last_name)}`} placeholder="e.g. Jenkins" onKeyDown={blockNonAlpha} />
             </Field>
           </div>
           <Field label="Email" error={errors.email?.message}>

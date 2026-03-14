@@ -31,9 +31,14 @@ def ensure_upload_directory():
 
 
 def list_users(
-    db: Session, page: int = 1, limit: int = 10, search: Optional[str] = None
+    db: Session,
+    page: int = 1,
+    limit: int = 10,
+    search: Optional[str] = None,
+    role: Optional[str] = None,
+    is_active: Optional[bool] = None,
 ):
-    """List users with pagination and search"""
+    """List users with pagination, search, and server-side filters"""
     query = (
         db.query(User)
         .options(
@@ -52,8 +57,22 @@ def list_users(
                 User.first_name.ilike(f"%{search_term}%"),
                 User.last_name.ilike(f"%{search_term}%"),
                 User.email.ilike(f"%{search_term}%"),
+                User.reference_number.ilike(f"%{search_term}%"),
             )
             query = query.filter(search_filter)
+
+    if role:
+        from sqlalchemy import exists as sa_exists
+        role_subq = (
+            db.query(UserRole.user_id)
+            .join(Role, UserRole.role_id == Role.id)
+            .filter(Role.name == role)
+            .subquery()
+        )
+        query = query.filter(User.id.in_(role_subq))
+
+    if is_active is not None:
+        query = query.filter(User.is_active == is_active)
 
     total = query.count()
     offset = (page - 1) * limit

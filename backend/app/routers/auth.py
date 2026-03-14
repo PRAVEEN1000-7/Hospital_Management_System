@@ -30,7 +30,8 @@ async def login(credentials: LoginRequest, db: Session = Depends(get_db)):
         if not user:
             logger.warning(f"LOGIN FAILED: username='{credentials.username}' - {reason}")
             error_messages = {
-                "invalid_credentials": "Incorrect username or password",
+                "invalid_username": "Invalid username",
+                "invalid_password": "Invalid password",
                 "account_inactive": "Your account has been deactivated. Please contact the administrator.",
                 "account_locked": "Your account is temporarily locked due to multiple failed login attempts. Please try again later.",
             }

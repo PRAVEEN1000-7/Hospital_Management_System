@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
+import { useSearchParams } from 'react-router-dom';
 import { zodResolverV4 as zodResolver } from '../utils/zodResolverV4';
 import { z } from 'zod';
 import { format } from 'date-fns';
@@ -124,9 +125,10 @@ const ROLE_DEPARTMENT_MAP: Record<string, { depts: typeof ALL_DEPARTMENTS; requi
 
 const UserManagement: React.FC = () => {
   const toast = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [users, setUsers] = useState<UserData[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(() => searchParams.get('search') || '');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
@@ -152,6 +154,24 @@ const UserManagement: React.FC = () => {
   useEffect(() => {
     fetchUsers();
   }, [fetchUsers]);
+
+  // Sync search state from URL when global header search updates it.
+  useEffect(() => {
+    const urlSearch = searchParams.get('search') || '';
+    if (urlSearch !== search) {
+      setSearch(urlSearch);
+      setPage(1);
+    }
+  }, [searchParams, search]);
+
+  // Keep URL query in sync with page-level search box.
+  useEffect(() => {
+    if (search) {
+      setSearchParams({ search }, { replace: true });
+    } else {
+      setSearchParams({}, { replace: true });
+    }
+  }, [search, setSearchParams]);
 
   const handleDelete = async () => {
     if (!deleteConfirm) return;

@@ -33,6 +33,20 @@ import PrescriptionList from './pages/PrescriptionList';
 import PrescriptionBuilder from './pages/PrescriptionBuilder';
 import PrescriptionDetail from './pages/PrescriptionDetail';
 
+// Pharmacy pages
+import PharmacyDashboard from './pages/pharmacy/PharmacyDashboard';
+import MedicineList from './pages/pharmacy/MedicineList';
+import MedicineDetail from './pages/pharmacy/MedicineDetail';
+import MedicineForm from './pages/pharmacy/MedicineForm';
+import BatchForm from './pages/pharmacy/BatchForm';
+import SupplierList from './pages/pharmacy/SupplierList';
+import SupplierForm from './pages/pharmacy/SupplierForm';
+import PurchaseOrderList from './pages/pharmacy/PurchaseOrderList';
+import PurchaseOrderForm from './pages/pharmacy/PurchaseOrderForm';
+import SalesList from './pages/pharmacy/SalesList';
+import NewSale from './pages/pharmacy/NewSale';
+import StockAdjustments from './pages/pharmacy/StockAdjustments';
+
 
 const App: React.FC = () => {
   return (
@@ -156,6 +170,73 @@ const App: React.FC = () => {
             <Route path="/prescriptions/:id/edit" element={
               <ProtectedRoute allowedRoles={['super_admin', 'admin', 'doctor']}>
                 <PrescriptionBuilder />
+              </ProtectedRoute>
+            } />
+
+            {/* ── Pharmacy Routes ── */}
+            <Route path="/pharmacy" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'pharmacist', 'inventory_manager']}>
+                <PharmacyDashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/pharmacy/medicines" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'pharmacist', 'inventory_manager']}>
+                <MedicineList />
+              </ProtectedRoute>
+            } />
+            <Route path="/pharmacy/medicines/new" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'pharmacist', 'inventory_manager']}>
+                <MedicineForm />
+              </ProtectedRoute>
+            } />
+            <Route path="/pharmacy/medicines/:id" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'pharmacist', 'inventory_manager']}>
+                <MedicineDetail />
+              </ProtectedRoute>
+            } />
+            <Route path="/pharmacy/medicines/:id/edit" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'pharmacist', 'inventory_manager']}>
+                <MedicineForm />
+              </ProtectedRoute>
+            } />
+            <Route path="/pharmacy/batches/new" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'pharmacist', 'inventory_manager']}>
+                <BatchForm />
+              </ProtectedRoute>
+            } />
+            <Route path="/pharmacy/suppliers" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'pharmacist', 'inventory_manager']}>
+                <SupplierList />
+              </ProtectedRoute>
+            } />
+            <Route path="/pharmacy/suppliers/new" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'pharmacist', 'inventory_manager']}>
+                <SupplierForm />
+              </ProtectedRoute>
+            } />
+            <Route path="/pharmacy/purchase-orders" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'pharmacist', 'inventory_manager']}>
+                <PurchaseOrderList />
+              </ProtectedRoute>
+            } />
+            <Route path="/pharmacy/purchase-orders/new" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'pharmacist', 'inventory_manager']}>
+                <PurchaseOrderForm />
+              </ProtectedRoute>
+            } />
+            <Route path="/pharmacy/sales" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'pharmacist', 'cashier']}>
+                <SalesList />
+              </ProtectedRoute>
+            } />
+            <Route path="/pharmacy/sales/new" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'pharmacist', 'cashier']}>
+                <NewSale />
+              </ProtectedRoute>
+            } />
+            <Route path="/pharmacy/stock-adjustments" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'pharmacist', 'inventory_manager']}>
+                <StockAdjustments />
               </ProtectedRoute>
             } />
 

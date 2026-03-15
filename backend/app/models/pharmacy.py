@@ -1,5 +1,6 @@
 """
 Pharmacy module models — medicines, inventory, sales, and purchase orders.
+Note: Medicine model is defined in prescription.py to avoid duplication.
 """
 import uuid
 from sqlalchemy import (
@@ -12,49 +13,9 @@ from sqlalchemy.sql import func
 from ..database import Base
 
 
-# ──────────────────────────────────────────────────
-# Medicine  (master catalogue)
-# ──────────────────────────────────────────────────
-class Medicine(Base):
-    __tablename__ = "medicines"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=False)
-    name = Column(String(200), nullable=False)
-    generic_name = Column(String(200), nullable=False)
-    category = Column(String(50))
-    manufacturer = Column(String(200))
-    composition = Column(Text)
-    strength = Column(String(50))
-    unit = Column("unit_of_measure", String(20), nullable=False, default="Nos")
-    units_per_pack = Column(Integer, default=1)
-    hsn_code = Column(String(20))
-    sku = Column(String(50))
-    barcode = Column(String(50))
-    requires_prescription = Column(Boolean, default=True)
-    is_controlled = Column(Boolean, default=False)
-    selling_price = Column(Numeric(12, 2), nullable=False, default=0)
-    purchase_price = Column(Numeric(12, 2))
-    tax_config_id = Column(UUID(as_uuid=True), nullable=True)
-    reorder_level = Column(Integer, default=10)
-    max_stock_level = Column(Integer)
-    storage_instructions = Column(String(255))
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-
-    # API compatibility aliases for legacy DTOs.
-    brand = synonym("composition")
-    dosage_form = synonym("unit")
-    description = synonym("composition")
-    storage_conditions = synonym("storage_instructions")
-
-    hospital = relationship("Hospital", foreign_keys=[hospital_id])
-
-
-# ──────────────────────────────────────────────────
+# ══════════════════════════════════════════════════
 # MedicineBatch  (batch / lot tracking + expiry)
-# ──────────────────────────────────────────────────
+# ══════════════════════════════════════════════════
 class MedicineBatch(Base):
     __tablename__ = "medicine_batches"
 

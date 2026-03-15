@@ -11,8 +11,9 @@ from typing import Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_, and_
 
+from ..models.prescription import Medicine
 from ..models.pharmacy import (
-    Medicine, MedicineBatch, Supplier,
+    MedicineBatch, Supplier,
     PurchaseOrder, PurchaseOrderItem,
     PharmacySale, PharmacySaleItem,
     StockAdjustment,

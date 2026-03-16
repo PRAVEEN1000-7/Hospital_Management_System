@@ -104,3 +104,19 @@ async def require_admin_or_super_admin(
             detail="Admin or Super Admin access required",
         )
     return current_user
+
+
+def require_any_role(*role_names: str):
+    """Return a dependency that ensures current user has at least one allowed role."""
+
+    async def _role_dependency(
+        current_user: User = Depends(get_current_active_user),
+    ) -> User:
+        if not _has_role(current_user, *role_names):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient role permissions",
+            )
+        return current_user
+
+    return _role_dependency

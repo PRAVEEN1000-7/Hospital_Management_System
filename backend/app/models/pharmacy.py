@@ -1,6 +1,7 @@
 """
 Pharmacy module models — medicines, inventory, sales, and purchase orders.
 Note: Medicine model is defined in prescription.py to avoid duplication.
+Supplier, PurchaseOrder, and PurchaseOrderItem are imported from inventory.py
 """
 import uuid
 from sqlalchemy import (
@@ -11,6 +12,11 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship, synonym
 from sqlalchemy.sql import func
 from ..database import Base
+
+# Import shared models from inventory
+from .inventory import Supplier, PurchaseOrder, PurchaseOrderItem, StockAdjustment
+
+__all__ = ["Supplier", "PurchaseOrder", "PurchaseOrderItem", "StockAdjustment", "MedicineBatch", "PharmacySale", "PharmacySaleItem"]
 
 
 # ══════════════════════════════════════════════════
@@ -41,77 +47,6 @@ class MedicineBatch(Base):
     # Compatibility aliases for response payloads.
     mrp = synonym("selling_price")
 
-    medicine = relationship("Medicine", foreign_keys=[medicine_id])
-
-
-# ──────────────────────────────────────────────────
-# Supplier
-# ──────────────────────────────────────────────────
-class Supplier(Base):
-    __tablename__ = "suppliers"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=False)
-    name = Column(String(200), nullable=False)
-    code = Column(String(20), nullable=False)
-    contact_person = Column(String(100))
-    phone = Column(String(20))
-    email = Column(String(255))
-    address = Column(Text)
-    tax_id = Column(String(50))
-    payment_terms = Column(String(50))
-    lead_time_days = Column(Integer)
-    rating = Column(Numeric(3, 1))
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-
-    # Compatibility aliases for API fields.
-    gst_number = synonym("tax_id")
-    drug_license_number = synonym("tax_id")
-
-    hospital = relationship("Hospital", foreign_keys=[hospital_id])
-
-
-# ──────────────────────────────────────────────────
-# PurchaseOrder  (stock-in from suppliers)
-# ──────────────────────────────────────────────────
-class PurchaseOrder(Base):
-    __tablename__ = "purchase_orders"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=False)
-    supplier_id = Column(UUID(as_uuid=True), ForeignKey("suppliers.id"), nullable=False)
-    order_number = Column("po_number", String(30), nullable=False, index=True)
-    order_date = Column(Date, nullable=False, server_default=func.current_date())
-    expected_delivery = Column("expected_delivery_date", Date)
-    status = Column(String(20), default="draft")
-    total_amount = Column(Numeric(12, 2), default=0)
-    tax_amount = Column(Numeric(12, 2), default=0)
-    notes = Column(Text)
-    approved_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
-    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-
-    hospital = relationship("Hospital", foreign_keys=[hospital_id])
-    supplier = relationship("Supplier", foreign_keys=[supplier_id])
-
-
-class PurchaseOrderItem(Base):
-    __tablename__ = "purchase_order_items"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    purchase_order_id = Column(UUID(as_uuid=True), ForeignKey("purchase_orders.id"), nullable=False)
-    item_type = Column(String(20), nullable=False, default="medicine")
-    medicine_id = Column("item_id", UUID(as_uuid=True), ForeignKey("medicines.id"), nullable=False)
-    quantity_ordered = Column(Integer, nullable=False)
-    quantity_received = Column(Integer, default=0)
-    unit_price = Column(Numeric(12, 2), nullable=False)
-    total_price = Column(Numeric(12, 2), nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-    purchase_order = relationship("PurchaseOrder", foreign_keys=[purchase_order_id])
     medicine = relationship("Medicine", foreign_keys=[medicine_id])
 
 
@@ -164,30 +99,5 @@ class PharmacySaleItem(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     sale = relationship("PharmacySale", foreign_keys=[sale_id])
-    medicine = relationship("Medicine", foreign_keys=[medicine_id])
-    batch = relationship("MedicineBatch", foreign_keys=[batch_id])
-
-
-# ──────────────────────────────────────────────────
-# StockAdjustment  (manual adjustments, damage, expiry)
-# ──────────────────────────────────────────────────
-class StockAdjustment(Base):
-    __tablename__ = "stock_adjustments"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=False)
-    adjustment_number = Column(String(30), nullable=False, index=True)
-    item_type = Column(String(20), nullable=False, default="medicine")
-    medicine_id = Column("item_id", UUID(as_uuid=True), ForeignKey("medicines.id"), nullable=False)
-    batch_id = Column(UUID(as_uuid=True), ForeignKey("medicine_batches.id"))
-    adjustment_type = Column(String(20), nullable=False)
-    quantity = Column(Integer, nullable=False)
-    reason = Column(Text)
-    approved_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
-    status = Column(String(20), default="approved")
-    adjusted_by = Column("created_by", UUID(as_uuid=True), ForeignKey("users.id"))
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-    hospital = relationship("Hospital", foreign_keys=[hospital_id])
     medicine = relationship("Medicine", foreign_keys=[medicine_id])
     batch = relationship("MedicineBatch", foreign_keys=[batch_id])

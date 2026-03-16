@@ -15,6 +15,12 @@ from .prescription import (
     PrescriptionTemplate, PrescriptionVersion,
 )
 from .pharmacy import (
-    MedicineBatch, Supplier, PurchaseOrder, PurchaseOrderItem,
-    PharmacySale, PharmacySaleItem, StockAdjustment,
+    MedicineBatch, PharmacySale, PharmacySaleItem,
+)
+from .optical import OpticalProduct
+from .notification import Notification
+from .inventory import (
+    Supplier, PurchaseOrder, PurchaseOrderItem,
+    GoodsReceiptNote, GRNItem, StockMovement,
+    StockAdjustment, CycleCount, CycleCountItem,
 )

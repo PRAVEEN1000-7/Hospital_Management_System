@@ -6,6 +6,13 @@ import hospitalService from '../../services/hospitalService';
 import userService from '../../services/userService';
 import pharmacyService from '../../services/pharmacyService';
 import notificationsService, { type AppNotification } from '../../services/notificationsService';
+import {
+  getNotificationTarget,
+  getNotificationIcon,
+  getNotificationColor,
+  formatNotificationMessage,
+  getRelativeTime,
+} from '../../utils/notificationUtils';
 
 const Layout: React.FC = () => {
   const { user, logout } = useAuth();
@@ -235,7 +242,11 @@ const Layout: React.FC = () => {
       await handleMarkRead(notification.id);
     }
     setNotificationsOpen(false);
-    navigate(getNotificationTargetPath(notification), {
+    
+    const target = getNotificationTarget(notification);
+    
+    // Navigate to the target page
+    navigate(target.path, {
       state: {
         fromNotification: true,
         referenceType: notification.reference_type,
@@ -798,57 +809,109 @@ const Layout: React.FC = () => {
               >
                 <span className="material-icons">notifications</span>
                 {unreadCount > 0 && (
-                  <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
+                  <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white animate-pulse"></span>
                 )}
               </button>
 
               {notificationsOpen && (
-                <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-slate-200 z-50 overflow-hidden">
-                  <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
-                    <h3 className="font-bold text-slate-900">Notifications</h3>
+                <div className="absolute right-0 mt-2 w-96 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 overflow-hidden">
+                  {/* Header */}
+                  <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-primary/5 to-transparent">
+                    <div className="flex items-center gap-2">
+                      <span className="material-icons text-primary text-lg">notifications</span>
+                      <h3 className="font-bold text-slate-900">Notifications</h3>
+                      {unreadCount > 0 && (
+                        <span className="px-2 py-0.5 text-xs font-bold bg-red-500 text-white rounded-full min-w-[1.25rem] text-center">
+                          {unreadCount}
+                        </span>
+                      )}
+                    </div>
                     {unreadCount > 0 && (
-                      <button onClick={handleMarkAllRead} className="text-xs font-semibold text-primary hover:underline">
+                      <button
+                        onClick={handleMarkAllRead}
+                        className="text-xs font-semibold text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
+                      >
+                        <span className="material-icons text-sm">done_all</span>
                         Mark all read
                       </button>
                     )}
                   </div>
-                  <div className="max-h-96 overflow-y-auto">
+
+                  {/* Notifications List */}
+                  <div className="max-h-[28rem] overflow-y-auto custom-scrollbar">
                     {notificationsLoading ? (
-                      <div className="p-8 text-center text-slate-500">
-                        <span className="material-icons animate-spin">progress_activity</span>
+                      <div className="p-12 text-center">
+                        <span className="material-icons animate-spin text-3xl text-primary">progress_activity</span>
+                        <p className="text-sm text-slate-500 mt-3">Loading notifications...</p>
                       </div>
                     ) : notifications.length === 0 ? (
-                      <div className="p-8 text-center text-slate-500">
-                        <span className="material-icons text-3xl mb-2">notifications_none</span>
-                        <p className="text-sm">No notifications</p>
+                      <div className="p-12 text-center">
+                        <span className="material-icons text-5xl text-slate-300">notifications_none</span>
+                        <p className="text-sm font-semibold text-slate-700 mt-3">All caught up!</p>
+                        <p className="text-xs text-slate-400 mt-1">No new notifications</p>
                       </div>
                     ) : (
-                      notifications.map((notification) => (
-                        <button
-                          key={notification.id}
-                          onClick={() => handleNotificationClick(notification)}
-                          className={`w-full px-4 py-3 text-left hover:bg-slate-50 transition-colors border-b border-slate-50 ${
-                            !notification.is_read ? 'bg-blue-50/50' : ''
-                          }`}
-                        >
-                          <div className="flex items-start gap-3">
-                            <span className={`material-symbols-outlined text-lg mt-0.5 ${
-                              !notification.is_read ? 'text-primary' : 'text-slate-400'
-                            }`}>
-                              {notification.reference_type === 'appointment' ? 'event' : 'notifications'}
-                            </span>
-                            <div className="flex-1 min-w-0">
-                              <p className={`text-sm ${!notification.is_read ? 'font-semibold text-slate-900' : 'text-slate-700'}`}>
-                                {notification.title}
-                              </p>
-                              <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{notification.message}</p>
-                              <p className="text-[10px] text-slate-400 mt-1">{notification.created_at}</p>
-                            </div>
-                          </div>
-                        </button>
-                      ))
+                      <div className="divide-y divide-slate-50">
+                        {notifications.map((notification) => {
+                          const icon = getNotificationIcon(notification.reference_type);
+                          const colorClass = getNotificationColor(notification.reference_type);
+                          const formattedMessage = formatNotificationMessage(notification);
+                          
+                          return (
+                            <button
+                              key={notification.id}
+                              onClick={() => handleNotificationClick(notification)}
+                              className={`w-full px-4 py-3 text-left hover:bg-slate-50 transition-all border-l-4 ${
+                                !notification.is_read
+                                  ? 'border-primary bg-blue-50/30'
+                                  : 'border-transparent'
+                              }`}
+                            >
+                              <div className="flex items-start gap-3">
+                                {/* Icon */}
+                                <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${colorClass}`}>
+                                  <span className="material-icons text-lg">{icon}</span>
+                                </div>
+
+                                {/* Content */}
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <p className={`text-sm font-semibold ${
+                                      !notification.is_read ? 'text-slate-900' : 'text-slate-600'
+                                    }`}>
+                                      {notification.title}
+                                    </p>
+                                    {!notification.is_read && (
+                                      <span className="w-2 h-2 rounded-full bg-primary flex-shrink-0 mt-1.5"></span>
+                                    )}
+                                  </div>
+                                  <p className="text-xs text-slate-500 mt-1 line-clamp-2">
+                                    {formattedMessage}
+                                  </p>
+                                  <p className="text-[10px] text-slate-400 mt-1.5 flex items-center gap-1">
+                                    <span className="material-icons text-[10px]">schedule</span>
+                                    {getRelativeTime(notification.created_at)}
+                                  </p>
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
                     )}
                   </div>
+
+                  {/* Footer */}
+                  {notifications.length > 0 && (
+                    <div className="px-4 py-2 border-t border-slate-100 bg-slate-50 text-center">
+                      <p className="text-xs text-slate-500">
+                        {unreadCount === 0
+                          ? 'All notifications read'
+                          : `${unreadCount} unread notification${unreadCount > 1 ? 's' : ''}`
+                        }
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

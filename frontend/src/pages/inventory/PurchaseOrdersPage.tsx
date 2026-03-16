@@ -245,10 +245,30 @@ const PurchaseOrdersPage: React.FC = () => {
                     <tbody className="divide-y divide-slate-100">
                       {detailPO.items.map(item => (
                         <tr key={item.id}>
-                          <td className="px-3 py-3 text-sm text-slate-900">{item.item_name || item.item_id}</td>
+                          <td className="px-3 py-3 text-sm text-slate-900">
+                            <div className="flex items-center gap-2">
+                              <span className="material-icons text-slate-400 text-sm">
+                                {item.item_type === 'medicine' ? 'medication' : 'inventory_2'}
+                              </span>
+                              {item.item_name || (
+                                <span className="text-slate-400 text-xs font-mono">
+                                  {item.item_id.substring(0, 8)}...
+                                </span>
+                              )}
+                            </div>
+                          </td>
                           <td className="px-3 py-3 text-sm text-right text-slate-700">{item.quantity_ordered}</td>
                           <td className="px-3 py-3 text-sm text-right">
-                            <span className={item.quantity_received >= item.quantity_ordered ? 'text-emerald-600 font-semibold' : 'text-slate-700'}>
+                            <span className={`inline-flex items-center gap-1 ${
+                              item.quantity_received >= item.quantity_ordered
+                                ? 'text-emerald-600 font-semibold'
+                                : item.quantity_received > 0
+                                ? 'text-amber-600'
+                                : 'text-slate-400'
+                            }`}>
+                              {item.quantity_received > 0 && (
+                                <span className="material-icons text-xs">check_circle</span>
+                              )}
                               {item.quantity_received}
                             </span>
                           </td>

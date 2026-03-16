@@ -224,11 +224,58 @@ const GRNsPage: React.FC = () => {
                     <tbody className="divide-y divide-slate-100">
                       {detailGRN.items.map(item => (
                         <tr key={item.id}>
-                          <td className="px-3 py-3 text-sm text-slate-900">{item.item_name || item.item_id}</td>
-                          <td className="px-3 py-3 text-sm text-right text-slate-700">{item.quantity_received}</td>
-                          <td className="px-3 py-3 text-sm text-slate-600 hidden sm:table-cell">{item.batch_number || '—'}</td>
-                          <td className="px-3 py-3 text-sm text-slate-600 hidden md:table-cell">{item.expiry_date ? new Date(item.expiry_date).toLocaleDateString() : '—'}</td>
-                          <td className="px-3 py-3 text-sm text-slate-600 hidden lg:table-cell">{item.rejection_reason || '—'}</td>
+                          <td className="px-3 py-3 text-sm text-slate-900">
+                            <div className="flex items-center gap-2">
+                              <span className="material-icons text-slate-400 text-sm">
+                                {item.item_type === 'medicine' ? 'medication' : 'inventory_2'}
+                              </span>
+                              {item.item_name || (
+                                <span className="text-slate-400 text-xs font-mono">
+                                  {item.item_id.substring(0, 8)}...
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-3 py-3 text-sm text-right">
+                            <span className={`inline-flex items-center gap-1 ${
+                              item.quantity_accepted && item.quantity_accepted >= item.quantity_received
+                                ? 'text-emerald-600 font-semibold'
+                                : 'text-slate-700'
+                            }`}>
+                              {item.quantity_accepted !== null && item.quantity_accepted !== item.quantity_received && (
+                                <span className="material-icons text-xs">
+                                  {item.quantity_accepted > item.quantity_received ? 'add_circle' : 'remove_circle'}
+                                </span>
+                              )}
+                              {item.quantity_accepted !== null ? item.quantity_accepted : item.quantity_received}
+                            </span>
+                          </td>
+                          <td className="px-3 py-3 text-sm text-slate-600 hidden sm:table-cell">
+                            {item.batch_number || (
+                              <span className="text-slate-400 text-xs">—</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-3 text-sm text-slate-600 hidden md:table-cell">
+                            {item.expiry_date ? (
+                              <span className={
+                                new Date(item.expiry_date) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+                                  ? 'text-red-600 font-semibold'
+                                  : 'text-slate-600'
+                              }>
+                                {new Date(item.expiry_date).toLocaleDateString()}
+                              </span>
+                            ) : '—'}
+                          </td>
+                          <td className="px-3 py-3 text-sm text-slate-600 hidden lg:table-cell">
+                            {item.rejection_reason ? (
+                              <span className="text-red-600">{item.rejection_reason}</span>
+                            ) : (
+                              <span className="text-emerald-600 text-xs flex items-center gap-1">
+                                <span className="material-icons text-xs">check_circle</span>
+                                Accepted
+                              </span>
+                            )}
+                          </td>
                         </tr>
                       ))}
                     </tbody>

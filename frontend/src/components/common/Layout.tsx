@@ -213,30 +213,6 @@ const Layout: React.FC = () => {
     };
   }, [searchQuery, location.pathname, location.search, getGlobalSearchContext, navigate]);
 
-  const getNotificationTargetPath = (notification: AppNotification): string => {
-    switch (notification.reference_type) {
-      case 'purchase_order':
-        return '/inventory/purchase-orders';
-      case 'grn':
-        return '/inventory/grns';
-      case 'stock_adjustment':
-      case 'adjustment':
-        return '/inventory/adjustments';
-      case 'cycle_count':
-        return '/inventory/cycle-counts';
-      case 'supplier':
-        return '/inventory/suppliers';
-      case 'stock_movement':
-        return '/inventory/stock-movements';
-      case 'appointment':
-        return '/appointments/manage';
-      case 'prescription':
-        return '/prescriptions';
-      default:
-        return '/dashboard';
-    }
-  };
-
   const handleNotificationClick = async (notification: AppNotification) => {
     if (!notification.is_read) {
       await handleMarkRead(notification.id);

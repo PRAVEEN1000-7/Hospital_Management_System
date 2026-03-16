@@ -14,6 +14,8 @@ from .prescription import (
     Medicine, Prescription, PrescriptionItem,
     PrescriptionTemplate, PrescriptionVersion,
 )
+from .optical import OpticalProduct
+from .notification import Notification
 from .inventory import (
     Supplier, PurchaseOrder, PurchaseOrderItem,
     GoodsReceiptNote, GRNItem, StockMovement,

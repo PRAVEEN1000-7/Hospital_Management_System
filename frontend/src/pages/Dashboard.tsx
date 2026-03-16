@@ -63,17 +63,15 @@ function getQuickActions(role: string, isSuperAdmin: boolean): QuickAction[] {
       ];
     case 'cashier':
       return [
-        { icon: 'group', iconColor: 'text-primary', label: 'Patient Directory', desc: 'Look up patient for billing', to: '/patients' },
         { icon: 'person', iconColor: 'text-purple-500', label: 'My Profile', desc: 'Update your information', to: '/profile' },
       ];
     case 'optical_staff':
       return [
-        { icon: 'group', iconColor: 'text-primary', label: 'Patient Directory', desc: 'Look up patient records', to: '/patients' },
         { icon: 'person', iconColor: 'text-purple-500', label: 'My Profile', desc: 'Update your information', to: '/profile' },
       ];
     case 'inventory_manager':
       return [
-        { icon: 'group', iconColor: 'text-primary', label: 'Patient Directory', desc: 'Browse patient records', to: '/patients' },
+        { icon: 'inventory_2', iconColor: 'text-primary', label: 'Inventory Dashboard', desc: 'View stock and inventory activity', to: '/inventory' },
         { icon: 'person', iconColor: 'text-purple-500', label: 'My Profile', desc: 'Update your information', to: '/profile' },
       ];
     case 'report_viewer':
@@ -117,7 +115,6 @@ function getQuickLinks(role: string): QuickLink[] {
       ];
     case 'cashier':
       return [
-        { icon: 'group', iconColor: 'text-blue-400', label: 'Patients', to: '/patients' },
         { icon: 'person', iconColor: 'text-purple-400', label: 'My Profile', to: '/profile' },
       ];
     default:
@@ -148,16 +145,19 @@ const Dashboard: React.FC = () => {
   const isAdmin = role === 'admin' || role === 'super_admin';
   const isReceptionist = role === 'receptionist';
   const isPharmacist = role === 'pharmacist';
+  const canAccessPatients = role === 'super_admin' || role === 'admin' || role === 'receptionist' || role === 'nurse' || role === 'pharmacist' || role === 'doctor';
 
   useEffect(() => {
     const fetchDashboardData = async () => {
       setLoading(true);
 
-      // Common: patient count (all roles can read patients)
-      try {
-        const patientsRes = await patientService.getPatients(1, 1);
-        setTotalPatients(patientsRes.total);
-      } catch { /* silent */ }
+      // Patient count only for roles allowed to read patient records
+      if (canAccessPatients) {
+        try {
+          const patientsRes = await patientService.getPatients(1, 1);
+          setTotalPatients(patientsRes.total);
+        } catch { /* silent */ }
+      }
 
       // Common: hospital name
       try {
@@ -208,7 +208,7 @@ const Dashboard: React.FC = () => {
     };
 
     fetchDashboardData();
-  }, []);
+  }, [isDoctor, isReceptionist, isAdmin, canAccessPatients]);
 
   /* ── stat cards per role ── */
   const getStatCards = (): StatCard[] => {
@@ -242,17 +242,17 @@ const Dashboard: React.FC = () => {
         ];
       case 'cashier':
         return [
-          { label: 'Total Patients', value: totalPatients.toLocaleString(), icon: 'group', iconColor: 'text-blue-500' },
+          { label: 'Billing Console', value: 'Ready', icon: 'payments', iconColor: 'text-blue-500' },
           { label: 'System Status', value: 'Online', icon: 'check_circle', iconColor: 'text-emerald-500' },
         ];
       case 'optical_staff':
         return [
-          { label: 'Total Patients', value: totalPatients.toLocaleString(), icon: 'group', iconColor: 'text-blue-500' },
+          { label: 'Optical Console', value: 'Ready', icon: 'visibility', iconColor: 'text-blue-500' },
           { label: 'System Status', value: 'Online', icon: 'check_circle', iconColor: 'text-emerald-500' },
         ];
       case 'inventory_manager':
         return [
-          { label: 'Total Patients', value: totalPatients.toLocaleString(), icon: 'group', iconColor: 'text-blue-500' },
+          { label: 'Inventory Console', value: 'Ready', icon: 'inventory_2', iconColor: 'text-blue-500' },
           { label: 'System Status', value: 'Online', icon: 'check_circle', iconColor: 'text-emerald-500' },
         ];
       default:
@@ -411,7 +411,7 @@ const Dashboard: React.FC = () => {
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
               <div className="p-6 border-b border-slate-100 flex items-center justify-between">
                 <h3 className="font-bold text-slate-900">Your Workspace</h3>
-                {role !== 'report_viewer' && (
+                {canAccessPatients && (
                   <button onClick={() => navigate('/patients')} className="text-primary text-xs font-bold hover:underline">View Patients</button>
                 )}
               </div>
@@ -421,10 +421,12 @@ const Dashboard: React.FC = () => {
                     <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Your Role</p>
                     <p className="text-sm font-semibold text-slate-800">{formatRole(role)}</p>
                   </div>
-                  <div className="p-4 rounded-lg bg-slate-50">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Total Patients</p>
-                    <p className="text-sm font-semibold text-slate-800">{totalPatients.toLocaleString()}</p>
-                  </div>
+                  {canAccessPatients && (
+                    <div className="p-4 rounded-lg bg-slate-50">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Total Patients</p>
+                      <p className="text-sm font-semibold text-slate-800">{totalPatients.toLocaleString()}</p>
+                    </div>
+                  )}
                   {isReceptionist && (
                     <>
                       <div className="p-4 rounded-lg bg-amber-50">

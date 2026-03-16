@@ -59,6 +59,7 @@ class SupplierResponse(BaseModel):
 class PurchaseOrderItemCreate(BaseModel):
     item_type: str = Field(..., pattern=r"^(medicine|optical_product)$")
     item_id: str
+    item_name: Optional[str] = Field(None, max_length=200)
     quantity_ordered: int = Field(..., gt=0)
     unit_price: float = Field(..., ge=0)
     total_price: float = Field(..., ge=0)
@@ -123,6 +124,7 @@ class PurchaseOrderResponse(BaseModel):
 class GRNItemCreate(BaseModel):
     item_type: str = Field(..., pattern=r"^(medicine|optical_product)$")
     item_id: str
+    item_name: Optional[str] = Field(None, max_length=200)
     batch_number: Optional[str] = Field(None, max_length=50)
     manufactured_date: Optional[date] = None
     expiry_date: Optional[date] = None

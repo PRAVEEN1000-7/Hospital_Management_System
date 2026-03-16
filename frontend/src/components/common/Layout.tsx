@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { formatRole, ROLE_ICONS } from '../../utils/constants';
 import hospitalService from '../../services/hospitalService';
 import userService from '../../services/userService';
+import notificationsService, { type AppNotification } from '../../services/notificationsService';
 
 const Layout: React.FC = () => {
   const { user, logout } = useAuth();
@@ -15,6 +16,9 @@ const Layout: React.FC = () => {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const notificationsRef = useRef<HTMLDivElement>(null);
   const [appointmentsOpen, setAppointmentsOpen] = useState(
@@ -26,6 +30,8 @@ const Layout: React.FC = () => {
   const [inventoryOpen, setInventoryOpen] = useState(
     () => location.pathname.startsWith('/inventory')
   );
+  const role = user?.roles?.[0];
+  const canAccessPatients = role === 'super_admin' || role === 'admin' || role === 'receptionist' || role === 'nurse' || role === 'pharmacist' || role === 'doctor';
 
   useEffect(() => {
     hospitalService.getHospitalDetails()
@@ -51,6 +57,55 @@ const Layout: React.FC = () => {
     }
   }, [location.pathname]);
 
+  const fetchNotifications = useCallback(async (silent = false) => {
+    if (!silent) setNotificationsLoading(true);
+    try {
+      const res = await notificationsService.getNotifications(1, 15, false);
+      setNotifications(res.data);
+      setUnreadCount(res.unread_count || 0);
+    } catch {
+      // Keep previous notifications on transient API failures
+    } finally {
+      if (!silent) setNotificationsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!notificationsOpen) return;
+    fetchNotifications();
+  }, [notificationsOpen, fetchNotifications]);
+
+  useEffect(() => {
+    fetchNotifications(true);
+  }, [fetchNotifications]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      fetchNotifications(true);
+    }, 30000);
+    return () => clearInterval(timer);
+  }, [fetchNotifications]);
+
+  const handleMarkRead = async (id: string) => {
+    try {
+      await notificationsService.markRead(id);
+      setNotifications(prev => prev.map(n => (n.id === id ? { ...n, is_read: true } : n)));
+      setUnreadCount(prev => Math.max(0, prev - 1));
+    } catch {
+      // Ignore individual mark-read failures
+    }
+  };
+
+  const handleMarkAllRead = async () => {
+    try {
+      await notificationsService.markAllRead();
+      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+      setUnreadCount(0);
+    } catch {
+      // Ignore mark-all failures
+    }
+  };
+
   const handleLogout = async () => {
     setShowLogoutConfirm(false);
     setUserMenuOpen(false);
@@ -60,11 +115,52 @@ const Layout: React.FC = () => {
 
   const handleSearch = useCallback((e: React.FormEvent) => {
     e.preventDefault();
+    if (!(role === 'super_admin' || role === 'admin' || role === 'receptionist' || role === 'nurse' || role === 'pharmacist' || role === 'doctor')) {
+      return;
+    }
     if (searchQuery.trim()) {
       navigate(`/patients?search=${encodeURIComponent(searchQuery.trim())}`);
       setSidebarOpen(false);
     }
-  }, [searchQuery, navigate]);
+  }, [searchQuery, navigate, role]);
+
+  const getNotificationTargetPath = (notification: AppNotification): string => {
+    switch (notification.reference_type) {
+      case 'purchase_order':
+        return '/inventory/purchase-orders';
+      case 'grn':
+        return '/inventory/grns';
+      case 'stock_adjustment':
+      case 'adjustment':
+        return '/inventory/adjustments';
+      case 'cycle_count':
+        return '/inventory/cycle-counts';
+      case 'supplier':
+        return '/inventory/suppliers';
+      case 'stock_movement':
+        return '/inventory/stock-movements';
+      case 'appointment':
+        return '/appointments/manage';
+      case 'prescription':
+        return '/prescriptions';
+      default:
+        return '/dashboard';
+    }
+  };
+
+  const handleNotificationClick = async (notification: AppNotification) => {
+    if (!notification.is_read) {
+      await handleMarkRead(notification.id);
+    }
+    setNotificationsOpen(false);
+    navigate(getNotificationTargetPath(notification), {
+      state: {
+        fromNotification: true,
+        referenceType: notification.reference_type,
+        referenceId: notification.reference_id,
+      },
+    });
+  };
 
   // Close user menu on outside click
   useEffect(() => {
@@ -88,8 +184,6 @@ const Layout: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [notificationsOpen]);
 
-  const role = user?.roles?.[0];
-
   // Receptionist and Doctor get flat appointment links (no dropdown)
   const isFlatNav = role === 'receptionist' || role === 'doctor';
 
@@ -97,8 +191,8 @@ const Layout: React.FC = () => {
   const mainNavItems = [
     { to: '/dashboard', label: 'Dashboard',        icon: 'dashboard' },
   ];
-  // Patient Directory - NOT for doctors
-  if (role !== 'doctor') {
+  // Patient Directory - only roles with patient read access
+  if (canAccessPatients) {
     mainNavItems.push({ to: '/patients', label: 'Patient Directory', icon: 'group' });
   }
   // Register Patient - only roles with actual route access
@@ -183,6 +277,12 @@ const Layout: React.FC = () => {
       { to: '/inventory/stock-movements',label: 'Stock Movements',  icon: 'swap_vert' },
       { to: '/inventory/adjustments',    label: 'Adjustments',      icon: 'tune' },
       { to: '/inventory/cycle-counts',   label: 'Cycle Counts',     icon: 'inventory_2' },
+    );
+  } else if (role === 'pharmacist') {
+    inventoryItems.push(
+      { to: '/inventory',                label: 'Dashboard',       icon: 'space_dashboard' },
+      { to: '/inventory/grns',           label: 'Goods Receipt',   icon: 'inventory' },
+      { to: '/inventory/stock-movements',label: 'Stock Movements', icon: 'swap_vert' },
     );
   }
 
@@ -506,7 +606,7 @@ const Layout: React.FC = () => {
           </div>
           <div className="flex items-center gap-2 sm:gap-4 shrink-0">
             {/* Search - form-based, navigates to patient search */}
-            <form onSubmit={handleSearch} className="relative hidden sm:block" role="search">
+            {canAccessPatients && <form onSubmit={handleSearch} className="relative hidden sm:block" role="search">
               <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 pointer-events-none">
                 <span className="material-symbols-outlined text-lg">search</span>
               </span>
@@ -523,15 +623,15 @@ const Layout: React.FC = () => {
                   <span className="material-symbols-outlined text-lg">close</span>
                 </button>
               )}
-            </form>
+            </form>}
             {/* Mobile search - navigates to patients page */}
-            <button
+            {canAccessPatients && <button
               className="sm:hidden p-2 text-slate-400 hover:bg-slate-100 rounded-full transition-colors"
               onClick={() => navigate('/patients')}
               aria-label="Search patients"
             >
               <span className="material-symbols-outlined">search</span>
-            </button>
+            </button>}
 
             {/* Notifications */}
             <div className="relative" ref={notificationsRef}>
@@ -543,18 +643,53 @@ const Layout: React.FC = () => {
                 aria-haspopup="true"
               >
                 <span className="material-symbols-outlined">notifications</span>
+                {unreadCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
               </button>
               {notificationsOpen && (
                 <div className="absolute right-0 top-full mt-2 w-72 sm:w-80 bg-white rounded-xl border border-slate-200 shadow-xl z-50" role="menu">
                   <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
                     <p className="text-sm font-bold text-slate-900">Notifications</p>
-                    <span className="text-[10px] font-medium text-slate-400 uppercase">All caught up</span>
+                    {unreadCount > 0 ? (
+                      <button onClick={handleMarkAllRead} className="text-[10px] font-medium text-primary uppercase hover:underline">
+                        Mark all read
+                      </button>
+                    ) : (
+                      <span className="text-[10px] font-medium text-slate-400 uppercase">All caught up</span>
+                    )}
                   </div>
-                  <div className="py-8 flex flex-col items-center text-center">
-                    <span className="material-symbols-outlined text-4xl text-slate-200 mb-2">notifications_none</span>
-                    <p className="text-sm text-slate-400">No new notifications</p>
-                    <p className="text-xs text-slate-300 mt-1">You're all up to date</p>
-                  </div>
+                  {notificationsLoading ? (
+                    <div className="py-8 flex items-center justify-center">
+                      <div className="w-5 h-5 border-2 border-slate-200 border-t-primary rounded-full animate-spin" />
+                    </div>
+                  ) : notifications.length === 0 ? (
+                    <div className="py-8 flex flex-col items-center text-center">
+                      <span className="material-symbols-outlined text-4xl text-slate-200 mb-2">notifications_none</span>
+                      <p className="text-sm text-slate-400">No notifications yet</p>
+                    </div>
+                  ) : (
+                    <div className="max-h-96 overflow-y-auto custom-scrollbar divide-y divide-slate-100">
+                      {notifications.map((n) => (
+                        <button
+                          key={n.id}
+                          onClick={() => handleNotificationClick(n)}
+                          className={`w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors ${n.is_read ? 'bg-white' : 'bg-blue-50/40'}`}
+                        >
+                          <div className="flex items-start gap-2">
+                            {!n.is_read && <span className="w-2 h-2 rounded-full bg-blue-500 mt-1.5" />}
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-semibold text-slate-900 truncate">{n.title}</p>
+                              <p className="text-xs text-slate-600 mt-0.5 break-words">{n.message}</p>
+                              <p className="text-[11px] text-slate-400 mt-1">{new Date(n.created_at).toLocaleString()}</p>
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

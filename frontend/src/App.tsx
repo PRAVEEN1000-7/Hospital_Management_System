@@ -65,12 +65,12 @@ const App: React.FC = () => {
             {/* ── General ── */}
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/patients" element={
-              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'receptionist', 'nurse', 'pharmacist', 'cashier', 'optical_staff', 'inventory_manager']}>
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'receptionist', 'nurse', 'pharmacist', 'doctor']}>
                 <PatientList />
               </ProtectedRoute>
             } />
             <Route path="/patients/:id" element={
-              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'receptionist', 'nurse', 'pharmacist', 'cashier', 'optical_staff', 'inventory_manager']}>
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'receptionist', 'nurse', 'pharmacist', 'doctor']}>
                 <PatientDetail />
               </ProtectedRoute>
             } />
@@ -171,7 +171,7 @@ const App: React.FC = () => {
 
             {/* ── Inventory Routes ── */}
             <Route path="/inventory" element={
-              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'inventory_manager']}>
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'inventory_manager', 'pharmacist']}>
                 <InventoryDashboard />
               </ProtectedRoute>
             } />
@@ -191,17 +191,17 @@ const App: React.FC = () => {
               </ProtectedRoute>
             } />
             <Route path="/inventory/grns" element={
-              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'inventory_manager']}>
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'inventory_manager', 'pharmacist']}>
                 <GRNsPage />
               </ProtectedRoute>
             } />
             <Route path="/inventory/grns/new" element={
-              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'inventory_manager']}>
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'inventory_manager', 'pharmacist']}>
                 <NewGRNPage />
               </ProtectedRoute>
             } />
             <Route path="/inventory/stock-movements" element={
-              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'inventory_manager']}>
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'inventory_manager', 'pharmacist']}>
                 <StockMovementsPage />
               </ProtectedRoute>
             } />

@@ -17,6 +17,9 @@ from ..models.inventory import (
     StockAdjustment, CycleCount, CycleCountItem,
 )
 from ..models.prescription import Medicine
+from ..models.optical import OpticalProduct
+from ..models.notification import Notification
+from ..models.user import User, Role, UserRole
 from ..schemas.inventory import (
     SupplierCreate, SupplierUpdate,
     PurchaseOrderCreate, PurchaseOrderUpdate,
@@ -35,7 +38,86 @@ def _resolve_item_name(db: Session, item_type: str, item_id: uuid.UUID) -> Optio
     if item_type == "medicine":
         med = db.query(Medicine.name).filter(Medicine.id == item_id).first()
         return med[0] if med else None
+    if item_type == "optical_product":
+        optical = db.query(OpticalProduct.name).filter(OpticalProduct.id == item_id).first()
+        return optical[0] if optical else None
     return None
+
+
+def _resolve_item_name_with_fallback(
+    db: Session,
+    item_type: str,
+    item_id: uuid.UUID,
+    hospital_id: Optional[uuid.UUID] = None,
+    unit_price: Optional[float] = None,
+) -> Optional[str]:
+    """Resolve item name by id first, then by unique hospital price match for legacy rows."""
+    by_id = _resolve_item_name(db, item_type, item_id)
+    if by_id:
+        return by_id
+    if hospital_id is None or unit_price is None:
+        return None
+
+    if item_type == "medicine":
+        by_purchase_price = db.query(Medicine.name).filter(
+            Medicine.hospital_id == hospital_id,
+            Medicine.is_active == True,
+            Medicine.purchase_price == unit_price,
+        ).limit(2).all()
+        if len(by_purchase_price) == 1:
+            return by_purchase_price[0][0]
+
+        by_selling_price = db.query(Medicine.name).filter(
+            Medicine.hospital_id == hospital_id,
+            Medicine.is_active == True,
+            Medicine.selling_price == unit_price,
+        ).limit(2).all()
+        if len(by_selling_price) == 1:
+            return by_selling_price[0][0]
+
+    if item_type == "optical_product":
+        by_purchase_price = db.query(OpticalProduct.name).filter(
+            OpticalProduct.hospital_id == hospital_id,
+            OpticalProduct.is_active == True,
+            OpticalProduct.purchase_price == unit_price,
+        ).limit(2).all()
+        if len(by_purchase_price) == 1:
+            return by_purchase_price[0][0]
+
+        by_selling_price = db.query(OpticalProduct.name).filter(
+            OpticalProduct.hospital_id == hospital_id,
+            OpticalProduct.is_active == True,
+            OpticalProduct.selling_price == unit_price,
+        ).limit(2).all()
+        if len(by_selling_price) == 1:
+            return by_selling_price[0][0]
+
+    return None
+
+
+def _resolve_item_id(db: Session, item_type: str, item_id: str, item_name: Optional[str] = None) -> uuid.UUID:
+    """Prefer a valid catalog item id; fall back to name lookup when needed."""
+    parsed_id = uuid.UUID(item_id)
+
+    if item_type == "medicine":
+        exists = db.query(Medicine.id).filter(Medicine.id == parsed_id).first()
+        if exists:
+            return parsed_id
+        if item_name:
+            match = db.query(Medicine.id).filter(func.lower(Medicine.name) == item_name.strip().lower()).first()
+            if match:
+                return match[0]
+
+    if item_type == "optical_product":
+        exists = db.query(OpticalProduct.id).filter(OpticalProduct.id == parsed_id).first()
+        if exists:
+            return parsed_id
+        if item_name:
+            match = db.query(OpticalProduct.id).filter(func.lower(OpticalProduct.name) == item_name.strip().lower()).first()
+            if match:
+                return match[0]
+
+    return parsed_id
 
 
 def _generate_number(db: Session, prefix: str, model_class, number_field: str) -> str:
@@ -71,6 +153,54 @@ def _user_name(user) -> Optional[str]:
     first = getattr(user, "first_name", "") or ""
     last = getattr(user, "last_name", "") or ""
     return f"{first} {last}".strip() or None
+
+
+def _notify_hospital_users(
+    db: Session,
+    hospital_id: uuid.UUID,
+    title: str,
+    message: str,
+    notification_type: str = "inventory",
+    priority: str = "normal",
+    reference_type: Optional[str] = None,
+    reference_id: Optional[uuid.UUID] = None,
+    role_names: Optional[list[str]] = None,
+    extra_user_ids: Optional[list[uuid.UUID]] = None,
+    exclude_user_ids: Optional[list[uuid.UUID]] = None,
+) -> None:
+    """Create in-app notifications for selected active users in the same hospital."""
+    q = db.query(User.id).filter(
+        User.hospital_id == hospital_id,
+        User.is_active == True,
+        User.is_deleted == False,
+    )
+    if role_names:
+        q = q.join(UserRole, UserRole.user_id == User.id).join(Role, Role.id == UserRole.role_id).filter(
+            Role.name.in_(role_names),
+            Role.is_active == True,
+        )
+
+    recipient_ids = {row[0] for row in q.distinct().all()}
+    if extra_user_ids:
+        recipient_ids.update(extra_user_ids)
+    if exclude_user_ids:
+        recipient_ids.difference_update(exclude_user_ids)
+
+    if not recipient_ids:
+        return
+
+    for user_id in recipient_ids:
+        db.add(Notification(
+            hospital_id=hospital_id,
+            user_id=user_id,
+            title=title,
+            message=message,
+            type=notification_type,
+            priority=priority,
+            reference_type=reference_type,
+            reference_id=reference_id,
+        ))
+    db.commit()
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -176,7 +306,7 @@ def create_purchase_order(
         po_item = PurchaseOrderItem(
             purchase_order_id=po.id,
             item_type=item.item_type,
-            item_id=uuid.UUID(item.item_id),
+            item_id=_resolve_item_id(db, item.item_type, item.item_id, getattr(item, "item_name", None)),
             quantity_ordered=item.quantity_ordered,
             unit_price=item.unit_price,
             total_price=item.total_price,
@@ -185,6 +315,16 @@ def create_purchase_order(
 
     db.commit()
     db.refresh(po)
+    _notify_hospital_users(
+        db,
+        hospital_id,
+        title="Purchase Order Created",
+        message=f"{po.po_number} was created with total {float(po.total_amount or 0):.2f}",
+        reference_type="purchase_order",
+        reference_id=po.id,
+        role_names=["super_admin", "admin", "inventory_manager"],
+        extra_user_ids=[user_id],
+    )
     logger.info("Purchase order created: %s (total=%.2f)", po.po_number, total)
     return po
 
@@ -254,7 +394,13 @@ def _format_po_response(po: PurchaseOrder, db: Session) -> dict:
             "id": str(it.id),
             "item_type": it.item_type,
             "item_id": str(it.item_id),
-            "item_name": _resolve_item_name(db, it.item_type, it.item_id),
+            "item_name": _resolve_item_name_with_fallback(
+                db,
+                it.item_type,
+                it.item_id,
+                po.hospital_id,
+                float(it.unit_price),
+            ),
             "quantity_ordered": it.quantity_ordered,
             "quantity_received": it.quantity_received or 0,
             "unit_price": float(it.unit_price),
@@ -310,7 +456,7 @@ def create_grn(
         grn_item = GRNItem(
             grn_id=grn.id,
             item_type=item.item_type,
-            item_id=uuid.UUID(item.item_id),
+            item_id=_resolve_item_id(db, item.item_type, item.item_id, getattr(item, "item_name", None)),
             batch_number=item.batch_number,
             manufactured_date=item.manufactured_date,
             expiry_date=item.expiry_date,
@@ -325,6 +471,16 @@ def create_grn(
 
     db.commit()
     db.refresh(grn)
+    _notify_hospital_users(
+        db,
+        hospital_id,
+        title="Goods Receipt Created",
+        message=f"{grn.grn_number} was created and is pending review",
+        reference_type="grn",
+        reference_id=grn.id,
+        role_names=["super_admin", "admin", "inventory_manager", "pharmacist"],
+        extra_user_ids=[user_id],
+    )
     logger.info("GRN created: %s (total=%.2f)", grn.grn_number, total)
     return grn
 
@@ -389,6 +545,17 @@ def update_grn(
     # When GRN is accepted, create stock-in movements and update PO received quantities
     if grn.status == "accepted":
         _process_grn_acceptance(db, grn)
+
+    _notify_hospital_users(
+        db,
+        grn.hospital_id,
+        title="Goods Receipt Updated",
+        message=f"{grn.grn_number} status changed to {grn.status}",
+        reference_type="grn",
+        reference_id=grn.id,
+        role_names=["super_admin", "admin", "inventory_manager", "pharmacist"],
+        extra_user_ids=[verifier_id] if verifier_id else None,
+    )
 
     return grn
 
@@ -486,7 +653,13 @@ def _format_grn_response(grn: GoodsReceiptNote, db: Session) -> dict:
             "id": str(it.id),
             "item_type": it.item_type,
             "item_id": str(it.item_id),
-            "item_name": _resolve_item_name(db, it.item_type, it.item_id),
+            "item_name": _resolve_item_name_with_fallback(
+                db,
+                it.item_type,
+                it.item_id,
+                grn.hospital_id,
+                float(it.unit_price),
+            ),
             "batch_number": it.batch_number,
             "manufactured_date": it.manufactured_date,
             "expiry_date": it.expiry_date,
@@ -657,6 +830,16 @@ def create_stock_adjustment(
     db.add(adj)
     db.commit()
     db.refresh(adj)
+    _notify_hospital_users(
+        db,
+        hospital_id,
+        title="Stock Adjustment Raised",
+        message=f"{adj.adjustment_number} is pending approval",
+        reference_type="stock_adjustment",
+        reference_id=adj.id,
+        role_names=["super_admin", "admin", "inventory_manager"],
+        extra_user_ids=[user_id],
+    )
     logger.info("Stock adjustment created: %s (%s %d)", adj.adjustment_number, adj.adjustment_type, adj.quantity)
     return adj
 
@@ -712,6 +895,17 @@ def approve_stock_adjustment(
         db.add(movement)
         db.commit()
         logger.info("Stock adjustment approved: %s (qty=%d)", adj.adjustment_number, qty)
+
+    _notify_hospital_users(
+        db,
+        adj.hospital_id,
+        title="Stock Adjustment Updated",
+        message=f"{adj.adjustment_number} was {adj.status}",
+        reference_type="stock_adjustment",
+        reference_id=adj.id,
+        role_names=["super_admin", "admin", "inventory_manager"],
+        extra_user_ids=[adj.created_by, approver_id],
+    )
 
     return adj
 
@@ -769,6 +963,16 @@ def create_cycle_count(
 
     db.commit()
     db.refresh(cc)
+    _notify_hospital_users(
+        db,
+        hospital_id,
+        title="Cycle Count Created",
+        message=f"{cc.count_number} was created with {len(data.items)} items",
+        reference_type="cycle_count",
+        reference_id=cc.id,
+        role_names=["super_admin", "admin", "inventory_manager"],
+        extra_user_ids=[user_id],
+    )
     logger.info("Cycle count created: %s (%d items)", cc.count_number, len(data.items))
     return cc
 
@@ -823,6 +1027,16 @@ def update_cycle_count(
         setattr(cc, k, v)
     db.commit()
     db.refresh(cc)
+    _notify_hospital_users(
+        db,
+        cc.hospital_id,
+        title="Cycle Count Updated",
+        message=f"{cc.count_number} status changed to {cc.status}",
+        reference_type="cycle_count",
+        reference_id=cc.id,
+        role_names=["super_admin", "admin", "inventory_manager"],
+        extra_user_ids=[cc.counted_by, verifier_id] if verifier_id else [cc.counted_by],
+    )
     logger.info("Cycle count updated: %s → %s", cc.count_number, cc.status)
     return cc
 

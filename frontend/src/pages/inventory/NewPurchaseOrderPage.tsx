@@ -54,7 +54,7 @@ const NewPurchaseOrderPage: React.FC = () => {
         notes: notes || undefined,
         items: items.map(it => ({
           item_type: it.item_type,
-          item_id: it.item_id || crypto.randomUUID(),
+          item_id: it.item_id || '00000000-0000-0000-0000-000000000000',
           item_name: it.item_name,
           quantity_ordered: it.quantity_ordered,
           unit_price: it.unit_price,

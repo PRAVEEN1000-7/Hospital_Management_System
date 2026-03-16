@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..dependencies import get_current_active_user
+from ..dependencies import get_current_active_user, require_any_role
 from ..models.user import User
 from ..schemas.inventory import (
     SupplierCreate, SupplierUpdate, SupplierResponse,
@@ -34,6 +34,10 @@ movements_router = APIRouter(prefix="/inventory/stock-movements", tags=["Invento
 adjustments_router = APIRouter(prefix="/inventory/adjustments", tags=["Inventory – Adjustments"])
 cycle_counts_router = APIRouter(prefix="/inventory/cycle-counts", tags=["Inventory – Cycle Counts"])
 
+inventory_view_roles = require_any_role("super_admin", "admin", "inventory_manager", "pharmacist")
+inventory_manage_roles = require_any_role("super_admin", "admin", "inventory_manager")
+grn_verify_roles = require_any_role("super_admin", "admin", "inventory_manager", "pharmacist")
+
 
 # ═════════════════════════════════════════════════════════════════════════════
 #  DASHBOARD
@@ -42,7 +46,7 @@ cycle_counts_router = APIRouter(prefix="/inventory/cycle-counts", tags=["Invento
 @router.get("/dashboard")
 async def inventory_dashboard(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(inventory_view_roles),
 ):
     """Inventory dashboard statistics."""
     return svc.get_inventory_dashboard(db, current_user.hospital_id)
@@ -52,7 +56,7 @@ async def inventory_dashboard(
 async def low_stock_items(
     limit: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(inventory_view_roles),
 ):
     """Items below their reorder level."""
     return svc.get_low_stock_items(db, current_user.hospital_id, limit=limit)
@@ -62,7 +66,7 @@ async def low_stock_items(
 async def expiring_items(
     days: int = Query(90, ge=1, le=365),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(inventory_view_roles),
 ):
     """Items expiring within the given number of days."""
     return svc.get_expiring_items(db, current_user.hospital_id, days=days)
@@ -79,7 +83,7 @@ async def list_suppliers(
     search: Optional[str] = None,
     is_active: Optional[bool] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(inventory_manage_roles),
 ):
     """List suppliers with pagination and search."""
     result = svc.list_suppliers(db, current_user.hospital_id, page, limit, search, is_active)
@@ -91,7 +95,7 @@ async def list_suppliers(
 async def create_supplier(
     payload: SupplierCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(inventory_manage_roles),
 ):
     """Create a new supplier."""
     try:
@@ -107,7 +111,7 @@ async def create_supplier(
 async def get_supplier(
     supplier_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(inventory_manage_roles),
 ):
     """Get supplier by ID."""
     supplier = svc.get_supplier(db, supplier_id)
@@ -121,7 +125,7 @@ async def update_supplier(
     supplier_id: uuid.UUID,
     payload: SupplierUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(inventory_manage_roles),
 ):
     """Update a supplier."""
     supplier = svc.update_supplier(db, supplier_id, payload)
@@ -134,7 +138,7 @@ async def update_supplier(
 async def delete_supplier(
     supplier_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(inventory_manage_roles),
 ):
     """Deactivate a supplier (soft delete)."""
     if not svc.delete_supplier(db, supplier_id):
@@ -153,7 +157,7 @@ async def list_purchase_orders(
     supplier_id: Optional[str] = None,
     search: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(inventory_manage_roles),
 ):
     """List purchase orders with pagination."""
     result = svc.list_purchase_orders(
@@ -168,7 +172,7 @@ async def list_purchase_orders(
 async def create_purchase_order(
     payload: PurchaseOrderCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(inventory_manage_roles),
 ):
     """Create a new purchase order."""
     po = svc.create_purchase_order(db, payload, current_user.hospital_id, current_user.id)
@@ -180,7 +184,7 @@ async def create_purchase_order(
 async def get_purchase_order(
     po_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(inventory_manage_roles),
 ):
     """Get purchase order by ID."""
     po = svc.get_purchase_order(db, po_id)
@@ -194,7 +198,7 @@ async def update_purchase_order(
     po_id: uuid.UUID,
     payload: PurchaseOrderUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(inventory_manage_roles),
 ):
     """Update a purchase order (status, notes, etc.)."""
     po = svc.update_purchase_order(db, po_id, payload, approver_id=current_user.id)
@@ -216,7 +220,7 @@ async def list_grns(
     supplier_id: Optional[str] = None,
     search: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(inventory_view_roles),
 ):
     """List GRNs with pagination."""
     result = svc.list_grns(
@@ -231,7 +235,7 @@ async def list_grns(
 async def create_grn(
     payload: GRNCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(inventory_view_roles),
 ):
     """Create a new goods receipt note."""
     grn = svc.create_grn(db, payload, current_user.hospital_id, current_user.id)
@@ -243,7 +247,7 @@ async def create_grn(
 async def get_grn(
     grn_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(inventory_view_roles),
 ):
     """Get GRN by ID."""
     grn = svc.get_grn(db, grn_id)
@@ -257,7 +261,7 @@ async def update_grn(
     grn_id: uuid.UUID,
     payload: GRNUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(grn_verify_roles),
 ):
     """Update GRN status (verify / accept / reject)."""
     grn = svc.update_grn(db, grn_id, payload, verifier_id=current_user.id)
@@ -279,7 +283,7 @@ async def list_stock_movements(
     item_id: Optional[str] = None,
     movement_type: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(inventory_view_roles),
 ):
     """List stock movements with pagination and filters."""
     result = svc.list_stock_movements(
@@ -300,7 +304,7 @@ async def list_adjustments(
     limit: int = Query(10, ge=1, le=100),
     status_filter: Optional[str] = Query(None, alias="status"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(inventory_manage_roles),
 ):
     """List stock adjustments."""
     result = svc.list_stock_adjustments(
@@ -314,7 +318,7 @@ async def list_adjustments(
 async def create_adjustment(
     payload: StockAdjustmentCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(inventory_manage_roles),
 ):
     """Create a stock adjustment request."""
     adj = svc.create_stock_adjustment(db, payload, current_user.hospital_id, current_user.id)
@@ -326,7 +330,7 @@ async def approve_adjustment(
     adjustment_id: uuid.UUID,
     payload: StockAdjustmentUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(inventory_manage_roles),
 ):
     """Approve or reject a stock adjustment."""
     adj = svc.approve_stock_adjustment(db, adjustment_id, payload, current_user.id)
@@ -345,7 +349,7 @@ async def list_cycle_counts(
     limit: int = Query(10, ge=1, le=100),
     status_filter: Optional[str] = Query(None, alias="status"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(inventory_manage_roles),
 ):
     """List cycle counts."""
     result = svc.list_cycle_counts(
@@ -359,7 +363,7 @@ async def list_cycle_counts(
 async def create_cycle_count(
     payload: CycleCountCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(inventory_manage_roles),
 ):
     """Create a new cycle count."""
     cc = svc.create_cycle_count(db, payload, current_user.hospital_id, current_user.id)
@@ -371,7 +375,7 @@ async def create_cycle_count(
 async def get_cycle_count(
     cc_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(inventory_manage_roles),
 ):
     """Get cycle count by ID."""
     cc = svc.get_cycle_count(db, cc_id)
@@ -385,7 +389,7 @@ async def update_cycle_count(
     cc_id: uuid.UUID,
     payload: CycleCountUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(inventory_manage_roles),
 ):
     """Update cycle count status (complete / verify)."""
     cc = svc.update_cycle_count(db, cc_id, payload, verifier_id=current_user.id)

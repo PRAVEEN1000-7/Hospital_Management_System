@@ -14,3 +14,8 @@ from .prescription import (
     Medicine, Prescription, PrescriptionItem,
     PrescriptionTemplate, PrescriptionVersion,
 )
+from .inventory import (
+    Supplier, PurchaseOrder, PurchaseOrderItem,
+    GoodsReceiptNote, GRNItem, StockMovement,
+    StockAdjustment, CycleCount, CycleCountItem,
+)

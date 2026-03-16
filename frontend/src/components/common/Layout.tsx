@@ -23,6 +23,9 @@ const Layout: React.FC = () => {
   const [prescriptionsOpen, setPrescriptionsOpen] = useState(
     () => location.pathname.startsWith('/prescriptions')
   );
+  const [inventoryOpen, setInventoryOpen] = useState(
+    () => location.pathname.startsWith('/inventory')
+  );
 
   useEffect(() => {
     hospitalService.getHospitalDetails()
@@ -42,6 +45,9 @@ const Layout: React.FC = () => {
     }
     if (location.pathname.startsWith('/prescriptions')) {
       setPrescriptionsOpen(true);
+    }
+    if (location.pathname.startsWith('/inventory')) {
+      setInventoryOpen(true);
     }
   }, [location.pathname]);
 
@@ -162,6 +168,21 @@ const Layout: React.FC = () => {
   } else if (role === 'nurse' || role === 'pharmacist') {
     prescriptionItems.push(
       { to: '/prescriptions', label: 'Prescriptions', icon: 'list_alt' },
+    );
+  }
+
+  // ── Inventory navigation ── role-driven
+  const inventoryItems: { to: string; label: string; icon: string }[] = [];
+
+  if (role === 'super_admin' || role === 'admin' || role === 'inventory_manager') {
+    inventoryItems.push(
+      { to: '/inventory',                label: 'Dashboard',        icon: 'space_dashboard' },
+      { to: '/inventory/suppliers',      label: 'Suppliers',        icon: 'local_shipping' },
+      { to: '/inventory/purchase-orders',label: 'Purchase Orders',  icon: 'receipt_long' },
+      { to: '/inventory/grns',           label: 'Goods Receipt',    icon: 'inventory' },
+      { to: '/inventory/stock-movements',label: 'Stock Movements',  icon: 'swap_vert' },
+      { to: '/inventory/adjustments',    label: 'Adjustments',      icon: 'tune' },
+      { to: '/inventory/cycle-counts',   label: 'Cycle Counts',     icon: 'inventory_2' },
     );
   }
 
@@ -341,6 +362,50 @@ const Layout: React.FC = () => {
             </div>
           )}
 
+          {/* ══ INVENTORY — collapsible ══ */}
+          {inventoryItems.length > 0 && (
+            <div className="mt-4">
+              <div className="px-6 mb-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Inventory</span>
+              </div>
+              <button
+                onClick={() => setInventoryOpen(!inventoryOpen)}
+                aria-expanded={inventoryOpen}
+                aria-controls="inventory-menu"
+                className={`w-full flex items-center justify-between px-6 py-2.5 text-sm font-medium transition-all ${
+                  location.pathname.startsWith('/inventory')
+                    ? 'text-primary bg-primary/5'
+                    : 'text-slate-500 hover:text-primary hover:bg-slate-50'
+                }`}
+              >
+                <div className="flex items-center">
+                  <span className="material-symbols-outlined mr-3 text-[20px]">inventory_2</span>
+                  Inventory
+                </div>
+                <span className={`material-symbols-outlined text-[18px] transition-transform duration-200 ${inventoryOpen ? 'rotate-180' : ''}`}>
+                  expand_more
+                </span>
+              </button>
+              <div id="inventory-menu" className={`overflow-hidden transition-all duration-200 ${inventoryOpen ? 'max-h-[700px] opacity-100' : 'max-h-0 opacity-0'}`}>
+                {inventoryItems.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    onClick={() => setSidebarOpen(false)}
+                    className={`flex items-center pl-10 pr-6 py-2.5 text-[13px] font-medium transition-all ${
+                      isExactActive(item.to)
+                        ? 'sidebar-item-active'
+                        : 'text-slate-400 hover:text-primary hover:bg-slate-50'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined mr-3 text-[18px]">{item.icon}</span>
+                    {item.label}
+                  </NavLink>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* ══ SYSTEM — admin / super_admin only ══ */}
           {systemNavItems.length > 0 && (
             <div className="mt-4">
@@ -433,6 +498,8 @@ const Layout: React.FC = () => {
               {mainNavItems.find(i => isActive(i.to))?.label ||
               appointmentItems.find(i => isActive(i.to))?.label ||
               prescriptionItems.find(i => isActive(i.to))?.label ||
+              inventoryItems.find(i => isActive(i.to))?.label ||
+              (isActive('/inventory') ? 'Inventory' : '') ||
               systemNavItems.find(i => isActive(i.to))?.label ||
               (isActive('/profile') ? 'My Profile' : 'HMS')}
             </h1>

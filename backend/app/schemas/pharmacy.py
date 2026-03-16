@@ -266,6 +266,13 @@ class PurchaseOrderCreate(BaseModel):
     items: list[PurchaseOrderItemCreate] = Field(..., min_length=1)
 
 
+class PurchaseOrderUpdate(BaseModel):
+    supplier_id: Optional[str] = None
+    expected_delivery: Optional[date] = None
+    notes: Optional[str] = None
+    items: Optional[list[PurchaseOrderItemCreate]] = None
+
+
 class PurchaseOrderItemResponse(BaseModel):
     id: str
     medicine_id: str
@@ -373,7 +380,7 @@ class SaleResponse(BaseModel):
     id: str
     hospital_id: str
     invoice_number: str
-    sale_date: datetime
+    sale_date: Optional[datetime] = None  # Made optional since it can be null
     patient_id: Optional[str] = None
     patient_name: Optional[str] = None
     doctor_name: Optional[str] = None
@@ -388,7 +395,7 @@ class SaleResponse(BaseModel):
     status: str = "completed"
     notes: Optional[str] = None
     created_at: datetime
-    updated_at: datetime
+    updated_at: Optional[datetime] = None  # Made optional
     items: list[SaleItemResponse] = []
 
     @model_validator(mode="before")

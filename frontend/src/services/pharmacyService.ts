@@ -152,10 +152,13 @@ export const pharmacyService = {
 
   // ═══ Purchase Orders ═══
   async getPurchaseOrders(
-    page = 1, limit = 20, status?: string
+    page = 1, limit = 20, status?: string, supplierId?: string, dateFrom?: string, dateTo?: string
   ): Promise<PurchaseOrderListResponse> {
     const params: Record<string, string | number> = { page, limit };
     if (status) params.order_status = status;
+    if (supplierId) params.supplier_id = supplierId;
+    if (dateFrom) params.date_from = dateFrom;
+    if (dateTo) params.date_to = dateTo;
     const res = await api.get<PurchaseOrderListResponse>('/pharmacy/purchase-orders', { params });
     return res.data;
   },
@@ -167,6 +170,35 @@ export const pharmacyService = {
 
   async createPurchaseOrder(data: PurchaseOrderCreateData): Promise<PurchaseOrder> {
     const res = await api.post<PurchaseOrder>('/pharmacy/purchase-orders', data);
+    return res.data;
+  },
+
+  async updatePurchaseOrder(id: string, data: Partial<PurchaseOrderCreateData>): Promise<PurchaseOrder> {
+    const res = await api.put<PurchaseOrder>(`/pharmacy/purchase-orders/${id}`, data);
+    return res.data;
+  },
+
+  async deletePurchaseOrder(id: string): Promise<void> {
+    await api.delete(`/pharmacy/purchase-orders/${id}`);
+  },
+
+  async submitPurchaseOrder(id: string): Promise<PurchaseOrder> {
+    const res = await api.post<PurchaseOrder>(`/pharmacy/purchase-orders/${id}/submit`);
+    return res.data;
+  },
+
+  async approvePurchaseOrder(id: string, comments?: string): Promise<PurchaseOrder> {
+    const res = await api.post<PurchaseOrder>(`/pharmacy/purchase-orders/${id}/approve`, { comments });
+    return res.data;
+  },
+
+  async placePurchaseOrder(id: string): Promise<PurchaseOrder> {
+    const res = await api.post<PurchaseOrder>(`/pharmacy/purchase-orders/${id}/place`);
+    return res.data;
+  },
+
+  async cancelPurchaseOrder(id: string, reason?: string): Promise<PurchaseOrder> {
+    const res = await api.post<PurchaseOrder>(`/pharmacy/purchase-orders/${id}/cancel`, { reason });
     return res.data;
   },
 

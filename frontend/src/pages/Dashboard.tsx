@@ -149,6 +149,13 @@ const Dashboard: React.FC = () => {
   const isReceptionist = role === 'receptionist';
   const isPharmacist = role === 'pharmacist';
 
+  // Redirect pharmacists to pharmacy dashboard
+  useEffect(() => {
+    if (isPharmacist) {
+      navigate('/pharmacy', { replace: true });
+    }
+  }, [isPharmacist, navigate]);
+
   useEffect(() => {
     const fetchDashboardData = async () => {
       setLoading(true);

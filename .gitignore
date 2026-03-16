@@ -112,7 +112,9 @@ logs/*.log.*
 .zencoder/
 .zenflow/
 
-# ----------------
+# ================================================================
+#  Documentation Summaries (session notes - not for version control)
+# ================================================================
 BUG_FIX_SUMMARY.md
 COMPLETE_FIXES_SUMMARY.md
 FIX_SUMMARY_INVENTORY_NOTIFICATIONS.md

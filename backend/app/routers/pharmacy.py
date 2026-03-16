@@ -176,7 +176,7 @@ async def update_batch(
 # ──────────────────────────────────────────────────
 # Suppliers sub-router
 # ──────────────────────────────────────────────────
-suppliers_router = APIRouter(prefix="/pharmacy/suppliers", tags=["Pharmacy – Suppliers"])
+suppliers_router = APIRouter(prefix="/suppliers", tags=["Pharmacy – Suppliers"])
 
 
 @suppliers_router.get("", response_model=SupplierListResponse)
@@ -249,7 +249,7 @@ async def deactivate_supplier(
 # ──────────────────────────────────────────────────
 # Purchase Orders sub-router
 # ──────────────────────────────────────────────────
-purchase_orders_router = APIRouter(prefix="/pharmacy/purchase-orders", tags=["Pharmacy – Purchase Orders"])
+purchase_orders_router = APIRouter(prefix="/purchase-orders", tags=["Pharmacy – Purchase Orders"])
 
 
 @purchase_orders_router.get("", response_model=PurchaseOrderListResponse)
@@ -315,7 +315,7 @@ async def receive_purchase_order(
 # ──────────────────────────────────────────────────
 # Sales sub-router
 # ──────────────────────────────────────────────────
-sales_router = APIRouter(prefix="/pharmacy/sales", tags=["Pharmacy – Sales"])
+sales_router = APIRouter(prefix="/sales", tags=["Pharmacy – Sales"])
 
 
 @sales_router.get("", response_model=SaleListResponse)
@@ -397,3 +397,11 @@ async def create_stock_adjustment(
         logger.error(f"Error creating stock adjustment: {e}", exc_info=True)
         db.rollback()
         raise HTTPException(status_code=500, detail="Failed to create stock adjustment")
+
+
+# ──────────────────────────────────────────────────
+# Include sub-routers
+# ──────────────────────────────────────────────────
+router.include_router(suppliers_router)
+router.include_router(purchase_orders_router)
+router.include_router(sales_router)

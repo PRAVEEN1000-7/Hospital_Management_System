@@ -46,6 +46,8 @@ import PurchaseOrderForm from './pages/pharmacy/PurchaseOrderForm';
 import SalesList from './pages/pharmacy/SalesList';
 import NewSale from './pages/pharmacy/NewSale';
 import StockAdjustments from './pages/pharmacy/StockAdjustments';
+import PendingPrescriptions from './pages/pharmacy/PendingPrescriptions';
+import DispensingScreen from './pages/pharmacy/DispensingScreen';
 
 
 const App: React.FC = () => {
@@ -237,6 +239,16 @@ const App: React.FC = () => {
             <Route path="/pharmacy/stock-adjustments" element={
               <ProtectedRoute allowedRoles={['super_admin', 'admin', 'pharmacist', 'inventory_manager']}>
                 <StockAdjustments />
+              </ProtectedRoute>
+            } />
+            <Route path="/pharmacy/pending-prescriptions" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'pharmacist', 'inventory_manager']}>
+                <PendingPrescriptions />
+              </ProtectedRoute>
+            } />
+            <Route path="/pharmacy/dispense/:prescriptionId" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'pharmacist', 'inventory_manager']}>
+                <DispensingScreen />
               </ProtectedRoute>
             } />
 

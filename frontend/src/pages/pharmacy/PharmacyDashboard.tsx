@@ -6,11 +6,18 @@ import type { PharmacyDashboard as DashboardData } from '../../types/pharmacy';
 const PharmacyDashboard: React.FC = () => {
   const navigate = useNavigate();
   const [stats, setStats] = useState<DashboardData | null>(null);
+  const [pendingCount, setPendingCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    pharmacyService.getDashboard()
-      .then(setStats)
+    Promise.all([
+      pharmacyService.getDashboard(),
+      pharmacyService.getPendingPrescriptions(1, 1).then(r => r.total).catch(() => 0),
+    ])
+      .then(([dashboard, pending]) => {
+        setStats(dashboard);
+        setPendingCount(pending);
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
@@ -24,6 +31,15 @@ const PharmacyDashboard: React.FC = () => {
   }
 
   const cards = [
+    {
+      label: 'Pending Prescriptions',
+      value: loading ? '…' : pendingCount,
+      icon: pendingCount > 0 ? 'notifications_active' : 'queue',
+      color: pendingCount > 0 ? 'text-blue-600' : 'text-blue-500',
+      bg: pendingCount > 0 ? 'bg-blue-100' : 'bg-blue-50',
+      to: '/pharmacy/pending-prescriptions',
+      highlight: pendingCount > 0,
+    },
     { label: 'Total Medicines', value: stats?.total_medicines ?? 0, icon: 'medication', color: 'text-blue-500', bg: 'bg-blue-50', to: '/pharmacy/medicines' },
     { label: 'Low Stock', value: stats?.low_stock_count ?? 0, icon: 'warning', color: 'text-amber-500', bg: 'bg-amber-50', to: '/pharmacy/medicines' },
     { label: 'Expiring Soon', value: stats?.expiring_soon_count ?? 0, icon: 'schedule', color: 'text-orange-500', bg: 'bg-orange-50', to: '/pharmacy/medicines' },
@@ -51,13 +67,20 @@ const PharmacyDashboard: React.FC = () => {
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
         {cards.map((card) => (
-          <button key={card.label} onClick={() => navigate(card.to)}
-            className={`${card.bg} rounded-xl p-4 text-left hover:shadow-md transition-shadow`}>
-            <div className="flex items-center gap-3 mb-2">
-              <span className={`material-symbols-outlined text-2xl ${card.color}`}>{card.icon}</span>
+          <button
+            key={card.label}
+            onClick={() => navigate(card.to)}
+            className={`${card.bg} rounded-xl p-4 text-left hover:shadow-md transition-all overflow-hidden ${
+              card.highlight ? 'ring-2 ring-blue-400 ring-offset-2 animate-pulse' : ''
+            }`}>
+            <div className="flex items-center justify-between mb-2">
+              <span className={`material-symbols-outlined text-2xl ${card.color} shrink-0`}>{card.icon}</span>
+              {card.highlight && (
+                <span className="material-symbols-outlined text-sm text-red-500 shrink-0 notification-badge">notifications</span>
+              )}
             </div>
-            <p className="text-2xl font-bold text-slate-900">{card.value}</p>
-            <p className="text-xs text-slate-500 mt-1">{card.label}</p>
+            <p className="text-2xl font-bold text-slate-900 truncate">{card.value}</p>
+            <p className="text-xs text-slate-500 mt-1 truncate">{card.label}</p>
           </button>
         ))}
       </div>
@@ -65,6 +88,7 @@ const PharmacyDashboard: React.FC = () => {
       {/* Quick actions */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {[
+          { label: 'Pending Prescriptions Queue', desc: 'Dispense medicines from prescriptions', icon: 'queue', to: '/pharmacy/pending-prescriptions' },
           { label: 'Medicine Inventory', desc: 'Browse & manage all medicines', icon: 'medication', to: '/pharmacy/medicines' },
           { label: 'New Sale / Dispense', desc: 'Create a pharmacy sale', icon: 'point_of_sale', to: '/pharmacy/sales/new' },
           { label: 'Sales History', desc: 'View past sales & invoices', icon: 'receipt_long', to: '/pharmacy/sales' },
@@ -73,11 +97,11 @@ const PharmacyDashboard: React.FC = () => {
           { label: 'Stock Adjustments', desc: 'Manual stock corrections', icon: 'tune', to: '/pharmacy/stock-adjustments' },
         ].map((item) => (
           <button key={item.label} onClick={() => navigate(item.to)}
-            className="flex items-center gap-4 p-4 bg-white rounded-xl border border-slate-200 hover:shadow-md hover:border-primary/30 transition-all text-left">
-            <span className="material-symbols-outlined text-3xl text-primary">{item.icon}</span>
-            <div>
-              <p className="font-semibold text-slate-900">{item.label}</p>
-              <p className="text-xs text-slate-500">{item.desc}</p>
+            className="flex items-center gap-4 p-4 bg-white rounded-xl border border-slate-200 hover:shadow-md hover:border-primary/30 transition-all text-left overflow-hidden">
+            <span className="material-symbols-outlined text-3xl text-primary shrink-0">{item.icon}</span>
+            <div className="min-w-0">
+              <p className="font-semibold text-slate-900 truncate">{item.label}</p>
+              <p className="text-xs text-slate-500 truncate">{item.desc}</p>
             </div>
           </button>
         ))}

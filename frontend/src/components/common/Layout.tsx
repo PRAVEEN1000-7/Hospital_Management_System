@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { formatRole, ROLE_ICONS } from '../../utils/constants';
 import hospitalService from '../../services/hospitalService';
 import userService from '../../services/userService';
+import pharmacyService from '../../services/pharmacyService';
 
 const Layout: React.FC = () => {
   const { user, logout } = useAuth();
@@ -27,6 +28,8 @@ const Layout: React.FC = () => {
   const [pharmacyOpen, setPharmacyOpen] = useState(
     () => location.pathname.startsWith('/pharmacy')
   );
+  const [pendingPrescriptionCount, setPendingPrescriptionCount] = useState(0);
+  const [loadingPendingCount, setLoadingPendingCount] = useState(false);
 
   useEffect(() => {
     hospitalService.getHospitalDetails()
@@ -38,6 +41,34 @@ const Layout: React.FC = () => {
         // Keep default on error
       });
   }, []);
+
+  // Fetch pending prescription count for pharmacy badge
+  useEffect(() => {
+    const role = user?.roles?.[0];
+    if (!role || !['pharmacist', 'admin', 'super_admin', 'inventory_manager'].includes(role)) {
+      return;
+    }
+
+    const fetchPendingCount = async () => {
+      setLoadingPendingCount(true);
+      try {
+        const result = await pharmacyService.getPendingPrescriptions(1, 1);
+        setPendingPrescriptionCount(result.total);
+      } catch (err) {
+        // Silently fail - don't show error for count badge
+        setPendingPrescriptionCount(0);
+      } finally {
+        setLoadingPendingCount(false);
+      }
+    };
+
+    // Initial fetch
+    fetchPendingCount();
+
+    // Refresh every 30 seconds
+    const interval = setInterval(fetchPendingCount, 30000);
+    return () => clearInterval(interval);
+  }, [user]);
 
   // Auto-expand appointments section when navigating to an appointment route
   useEffect(() => {
@@ -228,12 +259,18 @@ const Layout: React.FC = () => {
   }
 
   // ── Pharmacy navigation ── role-driven
-  const pharmacyItems: { to: string; label: string; icon: string }[] = [];
+  const pharmacyItems: { to: string; label: string; icon: string; badge?: number }[] = [];
 
   if (role === 'super_admin' || role === 'admin' || role === 'pharmacist' || role === 'inventory_manager') {
     pharmacyItems.push(
       { to: '/pharmacy', label: 'Dashboard', icon: 'dashboard' },
       { to: '/pharmacy/medicines', label: 'Medicines', icon: 'medication' },
+      {
+        to: '/pharmacy/pending-prescriptions',
+        label: 'Pending Prescriptions',
+        icon: 'queue',
+        badge: pendingPrescriptionCount > 0 ? pendingPrescriptionCount : undefined,
+      },
       { to: '/pharmacy/sales', label: 'Sales', icon: 'point_of_sale' },
     );
   }
@@ -456,14 +493,21 @@ const Layout: React.FC = () => {
                     key={item.to}
                     to={item.to}
                     onClick={() => setSidebarOpen(false)}
-                    className={`flex items-center pl-10 pr-6 py-2.5 text-[13px] font-medium transition-all ${
+                    className={`sidebar-nav-link ${
                       isExactActive(item.to)
                         ? 'sidebar-item-active'
                         : 'text-slate-400 hover:text-primary hover:bg-slate-50'
                     }`}
                   >
-                    <span className="material-symbols-outlined mr-3 text-[18px]">{item.icon}</span>
-                    {item.label}
+                    <div className="sidebar-nav-link-content">
+                      <span className="material-symbols-outlined mr-3 text-[18px] shrink-0">{item.icon}</span>
+                      <span className="sidebar-nav-link-text">{item.label}</span>
+                    </div>
+                    {item.badge !== undefined && item.badge > 0 && (
+                      <span className="ml-2 px-2 py-0.5 text-xs font-semibold bg-red-500 text-white rounded-full min-w-[1.25rem] text-center notification-badge shrink-0">
+                        {item.badge > 99 ? '99+' : item.badge}
+                      </span>
+                    )}
                   </NavLink>
                 ))}
               </div>

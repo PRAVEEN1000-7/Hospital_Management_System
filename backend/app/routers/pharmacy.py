@@ -256,14 +256,66 @@ purchase_orders_router = APIRouter(prefix="/purchase-orders", tags=["Pharmacy â€
 async def list_purchase_orders(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
-    order_status: Optional[str] = None,
+    order_status: Optional[str] = Query(None, alias="status"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    result = svc.list_purchase_orders(db, current_user.hospital_id, page, limit, order_status)
-    data = [PurchaseOrderResponse.model_validate(po) for po in result["data"]]
-    result["data"] = data
-    return result
+    """List pharmacy purchase orders."""
+    try:
+        result = svc.list_purchase_orders(db, current_user.hospital_id, page, limit, order_status)
+        
+        # Enrich with supplier names and items
+        enriched_data = []
+        for po in result["data"]:
+            po_dict = {
+                "id": str(po.id),
+                "hospital_id": str(po.hospital_id),
+                "supplier_id": str(po.supplier_id),
+                "order_number": po.order_number,
+                "order_date": po.order_date,
+                "expected_delivery": po.expected_delivery,
+                "status": po.status,
+                "total_amount": po.total_amount,
+                "notes": po.notes,
+                "created_at": po.created_at,
+                "updated_at": po.updated_at,
+                "supplier_name": None,
+                "items": [],
+            }
+            
+            # Get supplier name
+            if po.supplier_id:
+                supplier = db.query(svc.Supplier).filter(svc.Supplier.id == po.supplier_id).first()
+                if supplier:
+                    po_dict["supplier_name"] = supplier.name
+            
+            # Get items
+            items = db.query(svc.PurchaseOrderItem).filter(
+                svc.PurchaseOrderItem.purchase_order_id == po.id
+            ).all()
+            po_dict["items"] = [
+                {
+                    "id": str(item.id),
+                    "medicine_id": str(item.medicine_id),
+                    "quantity_ordered": item.quantity_ordered,
+                    "unit_price": item.unit_price,
+                    "total_price": item.total_price,
+                }
+                for item in items
+            ]
+            
+            enriched_data.append(po_dict)
+        
+        return {
+            "total": result["total"],
+            "page": result["page"],
+            "limit": result["limit"],
+            "total_pages": result["total_pages"],
+            "data": enriched_data,
+        }
+    except Exception as e:
+        logger.error(f"Error listing pharmacy purchase orders: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to load purchase orders")
 
 
 @purchase_orders_router.get("/{po_id}", response_model=PurchaseOrderResponse)

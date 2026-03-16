@@ -251,7 +251,6 @@ CREATE TABLE patients (
     photo_url                   VARCHAR(500),
     emergency_contact_name      VARCHAR(200),
     emergency_contact_phone     VARCHAR(20),
-    emergency_contact_country_code VARCHAR(5) DEFAULT '+91',
     emergency_contact_relation  VARCHAR(50),
     known_allergies             TEXT,
     chronic_conditions          TEXT,
@@ -395,7 +394,7 @@ CREATE TABLE appointments (
     doctor_id                UUID          NOT NULL REFERENCES doctors(id),
     department_id            UUID          REFERENCES departments(id),
     appointment_date         DATE          NOT NULL,
-    start_time               TIME,
+    start_time               TIME          NOT NULL,
     end_time                 TIME,
     appointment_type         VARCHAR(20)   NOT NULL,                 -- 'scheduled','walk_in','emergency','follow_up'
     visit_type               VARCHAR(20)   DEFAULT 'new',            -- 'new','follow_up'

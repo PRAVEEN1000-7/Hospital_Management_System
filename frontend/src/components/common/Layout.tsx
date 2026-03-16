@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { formatRole, ROLE_ICONS } from '../../utils/constants';
 import hospitalService from '../../services/hospitalService';
 import userService from '../../services/userService';
+import pharmacyService from '../../services/pharmacyService';
 
 const Layout: React.FC = () => {
   const { user, logout } = useAuth();
@@ -24,6 +25,11 @@ const Layout: React.FC = () => {
   const [prescriptionsOpen, setPrescriptionsOpen] = useState(
     () => location.pathname.startsWith('/prescriptions')
   );
+  const [pharmacyOpen, setPharmacyOpen] = useState(
+    () => location.pathname.startsWith('/pharmacy')
+  );
+  const [pendingPrescriptionCount, setPendingPrescriptionCount] = useState(0);
+  const [loadingPendingCount, setLoadingPendingCount] = useState(false);
 
   useEffect(() => {
     hospitalService.getHospitalDetails()
@@ -36,6 +42,34 @@ const Layout: React.FC = () => {
       });
   }, []);
 
+  // Fetch pending prescription count for pharmacy badge
+  useEffect(() => {
+    const role = user?.roles?.[0];
+    if (!role || !['pharmacist', 'admin', 'super_admin', 'inventory_manager'].includes(role)) {
+      return;
+    }
+
+    const fetchPendingCount = async () => {
+      setLoadingPendingCount(true);
+      try {
+        const result = await pharmacyService.getPendingPrescriptions(1, 1);
+        setPendingPrescriptionCount(result.total);
+      } catch (err) {
+        // Silently fail - don't show error for count badge
+        setPendingPrescriptionCount(0);
+      } finally {
+        setLoadingPendingCount(false);
+      }
+    };
+
+    // Initial fetch
+    fetchPendingCount();
+
+    // Refresh every 30 seconds
+    const interval = setInterval(fetchPendingCount, 30000);
+    return () => clearInterval(interval);
+  }, [user]);
+
   // Auto-expand appointments section when navigating to an appointment route
   useEffect(() => {
     if (location.pathname.startsWith('/appointments')) {
@@ -43,6 +77,9 @@ const Layout: React.FC = () => {
     }
     if (location.pathname.startsWith('/prescriptions')) {
       setPrescriptionsOpen(true);
+    }
+    if (location.pathname.startsWith('/pharmacy')) {
+      setPharmacyOpen(true);
     }
   }, [location.pathname]);
 
@@ -218,6 +255,35 @@ const Layout: React.FC = () => {
   } else if (role === 'nurse' || role === 'pharmacist') {
     prescriptionItems.push(
       { to: '/prescriptions', label: 'Prescriptions', icon: 'list_alt' },
+    );
+  }
+
+  // ── Pharmacy navigation ── role-driven
+  const pharmacyItems: { to: string; label: string; icon: string; badge?: number }[] = [];
+
+  if (role === 'super_admin' || role === 'admin' || role === 'pharmacist' || role === 'inventory_manager') {
+    pharmacyItems.push(
+      { to: '/pharmacy', label: 'Dashboard', icon: 'dashboard' },
+      { to: '/pharmacy/medicines', label: 'Medicines', icon: 'medication' },
+      {
+        to: '/pharmacy/pending-prescriptions',
+        label: 'Pending Prescriptions',
+        icon: 'queue',
+        badge: pendingPrescriptionCount > 0 ? pendingPrescriptionCount : undefined,
+      },
+      { to: '/pharmacy/sales', label: 'Sales', icon: 'point_of_sale' },
+    );
+  }
+  if (role === 'super_admin' || role === 'admin' || role === 'pharmacist' || role === 'inventory_manager') {
+    pharmacyItems.push(
+      { to: '/pharmacy/purchase-orders', label: 'Purchase Orders', icon: 'local_shipping' },
+      { to: '/pharmacy/suppliers', label: 'Suppliers', icon: 'local_shipping' },
+      { to: '/pharmacy/stock-adjustments', label: 'Stock Adjustments', icon: 'tune' },
+    );
+  }
+  if (role === 'cashier') {
+    pharmacyItems.push(
+      { to: '/pharmacy/sales', label: 'Sales', icon: 'point_of_sale' },
     );
   }
 
@@ -397,6 +463,57 @@ const Layout: React.FC = () => {
             </div>
           )}
 
+          {/* ══ PHARMACY — collapsible ══ */}
+          {pharmacyItems.length > 0 && (
+            <div className="mt-4">
+              <div className="px-6 mb-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Pharmacy</span>
+              </div>
+              <button
+                onClick={() => setPharmacyOpen(!pharmacyOpen)}
+                aria-expanded={pharmacyOpen}
+                aria-controls="pharmacy-menu"
+                className={`w-full flex items-center justify-between px-6 py-2.5 text-sm font-medium transition-all ${
+                  location.pathname.startsWith('/pharmacy')
+                    ? 'text-primary bg-primary/5'
+                    : 'text-slate-500 hover:text-primary hover:bg-slate-50'
+                }`}
+              >
+                <div className="flex items-center">
+                  <span className="material-symbols-outlined mr-3 text-[20px]">local_pharmacy</span>
+                  Pharmacy
+                </div>
+                <span className={`material-symbols-outlined text-[18px] transition-transform duration-200 ${pharmacyOpen ? 'rotate-180' : ''}`}>
+                  expand_more
+                </span>
+              </button>
+              <div id="pharmacy-menu" className={`overflow-hidden transition-all duration-200 ${pharmacyOpen ? 'max-h-[700px] opacity-100' : 'max-h-0 opacity-0'}`}>
+                {pharmacyItems.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    onClick={() => setSidebarOpen(false)}
+                    className={`sidebar-nav-link ${
+                      isExactActive(item.to)
+                        ? 'sidebar-item-active'
+                        : 'text-slate-400 hover:text-primary hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="sidebar-nav-link-content">
+                      <span className="material-symbols-outlined mr-3 text-[18px] shrink-0">{item.icon}</span>
+                      <span className="sidebar-nav-link-text">{item.label}</span>
+                    </div>
+                    {item.badge !== undefined && item.badge > 0 && (
+                      <span className="ml-2 px-2 py-0.5 text-xs font-semibold bg-red-500 text-white rounded-full min-w-[1.25rem] text-center notification-badge shrink-0">
+                        {item.badge > 99 ? '99+' : item.badge}
+                      </span>
+                    )}
+                  </NavLink>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* ══ SYSTEM — admin / super_admin only ══ */}
           {systemNavItems.length > 0 && (
             <div className="mt-4">
@@ -489,6 +606,7 @@ const Layout: React.FC = () => {
               {mainNavItems.find(i => isActive(i.to))?.label ||
               appointmentItems.find(i => isActive(i.to))?.label ||
               prescriptionItems.find(i => isActive(i.to))?.label ||
+              pharmacyItems.find(i => isActive(i.to))?.label ||
               systemNavItems.find(i => isActive(i.to))?.label ||
               (isActive('/profile') ? 'My Profile' : 'HMS')}
             </h1>

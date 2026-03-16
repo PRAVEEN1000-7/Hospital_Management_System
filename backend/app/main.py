@@ -19,7 +19,7 @@ from .routers import (
     auth, hospital, users, patients,
     appointments, schedules, appointment_settings, appointment_reports,
     departments, doctors, hospital_settings as hospital_settings_router,
-    walk_ins, waitlist, prescriptions,
+    walk_ins, waitlist, prescriptions, pharmacy, pharmacy_dispensing,
 )
 from .routers import logs as logs_router  # frontend log ingestion endpoint
 
@@ -125,6 +125,8 @@ app.include_router(waitlist.router, prefix="/api/v1")
 app.include_router(prescriptions.router, prefix="/api/v1")
 app.include_router(prescriptions.medicines_router, prefix="/api/v1")
 app.include_router(prescriptions.templates_router, prefix="/api/v1")
+app.include_router(pharmacy.router, prefix="/api/v1")
+app.include_router(pharmacy_dispensing.router, prefix="/api/v1")
 app.include_router(logs_router.router, prefix="/api/v1")  # POST /api/v1/logs/frontend
 
 

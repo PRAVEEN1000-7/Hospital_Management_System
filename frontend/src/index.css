@@ -33,6 +33,25 @@
   .sidebar-item-active {
     @apply bg-blue-50 text-primary border-r-4 border-primary font-semibold;
   }
+
+  /* Sidebar navigation link styles - prevent text overflow */
+  .sidebar-nav-link {
+    @apply flex items-center justify-between pl-10 pr-6 py-2.5 text-[13px] font-medium transition-all
+      overflow-hidden max-w-full;
+  }
+
+  .sidebar-nav-link-content {
+    @apply flex items-center overflow-hidden min-w-0;
+  }
+
+  .sidebar-nav-link-text {
+    @apply truncate;
+  }
+
+  /* Notification badge z-index fix */
+  .notification-badge {
+    @apply relative z-10;
+  }
 }
 
 /* Toast Animation */

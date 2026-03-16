@@ -14,3 +14,7 @@ from .prescription import (
     Medicine, Prescription, PrescriptionItem,
     PrescriptionTemplate, PrescriptionVersion,
 )
+from .pharmacy import (
+    MedicineBatch, Supplier, PurchaseOrder, PurchaseOrderItem,
+    PharmacySale, PharmacySaleItem, StockAdjustment,
+)

@@ -1,0 +1,580 @@
+"""
+Pharmacy service — business logic for medicines, batches, suppliers,
+purchase orders, sales, and stock adjustments.
+"""
+import uuid
+import logging
+from decimal import Decimal
+from math import ceil
+from datetime import date, timedelta, datetime, timezone
+from typing import Optional
+from sqlalchemy.orm import Session
+from sqlalchemy import func, or_, and_
+
+from ..models.prescription import Medicine
+from ..models.pharmacy import (
+    MedicineBatch, Supplier,
+    PurchaseOrder, PurchaseOrderItem,
+    PharmacySale, PharmacySaleItem,
+    StockAdjustment,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def _filter_model_data(model, data: dict) -> dict:
+    valid_keys = {col.key for col in model.__mapper__.columns}
+    return {k: v for k, v in data.items() if k in valid_keys and v is not None}
+
+
+# ══════════════════════════════════════════════════
+# Medicine CRUD
+# ══════════════════════════════════════════════════
+
+def create_medicine(db: Session, hospital_id: uuid.UUID, data: dict, user_id: uuid.UUID) -> Medicine:
+    payload = _filter_model_data(Medicine, data)
+    if not payload.get("generic_name"):
+        payload["generic_name"] = payload.get("name", "")
+    med = Medicine(hospital_id=hospital_id, **payload)
+    db.add(med)
+    db.commit()
+    db.refresh(med)
+    return med
+
+
+def get_medicine_by_id(db: Session, medicine_id: str | uuid.UUID) -> Optional[Medicine]:
+    if isinstance(medicine_id, str):
+        try:
+            medicine_id = uuid.UUID(medicine_id)
+        except ValueError:
+            return None
+    return db.query(Medicine).filter(Medicine.id == medicine_id).first()
+
+
+def list_medicines(
+    db: Session,
+    hospital_id: uuid.UUID,
+    page: int = 1,
+    limit: int = 20,
+    search: Optional[str] = None,
+    category: Optional[str] = None,
+    active_only: bool = True,
+) -> dict:
+    query = db.query(Medicine).filter(Medicine.hospital_id == hospital_id)
+    if active_only:
+        query = query.filter(Medicine.is_active == True)
+    if category:
+        query = query.filter(Medicine.category == category)
+    if search:
+        s = f"%{search.strip()}%"
+        query = query.filter(
+            or_(
+                Medicine.name.ilike(s),
+                Medicine.generic_name.ilike(s),
+                Medicine.brand.ilike(s),
+                Medicine.sku.ilike(s),
+                Medicine.barcode.ilike(s),
+            )
+        )
+    total = query.count()
+    items = query.order_by(Medicine.name).offset((page - 1) * limit).limit(limit).all()
+
+    # Enrich with total stock
+    med_ids = [m.id for m in items]
+    stock_map: dict[uuid.UUID, int] = {}
+    if med_ids:
+        stock_rows = (
+            db.query(MedicineBatch.medicine_id, func.coalesce(func.sum(MedicineBatch.quantity), 0))
+            .filter(MedicineBatch.medicine_id.in_(med_ids), MedicineBatch.is_active == True)
+            .group_by(MedicineBatch.medicine_id)
+            .all()
+        )
+        stock_map = {row[0]: int(row[1]) for row in stock_rows}
+
+    return {
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "total_pages": ceil(total / limit) if limit else 1,
+        "data": items,
+        "stock_map": stock_map,
+    }
+
+
+def update_medicine(db: Session, medicine_id: str | uuid.UUID, data: dict) -> Optional[Medicine]:
+    med = get_medicine_by_id(db, medicine_id)
+    if not med:
+        return None
+    for key, value in data.items():
+        if hasattr(med, key) and value is not None:
+            setattr(med, key, value)
+    db.commit()
+    db.refresh(med)
+    return med
+
+
+def delete_medicine(db: Session, medicine_id: str | uuid.UUID) -> bool:
+    med = get_medicine_by_id(db, medicine_id)
+    if not med:
+        return False
+    med.is_active = False
+    db.commit()
+    return True
+
+
+# ══════════════════════════════════════════════════
+# Batch CRUD
+# ══════════════════════════════════════════════════
+
+def create_batch(db: Session, data: dict) -> MedicineBatch:
+    # Convert string UUIDs
+    for fk in ("medicine_id", "grn_id"):
+        if data.get(fk):
+            data[fk] = uuid.UUID(data[fk])
+
+    payload = _filter_model_data(MedicineBatch, data)
+    if "quantity" in payload and "initial_quantity" not in payload:
+        payload["initial_quantity"] = payload["quantity"]
+
+    batch = MedicineBatch(**payload)
+    db.add(batch)
+    db.commit()
+    db.refresh(batch)
+    return batch
+
+
+def list_batches(
+    db: Session,
+    medicine_id: str | uuid.UUID,
+    active_only: bool = True,
+) -> list[MedicineBatch]:
+    if isinstance(medicine_id, str):
+        medicine_id = uuid.UUID(medicine_id)
+    query = db.query(MedicineBatch).filter(MedicineBatch.medicine_id == medicine_id)
+    if active_only:
+        query = query.filter(MedicineBatch.is_active == True)
+    return query.order_by(MedicineBatch.expiry_date).all()
+
+
+def update_batch(db: Session, batch_id: str | uuid.UUID, data: dict) -> Optional[MedicineBatch]:
+    if isinstance(batch_id, str):
+        batch_id = uuid.UUID(batch_id)
+    batch = db.query(MedicineBatch).filter(MedicineBatch.id == batch_id).first()
+    if not batch:
+        return None
+    for key, value in data.items():
+        if hasattr(batch, key) and value is not None:
+            setattr(batch, key, value)
+    db.commit()
+    db.refresh(batch)
+    return batch
+
+
+# ══════════════════════════════════════════════════
+# Supplier CRUD
+# ══════════════════════════════════════════════════
+
+def create_supplier(db: Session, hospital_id: uuid.UUID, data: dict) -> Supplier:
+    payload = _filter_model_data(Supplier, data)
+    if not payload.get("code"):
+        count = db.query(func.count(Supplier.id)).filter(Supplier.hospital_id == hospital_id).scalar() or 0
+        payload["code"] = f"SUP-{count + 1:04d}"
+    sup = Supplier(hospital_id=hospital_id, **payload)
+    db.add(sup)
+    db.commit()
+    db.refresh(sup)
+    return sup
+
+
+def list_suppliers(db: Session, hospital_id: uuid.UUID, active_only: bool = True) -> list[Supplier]:
+    query = db.query(Supplier).filter(Supplier.hospital_id == hospital_id)
+    if active_only:
+        query = query.filter(Supplier.is_active == True)
+    return query.order_by(Supplier.name).all()
+
+
+def get_supplier_by_id(db: Session, supplier_id: str | uuid.UUID) -> Optional[Supplier]:
+    if isinstance(supplier_id, str):
+        try:
+            supplier_id = uuid.UUID(supplier_id)
+        except ValueError:
+            return None
+    return db.query(Supplier).filter(Supplier.id == supplier_id).first()
+
+
+def update_supplier(db: Session, supplier_id: str | uuid.UUID, data: dict) -> Optional[Supplier]:
+    sup = get_supplier_by_id(db, supplier_id)
+    if not sup:
+        return None
+    for key, value in data.items():
+        if hasattr(sup, key) and value is not None:
+            setattr(sup, key, value)
+    db.commit()
+    db.refresh(sup)
+    return sup
+
+
+def delete_supplier(db: Session, supplier_id: str | uuid.UUID) -> bool:
+    sup = get_supplier_by_id(db, supplier_id)
+    if not sup:
+        return False
+    sup.is_active = False
+    db.commit()
+    return True
+
+
+# ══════════════════════════════════════════════════
+# Purchase Order
+# ══════════════════════════════════════════════════
+
+def _generate_po_number(db: Session, hospital_id: uuid.UUID) -> str:
+    """Generate next PO number like PO-0001."""
+    count = db.query(func.count(PurchaseOrder.id)).filter(
+        PurchaseOrder.hospital_id == hospital_id
+    ).scalar() or 0
+    return f"PO-{count + 1:04d}"
+
+
+def create_purchase_order(
+    db: Session, hospital_id: uuid.UUID, data: dict, user_id: uuid.UUID
+) -> PurchaseOrder:
+    items_data = data.pop("items", [])
+    supplier_id = uuid.UUID(data.pop("supplier_id"))
+
+    po = PurchaseOrder(
+        hospital_id=hospital_id,
+        supplier_id=supplier_id,
+        order_number=_generate_po_number(db, hospital_id),
+        expected_delivery=data.get("expected_delivery"),
+        notes=data.get("notes"),
+        status="draft",
+        created_by=user_id,
+    )
+    db.add(po)
+    db.flush()
+
+    total = Decimal("0")
+    for item_data in items_data:
+        line_total = Decimal(str(item_data["unit_price"])) * item_data["quantity_ordered"]
+        poi = PurchaseOrderItem(
+            purchase_order_id=po.id,
+            item_type="medicine",
+            medicine_id=uuid.UUID(item_data["medicine_id"]),
+            quantity_ordered=item_data["quantity_ordered"],
+            unit_price=item_data["unit_price"],
+            total_price=line_total,
+        )
+        db.add(poi)
+        total += line_total
+
+    po.total_amount = total
+    db.commit()
+    db.refresh(po)
+    return po
+
+
+def get_purchase_order(db: Session, po_id: str | uuid.UUID) -> Optional[PurchaseOrder]:
+    if isinstance(po_id, str):
+        po_id = uuid.UUID(po_id)
+    return db.query(PurchaseOrder).filter(PurchaseOrder.id == po_id).first()
+
+
+def list_purchase_orders(
+    db: Session, hospital_id: uuid.UUID,
+    page: int = 1, limit: int = 20,
+    status: Optional[str] = None,
+) -> dict:
+    query = db.query(PurchaseOrder).filter(PurchaseOrder.hospital_id == hospital_id)
+    if status:
+        query = query.filter(PurchaseOrder.status == status)
+    total = query.count()
+    items = query.order_by(PurchaseOrder.created_at.desc()).offset((page - 1) * limit).limit(limit).all()
+    return {
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "total_pages": ceil(total / limit) if limit else 1,
+        "data": items,
+    }
+
+
+def receive_purchase_order(
+    db: Session, po_id: str | uuid.UUID, user_id: uuid.UUID
+) -> Optional[PurchaseOrder]:
+    """Mark PO as received and create/update medicine batches."""
+    po = get_purchase_order(db, po_id)
+    if not po or po.status not in ("draft", "ordered"):
+        return None
+
+    items = db.query(PurchaseOrderItem).filter(PurchaseOrderItem.purchase_order_id == po.id).all()
+    for item in items:
+        item.quantity_received = item.quantity_ordered
+        batch_number = f"PO-{po.order_number}-{item.id.hex[:6]}"[:50]
+        existing = db.query(MedicineBatch).filter(
+            MedicineBatch.medicine_id == item.medicine_id,
+            MedicineBatch.batch_number == batch_number,
+        ).first()
+        if existing:
+            existing.quantity += item.quantity_ordered
+            existing.purchase_price = item.unit_price
+        else:
+            batch = MedicineBatch(
+                medicine_id=item.medicine_id,
+                batch_number=batch_number,
+                expiry_date=date.today() + timedelta(days=365),
+                initial_quantity=item.quantity_ordered,
+                quantity=item.quantity_ordered,
+                purchase_price=item.unit_price,
+                selling_price=item.unit_price,
+            )
+            db.add(batch)
+
+    po.status = "received"
+    db.commit()
+    db.refresh(po)
+    return po
+
+
+# ══════════════════════════════════════════════════
+# Sale / Dispensing
+# ══════════════════════════════════════════════════
+
+def _generate_invoice_number(db: Session, hospital_id: uuid.UUID) -> str:
+    count = db.query(func.count(PharmacySale.id)).filter(
+        PharmacySale.hospital_id == hospital_id
+    ).scalar() or 0
+    return f"INV-{count + 1:06d}"
+
+
+def create_sale(
+    db: Session, hospital_id: uuid.UUID, data: dict, user_id: uuid.UUID
+) -> PharmacySale:
+    items_data = data.pop("items", [])
+    patient_id = data.get("patient_id")
+    if patient_id:
+        patient_id = uuid.UUID(patient_id)
+
+    sale = PharmacySale(
+        hospital_id=hospital_id,
+        invoice_number=_generate_invoice_number(db, hospital_id),
+        patient_id=patient_id,
+        sale_type="counter_sale",
+        status="dispensed",
+        sale_date=datetime.now(timezone.utc),
+        discount_amount=data.get("discount_amount", Decimal("0")),
+        notes=data.get("notes"),
+        created_by=user_id,
+    )
+    db.add(sale)
+    db.flush()
+
+    subtotal = Decimal("0")
+    tax_total = Decimal("0")
+
+    for item_data in items_data:
+        med = get_medicine_by_id(db, item_data["medicine_id"])
+        qty = item_data["quantity"]
+        unit_price = Decimal(str(item_data["unit_price"]))
+        disc_pct = Decimal(str(item_data.get("discount_percent", 0)))
+        tax_pct = Decimal(str(item_data.get("tax_percent", 0)))
+
+        line_subtotal = unit_price * qty
+        line_discount = line_subtotal * disc_pct / 100
+        line_after_disc = line_subtotal - line_discount
+        line_tax = line_after_disc * tax_pct / 100
+        line_total = line_after_disc + line_tax
+
+        batch = None
+        batch_id = item_data.get("batch_id")
+        if batch_id:
+            batch_id_uuid = uuid.UUID(batch_id)
+            batch = db.query(MedicineBatch).filter(MedicineBatch.id == batch_id_uuid).first()
+        else:
+            batch = db.query(MedicineBatch).filter(
+                MedicineBatch.medicine_id == uuid.UUID(item_data["medicine_id"]),
+                MedicineBatch.is_active == True,
+                MedicineBatch.quantity >= qty,
+            ).order_by(MedicineBatch.expiry_date.asc()).first()
+            batch_id_uuid = batch.id if batch else None
+
+        if not batch or batch.quantity < qty:
+            raise ValueError(f"Insufficient stock in batch for {med.name if med else 'unknown'}")
+
+        batch.quantity -= qty
+
+        si = PharmacySaleItem(
+            sale_id=sale.id,
+            medicine_id=uuid.UUID(item_data["medicine_id"]),
+            batch_id=batch_id_uuid,
+            medicine_name=med.name if med else "Unknown",
+            quantity=qty,
+            unit_price=unit_price,
+            discount_percent=disc_pct,
+            tax_percent=line_tax,
+            total_price=line_total,
+        )
+        db.add(si)
+        subtotal += line_subtotal
+        tax_total += line_tax
+
+    sale.subtotal = subtotal
+    sale.tax_amount = tax_total
+    sale.total_amount = subtotal - sale.discount_amount + tax_total
+    db.commit()
+    db.refresh(sale)
+    return sale
+
+
+def get_sale(db: Session, sale_id: str | uuid.UUID) -> Optional[PharmacySale]:
+    if isinstance(sale_id, str):
+        sale_id = uuid.UUID(sale_id)
+    return db.query(PharmacySale).filter(PharmacySale.id == sale_id).first()
+
+
+def get_sale_items(db: Session, sale_id: uuid.UUID) -> list[PharmacySaleItem]:
+    return db.query(PharmacySaleItem).filter(PharmacySaleItem.sale_id == sale_id).all()
+
+
+def list_sales(
+    db: Session, hospital_id: uuid.UUID,
+    page: int = 1, limit: int = 20,
+    search: Optional[str] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+) -> dict:
+    query = db.query(PharmacySale).filter(PharmacySale.hospital_id == hospital_id)
+    if search:
+        s = f"%{search.strip()}%"
+        query = query.filter(
+            PharmacySale.invoice_number.ilike(s)
+        )
+    if date_from:
+        query = query.filter(func.date(PharmacySale.sale_date) >= date_from)
+    if date_to:
+        query = query.filter(func.date(PharmacySale.sale_date) <= date_to)
+
+    total = query.count()
+    items = query.order_by(PharmacySale.created_at.desc()).offset((page - 1) * limit).limit(limit).all()
+    return {
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "total_pages": ceil(total / limit) if limit else 1,
+        "data": items,
+    }
+
+
+# ══════════════════════════════════════════════════
+# Stock Adjustment
+# ══════════════════════════════════════════════════
+
+def create_stock_adjustment(
+    db: Session, hospital_id: uuid.UUID, data: dict, user_id: uuid.UUID
+) -> StockAdjustment:
+    medicine_id = uuid.UUID(data["medicine_id"])
+    batch_id = uuid.UUID(data["batch_id"]) if data.get("batch_id") else None
+    qty = data["quantity"]
+
+    # Update batch stock if batch specified
+    if batch_id:
+        batch = db.query(MedicineBatch).filter(MedicineBatch.id == batch_id).first()
+        if batch:
+            new_qty = batch.quantity + qty
+            if new_qty < 0:
+                raise ValueError("Adjustment would result in negative stock")
+            batch.quantity = new_qty
+
+    adj = StockAdjustment(
+        hospital_id=hospital_id,
+        adjustment_number=f"ADJ-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}",
+        item_type="medicine",
+        medicine_id=medicine_id,
+        batch_id=batch_id,
+        adjustment_type=data["adjustment_type"],
+        quantity=qty,
+        reason=data.get("reason"),
+        status="approved",
+        adjusted_by=user_id,
+    )
+    db.add(adj)
+    db.commit()
+    db.refresh(adj)
+    return adj
+
+
+def list_stock_adjustments(
+    db: Session, hospital_id: uuid.UUID,
+    medicine_id: Optional[str] = None,
+) -> list[StockAdjustment]:
+    query = db.query(StockAdjustment).filter(StockAdjustment.hospital_id == hospital_id)
+    if medicine_id:
+        query = query.filter(StockAdjustment.medicine_id == uuid.UUID(medicine_id))
+    return query.order_by(StockAdjustment.created_at.desc()).limit(100).all()
+
+
+# ══════════════════════════════════════════════════
+# Dashboard Stats
+# ══════════════════════════════════════════════════
+
+def get_pharmacy_dashboard(db: Session, hospital_id: uuid.UUID) -> dict:
+    today = date.today()
+    thirty_days = today + timedelta(days=30)
+
+    total_medicines = db.query(func.count(Medicine.id)).filter(
+        Medicine.hospital_id == hospital_id, Medicine.is_active == True
+    ).scalar() or 0
+
+    # Low stock: batches with qty > 0 and < 10
+    low_stock = db.query(func.count(func.distinct(MedicineBatch.medicine_id))).join(
+        Medicine, Medicine.id == MedicineBatch.medicine_id
+    ).filter(
+        Medicine.hospital_id == hospital_id,
+        MedicineBatch.is_active == True,
+        MedicineBatch.quantity > 0,
+        MedicineBatch.quantity < 10,
+    ).scalar() or 0
+
+    # Expiring within 30 days
+    expiring = db.query(func.count(MedicineBatch.id)).join(
+        Medicine, Medicine.id == MedicineBatch.medicine_id
+    ).filter(
+        Medicine.hospital_id == hospital_id,
+        MedicineBatch.is_active == True,
+        MedicineBatch.expiry_date <= thirty_days,
+        MedicineBatch.expiry_date > today,
+        MedicineBatch.quantity > 0,
+    ).scalar() or 0
+
+    # Already expired
+    expired = db.query(func.count(MedicineBatch.id)).join(
+        Medicine, Medicine.id == MedicineBatch.medicine_id
+    ).filter(
+        Medicine.hospital_id == hospital_id,
+        MedicineBatch.is_active == True,
+        MedicineBatch.expiry_date <= today,
+        MedicineBatch.quantity > 0,
+    ).scalar() or 0
+
+    # Today's sales
+    today_sales = db.query(
+        func.count(PharmacySale.id),
+        func.coalesce(func.sum(PharmacySale.total_amount), 0),
+    ).filter(
+        PharmacySale.hospital_id == hospital_id,
+        func.date(PharmacySale.created_at) == today,
+    ).first()
+
+    pending_orders = db.query(func.count(PurchaseOrder.id)).filter(
+        PurchaseOrder.hospital_id == hospital_id,
+        PurchaseOrder.status.in_(["draft", "submitted"]),
+    ).scalar() or 0
+
+    return {
+        "total_medicines": total_medicines,
+        "low_stock_count": low_stock,
+        "expiring_soon_count": expiring,
+        "expired_count": expired,
+        "today_sales_count": today_sales[0] if today_sales else 0,
+        "today_sales_amount": today_sales[1] if today_sales else Decimal("0"),
+        "pending_orders": pending_orders,
+    }

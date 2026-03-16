@@ -5,6 +5,7 @@ This router provides endpoints for:
 1. Viewing pending prescriptions queue
 2. Dispensing medicines from prescriptions
 3. Tracking dispensing status
+4. Generating dispensing invoices/bills
 """
 import logging
 from typing import Optional
@@ -75,7 +76,7 @@ async def get_prescription_for_dispensing(
 ):
     """
     Get prescription details needed for dispensing.
-    
+
     Includes:
     - Patient information
     - Doctor information
@@ -90,29 +91,59 @@ async def get_prescription_for_dispensing(
             page=1,
             limit=1,
         )
-        
+
         # Find the prescription in results
         for rx in result.get("data", []):
             if rx["id"] == prescription_id:
+                logger.info(
+                    f"Prescription {prescription_id} found in pending queue. "
+                    f"Items: {len(rx.get('items', []))}, "
+                    f"Total batches available: {sum(len(i.get('available_batches', [])) for i in rx.get('items', []))}"
+                )
+                for item in rx.get('items', []):
+                    batch_count = len(item.get('available_batches', []))
+                    logger.info(
+                        f"  - Item: {item.get('medicine_name', 'Unknown')} | "
+                        f"Medicine ID: {item.get('medicine_id')} | "
+                        f"Batches: {batch_count} | "
+                        f"Available qty: {item.get('available_quantity', 0)}"
+                    )
                 return rx
-        
+
         # If not in pending queue, check if it exists
         from ..models.prescription import Prescription
         rx = db.query(Prescription).filter(
             Prescription.id == prescription_id,
             Prescription.hospital_id == current_user.hospital_id,
         ).first()
-        
+
         if not rx:
+            logger.warning(f"Prescription {prescription_id} not found for hospital {current_user.hospital_id}")
             raise HTTPException(status_code=404, detail="Prescription not found")
-        
+
         if not rx.is_finalized:
+            logger.warning(f"Prescription {prescription_id} is not finalized (status: {rx.status})")
             raise HTTPException(status_code=400, detail="Prescription must be finalized before dispensing")
-        
+
         # Enrich and return
         enriched = svc._enrich_prescription_for_dispensing(db, rx)
-        return enriched
         
+        logger.info(
+            f"Prescription {prescription_id} enriched for dispensing. "
+            f"Items: {len(enriched.get('items', []))}, "
+            f"Total batches available: {sum(len(i.get('available_batches', [])) for i in enriched.get('items', []))}"
+        )
+        for item in enriched.get('items', []):
+            batch_count = len(item.get('available_batches', []))
+            logger.info(
+                f"  - Item: {item.get('medicine_name', 'Unknown')} | "
+                f"Medicine ID: {item.get('medicine_id')} | "
+                f"Batches: {batch_count} | "
+                f"Available qty: {item.get('available_quantity', 0)}"
+            )
+        
+        return enriched
+
     except HTTPException:
         raise
     except Exception as e:
@@ -124,11 +155,23 @@ async def get_prescription_for_dispensing(
 # Dispense Medicines
 # ═══════════════════════════════════════════════════════════════════════════
 
+from pydantic import BaseModel
+
+class DispenseItemInput(BaseModel):
+    prescription_item_id: str
+    medicine_id: str
+    batch_id: str
+    quantity: int
+    unit_price: float
+
+class DispenseRequest(BaseModel):
+    items: list[DispenseItemInput]
+    notes: Optional[str] = None
+
 @router.post("/prescriptions/{prescription_id}/dispense")
 async def dispense_prescription(
     prescription_id: str,
-    items: list[dict],
-    notes: Optional[str] = None,
+    request: DispenseRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
@@ -167,18 +210,11 @@ async def dispense_prescription(
     """
     try:
         # Validate items
-        if not items or len(items) == 0:
+        if not request.items or len(request.items) == 0:
             raise HTTPException(status_code=400, detail="At least one item must be dispensed")
         
-        for idx, item in enumerate(items):
-            if not item.get("prescription_item_id"):
-                raise HTTPException(status_code=400, detail=f"Item {idx+1}: prescription_item_id required")
-            if not item.get("medicine_id"):
-                raise HTTPException(status_code=400, detail=f"Item {idx+1}: medicine_id required")
-            if not item.get("batch_id"):
-                raise HTTPException(status_code=400, detail=f"Item {idx+1}: batch_id required")
-            if not item.get("quantity") or item["quantity"] <= 0:
-                raise HTTPException(status_code=400, detail=f"Item {idx+1}: quantity must be positive")
+        # Convert Pydantic models to dicts
+        items = [item.model_dump() for item in request.items]
         
         # Call service
         result = svc.dispense_prescription(
@@ -187,7 +223,7 @@ async def dispense_prescription(
             hospital_id=current_user.hospital_id,
             user_id=current_user.id,
             items_to_dispense=items,
-            notes=notes,
+            notes=request.notes,
         )
         
         return {

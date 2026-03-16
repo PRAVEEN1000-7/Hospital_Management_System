@@ -22,7 +22,7 @@ class MedicineBatch(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     medicine_id = Column(UUID(as_uuid=True), ForeignKey("medicines.id"), nullable=False)
     batch_number = Column(String(50), nullable=False)
-    grn_id = Column(UUID(as_uuid=True), ForeignKey("goods_receipt_notes.id"))
+    # grn_id removed - goods_receipt_notes table not yet modeled
     mfg_date = Column("manufactured_date", Date)
     expiry_date = Column(Date, nullable=False)
     initial_quantity = Column(Integer, nullable=False, default=0)
@@ -126,7 +126,7 @@ class PharmacySale(Base):
     invoice_number = Column("dispensing_number", String(30), nullable=False, index=True)
     patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id"))
     sale_type = Column(String(20), nullable=False, default="counter_sale")
-    invoice_id = Column(UUID(as_uuid=True), ForeignKey("invoices.id"))
+    # invoice_id removed - invoices table not yet modeled
     status = Column(String(20), default="dispensed")
     subtotal = Column("total_amount", Numeric(12, 2), default=0)
     discount_amount = Column(Numeric(12, 2), default=0)

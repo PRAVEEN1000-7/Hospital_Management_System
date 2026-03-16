@@ -75,9 +75,17 @@ export const userService = {
     if (photoUrl.startsWith('http://') || photoUrl.startsWith('https://')) {
       return photoUrl;
     }
-    // Otherwise, construct full URL from API base
+    // For relative URLs starting with /uploads, use the API base URL
     const baseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000').replace('/api/v1', '');
-    return baseUrl + photoUrl;
+    // Remove leading slash if present to avoid double slashes
+    const photoPath = photoUrl.startsWith('/') ? photoUrl.substring(1) : photoUrl;
+    // Use a static cache-busting timestamp (session-based) to allow browser caching
+    // This prevents the image from being requested on every render while still allowing cache invalidation on page reload
+    const timestamp = sessionStorage.getItem('photo_cache_timestamp');
+    if (!timestamp) {
+      sessionStorage.setItem('photo_cache_timestamp', Date.now().toString());
+    }
+    return `${baseUrl}/${photoPath}?t=${sessionStorage.getItem('photo_cache_timestamp')}`;
   },
 };
 

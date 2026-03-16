@@ -3,33 +3,49 @@
    ═══════════════════════════════════════════════ */
 
 // ── Medicine ──
+/**
+ * Medicine interface aligned with backend model (models/prescription.py)
+ * Backend fields: id, hospital_id, name, generic_name, category, manufacturer,
+ * composition, strength, unit_of_measure, units_per_pack, hsn_code, sku, barcode,
+ * requires_prescription, is_controlled, selling_price, purchase_price, tax_config_id,
+ * reorder_level, max_stock_level, storage_instructions, is_active
+ */
 export interface Medicine {
   id: string;
   hospital_id: string;
   name: string;
   generic_name: string | null;
-  brand: string | null;
   category: string | null;
-  dosage_form: string | null;
-  strength: string | null;
   manufacturer: string | null;
+  composition?: string | null;
+  strength: string | null;
+  unit_of_measure: string;  // Changed from 'unit' to match backend
+  units_per_pack?: number;
   hsn_code: string | null;
   sku: string | null;
   barcode: string | null;
-  unit: string;
-  description: string | null;
-  requires_prescription: boolean;
-  schedule_type: string | null;
-  rack_location: string | null;
-  reorder_level: number;
-  max_stock_level: number | null;
-  storage_conditions: string | null;
-  drug_interaction_notes: string | null;
-  side_effects: string | null;
+  requires_prescription?: boolean;
+  is_controlled?: boolean;
+  selling_price?: number;
+  purchase_price?: number;
+  tax_config_id?: string | null;
+  reorder_level?: number;
+  max_stock_level?: number | null;
+  storage_instructions?: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
-  total_stock?: number | null;
+  total_stock?: number | null;  // Computed via stock_map in API response
+  // Legacy/optional fields for backward compatibility (may be undefined)
+  brand?: string | null;
+  dosage_form?: string | null;
+  unit?: string;  // Legacy alias for unit_of_measure
+  description?: string | null;
+  schedule_type?: string | null;
+  rack_location?: string | null;
+  storage_conditions?: string | null;
+  drug_interaction_notes?: string | null;
+  side_effects?: string | null;
 }
 
 export interface MedicineCreateData {
@@ -147,6 +163,7 @@ export interface SupplierListResponse {
 export interface PurchaseOrderItem {
   id: string;
   medicine_id: string;
+  item_type?: string;
   quantity_ordered: number;
   quantity_received: number;
   unit_price: number;
@@ -154,7 +171,11 @@ export interface PurchaseOrderItem {
   batch_number: string | null;
   expiry_date: string | null;
   medicine_name?: string;
+  medicine_strength?: string;
+  medicine_generic_name?: string;
 }
+
+export type PurchaseOrderStatus = 'draft' | 'submitted' | 'approved' | 'ordered' | 'received' | 'cancelled';
 
 export interface PurchaseOrder {
   id: string;
@@ -163,12 +184,20 @@ export interface PurchaseOrder {
   order_number: string;
   order_date: string;
   expected_delivery: string | null;
-  status: string;
+  status: PurchaseOrderStatus;
   total_amount: number;
   notes: string | null;
+  created_by?: string;
+  submitted_by?: string;
+  approved_by?: string;
+  placed_by?: string;
+  received_by?: string;
   created_at: string;
   updated_at: string;
   supplier_name?: string;
+  supplier_contact_person?: string;
+  supplier_phone?: string;
+  supplier_email?: string;
   items: PurchaseOrderItem[];
 }
 
@@ -185,6 +214,13 @@ export interface PurchaseOrderCreateData {
   expected_delivery?: string;
   notes?: string;
   items: PurchaseOrderItemCreate[];
+}
+
+export interface PurchaseOrderUpdateData {
+  supplier_id?: string;
+  expected_delivery?: string;
+  notes?: string;
+  items?: PurchaseOrderItemCreate[];
 }
 
 export interface PurchaseOrderListResponse {

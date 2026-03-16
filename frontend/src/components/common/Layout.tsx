@@ -788,7 +788,117 @@ const Layout: React.FC = () => {
               </>
             )}
 
-            {/* Notifications and User Menu would go here - keeping existing code */}
+            {/* Notifications */}
+            <div className="relative" ref={notificationsRef}>
+              <button
+                onClick={() => setNotificationsOpen(!notificationsOpen)}
+                className="relative p-2 hover:bg-slate-100 rounded-lg text-slate-500 transition-colors"
+                aria-label="Notifications"
+                aria-expanded={notificationsOpen}
+              >
+                <span className="material-icons">notifications</span>
+                {unreadCount > 0 && (
+                  <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
+                )}
+              </button>
+
+              {notificationsOpen && (
+                <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-slate-200 z-50 overflow-hidden">
+                  <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+                    <h3 className="font-bold text-slate-900">Notifications</h3>
+                    {unreadCount > 0 && (
+                      <button onClick={handleMarkAllRead} className="text-xs font-semibold text-primary hover:underline">
+                        Mark all read
+                      </button>
+                    )}
+                  </div>
+                  <div className="max-h-96 overflow-y-auto">
+                    {notificationsLoading ? (
+                      <div className="p-8 text-center text-slate-500">
+                        <span className="material-icons animate-spin">progress_activity</span>
+                      </div>
+                    ) : notifications.length === 0 ? (
+                      <div className="p-8 text-center text-slate-500">
+                        <span className="material-icons text-3xl mb-2">notifications_none</span>
+                        <p className="text-sm">No notifications</p>
+                      </div>
+                    ) : (
+                      notifications.map((notification) => (
+                        <button
+                          key={notification.id}
+                          onClick={() => handleNotificationClick(notification)}
+                          className={`w-full px-4 py-3 text-left hover:bg-slate-50 transition-colors border-b border-slate-50 ${
+                            !notification.is_read ? 'bg-blue-50/50' : ''
+                          }`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <span className={`material-symbols-outlined text-lg mt-0.5 ${
+                              !notification.is_read ? 'text-primary' : 'text-slate-400'
+                            }`}>
+                              {notification.reference_type === 'appointment' ? 'event' : 'notifications'}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-sm ${!notification.is_read ? 'font-semibold text-slate-900' : 'text-slate-700'}`}>
+                                {notification.title}
+                              </p>
+                              <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{notification.message}</p>
+                              <p className="text-[10px] text-slate-400 mt-1">{notification.created_at}</p>
+                            </div>
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* User Menu */}
+            <div className="relative" ref={userMenuRef}>
+              <button
+                onClick={() => setUserMenuOpen(!userMenuOpen)}
+                className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
+                aria-label="User menu"
+                aria-expanded={userMenuOpen}
+              >
+                <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold">
+                  {user?.avatar_url ? (
+                    <img src={userService.getPhotoUrl(user.avatar_url) ?? ''} alt={fullName} className="w-full h-full object-cover rounded-full" />
+                  ) : (
+                    initials
+                  )}
+                </div>
+                <span className="material-icons text-sm text-slate-400">expand_more</span>
+              </button>
+
+              {userMenuOpen && (
+                <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-xl border border-slate-200 z-50 overflow-hidden">
+                  <div className="px-4 py-3 border-b border-slate-100">
+                    <p className="font-bold text-slate-900 text-sm">{fullName}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">{formatRole(user?.roles?.[0] || '')}</p>
+                  </div>
+                  <div className="py-2">
+                    <NavLink
+                      to="/profile"
+                      onClick={() => setUserMenuOpen(false)}
+                      className="px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
+                    >
+                      <span className="material-icons text-lg">person</span>
+                      My Profile
+                    </NavLink>
+                  </div>
+                  <div className="py-2 border-t border-slate-100">
+                    <button
+                      onClick={handleLogout}
+                      className="w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors"
+                    >
+                      <span className="material-icons text-lg">logout</span>
+                      Sign Out
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
@@ -796,6 +906,36 @@ const Layout: React.FC = () => {
         <div className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar">
           <Outlet />
         </div>
+
+        {/* Logout Confirmation Modal */}
+        {showLogoutConfirm && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center" role="dialog" aria-modal="true">
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowLogoutConfirm(false)} />
+            <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6 animate-in fade-in zoom-in-95 duration-200">
+              <div className="flex flex-col items-center text-center">
+                <div className="w-14 h-14 rounded-full bg-amber-50 flex items-center justify-center mb-4">
+                  <span className="material-symbols-outlined text-amber-500 text-3xl">logout</span>
+                </div>
+                <h3 className="text-lg font-bold text-slate-900 mb-1">Sign Out</h3>
+                <p className="text-sm text-slate-500 mb-6">Are you sure you want to sign out?</p>
+                <div className="flex gap-3 w-full">
+                  <button
+                    onClick={() => setShowLogoutConfirm(false)}
+                    className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleLogout}
+                    className="flex-1 px-4 py-2.5 rounded-lg bg-red-600 text-sm font-semibold text-white hover:bg-red-700 transition-colors active:scale-[0.98]"
+                  >
+                    Sign Out
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

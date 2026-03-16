@@ -1,25 +1,32 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import pharmacyService from '../../services/pharmacyService';
-import type { StockAdjustment, Medicine, MedicineBatch } from '../../types/pharmacy';
+import type { StockAdjustment as InventoryStockAdjustment } from '../../types/inventory';
 import { useToast } from '../../contexts/ToastContext';
 import { format } from 'date-fns';
+
+interface PharmacyStockAdjustment extends InventoryStockAdjustment {
+  medicine_name?: string | null;
+}
 
 const ADJ_TYPE_COLORS: Record<string, string> = {
   damage: 'bg-red-100 text-red-700',
   expired: 'bg-amber-100 text-amber-700',
   correction: 'bg-blue-100 text-blue-700',
   return: 'bg-green-100 text-green-700',
+  increase: 'bg-emerald-100 text-emerald-700',
+  decrease: 'bg-orange-100 text-orange-700',
+  write_off: 'bg-slate-100 text-slate-700',
 };
 
 const StockAdjustments: React.FC = () => {
   const toast = useToast();
-  const [adjustments, setAdjustments] = useState<StockAdjustment[]>([]);
+  const [adjustments, setAdjustments] = useState<PharmacyStockAdjustment[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
 
   // Form state
-  const [medicines, setMedicines] = useState<Medicine[]>([]);
-  const [batches, setBatches] = useState<MedicineBatch[]>([]);
+  const [medicines, setMedicines] = useState<any[]>([]);
+  const [batches, setBatches] = useState<any[]>([]);
   const [medicineId, setMedicineId] = useState('');
   const [batchId, setBatchId] = useState('');
   const [adjustmentType, setAdjustmentType] = useState<'damage' | 'expired' | 'correction' | 'return'>('damage');
@@ -171,14 +178,27 @@ const StockAdjustments: React.FC = () => {
               {adjustments.map(a => (
                 <tr key={a.id} className="hover:bg-slate-50">
                   <td className="px-4 py-3 text-slate-600">{format(new Date(a.created_at), 'dd MMM yyyy')}</td>
-                  <td className="px-4 py-3 font-medium text-slate-900">{a.medicine_name || '-'}</td>
+                  <td className="px-4 py-3 font-medium text-slate-900">
+                    <div className="flex items-center gap-2">
+                      <span className="material-icons text-slate-400 text-sm">medication</span>
+                      {a.medicine_name || (
+                        <span className="text-slate-400 text-xs font-mono">
+                          {a.item_id?.substring(0, 8)}...
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-4 py-3">
                     <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${ADJ_TYPE_COLORS[a.adjustment_type] || ''}`}>
                       {a.adjustment_type}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-slate-600">{a.quantity}</td>
-                  <td className="px-4 py-3 text-slate-500">{a.reason || '-'}</td>
+                  <td className="px-4 py-3 text-slate-600">
+                    <span className={a.quantity < 0 ? 'text-red-600 font-semibold' : 'text-emerald-600 font-semibold'}>
+                      {a.quantity < 0 ? '-' : '+'}{Math.abs(a.quantity)}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-slate-500">{a.reason || '—'}</td>
                 </tr>
               ))}
             </tbody>

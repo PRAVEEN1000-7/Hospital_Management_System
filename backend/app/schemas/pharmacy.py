@@ -408,32 +408,41 @@ class SaleListResponse(BaseModel):
 
 
 # ══════════════════════════════════════════════════
-# Stock Adjustment
+# Stock Adjustment (uses inventory model)
 # ══════════════════════════════════════════════════
 class StockAdjustmentCreate(BaseModel):
-    medicine_id: str
+    medicine_id: str  # item_id in inventory model
     batch_id: Optional[str] = None
     adjustment_type: str = Field(..., pattern="^(increase|decrease|write_off|damage|expired|correction|return)$")
-    quantity: int             # +ve = stock-in, -ve = stock-out
+    quantity: int     # Positive = stock in, Negative = stock out
     reason: Optional[str] = None
 
 
 class StockAdjustmentResponse(BaseModel):
     id: str
     hospital_id: str
-    medicine_id: str
+    item_id: str      # medicine_id
     batch_id: Optional[str] = None
     adjustment_type: str
     quantity: int
     reason: Optional[str] = None
-    adjusted_by: Optional[str] = None
+    status: str
+    approved_by: Optional[str] = None
+    created_by: Optional[str] = None
     created_at: datetime
-    medicine_name: Optional[str] = None
+    medicine_name: Optional[str] = None  # Computed field for display
 
     @model_validator(mode="before")
     @classmethod
     def transform(cls, data: Any) -> Any:
-        return _orm_to_dict(data)
+        """Transform inventory StockAdjustment to pharmacy response format."""
+        if isinstance(data, dict):
+            # Map item_id to medicine_id for pharmacy
+            data['medicine_id'] = data.get('item_id')
+            # Get medicine name if available
+            if not data.get('medicine_name') and data.get('item_name'):
+                data['medicine_name'] = data['item_name']
+        return data
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -471,30 +471,43 @@ def list_sales(
 def create_stock_adjustment(
     db: Session, hospital_id: uuid.UUID, data: dict, user_id: uuid.UUID
 ) -> StockAdjustment:
+    """Create pharmacy stock adjustment using inventory StockAdjustment model."""
     medicine_id = uuid.UUID(data["medicine_id"])
     batch_id = uuid.UUID(data["batch_id"]) if data.get("batch_id") else None
     qty = data["quantity"]
-
+    adj_type = data["adjustment_type"]
+    
+    # Determine quantity direction based on adjustment type
+    # damage/expired = negative (stock out), correction/return = can be +/-
+    if adj_type in ["damage", "expired"]:
+        qty = -abs(qty)  # Always negative
+    elif adj_type == "return":
+        qty = abs(qty)   # Always positive
+    # correction keeps the sign as provided
+    
     # Update batch stock if batch specified
     if batch_id:
         batch = db.query(MedicineBatch).filter(MedicineBatch.id == batch_id).first()
-        if batch:
-            new_qty = batch.quantity + qty
-            if new_qty < 0:
-                raise ValueError("Adjustment would result in negative stock")
-            batch.quantity = new_qty
+        if not batch:
+            raise ValueError("Batch not found")
+        new_qty = batch.quantity + qty
+        if new_qty < 0:
+            raise ValueError("Adjustment would result in negative stock")
+        batch.quantity = new_qty
 
+    # Create adjustment record using inventory model (auto-approved for pharmacy)
     adj = StockAdjustment(
         hospital_id=hospital_id,
-        adjustment_number=f"ADJ-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}",
+        adjustment_number=f"ADJ-PHARM-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}",
         item_type="medicine",
-        medicine_id=medicine_id,
+        item_id=medicine_id,  # Use item_id (inventory model field)
         batch_id=batch_id,
-        adjustment_type=data["adjustment_type"],
+        adjustment_type=adj_type,
         quantity=qty,
-        reason=data.get("reason"),
-        status="approved",
-        adjusted_by=user_id,
+        reason=data.get("reason", "Pharmacy stock adjustment"),
+        status="approved",  # Auto-approved for pharmacy operations
+        approved_by=user_id,
+        created_by=user_id,
     )
     db.add(adj)
     db.commit()
@@ -505,11 +518,46 @@ def create_stock_adjustment(
 def list_stock_adjustments(
     db: Session, hospital_id: uuid.UUID,
     medicine_id: Optional[str] = None,
-) -> list[StockAdjustment]:
-    query = db.query(StockAdjustment).filter(StockAdjustment.hospital_id == hospital_id)
+) -> list:
+    """List pharmacy stock adjustments with medicine names."""
+    from sqlalchemy.orm import joinedload
+    
+    query = db.query(StockAdjustment).filter(
+        StockAdjustment.hospital_id == hospital_id,
+        StockAdjustment.item_type == 'medicine'
+    )
+    
     if medicine_id:
-        query = query.filter(StockAdjustment.medicine_id == uuid.UUID(medicine_id))
-    return query.order_by(StockAdjustment.created_at.desc()).limit(100).all()
+        query = query.filter(StockAdjustment.item_id == uuid.UUID(medicine_id))
+    
+    adjustments = query.order_by(StockAdjustment.created_at.desc()).limit(100).all()
+    
+    # Add medicine names for display
+    result = []
+    for adj in adjustments:
+        adj_dict = {
+            'id': str(adj.id),
+            'hospital_id': str(adj.hospital_id),
+            'item_id': str(adj.item_id),
+            'batch_id': str(adj.batch_id) if adj.batch_id else None,
+            'adjustment_type': adj.adjustment_type,
+            'quantity': adj.quantity,
+            'reason': adj.reason,
+            'status': adj.status,
+            'approved_by': str(adj.approved_by) if adj.approved_by else None,
+            'created_by': str(adj.created_by) if adj.created_by else None,
+            'created_at': adj.created_at,
+            'medicine_name': None,
+        }
+        
+        # Get medicine name
+        med = db.query(Medicine).filter(Medicine.id == adj.item_id).first()
+        if med:
+            adj_dict['medicine_name'] = med.name
+        
+        result.append(adj_dict)
+    
+    return result
 
 
 # ══════════════════════════════════════════════════

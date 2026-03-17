@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import * as XLSX from 'xlsx';
 import { useToast } from '../../contexts/ToastContext';
 import inventoryService from '../../services/inventoryService';
+import pharmacyService from '../../services/pharmacyService';
 import type { Supplier, PurchaseOrderCreate } from '../../types/inventory';
+import type { Medicine } from '../../types/pharmacy';
 
 interface ItemRow {
   item_type: 'medicine' | 'optical_product';
@@ -20,11 +23,14 @@ const NewPurchaseOrderPage: React.FC = () => {
   const [orderDate, setOrderDate] = useState(new Date().toISOString().split('T')[0]);
   const [expectedDate, setExpectedDate] = useState('');
   const [notes, setNotes] = useState('');
+  const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [items, setItems] = useState<ItemRow[]>([{ item_type: 'medicine', item_id: '', item_name: '', quantity_ordered: 1, unit_price: 0 }]);
   const [saving, setSaving] = useState(false);
+  const [bulkUploading, setBulkUploading] = useState(false);
 
   useEffect(() => {
     inventoryService.getSuppliers(1, 100, '', true).then(r => setSuppliers(r.data)).catch(() => {});
+    pharmacyService.getMedicines(1, 500).then(r => setMedicines(r.data)).catch(() => {});
   }, []);
 
   const addItem = () => setItems([...items, { item_type: 'medicine', item_id: '', item_name: '', quantity_ordered: 1, unit_price: 0 }]);
@@ -35,6 +41,106 @@ const NewPurchaseOrderPage: React.FC = () => {
     const updated = [...items];
     (updated[idx] as unknown as Record<string, string | number>)[field] = value;
     setItems(updated);
+  };
+
+  const handleMedicineSelect = (idx: number, medicineId: string) => {
+    const selected = medicines.find((m) => m.id === medicineId);
+    const updated = [...items];
+    updated[idx] = {
+      ...updated[idx],
+      item_type: 'medicine',
+      item_id: medicineId,
+      item_name: selected?.name || '',
+    };
+    setItems(updated);
+  };
+
+  const handleDownloadTemplate = () => {
+    const templateRows = [
+      {
+        item_type: 'medicine',
+        item_id: '',
+        item_name: 'Paracetamol 650mg',
+        quantity_ordered: 50,
+        unit_price: 2.5,
+      },
+    ];
+    const worksheet = XLSX.utils.json_to_sheet(templateRows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'PO Items');
+    XLSX.writeFile(workbook, 'inventory_po_bulk_template.xlsx');
+  };
+
+  const handleBulkUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setBulkUploading(true);
+    try {
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: 'array' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' });
+
+      if (!rows.length) {
+        toast.error('Uploaded file is empty');
+        return;
+      }
+
+      const medicineById = new Map(medicines.map((m) => [m.id, m]));
+      const medicineByName = new Map(medicines.map((m) => [m.name.toLowerCase().trim(), m]));
+      const parsed: ItemRow[] = [];
+      let skipped = 0;
+
+      rows.forEach((row) => {
+        const itemTypeRaw = String(row.item_type || 'medicine').trim().toLowerCase();
+        const itemType: 'medicine' | 'optical_product' = itemTypeRaw === 'optical_product' ? 'optical_product' : 'medicine';
+        const itemIdCell = String(row.item_id || '').trim();
+        const itemNameCell = String(row.item_name || row.medicine_name || '').trim();
+        const qty = Number(row.quantity_ordered || row.quantity || 0);
+        const unitPrice = Number(row.unit_price || row.price || 0);
+
+        let itemId = itemIdCell;
+        let itemName = itemNameCell;
+
+        if (itemType === 'medicine') {
+          const med = medicineById.get(itemIdCell) || medicineByName.get(itemNameCell.toLowerCase());
+          if (!med) {
+            skipped += 1;
+            return;
+          }
+          itemId = med.id;
+          itemName = med.name;
+        }
+
+        if (!itemName || !Number.isFinite(qty) || qty <= 0 || !Number.isFinite(unitPrice) || unitPrice <= 0) {
+          skipped += 1;
+          return;
+        }
+
+        parsed.push({
+          item_type: itemType,
+          item_id: itemId,
+          item_name: itemName,
+          quantity_ordered: Math.round(qty),
+          unit_price: unitPrice,
+        });
+      });
+
+      if (!parsed.length) {
+        toast.error('No valid rows found. Use the template and valid medicine names/ids.');
+        return;
+      }
+
+      setItems(parsed);
+      toast.success(`Imported ${parsed.length} item(s)${skipped ? `, skipped ${skipped}` : ''}`);
+    } catch (err) {
+      console.error('Bulk upload failed:', err);
+      toast.error('Failed to parse file. Upload CSV/XLSX template format.');
+    } finally {
+      setBulkUploading(false);
+      event.target.value = '';
+    }
   };
 
   const totalAmount = items.reduce((sum, it) => sum + it.quantity_ordered * it.unit_price, 0);
@@ -120,10 +226,26 @@ const NewPurchaseOrderPage: React.FC = () => {
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-bold text-slate-700">Order Items</h2>
-          <button onClick={addItem} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200 transition-colors">
-            <span className="material-symbols-outlined text-base">add</span>Add Item
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={handleDownloadTemplate} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200 transition-colors">
+              <span className="material-symbols-outlined text-base">download</span>Template
+            </button>
+            <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-200 transition-colors cursor-pointer">
+              <span className="material-symbols-outlined text-base">upload_file</span>{bulkUploading ? 'Uploading...' : 'Bulk Upload'}
+              <input
+                type="file"
+                accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
+                className="hidden"
+                onChange={handleBulkUpload}
+                disabled={bulkUploading}
+              />
+            </label>
+            <button onClick={addItem} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200 transition-colors">
+              <span className="material-symbols-outlined text-base">add</span>Add Item
+            </button>
+          </div>
         </div>
+        <p className="text-xs text-slate-500 mb-3">For medicines, select from the dropdown to capture medicine details correctly.</p>
 
         {/* Desktop Table */}
         <div className="hidden md:block overflow-x-auto">
@@ -131,7 +253,7 @@ const NewPurchaseOrderPage: React.FC = () => {
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
                 <th className="px-3 py-2.5 text-left text-xs font-bold text-slate-600 w-28">Type</th>
-                <th className="px-3 py-2.5 text-left text-xs font-bold text-slate-600">Item Name *</th>
+                <th className="px-3 py-2.5 text-left text-xs font-bold text-slate-600">Item / Medicine *</th>
                 <th className="px-3 py-2.5 text-right text-xs font-bold text-slate-600 w-28">Qty *</th>
                 <th className="px-3 py-2.5 text-right text-xs font-bold text-slate-600 w-36">Unit Price *</th>
                 <th className="px-3 py-2.5 text-right text-xs font-bold text-slate-600 w-36">Total</th>
@@ -149,8 +271,23 @@ const NewPurchaseOrderPage: React.FC = () => {
                     </select>
                   </td>
                   <td className="px-3 py-2">
-                    <input type="text" value={item.item_name} onChange={e => updateItem(idx, 'item_name', e.target.value)}
-                      className="w-full px-2 py-2 border border-slate-200 rounded-lg text-sm" placeholder="Item name" />
+                    {item.item_type === 'medicine' ? (
+                      <select
+                        value={item.item_id}
+                        onChange={e => handleMedicineSelect(idx, e.target.value)}
+                        className="w-full px-2 py-2 border border-slate-200 rounded-lg text-sm bg-white"
+                      >
+                        <option value="">Select medicine...</option>
+                        {medicines.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name}{m.strength ? ` (${m.strength})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input type="text" value={item.item_name} onChange={e => updateItem(idx, 'item_name', e.target.value)}
+                        className="w-full px-2 py-2 border border-slate-200 rounded-lg text-sm" placeholder="Item name" />
+                    )}
                   </td>
                   <td className="px-3 py-2">
                     <input type="number" min="1" value={item.quantity_ordered} onChange={e => updateItem(idx, 'quantity_ordered', parseInt(e.target.value) || 0)}
@@ -192,7 +329,22 @@ const NewPurchaseOrderPage: React.FC = () => {
                 </div>
                 <div>
                   <label className="text-xs text-slate-400">Item Name</label>
-                  <input type="text" value={item.item_name} onChange={e => updateItem(idx, 'item_name', e.target.value)} className="w-full px-2 py-2 border border-slate-200 rounded-lg text-sm mt-1" placeholder="Name" />
+                  {item.item_type === 'medicine' ? (
+                    <select
+                      value={item.item_id}
+                      onChange={e => handleMedicineSelect(idx, e.target.value)}
+                      className="w-full px-2 py-2 border border-slate-200 rounded-lg text-sm bg-white mt-1"
+                    >
+                      <option value="">Select medicine...</option>
+                      {medicines.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name}{m.strength ? ` (${m.strength})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input type="text" value={item.item_name} onChange={e => updateItem(idx, 'item_name', e.target.value)} className="w-full px-2 py-2 border border-slate-200 rounded-lg text-sm mt-1" placeholder="Name" />
+                  )}
                 </div>
                 <div>
                   <label className="text-xs text-slate-400">Quantity</label>

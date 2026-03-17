@@ -150,7 +150,9 @@ const PharmacyDashboard: React.FC = () => {
             {outOfStockMedicines.map((med) => (
               <div
                 key={med.id}
-                onClick={() => navigate(`/pharmacy/medicines/${med.id}`)}
+                onClick={() => navigate(
+                  `/pharmacy/purchase-orders/new?medicine_id=${med.id}&quantity=${Math.max(1, med.reorder_level ?? 1)}`
+                )}
                 className="bg-white rounded-lg p-3 border border-red-200 cursor-pointer hover:shadow-md transition-all"
               >
                 <div className="flex items-start justify-between">

@@ -242,16 +242,21 @@ def create_purchase_order(
 ) -> PurchaseOrder:
     """Create a new purchase order in DRAFT status."""
     from datetime import date
-    
+
     items_data = data.pop("items", [])
     supplier_id = uuid.UUID(data.pop("supplier_id"))
+
+    # Handle expected_delivery - convert empty string to None
+    expected_delivery = data.get("expected_delivery")
+    if expected_delivery == "" or expected_delivery is None:
+        expected_delivery = None
 
     po = PurchaseOrder(
         hospital_id=hospital_id,
         supplier_id=supplier_id,
-        order_number=_generate_po_number(db, hospital_id),
+        po_number=_generate_po_number(db, hospital_id),  # ✅ Fixed: use po_number (model field)
         order_date=date.today(),  # Set order date to today
-        expected_delivery=data.get("expected_delivery"),
+        expected_delivery_date=expected_delivery,  # Model field name
         notes=data.get("notes"),
         status="draft",
         created_by=user_id,
@@ -265,7 +270,7 @@ def create_purchase_order(
         poi = PurchaseOrderItem(
             purchase_order_id=po.id,
             item_type="medicine",
-            medicine_id=uuid.UUID(item_data["medicine_id"]),
+            item_id=uuid.UUID(item_data["medicine_id"]),  # Model field name
             quantity_ordered=item_data["quantity_ordered"],
             unit_price=item_data["unit_price"],
             total_price=line_total,
@@ -276,6 +281,7 @@ def create_purchase_order(
     po.total_amount = total
     db.commit()
     db.refresh(po)
+    logger.info(f"Purchase order created: {po.po_number} with {len(items_data)} items")
     return po
 
 
@@ -361,37 +367,123 @@ def list_purchase_orders(
 
 
 def receive_purchase_order(
-    db: Session, po_id: str | uuid.UUID, user_id: uuid.UUID
+    db: Session, po_id: str | uuid.UUID, user_id: uuid.UUID, receive_data: Optional[dict] = None
 ) -> Optional[PurchaseOrder]:
-    """Mark PO as received and create/update medicine batches."""
+    """Receive PO quantities and create/update medicine batches + stock movements from provided input."""
     po = get_purchase_order(db, po_id)
     if not po or po.status != "ordered":
         return None
 
+    from ..models.inventory import StockMovement
+
     items = db.query(PurchaseOrderItem).filter(PurchaseOrderItem.purchase_order_id == po.id).all()
+
+    payload_map: dict[uuid.UUID, dict] = {}
+    if receive_data and receive_data.get("items"):
+      for raw in receive_data["items"]:
+          item_id = raw.get("purchase_order_item_id")
+          if not item_id:
+              continue
+          try:
+              payload_map[uuid.UUID(item_id)] = raw
+          except ValueError:
+              raise ValueError(f"Invalid purchase_order_item_id: {item_id}")
+
     for item in items:
-        item.quantity_received = item.quantity_ordered
-        batch_number = f"PO-{po.order_number}-{item.id.hex[:6]}"[:50]
+        input_item = payload_map.get(item.id)
+
+        if input_item:
+            received_qty = int(input_item.get("quantity_received", 0))
+        else:
+            received_qty = max(item.quantity_ordered - (item.quantity_received or 0), 0)
+
+        if received_qty < 0:
+            raise ValueError("Received quantity cannot be negative")
+
+        remaining_qty = max(item.quantity_ordered - (item.quantity_received or 0), 0)
+        if received_qty > remaining_qty:
+            raise ValueError(
+                f"Received quantity for item {item.id} cannot exceed remaining ordered quantity ({remaining_qty})"
+            )
+
+        if received_qty == 0:
+            continue
+
+        item.quantity_received = (item.quantity_received or 0) + received_qty
+
+        batch_number = (
+            (input_item.get("batch_number") if input_item else None)
+            or f"PO-{po.po_number}-{item.id.hex[:6]}"
+        )[:50]
+
+        mfg_date = input_item.get("manufactured_date") if input_item else None
+        expiry_date = (input_item.get("expiry_date") if input_item else None) or (date.today() + timedelta(days=365))
+        purchase_price = Decimal(str(input_item.get("unit_price"))) if input_item and input_item.get("unit_price") is not None else item.unit_price
+        selling_price = Decimal(str(input_item.get("selling_price"))) if input_item and input_item.get("selling_price") is not None else purchase_price
+
         existing = db.query(MedicineBatch).filter(
-            MedicineBatch.medicine_id == item.medicine_id,
+            MedicineBatch.medicine_id == item.item_id,
             MedicineBatch.batch_number == batch_number,
         ).first()
         if existing:
-            existing.quantity += item.quantity_ordered
-            existing.purchase_price = item.unit_price
+            existing.quantity += received_qty
+            existing.initial_quantity += received_qty
+            existing.purchase_price = purchase_price
+            existing.selling_price = selling_price
+            if mfg_date:
+                existing.mfg_date = mfg_date
+            if expiry_date:
+                existing.expiry_date = expiry_date
         else:
             batch = MedicineBatch(
-                medicine_id=item.medicine_id,
+                medicine_id=item.item_id,
                 batch_number=batch_number,
-                expiry_date=date.today() + timedelta(days=365),
-                initial_quantity=item.quantity_ordered,
-                quantity=item.quantity_ordered,
-                purchase_price=item.unit_price,
-                selling_price=item.unit_price,
+                mfg_date=mfg_date,
+                expiry_date=expiry_date,
+                initial_quantity=received_qty,
+                quantity=received_qty,
+                purchase_price=purchase_price,
+                selling_price=selling_price,
             )
             db.add(batch)
 
-    po.status = "received"
+        last_movement = (
+            db.query(StockMovement)
+            .filter(
+                StockMovement.hospital_id == po.hospital_id,
+                StockMovement.item_type == "medicine",
+                StockMovement.item_id == item.item_id,
+            )
+            .order_by(StockMovement.created_at.desc())
+            .first()
+        )
+        current_balance = last_movement.balance_after if last_movement else 0
+
+        movement = StockMovement(
+            hospital_id=po.hospital_id,
+            item_type="medicine",
+            item_id=item.item_id,
+            movement_type="stock_in",
+            reference_type="purchase_order",
+            reference_id=po.id,
+            quantity=received_qty,
+            balance_after=current_balance + received_qty,
+            unit_cost=float(purchase_price),
+            notes=f"PO receipt: {po.po_number}",
+            performed_by=user_id,
+        )
+        db.add(movement)
+
+    all_received = all((it.quantity_received or 0) >= it.quantity_ordered for it in items)
+    any_received = any((it.quantity_received or 0) > 0 for it in items)
+    if all_received:
+        po.status = "received"
+    elif any_received:
+        po.status = "partially_received"
+
+    if receive_data and receive_data.get("notes"):
+        po.notes = f"{(po.notes or '').strip()}\nReceipt notes: {receive_data['notes']}".strip()
+
     db.commit()
     db.refresh(po)
     return po
@@ -452,17 +544,65 @@ def create_sale(
             batch_id_uuid = uuid.UUID(batch_id)
             batch = db.query(MedicineBatch).filter(MedicineBatch.id == batch_id_uuid).first()
         else:
+            # ✅ FIX BUG #7: Add expiry date validation - block expired batches
             batch = db.query(MedicineBatch).filter(
                 MedicineBatch.medicine_id == uuid.UUID(item_data["medicine_id"]),
                 MedicineBatch.is_active == True,
                 MedicineBatch.quantity >= qty,
+                MedicineBatch.expiry_date > date.today(),  # ✅ BLOCK EXPIRED BATCHES
             ).order_by(MedicineBatch.expiry_date.asc()).first()
             batch_id_uuid = batch.id if batch else None
 
         if not batch or batch.quantity < qty:
+            # ✅ Check if expired batches exist and provide helpful error message
+            expired_batch = db.query(MedicineBatch).filter(
+                MedicineBatch.medicine_id == uuid.UUID(item_data["medicine_id"]),
+                MedicineBatch.expiry_date <= date.today(),
+                MedicineBatch.quantity > 0,
+            ).first()
+            
+            if expired_batch:
+                raise ValueError(
+                    f"All available batches of {med.name if med else 'this medicine'} are expired. "
+                    f"Cannot dispense expired medicine (Batch: {expired_batch.batch_number}, "
+                    f"Expiry: {expired_batch.expiry_date}). Please remove from inventory."
+                )
+            
             raise ValueError(f"Insufficient stock in batch for {med.name if med else 'unknown'}")
 
         batch.quantity -= qty
+
+        # ✅ FIX BUG #2: Create stock movement record for pharmacy sale
+        from ..models.inventory import StockMovement
+
+        # Get current balance from last movement
+        last_movement = (
+            db.query(StockMovement)
+            .filter(
+                StockMovement.hospital_id == hospital_id,
+                StockMovement.item_type == "medicine",
+                StockMovement.item_id == uuid.UUID(item_data["medicine_id"]),
+            )
+            .order_by(StockMovement.created_at.desc())
+            .first()
+        )
+        current_balance = last_movement.balance_after if last_movement else 0
+        
+        movement = StockMovement(
+            hospital_id=hospital_id,
+            item_type="medicine",
+            item_id=uuid.UUID(item_data["medicine_id"]),
+            batch_id=batch_id_uuid,
+            movement_type="sale",
+            reference_type="dispensing",
+            reference_id=sale.id,
+            quantity=-qty,
+            balance_after=current_balance - qty,
+            unit_cost=float(unit_price),
+            notes=f"Pharmacy sale: {sale.invoice_number}",
+            performed_by=user_id,
+        )
+        db.add(movement)
 
         si = PharmacySaleItem(
             sale_id=sale.id,

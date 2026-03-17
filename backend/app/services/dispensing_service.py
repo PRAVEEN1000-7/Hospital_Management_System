@@ -21,6 +21,7 @@ from ..models.pharmacy import (
 )
 from ..models.patient import Patient
 from ..models.appointment import Doctor
+from .prescription_service import calculate_prescribed_quantity
 
 logger = logging.getLogger(__name__)
 
@@ -186,6 +187,13 @@ def _enrich_prescription_for_dispensing(db: Session, rx: Prescription) -> dict:
     dispensed_items = 0
     
     for item in items:
+        prescribed_quantity = calculate_prescribed_quantity(
+            item.frequency,
+            item.duration_value,
+            item.duration_unit,
+            item.quantity,
+        ) or 0
+
         item_dict = {
             "id": str(item.id),
             "prescription_item_id": str(item.id),
@@ -198,29 +206,32 @@ def _enrich_prescription_for_dispensing(db: Session, rx: Prescription) -> dict:
             "duration_unit": item.duration_unit,
             "route": item.route,
             "instructions": item.instructions,
-            "quantity": item.quantity,
+            "quantity": prescribed_quantity,
             "dispensed_quantity": item.dispensed_quantity,
             "allow_substitution": item.allow_substitution,
             "is_dispensed": item.is_dispensed,
         }
         
-        # Get available stock for this medicine
+        # Get available stock for this medicine across all active batches (FEFO ordered).
         if item.medicine_id:
-            batch = db.query(MedicineBatch).filter(
+            batches = db.query(MedicineBatch).filter(
                 MedicineBatch.medicine_id == item.medicine_id,
                 MedicineBatch.is_active == True,
                 MedicineBatch.quantity > 0,
-            ).order_by(MedicineBatch.expiry_date.asc()).first()
-            
-            if batch:
-                item_dict["available_batches"] = [{
-                    "id": str(batch.id),
-                    "batch_number": batch.batch_number,
-                    "expiry_date": str(batch.expiry_date),
-                    "quantity": batch.quantity,
-                    "selling_price": float(batch.selling_price) if batch.selling_price else 0,
-                }]
-                item_dict["available_quantity"] = batch.quantity
+            ).order_by(MedicineBatch.expiry_date.asc()).all()
+
+            if batches:
+                item_dict["available_batches"] = [
+                    {
+                        "id": str(batch.id),
+                        "batch_number": batch.batch_number,
+                        "expiry_date": str(batch.expiry_date),
+                        "quantity": batch.quantity,
+                        "selling_price": float(batch.selling_price) if batch.selling_price else 0,
+                    }
+                    for batch in batches
+                ]
+                item_dict["available_quantity"] = sum(batch.quantity or 0 for batch in batches)
             else:
                 item_dict["available_batches"] = []
                 item_dict["available_quantity"] = 0
@@ -338,14 +349,30 @@ def dispense_prescription(
             logger.warning(f"Prescription item {prescription_item_id} not found")
             continue
 
-        # Validate quantity doesn't exceed prescribed quantity
+        # Validate quantity doesn't exceed prescribed quantity.
+        # Some older prescriptions may have null/0 quantity and rely on frequency+duration,
+        # so derive and persist a usable prescribed quantity before validating.
         already_dispensed = rx_item.dispensed_quantity or 0
-        remaining_qty = (rx_item.quantity or 0) - already_dispensed
+        prescribed_qty = calculate_prescribed_quantity(
+            rx_item.frequency,
+            rx_item.duration_value,
+            rx_item.duration_unit,
+            rx_item.quantity,
+        ) or 0
+
+        if prescribed_qty <= 0:
+            # Last-resort fallback: allow current dispensing request to establish baseline.
+            prescribed_qty = max(already_dispensed + quantity, 1)
+
+        if not rx_item.quantity or rx_item.quantity <= 0:
+            rx_item.quantity = prescribed_qty
+
+        remaining_qty = prescribed_qty - already_dispensed
         
         if quantity > remaining_qty:
             raise ValueError(
                 f"Cannot dispense {quantity} units of {rx_item.medicine_name}. "
-                f"Prescribed: {rx_item.quantity}, Already dispensed: {already_dispensed}, "
+                f"Prescribed: {prescribed_qty}, Already dispensed: {already_dispensed}, "
                 f"Remaining: {remaining_qty}. You can dispense less than or equal to {remaining_qty} units."
             )
         
@@ -391,9 +418,9 @@ def dispense_prescription(
         rx_item.dispensed_quantity = already_dispensed + quantity
         
         # Cap at prescribed quantity and mark as dispensed if complete
-        if rx_item.dispensed_quantity >= (rx_item.quantity or 0):
+        if rx_item.dispensed_quantity >= prescribed_qty:
             rx_item.is_dispensed = True
-            rx_item.dispensed_quantity = rx_item.quantity  # Ensure exact match
+            rx_item.dispensed_quantity = prescribed_qty  # Ensure exact match
         else:
             # Partial dispensing - patient can purchase remaining later
             partial_dispensing = True
@@ -401,7 +428,7 @@ def dispense_prescription(
 
         logger.info(
             f"Dispensed {quantity} of {rx_item.medicine_name} "
-            f"(Batch: {batch.batch_number}, Remaining prescribed: {rx_item.quantity - rx_item.dispensed_quantity})"
+            f"(Batch: {batch.batch_number}, Remaining prescribed: {prescribed_qty - rx_item.dispensed_quantity})"
         )
     # Check if any items were not dispensed at all
     all_rx_items = db.query(PrescriptionItem).filter(

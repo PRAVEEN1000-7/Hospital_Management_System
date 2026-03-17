@@ -1,7 +1,7 @@
 """
 Pharmacy Pydantic schemas — medicines, inventory, sales, suppliers, purchase orders.
 """
-from pydantic import BaseModel, Field, ConfigDict, model_validator
+from pydantic import AliasChoices, BaseModel, Field, ConfigDict, model_validator
 from typing import Optional, Any
 from datetime import date, datetime
 from decimal import Decimal
@@ -273,9 +273,24 @@ class PurchaseOrderUpdate(BaseModel):
     items: Optional[list[PurchaseOrderItemCreate]] = None
 
 
+class PurchaseOrderReceiveItem(BaseModel):
+    purchase_order_item_id: str
+    quantity_received: int = Field(..., ge=0)
+    batch_number: Optional[str] = Field(None, max_length=50)
+    manufactured_date: Optional[date] = None
+    expiry_date: Optional[date] = None
+    unit_price: Optional[Decimal] = Field(None, ge=0)
+    selling_price: Optional[Decimal] = Field(None, ge=0)
+
+
+class PurchaseOrderReceiveRequest(BaseModel):
+    items: list[PurchaseOrderReceiveItem] = Field(..., min_length=1)
+    notes: Optional[str] = None
+
+
 class PurchaseOrderItemResponse(BaseModel):
     id: str
-    medicine_id: str
+    medicine_id: str = Field(validation_alias=AliasChoices("medicine_id", "item_id"))
     quantity_ordered: int
     quantity_received: int = 0
     unit_price: Decimal
@@ -287,7 +302,12 @@ class PurchaseOrderItemResponse(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def transform(cls, data: Any) -> Any:
-        return _orm_to_dict(data)
+        payload = _orm_to_dict(data)
+        if isinstance(payload, dict):
+            # ORM model uses item_id, API contract uses medicine_id.
+            if "medicine_id" not in payload and "item_id" in payload:
+                payload["medicine_id"] = payload["item_id"]
+        return payload
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -296,9 +316,9 @@ class PurchaseOrderResponse(BaseModel):
     id: str
     hospital_id: str
     supplier_id: str
-    order_number: str
+    order_number: str = Field(validation_alias=AliasChoices("order_number", "po_number"))
     order_date: date
-    expected_delivery: Optional[date] = None
+    expected_delivery: Optional[date] = Field(default=None, validation_alias=AliasChoices("expected_delivery", "expected_delivery_date"))
     status: str = "draft"
     total_amount: Decimal = Decimal("0")
     notes: Optional[str] = None
@@ -311,7 +331,14 @@ class PurchaseOrderResponse(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def transform(cls, data: Any) -> Any:
-        return _orm_to_dict(data)
+        payload = _orm_to_dict(data)
+        if isinstance(payload, dict):
+            # ORM model uses po_number/expected_delivery_date, API contract uses order_number/expected_delivery.
+            if "order_number" not in payload and "po_number" in payload:
+                payload["order_number"] = payload["po_number"]
+            if "expected_delivery" not in payload and "expected_delivery_date" in payload:
+                payload["expected_delivery"] = payload["expected_delivery_date"]
+        return payload
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -4,6 +4,15 @@ import pharmacyService from '../../services/pharmacyService';
 import { useToast } from '../../contexts/ToastContext';
 import type { MedicineCreateData } from '../../types/pharmacy';
 
+interface OpeningBatchForm {
+  batch_number: string;
+  mfg_date: string;
+  expiry_date: string;
+  quantity: number;
+  purchase_price: number;
+  selling_price: number;
+}
+
 const CATEGORIES = [
   { value: 'tablet', label: 'Tablet' },
   { value: 'capsule', label: 'Capsule' },
@@ -40,6 +49,15 @@ const MedicineForm: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(isEdit);
   const [showPreview, setShowPreview] = useState(false);
+  const [addOpeningStock, setAddOpeningStock] = useState(false);
+  const [openingBatch, setOpeningBatch] = useState<OpeningBatchForm>({
+    batch_number: '',
+    mfg_date: '',
+    expiry_date: '',
+    quantity: 0,
+    purchase_price: 0,
+    selling_price: 0,
+  });
 
   useEffect(() => {
     if (id) {
@@ -82,6 +100,15 @@ const MedicineForm: React.FC = () => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim()) { toast.error('Medicine name is required'); return; }
+    if (!isEdit && addOpeningStock) {
+      if (!openingBatch.batch_number.trim()) { toast.error('Opening stock batch number is required'); return; }
+      if (!openingBatch.expiry_date) { toast.error('Opening stock expiry date is required'); return; }
+      if (openingBatch.quantity <= 0) { toast.error('Opening stock quantity must be greater than 0'); return; }
+      if (openingBatch.purchase_price < 0 || openingBatch.selling_price < 0) {
+        toast.error('Opening stock prices cannot be negative');
+        return;
+      }
+    }
     setShowPreview(true);
   };
 
@@ -113,9 +140,23 @@ const MedicineForm: React.FC = () => {
         toast.success('Medicine updated');
         navigate('/pharmacy/medicines');
       } else {
-        await pharmacyService.createMedicine(payload);
-        toast.success('Medicine created');
-        navigate('/pharmacy/medicines');
+        const created = await pharmacyService.createMedicine(payload);
+
+        if (addOpeningStock) {
+          await pharmacyService.createBatch({
+            medicine_id: created.id,
+            batch_number: openingBatch.batch_number.trim(),
+            mfg_date: openingBatch.mfg_date || undefined,
+            expiry_date: openingBatch.expiry_date,
+            quantity: openingBatch.quantity,
+            purchase_price: openingBatch.purchase_price,
+            selling_price: openingBatch.selling_price,
+          });
+          toast.success('Medicine created with opening stock batch');
+        } else {
+          toast.success('Medicine created');
+        }
+        navigate(`/pharmacy/medicines/${created.id}`);
       }
     } catch {
       toast.error(isEdit ? 'Failed to update medicine' : 'Failed to create medicine');
@@ -289,6 +330,92 @@ const MedicineForm: React.FC = () => {
                 </div>
               </div>
             </section>
+
+            {!isEdit && (
+              <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="mb-5">
+                  <h2 className={sectionTitleClass}>Opening Stock</h2>
+                  <p className={sectionHintClass}>Optionally create the first stock batch when saving this medicine.</p>
+                </div>
+
+                <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={addOpeningStock}
+                    onChange={(e) => setAddOpeningStock(e.target.checked)}
+                    className="mt-0.5 rounded border-slate-300 text-primary focus:ring-primary"
+                  />
+                  <span>
+                    <span className="block font-semibold text-slate-900">Add Opening Stock Batch</span>
+                    <span className="mt-0.5 block text-xs text-slate-500">Enable this to set initial quantity, batch, and pricing now.</span>
+                  </span>
+                </label>
+
+                {addOpeningStock && (
+                  <div className="mt-4 grid gap-4 md:grid-cols-2">
+                    <div>
+                      <label className={labelClass}>Batch Number *</label>
+                      <input
+                        value={openingBatch.batch_number}
+                        onChange={(e) => setOpeningBatch((prev) => ({ ...prev, batch_number: e.target.value }))}
+                        className={fieldClass}
+                        placeholder="e.g. BATCH-001"
+                      />
+                    </div>
+                    <div>
+                      <label className={labelClass}>Expiry Date *</label>
+                      <input
+                        type="date"
+                        value={openingBatch.expiry_date}
+                        onChange={(e) => setOpeningBatch((prev) => ({ ...prev, expiry_date: e.target.value }))}
+                        className={fieldClass}
+                      />
+                    </div>
+                    <div>
+                      <label className={labelClass}>Manufactured Date</label>
+                      <input
+                        type="date"
+                        value={openingBatch.mfg_date}
+                        onChange={(e) => setOpeningBatch((prev) => ({ ...prev, mfg_date: e.target.value }))}
+                        className={fieldClass}
+                      />
+                    </div>
+                    <div>
+                      <label className={labelClass}>Quantity *</label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={openingBatch.quantity || ''}
+                        onChange={(e) => setOpeningBatch((prev) => ({ ...prev, quantity: Math.max(0, Number(e.target.value) || 0) }))}
+                        className={fieldClass}
+                      />
+                    </div>
+                    <div>
+                      <label className={labelClass}>Purchase Price *</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min={0}
+                        value={openingBatch.purchase_price || ''}
+                        onChange={(e) => setOpeningBatch((prev) => ({ ...prev, purchase_price: Math.max(0, Number(e.target.value) || 0) }))}
+                        className={fieldClass}
+                      />
+                    </div>
+                    <div>
+                      <label className={labelClass}>Selling Price *</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min={0}
+                        value={openingBatch.selling_price || ''}
+                        onChange={(e) => setOpeningBatch((prev) => ({ ...prev, selling_price: Math.max(0, Number(e.target.value) || 0) }))}
+                        className={fieldClass}
+                      />
+                    </div>
+                  </div>
+                )}
+              </section>
+            )}
           </div>
         </div>
 

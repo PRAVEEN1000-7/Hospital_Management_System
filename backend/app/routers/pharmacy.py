@@ -19,7 +19,7 @@ from ..schemas.pharmacy import (
     # Supplier
     SupplierCreate, SupplierUpdate, SupplierResponse, SupplierListResponse,
     # Purchase Order
-    PurchaseOrderCreate, PurchaseOrderUpdate, PurchaseOrderResponse, PurchaseOrderListResponse, PurchaseOrderItemResponse,
+    PurchaseOrderCreate, PurchaseOrderUpdate, PurchaseOrderReceiveRequest, PurchaseOrderResponse, PurchaseOrderListResponse, PurchaseOrderItemResponse,
     # Sale
     SaleCreate, SaleResponse, SaleListResponse, SaleItemResponse,
     # Stock Adjustment
@@ -272,9 +272,9 @@ async def list_purchase_orders(
                 "id": str(po.id),
                 "hospital_id": str(po.hospital_id),
                 "supplier_id": str(po.supplier_id),
-                "order_number": po.order_number,
+                "order_number": po.po_number,
                 "order_date": po.order_date,
-                "expected_delivery": po.expected_delivery,
+                "expected_delivery": po.expected_delivery_date,
                 "status": po.status,
                 "total_amount": po.total_amount,
                 "notes": po.notes,
@@ -297,7 +297,7 @@ async def list_purchase_orders(
             po_dict["items"] = [
                 {
                     "id": str(item.id),
-                    "medicine_id": str(item.medicine_id),
+                    "medicine_id": str(item.item_id),
                     "quantity_ordered": item.quantity_ordered,
                     "unit_price": item.unit_price,
                     "total_price": item.total_price,
@@ -340,23 +340,32 @@ async def create_purchase_order(
     try:
         po = svc.create_purchase_order(db, current_user.hospital_id, data.model_dump(), current_user.id)
         return PurchaseOrderResponse.model_validate(po)
+    except ValueError as ve:
+        logger.error(f"Validation error creating PO: {ve}")
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         logger.error(f"Error creating PO: {e}", exc_info=True)
         db.rollback()
-        raise HTTPException(status_code=500, detail="Failed to create purchase order")
+        raise HTTPException(status_code=500, detail=f"Failed to create purchase order: {str(e)}")
 
 
 @purchase_orders_router.post("/{po_id}/receive", response_model=PurchaseOrderResponse)
 async def receive_purchase_order(
     po_id: str,
+    data: Optional[PurchaseOrderReceiveRequest] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
     try:
-        po = svc.receive_purchase_order(db, po_id, current_user.id)
+        payload = data.model_dump() if data else None
+        po = svc.receive_purchase_order(db, po_id, current_user.id, payload)
         if not po:
             raise HTTPException(status_code=404, detail="Purchase order not found or already received")
         return PurchaseOrderResponse.model_validate(po)
+    except ValueError as ve:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(ve))
     except HTTPException:
         raise
     except Exception as e:
@@ -397,9 +406,9 @@ async def update_purchase_order(
             for item in po.items:
                 db.delete(item)
             db.flush()
-            
+
             # Create new items
-            from ..models.pharmacy import PurchaseOrderItem
+            from ..models.inventory import PurchaseOrderItem
             import uuid
             from decimal import Decimal
             total = Decimal("0")
@@ -408,7 +417,7 @@ async def update_purchase_order(
                 poi = PurchaseOrderItem(
                     purchase_order_id=po.id,
                     item_type="medicine",
-                    medicine_id=uuid.UUID(item_data["medicine_id"]),
+                    item_id=uuid.UUID(item_data["medicine_id"]),
                     quantity_ordered=item_data["quantity_ordered"],
                     unit_price=item_data["unit_price"],
                     total_price=line_total,

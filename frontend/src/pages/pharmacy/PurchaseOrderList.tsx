@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import pharmacyService from '../../services/pharmacyService';
 import type { PurchaseOrder, PurchaseOrderStatus } from '../../types/pharmacy';
 import { useToast } from '../../contexts/ToastContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { format } from 'date-fns';
 
 const STATUS_COLORS: Record<PurchaseOrderStatus, string> = {
@@ -10,6 +11,7 @@ const STATUS_COLORS: Record<PurchaseOrderStatus, string> = {
   submitted: 'bg-yellow-100 text-yellow-700 border-yellow-200',
   approved: 'bg-blue-100 text-blue-700 border-blue-200',
   ordered: 'bg-purple-100 text-purple-700 border-purple-200',
+  partially_received: 'bg-cyan-100 text-cyan-700 border-cyan-200',
   received: 'bg-green-100 text-green-700 border-green-200',
   cancelled: 'bg-red-100 text-red-700 border-red-200',
 };
@@ -19,22 +21,42 @@ const STATUS_LABELS: Record<PurchaseOrderStatus, string> = {
   submitted: 'Submitted',
   approved: 'Approved',
   ordered: 'Ordered',
+  partially_received: 'Partially Received',
   received: 'Received',
   cancelled: 'Cancelled',
 };
 
+const SHARED_TABS: PurchaseOrderStatus[] = ['ordered', 'received', 'cancelled'];
+const INVENTORY_ONLY_TABS: PurchaseOrderStatus[] = ['draft', 'submitted', 'approved'];
+
+interface PendingOrderAction {
+  orderId: string;
+  action: string;
+  label: string;
+  message: string;
+}
+
 const PurchaseOrderList: React.FC = () => {
   const navigate = useNavigate();
   const toast = useToast();
+  const { user } = useAuth();
+  const roles = user?.roles || [];
+  const hasInventoryAccess =
+    roles.includes('inventory_manager') || roles.includes('admin') || roles.includes('super_admin');
+  const isPharmacyLogin = roles.includes('pharmacist') && !hasInventoryAccess;
+  const visibleStatusTabs: PurchaseOrderStatus[] = isPharmacyLogin
+    ? SHARED_TABS
+    : [...INVENTORY_ONLY_TABS, ...SHARED_TABS];
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState<PurchaseOrderStatus | ''>('');
+  const [statusFilter, setStatusFilter] = useState<PurchaseOrderStatus | ''>(isPharmacyLogin ? 'ordered' : '');
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<PendingOrderAction | null>(null);
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -60,11 +82,13 @@ const PurchaseOrderList: React.FC = () => {
     fetchOrders();
   }, [fetchOrders]);
 
-  const handleAction = async (orderId: string, action: string, confirmMessage?: string) => {
-    if (confirmMessage && !window.confirm(confirmMessage)) {
-      return;
+  useEffect(() => {
+    if (isPharmacyLogin && statusFilter === '') {
+      setStatusFilter('ordered');
     }
+  }, [isPharmacyLogin, statusFilter]);
 
+  const handleAction = async (orderId: string, action: string) => {
     setActionLoading(action);
     try {
       switch (action) {
@@ -85,15 +109,10 @@ const PurchaseOrderList: React.FC = () => {
           toast.success('Purchase order received and stock updated');
           break;
         case 'cancel':
-          const reason = prompt('Enter cancellation reason (optional):');
-          await pharmacyService.cancelPurchaseOrder(orderId, reason || undefined);
+          await pharmacyService.cancelPurchaseOrder(orderId);
           toast.success('Purchase order cancelled');
           break;
         case 'delete':
-          if (!window.confirm('Are you sure you want to delete this purchase order? This action cannot be undone.')) {
-            setActionLoading(null);
-            return;
-          }
           await pharmacyService.deletePurchaseOrder(orderId);
           toast.success('Purchase order deleted');
           break;
@@ -107,6 +126,23 @@ const PurchaseOrderList: React.FC = () => {
     }
   };
 
+  const requestActionConfirmation = (
+    orderId: string,
+    action: string,
+    label: string,
+    confirmMessage?: string,
+  ) => {
+    const message = confirmMessage || `Are you sure you want to ${label.toLowerCase()} this purchase order?`;
+    setPendingAction({ orderId, action, label, message });
+  };
+
+  const confirmPendingAction = () => {
+    if (!pendingAction) return;
+    const { orderId, action } = pendingAction;
+    setPendingAction(null);
+    void handleAction(orderId, action);
+  };
+
   const handleViewDetails = async (orderId: string) => {
     try {
       const order = await pharmacyService.getPurchaseOrder(orderId);
@@ -118,6 +154,7 @@ const PurchaseOrderList: React.FC = () => {
   };
 
   const filteredOrders = orders.filter(order => {
+    if (statusFilter && order.status !== statusFilter) return false;
     if (!searchQuery) return true;
     const query = searchQuery.toLowerCase();
     return (
@@ -179,7 +216,7 @@ const PurchaseOrderList: React.FC = () => {
     } else if (action.action === 'view') {
       handleViewDetails(order.id);
     } else {
-      handleAction(order.id, action.action, action.confirm);
+      requestActionConfirmation(order.id, action.action, action.label, action.confirm);
     }
   };
 
@@ -243,7 +280,7 @@ const PurchaseOrderList: React.FC = () => {
                 setSearchQuery('');
                 setDateFrom('');
                 setDateTo('');
-                setStatusFilter('');
+                setStatusFilter(isPharmacyLogin ? 'ordered' : '');
               }}
               className="px-3 py-2 text-sm font-medium text-slate-600 hover:text-slate-900"
             >
@@ -254,18 +291,20 @@ const PurchaseOrderList: React.FC = () => {
 
         {/* Status Filter Pills */}
         <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-100">
-          <button
-            key="all"
-            onClick={() => setStatusFilter('')}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-full border transition-colors ${
-              statusFilter === ''
-                ? 'bg-primary text-white border-primary shadow-sm'
-                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-            }`}
-          >
-            All Orders
-          </button>
-          {(['draft', 'submitted', 'approved', 'ordered', 'received', 'cancelled'] as PurchaseOrderStatus[]).map((status) => (
+          {!isPharmacyLogin && (
+            <button
+              key="all"
+              onClick={() => setStatusFilter('')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-full border transition-colors ${
+                statusFilter === ''
+                  ? 'bg-primary text-white border-primary shadow-sm'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              All Orders
+            </button>
+          )}
+          {visibleStatusTabs.map((status) => (
             <button
               key={status}
               onClick={() => setStatusFilter(status)}
@@ -404,8 +443,20 @@ const PurchaseOrderList: React.FC = () => {
         <PurchaseOrderDetailModal
           order={selectedOrder}
           onClose={() => setShowDetailModal(false)}
-          onAction={(action, confirm) => handleAction(selectedOrder.id, action, confirm)}
+          onAction={(action, confirm) =>
+            requestActionConfirmation(selectedOrder.id, action, action, confirm)
+          }
           actionLoading={actionLoading}
+        />
+      )}
+
+      {pendingAction && (
+        <ActionConfirmModal
+          message={pendingAction.message}
+          actionLabel={pendingAction.label}
+          loading={actionLoading === pendingAction.action}
+          onCancel={() => setPendingAction(null)}
+          onConfirm={confirmPendingAction}
         />
       )}
     </div>
@@ -419,6 +470,48 @@ interface PurchaseOrderDetailModalProps {
   onAction: (action: string, confirm?: string) => void;
   actionLoading: string | null;
 }
+
+interface ActionConfirmModalProps {
+  message: string;
+  actionLabel: string;
+  loading: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}
+
+const ActionConfirmModal: React.FC<ActionConfirmModalProps> = ({
+  message,
+  actionLabel,
+  loading,
+  onCancel,
+  onConfirm,
+}) => {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" role="dialog" aria-modal="true">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onCancel} />
+      <div className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+        <h3 className="text-lg font-bold text-slate-900">Confirm Action</h3>
+        <p className="mt-2 text-sm text-slate-600">{message}</p>
+        <div className="mt-6 flex items-center justify-end gap-3">
+          <button
+            onClick={onCancel}
+            disabled={loading}
+            className="px-4 py-2 text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-50 transition-colors"
+          >
+            No, Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={loading}
+            className="px-4 py-2 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
+          >
+            {loading ? 'Processing...' : `Yes, ${actionLabel}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const PurchaseOrderDetailModal: React.FC<PurchaseOrderDetailModalProps> = ({
   order,
@@ -535,15 +628,15 @@ const PurchaseOrderDetailModal: React.FC<PurchaseOrderDetailModalProps> = ({
                         )}
                       </td>
                       <td className="px-4 py-3 text-center text-slate-700">{item.quantity_ordered}</td>
-                      <td className="px-4 py-3 text-right text-slate-700">₹{item.unit_price.toFixed(2)}</td>
-                      <td className="px-4 py-3 text-right font-semibold text-slate-900">₹{item.total_price.toFixed(2)}</td>
+                      <td className="px-4 py-3 text-right text-slate-700">₹{Number(item.unit_price || 0).toFixed(2)}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-slate-900">₹{Number(item.total_price || 0).toFixed(2)}</td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot className="bg-slate-50 border-t border-slate-200">
                   <tr>
                     <td colSpan={4} className="px-4 py-3 text-right font-semibold text-slate-600">Total</td>
-                    <td className="px-4 py-3 text-right font-bold text-primary">₹{order.total_amount.toFixed(2)}</td>
+                    <td className="px-4 py-3 text-right font-bold text-primary">₹{Number(order.total_amount || 0).toFixed(2)}</td>
                   </tr>
                 </tfoot>
               </table>

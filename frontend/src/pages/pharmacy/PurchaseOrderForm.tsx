@@ -1,16 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import * as XLSX from 'xlsx';
 import pharmacyService from '../../services/pharmacyService';
 import type { Supplier, Medicine, PurchaseOrderItemCreate, PurchaseOrder } from '../../types/pharmacy';
 import { useToast } from '../../contexts/ToastContext';
 
-interface FormItem extends PurchaseOrderItemCreate {
+interface FormItem extends Omit<PurchaseOrderItemCreate, 'batch_number' | 'expiry_date'> {
   id?: string; // For existing items during edit
   _temporary_id?: string; // For new items
+  unit_price: number;
 }
 
 const PurchaseOrderForm: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { orderId } = useParams<{ orderId: string }>();
   const toast = useToast();
   const isEditMode = !!orderId;
@@ -24,10 +27,42 @@ const PurchaseOrderForm: React.FC = () => {
   const [expectedDelivery, setExpectedDelivery] = useState('');
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState<FormItem[]>([
-    { medicine_id: '', quantity_ordered: 1, unit_price: 0, batch_number: '', expiry_date: '', _temporary_id: '1' },
+    { medicine_id: '', quantity_ordered: 1, unit_price: 0, _temporary_id: '1' },
   ]);
   const [saving, setSaving] = useState(false);
+  const [bulkUploading, setBulkUploading] = useState(false);
   const [medicineSearch, setMedicineSearch] = useState('');
+
+  useEffect(() => {
+    if (isEditMode) return;
+
+    const params = new URLSearchParams(location.search);
+    const medicineId = params.get('medicine_id');
+    const qtyParam = params.get('quantity');
+    const parsedQty = qtyParam ? parseInt(qtyParam, 10) : 1;
+    const quantity = Number.isFinite(parsedQty) && parsedQty > 0 ? parsedQty : 1;
+
+    if (!medicineId) return;
+
+    setItems((prev) => {
+      const hasMedicineAlready = prev.some((it) => it.medicine_id === medicineId);
+      if (hasMedicineAlready) return prev;
+
+      if (prev.length === 1 && !prev[0].medicine_id) {
+        return [{ ...prev[0], medicine_id: medicineId, quantity_ordered: quantity }];
+      }
+
+      return [
+        ...prev,
+        {
+          medicine_id: medicineId,
+          quantity_ordered: quantity,
+          unit_price: 0,
+          _temporary_id: `prefill-${Date.now()}`,
+        },
+      ];
+    });
+  }, [isEditMode, location.search]);
 
   // Load suppliers and medicines on mount
   useEffect(() => {
@@ -79,9 +114,7 @@ const PurchaseOrderForm: React.FC = () => {
             id: item.id,
             medicine_id: item.medicine_id,
             quantity_ordered: item.quantity_ordered,
-            unit_price: item.unit_price,
-            batch_number: item.batch_number || '',
-            expiry_date: item.expiry_date ? item.expiry_date.split('T')[0] : '',
+            unit_price: Number(item.unit_price || 0),
             _temporary_id: `existing-${idx}`,
           })));
         }
@@ -106,8 +139,6 @@ const PurchaseOrderForm: React.FC = () => {
       medicine_id: '', 
       quantity_ordered: 1, 
       unit_price: 0, 
-      batch_number: '', 
-      expiry_date: '',
       _temporary_id: `new-${Date.now()}`
     }]);
   };
@@ -130,6 +161,89 @@ const PurchaseOrderForm: React.FC = () => {
       m.generic_name?.toLowerCase().includes(search) ||
       m.strength?.toLowerCase().includes(search)
     );
+  };
+
+  const handleDownloadTemplate = () => {
+    const templateRows = [
+      {
+        medicine_id: '',
+        medicine_name: 'Paracetamol 650mg',
+        quantity_ordered: 50,
+        unit_price: 2.5,
+      },
+    ];
+    const worksheet = XLSX.utils.json_to_sheet(templateRows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'PO Items');
+    XLSX.writeFile(workbook, 'purchase_order_bulk_template.xlsx');
+  };
+
+  const handleBulkUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!medicines.length) {
+      toast.error('Medicines are not loaded yet. Please try again in a moment.');
+      event.target.value = '';
+      return;
+    }
+
+    setBulkUploading(true);
+    try {
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: 'array' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' });
+
+      if (rows.length === 0) {
+        toast.error('Uploaded file is empty');
+        return;
+      }
+
+      const medicineById = new Map(medicines.map((m) => [m.id, m.id]));
+      const medicineByName = new Map(
+        medicines.map((m) => [m.name.toLowerCase().trim(), m.id])
+      );
+
+      const parsedItems: FormItem[] = [];
+      let skipped = 0;
+
+      rows.forEach((row, index) => {
+        const medicineIdCell = String(row.medicine_id ?? '').trim();
+        const medicineNameCell = String(row.medicine_name ?? row.medicine ?? '').trim();
+
+        const medicineId = medicineById.get(medicineIdCell)
+          || medicineByName.get(medicineNameCell.toLowerCase());
+
+        const qty = Number(row.quantity_ordered ?? row.quantity ?? 0);
+        const unitPrice = Number(row.unit_price ?? row.price ?? 0);
+
+        if (!medicineId || !Number.isFinite(qty) || qty <= 0 || !Number.isFinite(unitPrice) || unitPrice < 0) {
+          skipped += 1;
+          return;
+        }
+
+        parsedItems.push({
+          medicine_id: medicineId,
+          quantity_ordered: Math.round(qty),
+          unit_price: unitPrice,
+          _temporary_id: `bulk-${index}-${Date.now()}`,
+        });
+      });
+
+      if (parsedItems.length === 0) {
+        toast.error('No valid rows found. Use the template format and valid medicine name/id.');
+        return;
+      }
+
+      setItems(parsedItems);
+      toast.success(`Imported ${parsedItems.length} item(s)${skipped ? `, skipped ${skipped}` : ''}`);
+    } catch (err) {
+      console.error('Bulk upload parse error:', err);
+      toast.error('Failed to parse file. Please upload a valid CSV or Excel file.');
+    } finally {
+      setBulkUploading(false);
+      event.target.value = '';
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -164,12 +278,10 @@ const PurchaseOrderForm: React.FC = () => {
         supplier_id: supplierId,
         expected_delivery: expectedDelivery || undefined,
         notes: notes || undefined,
-        items: validItems.map(({ medicine_id, quantity_ordered, unit_price, batch_number, expiry_date }) => ({
+        items: validItems.map(({ medicine_id, quantity_ordered, unit_price }) => ({
           medicine_id,
           quantity_ordered,
-          unit_price,
-          batch_number,
-          expiry_date,
+          unit_price: Number(unit_price) || 0,
         })),
       };
 
@@ -183,7 +295,26 @@ const PurchaseOrderForm: React.FC = () => {
       navigate('/pharmacy/purchase-orders');
     } catch (err: any) {
       console.error('Failed to save purchase order:', err);
-      toast.error(err?.response?.data?.detail || 'Failed to save purchase order');
+      // Handle 422 validation errors properly
+      let errorMessage = 'Failed to save purchase order';
+      if (err?.response?.status === 422 && err?.response?.data?.detail) {
+        const detail = err.response.data.detail;
+        if (Array.isArray(detail)) {
+          // Validation errors array
+          errorMessage = detail.map((d: any) => 
+            typeof d === 'string' ? d : (d.msg || JSON.stringify(d))
+          ).join(', ');
+        } else if (typeof detail === 'string') {
+          errorMessage = detail;
+        } else if (detail && typeof detail === 'object') {
+          errorMessage = detail.message || JSON.stringify(detail);
+        }
+      } else if (err?.response?.data?.detail) {
+        errorMessage = typeof err.response.data.detail === 'string' 
+          ? err.response.data.detail 
+          : 'Validation error';
+      }
+      toast.error(errorMessage);
     } finally {
       setSaving(false);
     }
@@ -287,14 +418,35 @@ const PurchaseOrderForm: React.FC = () => {
               <span className="material-symbols-outlined text-primary">inventory_2</span>
               Order Items
             </h2>
-            <button 
-              type="button" 
-              onClick={addItem}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-primary bg-primary/10 rounded-lg hover:bg-primary/20 transition-colors"
-            >
-              <span className="material-symbols-outlined text-lg">add</span> 
-              Add Item
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleDownloadTemplate}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"
+              >
+                <span className="material-symbols-outlined text-lg">download</span>
+                Template
+              </button>
+              <label className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-100 rounded-lg hover:bg-blue-200 transition-colors cursor-pointer">
+                <span className="material-symbols-outlined text-lg">upload_file</span>
+                {bulkUploading ? 'Uploading...' : 'Bulk Upload'}
+                <input
+                  type="file"
+                  accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
+                  className="hidden"
+                  onChange={handleBulkUpload}
+                  disabled={bulkUploading}
+                />
+              </label>
+              <button 
+                type="button" 
+                onClick={addItem}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-primary bg-primary/10 rounded-lg hover:bg-primary/20 transition-colors"
+              >
+                <span className="material-symbols-outlined text-lg">add</span> 
+                Add Item
+              </button>
+            </div>
           </div>
 
           {/* Medicine Search (for quick filtering) */}
@@ -322,7 +474,7 @@ const PurchaseOrderForm: React.FC = () => {
                 <div className="col-span-1 text-slate-400 text-sm font-medium pt-2">
                   #{idx + 1}
                 </div>
-                <div className="col-span-4">
+                <div className="col-span-5">
                   <label className="block text-xs text-slate-500 mb-1">Medicine *</label>
                   {loadingMedicines ? (
                     <div className="flex items-center gap-2 text-sm text-slate-400">
@@ -350,7 +502,7 @@ const PurchaseOrderForm: React.FC = () => {
                     </select>
                   )}
                 </div>
-                <div className="col-span-1">
+                <div className="col-span-2">
                   <label className="block text-xs text-slate-500 mb-1">Qty *</label>
                   <input 
                     type="number" 
@@ -360,7 +512,7 @@ const PurchaseOrderForm: React.FC = () => {
                     className="w-full px-2.5 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary" 
                   />
                 </div>
-                <div className="col-span-2">
+                <div className="col-span-3">
                   <label className="block text-xs text-slate-500 mb-1">Unit Price (₹) *</label>
                   <input 
                     type="number" 
@@ -368,24 +520,6 @@ const PurchaseOrderForm: React.FC = () => {
                     step={0.01} 
                     value={item.unit_price}
                     onChange={e => updateItem(idx, 'unit_price', parseFloat(e.target.value) || 0)}
-                    className="w-full px-2.5 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary" 
-                  />
-                </div>
-                <div className="col-span-2">
-                  <label className="block text-xs text-slate-500 mb-1">Batch #</label>
-                  <input 
-                    value={item.batch_number} 
-                    onChange={e => updateItem(idx, 'batch_number', e.target.value)}
-                    placeholder="Optional"
-                    className="w-full px-2.5 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary" 
-                  />
-                </div>
-                <div className="col-span-1">
-                  <label className="block text-xs text-slate-500 mb-1">Expiry</label>
-                  <input 
-                    type="date" 
-                    value={item.expiry_date} 
-                    onChange={e => updateItem(idx, 'expiry_date', e.target.value)}
                     className="w-full px-2.5 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary" 
                   />
                 </div>

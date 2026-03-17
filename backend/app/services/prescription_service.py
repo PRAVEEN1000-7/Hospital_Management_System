@@ -5,6 +5,7 @@ Follows the same patterns as appointment_service.py.
 import uuid
 import json
 import logging
+import re
 from datetime import date, datetime, timezone
 from math import ceil
 from typing import Optional
@@ -21,6 +22,38 @@ from ..models.user import User
 from ..models.hospital_settings import HospitalSettings
 
 logger = logging.getLogger(__name__)
+
+
+def calculate_prescribed_quantity(
+    frequency: Optional[str],
+    duration_value: Optional[int],
+    duration_unit: Optional[str],
+    quantity: Optional[int] = None,
+) -> Optional[int]:
+    """Derive total prescribed units from frequency and duration when quantity is missing."""
+    if quantity is not None and quantity > 0:
+        return quantity
+
+    if not frequency or not duration_value or duration_value <= 0:
+        return quantity
+
+    frequency_parts = re.findall(r"\d+(?:\.\d+)?", frequency)
+    if not frequency_parts:
+        return quantity
+
+    daily_units = sum(float(part) for part in frequency_parts)
+    if daily_units <= 0:
+        return quantity
+
+    normalized_duration_unit = (duration_unit or "days").lower()
+    duration_days = duration_value
+    if normalized_duration_unit == "weeks":
+        duration_days = duration_value * 7
+    elif normalized_duration_unit == "months":
+        duration_days = duration_value * 30
+
+    derived_quantity = ceil(daily_units * duration_days)
+    return derived_quantity if derived_quantity > 0 else quantity
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -138,7 +171,12 @@ def create_prescription(
             duration_unit=item_data.get("duration_unit"),
             route=item_data.get("route"),
             instructions=item_data.get("instructions"),
-            quantity=item_data.get("quantity"),
+            quantity=calculate_prescribed_quantity(
+                item_data.get("frequency"),
+                item_data.get("duration_value"),
+                item_data.get("duration_unit"),
+                item_data.get("quantity"),
+            ),
             allow_substitution=item_data.get("allow_substitution", True),
             display_order=item_data.get("display_order", idx),
         )
@@ -282,7 +320,12 @@ def update_prescription(
                 duration_unit=item_data.get("duration_unit"),
                 route=item_data.get("route"),
                 instructions=item_data.get("instructions"),
-                quantity=item_data.get("quantity"),
+                quantity=calculate_prescribed_quantity(
+                    item_data.get("frequency"),
+                    item_data.get("duration_value"),
+                    item_data.get("duration_unit"),
+                    item_data.get("quantity"),
+                ),
                 allow_substitution=item_data.get("allow_substitution", True),
                 display_order=item_data.get("display_order", idx),
             )
@@ -301,7 +344,7 @@ def finalize_prescription(
     prescription_id: str | uuid.UUID,
     performed_by: uuid.UUID,
 ) -> Optional[Prescription]:
-    """Finalize a prescription (lock it)."""
+    """Finalize a prescription (lock it) after checking stock availability."""
     rx = get_prescription(db, prescription_id)
     if not rx:
         return None
@@ -315,6 +358,51 @@ def finalize_prescription(
     ).count()
     if item_count == 0:
         raise ValueError("Cannot finalize a prescription with no items")
+
+    # ✅ FIX BUG #1: Check stock availability before finalizing
+    from ..models.pharmacy import MedicineBatch
+    from datetime import date
+
+    items = db.query(PrescriptionItem).filter(
+        PrescriptionItem.prescription_id == rx.id
+    ).all()
+
+    stock_errors = []
+    for item in items:
+        required_quantity = calculate_prescribed_quantity(
+            item.frequency,
+            item.duration_value,
+            item.duration_unit,
+            item.quantity,
+        )
+
+        if item.quantity != required_quantity:
+            item.quantity = required_quantity
+
+        if item.medicine_id and required_quantity:
+            # Check available stock from batches (FEFO - First Expiry First Out)
+            batches = db.query(MedicineBatch).filter(
+                MedicineBatch.medicine_id == item.medicine_id,
+                MedicineBatch.is_active == True,
+                MedicineBatch.expiry_date > date.today(),  # Only consider non-expired batches
+                MedicineBatch.quantity > 0,
+            ).order_by(MedicineBatch.expiry_date.asc()).all()
+
+            total_available = sum(batch.quantity for batch in batches)
+
+            if total_available == 0:
+                stock_errors.append(
+                    f"'{item.medicine_name}' is out of stock. Required: {required_quantity}, Available: 0"
+                )
+            elif total_available < required_quantity:
+                stock_errors.append(
+                    f"'{item.medicine_name}' has insufficient stock. Required: {required_quantity}, Available: {total_available}"
+                )
+
+    # Block finalization if any medicine has insufficient stock
+    if stock_errors:
+        error_message = "Cannot finalize prescription due to insufficient stock:\n" + "\n".join(stock_errors)
+        raise ValueError(error_message)
 
     rx.status = "finalized"
     rx.is_finalized = True
@@ -495,7 +583,12 @@ def _save_version_snapshot(
                     "duration_unit": item.duration_unit,
                     "route": item.route,
                     "instructions": item.instructions,
-                    "quantity": item.quantity,
+                    "quantity": calculate_prescribed_quantity(
+                        item.frequency,
+                        item.duration_value,
+                        item.duration_unit,
+                        item.quantity,
+                    ),
                 }
                 for item in items
             ],

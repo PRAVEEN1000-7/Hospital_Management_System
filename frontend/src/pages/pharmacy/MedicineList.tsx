@@ -192,7 +192,7 @@ const MedicineList: React.FC = () => {
                     )}
                   </td>
                   <td className="px-4 py-3 text-slate-600">{med.strength || '—'}</td>
-                  <td className="px-4 py-3 text-slate-600">{med.unit}</td>
+                  <td className="px-4 py-3 text-slate-600">{med.unit || med.unit_of_measure || '—'}</td>
                   <td className="px-4 py-3 text-right">
                     <span className={`font-semibold ${(med.total_stock ?? 0) < 10 ? 'text-red-500' : 'text-emerald-600'}`}>
                       {med.total_stock ?? 0}

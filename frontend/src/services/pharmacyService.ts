@@ -3,7 +3,7 @@ import type {
   Medicine, MedicineCreateData, MedicineListResponse,
   MedicineBatch, BatchCreateData,
   Supplier, SupplierCreateData, SupplierListResponse,
-  PurchaseOrder, PurchaseOrderCreateData, PurchaseOrderListResponse,
+  PurchaseOrder, PurchaseOrderCreateData, PurchaseOrderListResponse, PurchaseOrderReceiveData,
   Sale, SaleCreateData, SaleListResponse,
   StockAdjustment, StockAdjustmentCreate,
   PharmacyDashboard,
@@ -155,7 +155,7 @@ export const pharmacyService = {
     page = 1, limit = 20, status?: string, supplierId?: string, dateFrom?: string, dateTo?: string
   ): Promise<PurchaseOrderListResponse> {
     const params: Record<string, string | number> = { page, limit };
-    if (status) params.order_status = status;
+    if (status) params.status = status;
     if (supplierId) params.supplier_id = supplierId;
     if (dateFrom) params.date_from = dateFrom;
     if (dateTo) params.date_to = dateTo;
@@ -202,8 +202,8 @@ export const pharmacyService = {
     return res.data;
   },
 
-  async receivePurchaseOrder(id: string): Promise<PurchaseOrder> {
-    const res = await api.post<PurchaseOrder>(`/pharmacy/purchase-orders/${id}/receive`);
+  async receivePurchaseOrder(id: string, data?: PurchaseOrderReceiveData): Promise<PurchaseOrder> {
+    const res = await api.post<PurchaseOrder>(`/pharmacy/purchase-orders/${id}/receive`, data);
     return res.data;
   },
 

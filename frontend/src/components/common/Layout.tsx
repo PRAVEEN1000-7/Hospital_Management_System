@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { NavLink, useNavigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
@@ -552,51 +553,7 @@ const Layout: React.FC = () => {
             </div>
           )}
 
-          {/* ══ PHARMACY — collapsible dropdown ══ */}
-          {pharmacyItems.length > 0 && (
-            <div className="mt-4">
-              <div className="px-6 mb-1">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Pharmacy</span>
-              </div>
-              <button
-                onClick={() => setPharmacyExpanded(!pharmacyExpanded)}
-                aria-expanded={pharmacyExpanded}
-                aria-controls="pharmacy-menu"
-                className={`w-full flex items-center justify-between px-6 py-2.5 text-sm font-medium transition-all ${
-                  location.pathname.startsWith('/pharmacy')
-                    ? 'text-primary bg-primary/5'
-                    : 'text-slate-500 hover:text-primary hover:bg-slate-50'
-                }`}
-              >
-                <div className="flex items-center">
-                  <span className="material-symbols-outlined mr-3 text-[20px]">local_pharmacy</span>
-                  Pharmacy
-                </div>
-                <span className={`material-symbols-outlined text-[18px] transition-transform duration-200 ${pharmacyExpanded ? 'rotate-180' : ''}`}>
-                  expand_more
-                </span>
-              </button>
-              <div id="pharmacy-menu" className={`overflow-hidden transition-all duration-200 ${pharmacyExpanded ? 'max-h-[700px] opacity-100' : 'max-h-0 opacity-0'}`}>
-                {pharmacyItems.map((item) => (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    onClick={() => setSidebarOpen(false)}
-                    className={`flex items-center pl-10 pr-6 py-2.5 text-[13px] font-medium transition-all ${
-                      isExactActive(item.to)
-                        ? 'sidebar-item-active'
-                        : 'text-slate-400 hover:text-primary hover:bg-slate-50'
-                    }`}
-                  >
-                    <span className="material-symbols-outlined mr-3 text-[18px]">{item.icon}</span>
-                    {item.label}
-                  </NavLink>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* ══ PHARMACY — collapsible ══ */}
+          {/* ══ PHARMACY — collapsible (with badge notifications) ══ */}
           {pharmacyItems.length > 0 && (
             <div className="mt-4">
               <div className="px-6 mb-1">
@@ -875,8 +832,9 @@ const Layout: React.FC = () => {
                     ) : (
                       <div className="divide-y divide-slate-50">
                         {notifications.map((notification) => {
-                          const icon = getNotificationIcon(notification.reference_type);
-                          const colorClass = getNotificationColor(notification.reference_type);
+                          const referenceType = notification.reference_type || '';
+                          const icon = getNotificationIcon(referenceType);
+                          const colorClass = getNotificationColor(referenceType);
                           const formattedMessage = formatNotificationMessage(notification);
                           
                           return (
@@ -912,7 +870,7 @@ const Layout: React.FC = () => {
                                   </p>
                                   <p className="text-[10px] text-slate-400 mt-1.5 flex items-center gap-1">
                                     <span className="material-icons text-[10px]">schedule</span>
-                                    {getRelativeTime(notification.created_at)}
+                                    {notification.created_at ? getRelativeTime(notification.created_at) : 'Unknown'}
                                   </p>
                                 </div>
                               </div>

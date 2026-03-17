@@ -166,8 +166,8 @@ export interface PurchaseOrderItem {
   item_type?: string;
   quantity_ordered: number;
   quantity_received: number;
-  unit_price: number;
-  total_price: number;
+  unit_price: number | string;
+  total_price: number | string;
   batch_number: string | null;
   expiry_date: string | null;
   medicine_name?: string;
@@ -175,7 +175,7 @@ export interface PurchaseOrderItem {
   medicine_generic_name?: string;
 }
 
-export type PurchaseOrderStatus = 'draft' | 'submitted' | 'approved' | 'ordered' | 'received' | 'cancelled';
+export type PurchaseOrderStatus = 'draft' | 'submitted' | 'approved' | 'ordered' | 'partially_received' | 'received' | 'cancelled';
 
 export interface PurchaseOrder {
   id: string;
@@ -185,7 +185,7 @@ export interface PurchaseOrder {
   order_date: string;
   expected_delivery: string | null;
   status: PurchaseOrderStatus;
-  total_amount: number;
+  total_amount: number | string;
   notes: string | null;
   created_by?: string;
   submitted_by?: string;
@@ -221,6 +221,21 @@ export interface PurchaseOrderUpdateData {
   expected_delivery?: string;
   notes?: string;
   items?: PurchaseOrderItemCreate[];
+}
+
+export interface PurchaseOrderReceiveItemData {
+  purchase_order_item_id: string;
+  quantity_received: number;
+  batch_number?: string;
+  manufactured_date?: string;
+  expiry_date?: string;
+  unit_price?: number;
+  selling_price?: number;
+}
+
+export interface PurchaseOrderReceiveData {
+  items: PurchaseOrderReceiveItemData[];
+  notes?: string;
 }
 
 export interface PurchaseOrderListResponse {

@@ -561,7 +561,7 @@ def update_grn(
 
 
 def _process_grn_acceptance(db: Session, grn: GoodsReceiptNote):
-    """On GRN acceptance, record stock_in movements and update PO item received qty."""
+    """On GRN acceptance, record stock_in movements, update PO item received qty, and create medicine batches."""
     grn_with_items = (
         db.query(GoodsReceiptNote)
         .options(joinedload(GoodsReceiptNote.items))
@@ -603,6 +603,34 @@ def _process_grn_acceptance(db: Session, grn: GoodsReceiptNote):
             performed_by=grn.verified_by,
         )
         db.add(movement)
+
+        # ✅ FIX BUG #3: Create or update MedicineBatch for pharmacy dispensing
+        if item.item_type == "medicine":
+            from ..models.pharmacy import MedicineBatch
+            
+            batch = db.query(MedicineBatch).filter(
+                MedicineBatch.medicine_id == item.item_id,
+                MedicineBatch.batch_number == item.batch_number,
+            ).first()
+
+            if batch:
+                # Update existing batch
+                batch.quantity += accepted
+                batch.initial_quantity += accepted
+            else:
+                # Create new batch
+                batch = MedicineBatch(
+                    medicine_id=item.item_id,
+                    batch_number=item.batch_number or f"GRN-{grn.id.hex[:8]}",
+                    mfg_date=item.manufactured_date,
+                    expiry_date=item.expiry_date,
+                    initial_quantity=accepted,
+                    quantity=accepted,
+                    purchase_price=float(item.unit_price),
+                    selling_price=float(item.unit_price),
+                    is_active=True,
+                )
+                db.add(batch)
 
         # Update PO item received quantity if this GRN links to a PO
         if grn.purchase_order_id:

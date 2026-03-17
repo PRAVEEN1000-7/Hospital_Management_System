@@ -39,6 +39,9 @@ const Layout: React.FC = () => {
   const [pharmacyOpen, setPharmacyOpen] = useState(
     () => location.pathname.startsWith('/pharmacy')
   );
+  const [pharmacyExpanded, setPharmacyExpanded] = useState(
+    () => location.pathname.startsWith('/pharmacy')
+  );
   const [pendingPrescriptionCount, setPendingPrescriptionCount] = useState(0);
   const [loadingPendingCount, setLoadingPendingCount] = useState(false);
   const [inventoryOpen, setInventoryOpen] = useState(
@@ -93,6 +96,7 @@ const Layout: React.FC = () => {
     }
     if (location.pathname.startsWith('/pharmacy')) {
       setPharmacyOpen(true);
+      setPharmacyExpanded(true);
     }
     if (location.pathname.startsWith('/inventory')) {
       setInventoryOpen(true);
@@ -311,7 +315,7 @@ const Layout: React.FC = () => {
     );
   }
 
-  // ── Prescription navigation ── role-driven
+  // ── Prescription navigation ── FLAT (no dropdown)
   const prescriptionItems: { to: string; label: string; icon: string }[] = [];
 
   if (role === 'super_admin' || role === 'admin') {
@@ -326,28 +330,45 @@ const Layout: React.FC = () => {
     );
   } else if (role === 'nurse' || role === 'pharmacist') {
     prescriptionItems.push(
-      { to: '/prescriptions', label: 'Prescriptions', icon: 'list_alt' },
+      { to: '/prescriptions', label: 'Prescriptions', icon: 'prescriptions' },
     );
   }
 
-  // ── Pharmacy navigation ── role-driven
+  // ── Pharmacy navigation ── FLAT (no dropdown), simplified for pharmacists
   const pharmacyItems: { to: string; label: string; icon: string; badge?: number }[] = [];
 
   if (role === 'super_admin' || role === 'admin' || role === 'pharmacist' || role === 'inventory_manager') {
-    pharmacyItems.push(
-      { to: '/pharmacy', label: 'Dashboard', icon: 'dashboard' },
-      { to: '/pharmacy/medicines', label: 'Medicines', icon: 'medication' },
-      {
-        to: '/pharmacy/pending-prescriptions',
-        label: 'Pending Prescriptions',
-        icon: 'queue',
-        badge: pendingPrescriptionCount > 0 ? pendingPrescriptionCount : undefined,
-      },
-      { to: '/pharmacy/sales', label: 'Sales', icon: 'point_of_sale' },
-      { to: '/pharmacy/purchase-orders', label: 'Purchase Orders', icon: 'local_shipping' },
-      { to: '/pharmacy/suppliers', label: 'Suppliers', icon: 'local_shipping' },
-      { to: '/pharmacy/stock-adjustments', label: 'Stock Adjustments', icon: 'tune' },
-    );
+    if (role === 'pharmacist') {
+      // Simplified pharmacy menu for pharmacists - essential items only
+      pharmacyItems.push(
+        { to: '/pharmacy/medicines', label: 'Medicines', icon: 'medication' },
+        {
+          to: '/pharmacy/pending-prescriptions',
+          label: 'Pending Prescriptions',
+          icon: 'queue',
+          badge: pendingPrescriptionCount > 0 ? pendingPrescriptionCount : undefined,
+        },
+        { to: '/pharmacy/sales', label: 'Sales', icon: 'point_of_sale' },
+        { to: '/pharmacy/purchase-orders', label: 'Purchase Orders', icon: 'local_shipping' },
+        { to: '/pharmacy/suppliers', label: 'Suppliers', icon: 'local_shipping' },
+      );
+    } else {
+      // Full pharmacy menu for admin/super_admin/inventory_manager
+      pharmacyItems.push(
+        { to: '/pharmacy', label: 'Dashboard', icon: 'dashboard' },
+        { to: '/pharmacy/medicines', label: 'Medicines', icon: 'medication' },
+        {
+          to: '/pharmacy/pending-prescriptions',
+          label: 'Pending Prescriptions',
+          icon: 'queue',
+          badge: pendingPrescriptionCount > 0 ? pendingPrescriptionCount : undefined,
+        },
+        { to: '/pharmacy/sales', label: 'Sales', icon: 'point_of_sale' },
+        { to: '/pharmacy/purchase-orders', label: 'Purchase Orders', icon: 'local_shipping' },
+        { to: '/pharmacy/suppliers', label: 'Suppliers', icon: 'local_shipping' },
+        { to: '/pharmacy/stock-adjustments', label: 'Stock Adjustments', icon: 'tune' },
+      );
+    }
   }
   if (role === 'cashier') {
     pharmacyItems.push(
@@ -376,7 +397,7 @@ const Layout: React.FC = () => {
     );
   }
 
-  // ── System navigation ── admin / super_admin / receptionist
+  // ── System navigation ── admin / super_admin only
   const systemNavItems: { to: string; label: string; icon: string }[] = [];
   if (role === 'super_admin') {
     systemNavItems.push(
@@ -390,6 +411,7 @@ const Layout: React.FC = () => {
   }
 
   const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path + '/');
+  // For flat nav items: exact match only
   const isExactActive = (path: string) => location.pathname === path;
 
   const fullName = user ? `${user.first_name} ${user.last_name}`.trim() : '';
@@ -506,32 +528,56 @@ const Layout: React.FC = () => {
             </div>
           )}
 
-          {/* ══ PRESCRIPTIONS — collapsible ══ */}
+          {/* ══ PRESCRIPTIONS — FLAT (no dropdown) ══ */}
           {prescriptionItems.length > 0 && (
             <div className="mt-4">
               <div className="px-6 mb-1">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Prescriptions</span>
               </div>
+              {prescriptionItems.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  onClick={() => setSidebarOpen(false)}
+                  className={`flex items-center px-6 py-3 text-sm font-medium transition-all ${
+                    isExactActive(item.to)
+                      ? 'sidebar-item-active'
+                      : 'text-slate-500 hover:text-primary hover:bg-slate-50'
+                  }`}
+                >
+                  <span className="material-symbols-outlined mr-3 text-[20px]">{item.icon}</span>
+                  {item.label}
+                </NavLink>
+              ))}
+            </div>
+          )}
+
+          {/* ══ PHARMACY — collapsible dropdown ══ */}
+          {pharmacyItems.length > 0 && (
+            <div className="mt-4">
+              <div className="px-6 mb-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Pharmacy</span>
+              </div>
               <button
-                onClick={() => setPrescriptionsOpen(!prescriptionsOpen)}
-                aria-expanded={prescriptionsOpen}
-                aria-controls="prescriptions-menu"
+                onClick={() => setPharmacyExpanded(!pharmacyExpanded)}
+                aria-expanded={pharmacyExpanded}
+                aria-controls="pharmacy-menu"
                 className={`w-full flex items-center justify-between px-6 py-2.5 text-sm font-medium transition-all ${
-                  location.pathname.startsWith('/prescriptions')
+                  location.pathname.startsWith('/pharmacy')
                     ? 'text-primary bg-primary/5'
                     : 'text-slate-500 hover:text-primary hover:bg-slate-50'
                 }`}
               >
                 <div className="flex items-center">
-                  <span className="material-symbols-outlined mr-3 text-[20px]">prescriptions</span>
-                  Prescriptions
+                  <span className="material-symbols-outlined mr-3 text-[20px]">local_pharmacy</span>
+                  Pharmacy
                 </div>
-                <span className={`material-symbols-outlined text-[18px] transition-transform duration-200 ${prescriptionsOpen ? 'rotate-180' : ''}`}>
+                <span className={`material-symbols-outlined text-[18px] transition-transform duration-200 ${pharmacyExpanded ? 'rotate-180' : ''}`}>
                   expand_more
                 </span>
               </button>
-              <div id="prescriptions-menu" className={`overflow-hidden transition-all duration-200 ${prescriptionsOpen ? 'max-h-[700px] opacity-100' : 'max-h-0 opacity-0'}`}>
-                {prescriptionItems.map((item) => (
+              <div id="pharmacy-menu" className={`overflow-hidden transition-all duration-200 ${pharmacyExpanded ? 'max-h-[700px] opacity-100' : 'max-h-0 opacity-0'}`}>
+                {pharmacyItems.map((item) => (
                   <NavLink
                     key={item.to}
                     to={item.to}
@@ -589,7 +635,7 @@ const Layout: React.FC = () => {
                     <span className="material-symbols-outlined mr-3 text-[18px]">{item.icon}</span>
                     {item.label}
                     {item.badge !== undefined && item.badge > 0 && (
-                      <span className="ml-2 px-2 py-0.5 text-xs font-semibold bg-red-500 text-white rounded-full min-w-[1.25rem] text-center">
+                      <span className="ml-2 px-2 py-0.5 text-xs font-semibold bg-red-500 text-white rounded-full min-w-[1.25rem] text-center notification-badge">
                         {item.badge > 99 ? '99+' : item.badge}
                       </span>
                     )}

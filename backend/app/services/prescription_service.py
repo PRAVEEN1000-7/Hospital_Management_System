@@ -18,6 +18,7 @@ from ..models.prescription import (
 from ..models.appointment import Doctor, Appointment
 from ..models.patient import Patient
 from ..models.user import User
+from ..models.hospital_settings import HospitalSettings
 
 logger = logging.getLogger(__name__)
 
@@ -26,11 +27,36 @@ logger = logging.getLogger(__name__)
 # Prescription Number Generation
 # ═══════════════════════════════════════════════════════════════════════════
 
-def generate_prescription_number() -> str:
-    """Generate unique prescription number: RX-YYYYMMDD-XXXXXX."""
-    today = date.today().strftime("%Y%m%d")
-    unique_part = uuid.uuid4().hex[:6].upper()
-    return f"RX-{today}-{unique_part}"
+def generate_prescription_number(db: Session, hospital_id: uuid.UUID) -> str:
+    """
+    Generate unique sequential prescription number: {PREFIX}-{YY}-{NNNNN}
+    
+    Format: RX-26-00001, RX-26-00002, etc.
+    Uses hospital_settings.prescription_sequence with row-level locking.
+    """
+    # Get hospital settings with row-level lock to prevent race conditions
+    settings = db.query(HospitalSettings).filter(
+        HospitalSettings.hospital_id == hospital_id
+    ).with_for_update().first()
+    
+    if not settings:
+        # Fallback if no settings exist - use default
+        logger.warning(f"No hospital settings found for hospital_id={hospital_id}, using defaults")
+        prefix = "RX"
+        sequence = 1
+    else:
+        # Get prefix and increment sequence atomically
+        prefix = settings.prescription_prefix or "RX"
+        sequence = settings.prescription_sequence + 1
+        # Update the sequence counter
+        settings.prescription_sequence = sequence
+        db.flush()  # Ensure the update is visible within this transaction
+    
+    # Format: PREFIX-YY-NNNNN (e.g., RX-26-00001)
+    year_code = date.today().strftime("%y")  # 2-digit year
+    formatted_sequence = f"{sequence:05d}"  # 5-digit sequence with leading zeros
+    
+    return f"{prefix}-{year_code}-{formatted_sequence}"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -44,7 +70,7 @@ def create_prescription(
     hospital_id: uuid.UUID,
 ) -> Prescription:
     """Create a new prescription with optional items."""
-    rx_number = generate_prescription_number()
+    rx_number = generate_prescription_number(db, hospital_id)
 
     # Convert string UUIDs
     patient_id = data.get("patient_id")

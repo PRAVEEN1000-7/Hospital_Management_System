@@ -3,6 +3,7 @@ Pharmacy router — medicines, batches, suppliers, purchase orders, sales, stock
 """
 import logging
 from datetime import date
+from decimal import Decimal
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -18,7 +19,7 @@ from ..schemas.pharmacy import (
     # Supplier
     SupplierCreate, SupplierUpdate, SupplierResponse, SupplierListResponse,
     # Purchase Order
-    PurchaseOrderCreate, PurchaseOrderResponse, PurchaseOrderListResponse, PurchaseOrderItemResponse,
+    PurchaseOrderCreate, PurchaseOrderUpdate, PurchaseOrderResponse, PurchaseOrderListResponse, PurchaseOrderItemResponse,
     # Sale
     SaleCreate, SaleResponse, SaleListResponse, SaleItemResponse,
     # Stock Adjustment
@@ -362,6 +363,210 @@ async def receive_purchase_order(
         logger.error(f"Error receiving PO: {e}", exc_info=True)
         db.rollback()
         raise HTTPException(status_code=500, detail="Failed to receive purchase order")
+
+
+@purchase_orders_router.put("/{po_id}", response_model=PurchaseOrderResponse)
+async def update_purchase_order(
+    po_id: str,
+    data: PurchaseOrderUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Update a draft purchase order. Only draft POs can be updated."""
+    try:
+        po = svc.get_purchase_order(db, po_id)
+        if not po:
+            raise HTTPException(status_code=404, detail="Purchase order not found")
+        if po.status != "draft":
+            raise HTTPException(status_code=400, detail="Only draft purchase orders can be updated")
+        if po.hospital_id != current_user.hospital_id:
+            raise HTTPException(status_code=403, detail="Not authorized")
+        
+        # Update fields
+        update_data = data.model_dump(exclude_unset=True)
+        if "supplier_id" in update_data:
+            po.supplier_id = update_data["supplier_id"]
+        if "expected_delivery" in update_data:
+            po.expected_delivery = update_data["expected_delivery"]
+        if "notes" in update_data:
+            po.notes = update_data["notes"]
+        
+        # Update items if provided
+        if "items" in update_data and update_data["items"]:
+            # Delete existing items
+            for item in po.items:
+                db.delete(item)
+            db.flush()
+            
+            # Create new items
+            from ..models.pharmacy import PurchaseOrderItem
+            import uuid
+            from decimal import Decimal
+            total = Decimal("0")
+            for item_data in update_data["items"]:
+                line_total = Decimal(str(item_data["unit_price"])) * item_data["quantity_ordered"]
+                poi = PurchaseOrderItem(
+                    purchase_order_id=po.id,
+                    item_type="medicine",
+                    medicine_id=uuid.UUID(item_data["medicine_id"]),
+                    quantity_ordered=item_data["quantity_ordered"],
+                    unit_price=item_data["unit_price"],
+                    total_price=line_total,
+                )
+                db.add(poi)
+                total += line_total
+            po.total_amount = total
+        
+        db.commit()
+        db.refresh(po)
+        return PurchaseOrderResponse.model_validate(po)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating PO: {e}", exc_info=True)
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to update purchase order")
+
+
+@purchase_orders_router.post("/{po_id}/submit", response_model=PurchaseOrderResponse)
+async def submit_purchase_order(
+    po_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Submit a draft purchase order for approval."""
+    try:
+        po = svc.get_purchase_order(db, po_id)
+        if not po:
+            raise HTTPException(status_code=404, detail="Purchase order not found")
+        if po.status != "draft":
+            raise HTTPException(status_code=400, detail="Only draft purchase orders can be submitted")
+        if po.hospital_id != current_user.hospital_id:
+            raise HTTPException(status_code=403, detail="Not authorized")
+        
+        po.status = "submitted"
+        db.commit()
+        db.refresh(po)
+        return PurchaseOrderResponse.model_validate(po)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error submitting PO: {e}", exc_info=True)
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to submit purchase order")
+
+
+@purchase_orders_router.post("/{po_id}/approve", response_model=PurchaseOrderResponse)
+async def approve_purchase_order(
+    po_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Approve a submitted purchase order."""
+    try:
+        po = svc.get_purchase_order(db, po_id)
+        if not po:
+            raise HTTPException(status_code=404, detail="Purchase order not found")
+        if po.status != "submitted":
+            raise HTTPException(status_code=400, detail="Only submitted purchase orders can be approved")
+        if po.hospital_id != current_user.hospital_id:
+            raise HTTPException(status_code=403, detail="Not authorized")
+        
+        po.status = "approved"
+        db.commit()
+        db.refresh(po)
+        return PurchaseOrderResponse.model_validate(po)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error approving PO: {e}", exc_info=True)
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to approve purchase order")
+
+
+@purchase_orders_router.post("/{po_id}/place", response_model=PurchaseOrderResponse)
+async def place_purchase_order(
+    po_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Place an approved purchase order with the supplier."""
+    try:
+        po = svc.get_purchase_order(db, po_id)
+        if not po:
+            raise HTTPException(status_code=404, detail="Purchase order not found")
+        if po.status not in ["approved", "submitted"]:
+            raise HTTPException(status_code=400, detail="Only approved purchase orders can be placed")
+        if po.hospital_id != current_user.hospital_id:
+            raise HTTPException(status_code=403, detail="Not authorized")
+        
+        po.status = "ordered"
+        db.commit()
+        db.refresh(po)
+        return PurchaseOrderResponse.model_validate(po)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error placing PO: {e}", exc_info=True)
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to place purchase order")
+
+
+@purchase_orders_router.post("/{po_id}/cancel", response_model=PurchaseOrderResponse)
+async def cancel_purchase_order(
+    po_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Cancel a purchase order."""
+    try:
+        po = svc.get_purchase_order(db, po_id)
+        if not po:
+            raise HTTPException(status_code=404, detail="Purchase order not found")
+        if po.status not in ["draft", "submitted", "approved", "ordered"]:
+            raise HTTPException(status_code=400, detail="Only active purchase orders can be cancelled")
+        if po.hospital_id != current_user.hospital_id:
+            raise HTTPException(status_code=403, detail="Not authorized")
+        
+        po.status = "cancelled"
+        db.commit()
+        db.refresh(po)
+        return PurchaseOrderResponse.model_validate(po)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error cancelling PO: {e}", exc_info=True)
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to cancel purchase order")
+
+
+@purchase_orders_router.delete("/{po_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_purchase_order(
+    po_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Delete a draft or cancelled purchase order."""
+    try:
+        po = svc.get_purchase_order(db, po_id)
+        if not po:
+            raise HTTPException(status_code=404, detail="Purchase order not found")
+        if po.status not in ("draft", "cancelled"):
+            raise HTTPException(status_code=400, detail="Only draft or cancelled purchase orders can be deleted")
+        if po.hospital_id != current_user.hospital_id:
+            raise HTTPException(status_code=403, detail="Not authorized")
+        
+        # Delete items first
+        for item in po.items:
+            db.delete(item)
+        db.delete(po)
+        db.commit()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting PO: {e}", exc_info=True)
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to delete purchase order")
 
 
 # ──────────────────────────────────────────────────

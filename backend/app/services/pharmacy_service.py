@@ -228,16 +228,21 @@ def delete_supplier(db: Session, supplier_id: str | uuid.UUID) -> bool:
 # ══════════════════════════════════════════════════
 
 def _generate_po_number(db: Session, hospital_id: uuid.UUID) -> str:
-    """Generate next PO number like PO-0001."""
+    """Generate next PO number like PO-2026-0001."""
+    from datetime import date
+    year = date.today().strftime("%y")
     count = db.query(func.count(PurchaseOrder.id)).filter(
         PurchaseOrder.hospital_id == hospital_id
     ).scalar() or 0
-    return f"PO-{count + 1:04d}"
+    return f"PO-{year}-{count + 1:04d}"
 
 
 def create_purchase_order(
     db: Session, hospital_id: uuid.UUID, data: dict, user_id: uuid.UUID
 ) -> PurchaseOrder:
+    """Create a new purchase order in DRAFT status."""
+    from datetime import date
+    
     items_data = data.pop("items", [])
     supplier_id = uuid.UUID(data.pop("supplier_id"))
 
@@ -245,6 +250,7 @@ def create_purchase_order(
         hospital_id=hospital_id,
         supplier_id=supplier_id,
         order_number=_generate_po_number(db, hospital_id),
+        order_date=date.today(),  # Set order date to today
         expected_delivery=data.get("expected_delivery"),
         notes=data.get("notes"),
         status="draft",
@@ -273,6 +279,46 @@ def create_purchase_order(
     return po
 
 
+def submit_purchase_order(db: Session, po_id: str | uuid.UUID, user_id: uuid.UUID) -> Optional[PurchaseOrder]:
+    """Submit PO for approval (DRAFT → SUBMITTED)."""
+    po = get_purchase_order(db, po_id)
+    if not po:
+        return None
+    if po.status != "draft":
+        raise ValueError("Only draft POs can be submitted")
+    po.status = "submitted"
+    db.commit()
+    db.refresh(po)
+    return po
+
+
+def approve_purchase_order(db: Session, po_id: str | uuid.UUID, user_id: uuid.UUID, comments: str = None) -> Optional[PurchaseOrder]:
+    """Approve PO (SUBMITTED → APPROVED)."""
+    po = get_purchase_order(db, po_id)
+    if not po:
+        return None
+    if po.status != "submitted":
+        raise ValueError("Only submitted POs can be approved")
+    po.status = "approved"
+    po.approved_by = user_id
+    db.commit()
+    db.refresh(po)
+    return po
+
+
+def place_purchase_order(db: Session, po_id: str | uuid.UUID, user_id: uuid.UUID) -> Optional[PurchaseOrder]:
+    """Send PO to supplier (APPROVED → ORDERED)."""
+    po = get_purchase_order(db, po_id)
+    if not po:
+        return None
+    if po.status not in ["approved", "submitted"]:
+        raise ValueError("PO must be approved before placing order")
+    po.status = "ordered"
+    db.commit()
+    db.refresh(po)
+    return po
+
+
 def get_purchase_order(db: Session, po_id: str | uuid.UUID) -> Optional[PurchaseOrder]:
     if isinstance(po_id, str):
         po_id = uuid.UUID(po_id)
@@ -283,12 +329,28 @@ def list_purchase_orders(
     db: Session, hospital_id: uuid.UUID,
     page: int = 1, limit: int = 20,
     status: Optional[str] = None,
+    supplier_id: Optional[str] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
 ) -> dict:
+    """List POs with filters."""
     query = db.query(PurchaseOrder).filter(PurchaseOrder.hospital_id == hospital_id)
+    
     if status:
         query = query.filter(PurchaseOrder.status == status)
+    
+    if supplier_id:
+        query = query.filter(PurchaseOrder.supplier_id == uuid.UUID(supplier_id))
+    
+    if date_from:
+        query = query.filter(PurchaseOrder.order_date >= date_from)
+    
+    if date_to:
+        query = query.filter(PurchaseOrder.order_date <= date_to)
+    
     total = query.count()
     items = query.order_by(PurchaseOrder.created_at.desc()).offset((page - 1) * limit).limit(limit).all()
+    
     return {
         "total": total,
         "page": page,
@@ -303,7 +365,7 @@ def receive_purchase_order(
 ) -> Optional[PurchaseOrder]:
     """Mark PO as received and create/update medicine batches."""
     po = get_purchase_order(db, po_id)
-    if not po or po.status not in ("draft", "ordered"):
+    if not po or po.status != "ordered":
         return None
 
     items = db.query(PurchaseOrderItem).filter(PurchaseOrderItem.purchase_order_id == po.id).all()

@@ -48,6 +48,7 @@ import NewSale from './pages/pharmacy/NewSale';
 import StockAdjustments from './pages/pharmacy/StockAdjustments';
 import PendingPrescriptions from './pages/pharmacy/PendingPrescriptions';
 import DispensingScreen from './pages/pharmacy/DispensingScreen';
+import DispensingBilling from './pages/pharmacy/DispensingBilling';
 
 // Inventory pages
 import InventoryDashboard from './pages/inventory/InventoryDashboard';
@@ -236,6 +237,11 @@ const App: React.FC = () => {
                 <PurchaseOrderForm />
               </ProtectedRoute>
             } />
+            <Route path="/pharmacy/purchase-orders/:orderId/edit" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'pharmacist', 'inventory_manager']}>
+                <PurchaseOrderForm />
+              </ProtectedRoute>
+            } />
             <Route path="/pharmacy/sales" element={
               <ProtectedRoute allowedRoles={['super_admin', 'admin', 'pharmacist', 'cashier']}>
                 <SalesList />
@@ -259,6 +265,11 @@ const App: React.FC = () => {
             <Route path="/pharmacy/dispense/:prescriptionId" element={
               <ProtectedRoute allowedRoles={['super_admin', 'admin', 'pharmacist', 'inventory_manager']}>
                 <DispensingScreen />
+              </ProtectedRoute>
+            } />
+            <Route path="/pharmacy/dispensing/:dispensingId/billing" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'pharmacist', 'cashier', 'inventory_manager']}>
+                <DispensingBilling />
               </ProtectedRoute>
             } />
 

@@ -147,6 +147,13 @@ const Dashboard: React.FC = () => {
   const isPharmacist = role === 'pharmacist';
   const canAccessPatients = role === 'super_admin' || role === 'admin' || role === 'receptionist' || role === 'nurse' || role === 'pharmacist' || role === 'doctor';
 
+  // Redirect pharmacists to pharmacy dashboard
+  useEffect(() => {
+    if (isPharmacist) {
+      navigate('/pharmacy', { replace: true });
+    }
+  }, [isPharmacist, navigate]);
+
   useEffect(() => {
     const fetchDashboardData = async () => {
       setLoading(true);

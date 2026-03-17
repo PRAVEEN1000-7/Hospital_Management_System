@@ -297,7 +297,7 @@ def dispense_prescription(
         patient_id=rx.patient_id,
         sale_type="prescription",
         status="dispensed",
-        dispensed_by=user_id,
+        created_by=user_id,  # Use created_by (which maps to dispensed_by in DB)
         notes=notes,
         created_at=datetime.now(timezone.utc),
     )
@@ -319,7 +319,7 @@ def dispense_prescription(
         
         if not prescription_item_id or not medicine_id or not batch_id or quantity <= 0:
             continue
-        
+
         # Convert UUIDs
         if isinstance(prescription_item_id, str):
             prescription_item_id = uuid.UUID(prescription_item_id)
@@ -327,39 +327,54 @@ def dispense_prescription(
             medicine_id = uuid.UUID(medicine_id)
         if isinstance(batch_id, str):
             batch_id = uuid.UUID(batch_id)
-        
+
         # Get prescription item
         rx_item = db.query(PrescriptionItem).filter(
             PrescriptionItem.id == prescription_item_id,
             PrescriptionItem.prescription_id == prescription_id,
         ).first()
-        
+
         if not rx_item:
             logger.warning(f"Prescription item {prescription_item_id} not found")
             continue
+
+        # Validate quantity doesn't exceed prescribed quantity
+        already_dispensed = rx_item.dispensed_quantity or 0
+        remaining_qty = (rx_item.quantity or 0) - already_dispensed
         
+        if quantity > remaining_qty:
+            raise ValueError(
+                f"Cannot dispense {quantity} units of {rx_item.medicine_name}. "
+                f"Prescribed: {rx_item.quantity}, Already dispensed: {already_dispensed}, "
+                f"Remaining: {remaining_qty}. You can dispense less than or equal to {remaining_qty} units."
+            )
+        
+        if quantity <= 0:
+            logger.warning(f"Skipping item {rx_item.medicine_name} with quantity {quantity}")
+            continue
+
         # Get batch and validate stock
         batch = db.query(MedicineBatch).filter(
             MedicineBatch.id == batch_id,
             MedicineBatch.medicine_id == medicine_id,
         ).first()
-        
+
         if not batch:
             raise ValueError(f"Batch not found for medicine {rx_item.medicine_name}")
-        
+
         if batch.quantity < quantity:
             raise ValueError(
                 f"Insufficient stock for {rx_item.medicine_name}. "
                 f"Required: {quantity}, Available: {batch.quantity}"
             )
-        
-        # Reduce batch stock
+
+        # Reduce batch stock (FEFO - stock reduction on each dispensing)
         batch.quantity -= quantity
-        
+
         # Calculate totals
         line_total = unit_price * quantity
         total_amount += line_total
-        
+
         # Create dispensing item
         dispensing_item = PharmacySaleItem(
             sale_id=dispensing.id,
@@ -371,22 +386,23 @@ def dispense_prescription(
             total_price=line_total,
         )
         db.add(dispensing_item)
+
+        # Update prescription item dispensing status
+        rx_item.dispensed_quantity = already_dispensed + quantity
         
-        # Update prescription item
-        rx_item.dispensed_quantity = (rx_item.dispensed_quantity or 0) + quantity
+        # Cap at prescribed quantity and mark as dispensed if complete
         if rx_item.dispensed_quantity >= (rx_item.quantity or 0):
             rx_item.is_dispensed = True
-            rx_item.dispensed_quantity = rx_item.quantity  # Cap at prescribed quantity
+            rx_item.dispensed_quantity = rx_item.quantity  # Ensure exact match
         else:
-            # Partial dispensing
+            # Partial dispensing - patient can purchase remaining later
             partial_dispensing = True
             all_items_dispensed = False
-        
+
         logger.info(
             f"Dispensed {quantity} of {rx_item.medicine_name} "
-            f"(Batch: {batch.batch_number})"
+            f"(Batch: {batch.batch_number}, Remaining prescribed: {rx_item.quantity - rx_item.dispensed_quantity})"
         )
-    
     # Check if any items were not dispensed at all
     all_rx_items = db.query(PrescriptionItem).filter(
         PrescriptionItem.prescription_id == prescription_id
@@ -462,9 +478,9 @@ def get_dispensing_details(
         "total_amount": float(dispensing.total_amount) if dispensing.total_amount else 0,
         "discount_amount": float(dispensing.discount_amount) if dispensing.discount_amount else 0,
         "tax_amount": float(dispensing.tax_amount) if dispensing.tax_amount else 0,
-        "net_amount": float(dispensing.net_amount) if dispensing.net_amount else 0,
+        "net_amount": float(dispensing.total_amount) if dispensing.total_amount else 0,  # Use total_amount instead
         "notes": dispensing.notes,
-        "dispensed_at": str(dispensing.dispensed_at) if dispensing.dispensed_at else None,
+        "dispensed_at": str(dispensing.sale_date) if dispensing.sale_date else None,  # Use sale_date
         "created_at": str(dispensing.created_at),
         "items": [],
     }

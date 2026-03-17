@@ -75,7 +75,7 @@ const SupplierForm: React.FC = () => {
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 pb-10">
+    <div className="mx-auto max-w-screen-2xl space-y-6 pb-10">
       <div className="flex items-center gap-3">
         <button onClick={() => navigate(-1)} className="text-slate-400 hover:text-slate-600 transition-colors">
           <span className="material-symbols-outlined">arrow_back</span>

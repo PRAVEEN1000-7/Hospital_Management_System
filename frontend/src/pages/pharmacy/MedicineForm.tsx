@@ -175,7 +175,7 @@ const MedicineForm: React.FC = () => {
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 pb-10">
+    <div className="mx-auto max-w-screen-2xl space-y-6 pb-10">
       <div className="flex items-center gap-3">
         <button onClick={() => navigate(-1)} className="text-slate-400 hover:text-slate-600">
           <span className="material-symbols-outlined">arrow_back</span>
@@ -187,7 +187,7 @@ const MedicineForm: React.FC = () => {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)]">
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(360px,0.85fr)]">
           <div className="space-y-6">
             <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
               <div className="mb-5">

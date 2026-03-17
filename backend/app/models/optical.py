@@ -29,7 +29,8 @@ class OpticalProduct(Base):
     purchase_price = Column(Numeric(12, 2))
     current_stock = Column(Integer, default=0)
     reorder_level = Column(Integer, default=5)
-    tax_config_id = Column(UUID(as_uuid=True), ForeignKey("tax_configurations.id"))
+    # Keep as plain UUID until tax_configurations model/table is introduced in this codebase.
+    tax_config_id = Column(UUID(as_uuid=True))
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

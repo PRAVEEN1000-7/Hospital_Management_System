@@ -22,7 +22,7 @@ const PendingPrescriptions: React.FC = () => {
   const [totalPages, setTotalPages] = useState(0);
   const [total, setTotal] = useState(0);
   
-  const [statusFilter, setStatusFilter] = useState<'pending' | 'partial' | ''>('');
+  const [statusFilter, setStatusFilter] = useState<'pending' | 'partial' | 'dispensed' | ''>('');
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
 
@@ -78,6 +78,10 @@ const PendingPrescriptions: React.FC = () => {
     navigate(`/pharmacy/dispense/${prescriptionId}`);
   };
 
+  const handleViewPrescription = (prescriptionId: string) => {
+    navigate(`/pharmacy/dispense/${prescriptionId}?mode=view`);
+  };
+
   const getStatusBadge = (status: string) => {
     const badge = STATUS_BADGES[status] || STATUS_BADGES.finalized;
     return (
@@ -100,7 +104,7 @@ const PendingPrescriptions: React.FC = () => {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
         <div>
@@ -127,13 +131,6 @@ const PendingPrescriptions: React.FC = () => {
               refresh
             </span>
             Refresh
-          </button>
-          <button
-            onClick={() => navigate('/pharmacy')}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
-          >
-            <span className="material-symbols-outlined text-base">arrow_back</span>
-            Back to Pharmacy
           </button>
         </div>
       </div>
@@ -317,19 +314,29 @@ const PendingPrescriptions: React.FC = () => {
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <button
-                          onClick={() => handleStartDispensing(rx.id)}
-                          className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                            rx.status === 'partially_dispensed'
-                              ? 'bg-orange-500 hover:bg-orange-600 text-white'
-                              : 'bg-primary hover:bg-primary/90 text-white'
-                          }`}
-                        >
-                          <span className="material-symbols-outlined text-sm">
-                            {rx.status === 'partially_dispensed' ? 'inventory' : 'local_pharmacy'}
-                          </span>
-                          {rx.status === 'partially_dispensed' ? 'Continue' : 'Dispense'}
-                        </button>
+                        {rx.status === 'dispensed' ? (
+                          <button
+                            onClick={() => handleViewPrescription(rx.id)}
+                            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-white border border-slate-300 text-slate-700 hover:bg-slate-50"
+                          >
+                            <span className="material-symbols-outlined text-sm">visibility</span>
+                            View
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleStartDispensing(rx.id)}
+                            className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                              rx.status === 'partially_dispensed'
+                                ? 'bg-orange-500 hover:bg-orange-600 text-white'
+                                : 'bg-primary hover:bg-primary/90 text-white'
+                            }`}
+                          >
+                            <span className="material-symbols-outlined text-sm">
+                              {rx.status === 'partially_dispensed' ? 'inventory' : 'local_pharmacy'}
+                            </span>
+                            {rx.status === 'partially_dispensed' ? 'Continue' : 'Dispense'}
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );
@@ -412,19 +419,29 @@ const PendingPrescriptions: React.FC = () => {
                     </div>
                   </div>
 
-                  <button
-                    onClick={() => handleStartDispensing(rx.id)}
-                    className={`w-full mt-4 inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                      rx.status === 'partially_dispensed'
-                        ? 'bg-orange-500 hover:bg-orange-600 text-white'
-                        : 'bg-primary hover:bg-primary/90 text-white'
-                    }`}
-                  >
-                    <span className="material-symbols-outlined text-sm">
-                      {rx.status === 'partially_dispensed' ? 'inventory' : 'local_pharmacy'}
-                    </span>
-                    {rx.status === 'partially_dispensed' ? 'Continue Dispensing' : 'Start Dispensing'}
-                  </button>
+                  {rx.status === 'dispensed' ? (
+                    <button
+                      onClick={() => handleViewPrescription(rx.id)}
+                      className="w-full mt-4 inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors bg-white border border-slate-300 text-slate-700 hover:bg-slate-50"
+                    >
+                      <span className="material-symbols-outlined text-sm">visibility</span>
+                      View Prescription
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleStartDispensing(rx.id)}
+                      className={`w-full mt-4 inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                        rx.status === 'partially_dispensed'
+                          ? 'bg-orange-500 hover:bg-orange-600 text-white'
+                          : 'bg-primary hover:bg-primary/90 text-white'
+                      }`}
+                    >
+                      <span className="material-symbols-outlined text-sm">
+                        {rx.status === 'partially_dispensed' ? 'inventory' : 'local_pharmacy'}
+                      </span>
+                      {rx.status === 'partially_dispensed' ? 'Continue Dispensing' : 'Start Dispensing'}
+                    </button>
+                  )}
                 </div>
               );
             })}

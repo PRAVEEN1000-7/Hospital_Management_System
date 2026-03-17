@@ -35,7 +35,7 @@ const MedicineDetail: React.FC = () => {
   const totalStock = batches.reduce((sum, b) => sum + b.quantity, 0);
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6 max-w-screen-2xl">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
@@ -57,7 +57,7 @@ const MedicineDetail: React.FC = () => {
 
       {/* Info Card */}
       <div className="bg-white rounded-xl border border-slate-200 p-6">
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-4 gap-x-6 text-sm">
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-y-4 gap-x-6 text-sm">
           {[
             ['Brand', medicine.brand],
             ['Category', medicine.category],

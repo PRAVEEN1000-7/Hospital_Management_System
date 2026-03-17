@@ -155,14 +155,14 @@ async def get_prescription_for_dispensing(
 # Dispense Medicines
 # ═══════════════════════════════════════════════════════════════════════════
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 class DispenseItemInput(BaseModel):
     prescription_item_id: str
     medicine_id: str
     batch_id: str
-    quantity: int
-    unit_price: float
+    quantity: int = Field(gt=0)
+    unit_price: float = Field(ge=0)
 
 class DispenseRequest(BaseModel):
     items: list[DispenseItemInput]
@@ -209,9 +209,13 @@ async def dispense_prescription(
     - total_amount: Total cost
     """
     try:
-        # Validate items
-        if not request.items or len(request.items) == 0:
-            raise HTTPException(status_code=400, detail="At least one item must be dispensed")
+        # Allow empty-item requests only when explicit notes are provided
+        # so all-skipped/out-of-stock closures are auditable.
+        if (not request.items or len(request.items) == 0) and not (request.notes and request.notes.strip()):
+            raise HTTPException(
+                status_code=400,
+                detail="Provide notes when closing dispensing without any dispensed items",
+            )
         
         # Convert Pydantic models to dicts
         items = [item.model_dump() for item in request.items]
@@ -234,6 +238,7 @@ async def dispense_prescription(
         
     except ValueError as ve:
         logger.warning(f"Dispensing validation error: {ve}")
+        db.rollback()
         raise HTTPException(status_code=400, detail=str(ve))
     except HTTPException:
         raise

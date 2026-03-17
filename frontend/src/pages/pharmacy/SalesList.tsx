@@ -47,7 +47,7 @@ const SalesList: React.FC = () => {
       </div>
 
       {/* Search */}
-      <div className="relative max-w-md">
+      <div className="relative w-full max-w-xl">
         <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-lg">search</span>
         <input type="text" placeholder="Search by invoice or patient..." value={search}
           onChange={e => { setSearch(e.target.value); setPage(1); }}

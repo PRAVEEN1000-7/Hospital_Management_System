@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import * as XLSX from 'xlsx';
 import pharmacyService from '../../services/pharmacyService';
 import type { Supplier, Medicine, PurchaseOrderItemCreate, PurchaseOrder } from '../../types/pharmacy';
 import { useToast } from '../../contexts/ToastContext';
@@ -30,7 +29,6 @@ const PurchaseOrderForm: React.FC = () => {
     { medicine_id: '', quantity_ordered: 1, unit_price: 0, _temporary_id: '1' },
   ]);
   const [saving, setSaving] = useState(false);
-  const [bulkUploading, setBulkUploading] = useState(false);
   const [medicineSearch, setMedicineSearch] = useState('');
 
   useEffect(() => {
@@ -163,89 +161,6 @@ const PurchaseOrderForm: React.FC = () => {
     );
   };
 
-  const handleDownloadTemplate = () => {
-    const templateRows = [
-      {
-        medicine_id: '',
-        medicine_name: 'Paracetamol 650mg',
-        quantity_ordered: 50,
-        unit_price: 2.5,
-      },
-    ];
-    const worksheet = XLSX.utils.json_to_sheet(templateRows);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'PO Items');
-    XLSX.writeFile(workbook, 'purchase_order_bulk_template.xlsx');
-  };
-
-  const handleBulkUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    if (!medicines.length) {
-      toast.error('Medicines are not loaded yet. Please try again in a moment.');
-      event.target.value = '';
-      return;
-    }
-
-    setBulkUploading(true);
-    try {
-      const buffer = await file.arrayBuffer();
-      const workbook = XLSX.read(buffer, { type: 'array' });
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' });
-
-      if (rows.length === 0) {
-        toast.error('Uploaded file is empty');
-        return;
-      }
-
-      const medicineById = new Map(medicines.map((m) => [m.id, m.id]));
-      const medicineByName = new Map(
-        medicines.map((m) => [m.name.toLowerCase().trim(), m.id])
-      );
-
-      const parsedItems: FormItem[] = [];
-      let skipped = 0;
-
-      rows.forEach((row, index) => {
-        const medicineIdCell = String(row.medicine_id ?? '').trim();
-        const medicineNameCell = String(row.medicine_name ?? row.medicine ?? '').trim();
-
-        const medicineId = medicineById.get(medicineIdCell)
-          || medicineByName.get(medicineNameCell.toLowerCase());
-
-        const qty = Number(row.quantity_ordered ?? row.quantity ?? 0);
-        const unitPrice = Number(row.unit_price ?? row.price ?? 0);
-
-        if (!medicineId || !Number.isFinite(qty) || qty <= 0 || !Number.isFinite(unitPrice) || unitPrice < 0) {
-          skipped += 1;
-          return;
-        }
-
-        parsedItems.push({
-          medicine_id: medicineId,
-          quantity_ordered: Math.round(qty),
-          unit_price: unitPrice,
-          _temporary_id: `bulk-${index}-${Date.now()}`,
-        });
-      });
-
-      if (parsedItems.length === 0) {
-        toast.error('No valid rows found. Use the template format and valid medicine name/id.');
-        return;
-      }
-
-      setItems(parsedItems);
-      toast.success(`Imported ${parsedItems.length} item(s)${skipped ? `, skipped ${skipped}` : ''}`);
-    } catch (err) {
-      console.error('Bulk upload parse error:', err);
-      toast.error('Failed to parse file. Please upload a valid CSV or Excel file.');
-    } finally {
-      setBulkUploading(false);
-      event.target.value = '';
-    }
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -334,7 +249,7 @@ const PurchaseOrderForm: React.FC = () => {
   const filteredMedicines = getFilteredMedicines();
 
   return (
-    <div className="max-w-5xl space-y-6">
+    <div className="max-w-screen-2xl space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3">
         <button 
@@ -419,25 +334,6 @@ const PurchaseOrderForm: React.FC = () => {
               Order Items
             </h2>
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleDownloadTemplate}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"
-              >
-                <span className="material-symbols-outlined text-lg">download</span>
-                Template
-              </button>
-              <label className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-100 rounded-lg hover:bg-blue-200 transition-colors cursor-pointer">
-                <span className="material-symbols-outlined text-lg">upload_file</span>
-                {bulkUploading ? 'Uploading...' : 'Bulk Upload'}
-                <input
-                  type="file"
-                  accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
-                  className="hidden"
-                  onChange={handleBulkUpload}
-                  disabled={bulkUploading}
-                />
-              </label>
               <button 
                 type="button" 
                 onClick={addItem}

@@ -91,6 +91,9 @@ async def create_medicine(
     try:
         med = svc.create_medicine(db, current_user.hospital_id, data.model_dump(), current_user.id)
         return MedicineResponse.model_validate(med)
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Error creating medicine: {e}", exc_info=True)
         db.rollback()
@@ -109,6 +112,9 @@ async def update_medicine(
         if not med:
             raise HTTPException(status_code=404, detail="Medicine not found")
         return MedicineResponse.model_validate(med)
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
     except HTTPException:
         raise
     except Exception as e:

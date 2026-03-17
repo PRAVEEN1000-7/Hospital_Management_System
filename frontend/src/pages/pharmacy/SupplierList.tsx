@@ -53,7 +53,7 @@ const handleDelete = async (id: string, e?: React.MouseEvent) => {
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="relative max-w-md">
+        <div className="relative w-full max-w-xl">
           <span className="absolute inset-y-0 left-3 flex items-center text-slate-400">
             <span className="material-symbols-outlined text-lg">search</span>
           </span>

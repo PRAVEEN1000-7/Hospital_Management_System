@@ -27,14 +27,35 @@ def _filter_model_data(model, data: dict) -> dict:
     return {k: v for k, v in data.items() if k in valid_keys and v is not None}
 
 
+def _normalize_medicine_payload(data: dict) -> dict:
+    """Map API payload aliases to actual Medicine model columns."""
+    normalized = dict(data)
+
+    # Frontend sends `unit`; DB column is `unit_of_measure`.
+    if normalized.get("unit") and not normalized.get("unit_of_measure"):
+        normalized["unit_of_measure"] = normalized.get("unit")
+
+    # Frontend sends `storage_conditions`; DB column is `storage_instructions`.
+    if normalized.get("storage_conditions") and not normalized.get("storage_instructions"):
+        normalized["storage_instructions"] = normalized.get("storage_conditions")
+
+    # Optional compatibility mapping for free-text description.
+    if normalized.get("description") and not normalized.get("composition"):
+        normalized["composition"] = normalized.get("description")
+
+    return normalized
+
+
 # ══════════════════════════════════════════════════
 # Medicine CRUD
 # ══════════════════════════════════════════════════
 
 def create_medicine(db: Session, hospital_id: uuid.UUID, data: dict, user_id: uuid.UUID) -> Medicine:
-    payload = _filter_model_data(Medicine, data)
+    payload = _filter_model_data(Medicine, _normalize_medicine_payload(data))
     if not payload.get("generic_name"):
         payload["generic_name"] = payload.get("name", "")
+    if not payload.get("unit_of_measure"):
+        payload["unit_of_measure"] = "Nos"
     med = Medicine(hospital_id=hospital_id, **payload)
     db.add(med)
     db.commit()
@@ -71,7 +92,6 @@ def list_medicines(
             or_(
                 Medicine.name.ilike(s),
                 Medicine.generic_name.ilike(s),
-                Medicine.brand.ilike(s),
                 Medicine.sku.ilike(s),
                 Medicine.barcode.ilike(s),
             )
@@ -105,7 +125,8 @@ def update_medicine(db: Session, medicine_id: str | uuid.UUID, data: dict) -> Op
     med = get_medicine_by_id(db, medicine_id)
     if not med:
         return None
-    for key, value in data.items():
+    normalized_data = _normalize_medicine_payload(data)
+    for key, value in normalized_data.items():
         if hasattr(med, key) and value is not None:
             setattr(med, key, value)
     db.commit()

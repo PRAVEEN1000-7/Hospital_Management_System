@@ -9,7 +9,7 @@ This service manages the flow from finalized prescription to pharmacy dispensing
 """
 import uuid
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 from decimal import Decimal
 from typing import Optional
 from sqlalchemy.orm import Session
@@ -24,6 +24,18 @@ from ..models.appointment import Doctor
 from .prescription_service import calculate_prescribed_quantity
 
 logger = logging.getLogger(__name__)
+
+
+def _append_dispensing_note(existing_notes: Optional[str], new_note: Optional[str]) -> Optional[str]:
+    """Append dispensing notes to prescription clinical notes for audit/reference."""
+    cleaned_note = (new_note or "").strip()
+    if not cleaned_note:
+        return existing_notes
+
+    stamped_note = f"[Dispensing {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}] {cleaned_note}"
+    if existing_notes and existing_notes.strip():
+        return f"{existing_notes}\n{stamped_note}"
+    return stamped_note
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -319,14 +331,17 @@ def dispense_prescription(
     tax_amount = Decimal("0")
     all_items_dispensed = True
     partial_dispensing = False
+    processed_items_count = 0
     
+    seen_prescription_items: set[uuid.UUID] = set()
+
     # Process each item
     for item_data in items_to_dispense:
         prescription_item_id = item_data.get("prescription_item_id")
         medicine_id = item_data.get("medicine_id")
         batch_id = item_data.get("batch_id")
         quantity = item_data.get("quantity", 0)
-        unit_price = Decimal(str(item_data.get("unit_price", 0)))
+        requested_unit_price = Decimal(str(item_data.get("unit_price", 0)))
         
         if not prescription_item_id or not medicine_id or not batch_id or quantity <= 0:
             continue
@@ -339,6 +354,10 @@ def dispense_prescription(
         if isinstance(batch_id, str):
             batch_id = uuid.UUID(batch_id)
 
+        if prescription_item_id in seen_prescription_items:
+            raise ValueError("Duplicate prescription item in dispensing request")
+        seen_prescription_items.add(prescription_item_id)
+
         # Get prescription item
         rx_item = db.query(PrescriptionItem).filter(
             PrescriptionItem.id == prescription_item_id,
@@ -348,6 +367,15 @@ def dispense_prescription(
         if not rx_item:
             logger.warning(f"Prescription item {prescription_item_id} not found")
             continue
+
+        if not rx_item.medicine_id:
+            raise ValueError(f"Prescription item {rx_item.medicine_name} is missing medicine linkage")
+
+        if rx_item.medicine_id != medicine_id:
+            raise ValueError(
+                f"Medicine mismatch for {rx_item.medicine_name}. "
+                "Selected medicine does not match prescription item."
+            )
 
         # Validate quantity doesn't exceed prescribed quantity.
         # Some older prescriptions may have null/0 quantity and rely on frequency+duration,
@@ -368,6 +396,13 @@ def dispense_prescription(
             rx_item.quantity = prescribed_qty
 
         remaining_qty = prescribed_qty - already_dispensed
+
+        if remaining_qty <= 0:
+            logger.info(
+                f"Skipping {rx_item.medicine_name}: already fully dispensed "
+                f"(Prescribed: {prescribed_qty}, Dispensed: {already_dispensed})"
+            )
+            continue
         
         if quantity > remaining_qty:
             raise ValueError(
@@ -384,35 +419,73 @@ def dispense_prescription(
         batch = db.query(MedicineBatch).filter(
             MedicineBatch.id == batch_id,
             MedicineBatch.medicine_id == medicine_id,
+            MedicineBatch.is_active == True,
         ).first()
 
         if not batch:
             raise ValueError(f"Batch not found for medicine {rx_item.medicine_name}")
 
-        if batch.quantity < quantity:
+        if batch.expiry_date and batch.expiry_date < date.today():
             raise ValueError(
-                f"Insufficient stock for {rx_item.medicine_name}. "
-                f"Required: {quantity}, Available: {batch.quantity}"
+                f"Selected batch {batch.batch_number} for {rx_item.medicine_name} is expired"
             )
 
-        # Reduce batch stock (FEFO - stock reduction on each dispensing)
-        batch.quantity -= quantity
+        # Allocate requested quantity from selected batch first, then other FEFO batches.
+        remaining_to_allocate = quantity
+        batch_allocations: list[tuple[MedicineBatch, int]] = []
 
-        # Calculate totals
-        line_total = unit_price * quantity
-        total_amount += line_total
+        selected_alloc = min(batch.quantity or 0, remaining_to_allocate)
+        if selected_alloc > 0:
+            batch_allocations.append((batch, selected_alloc))
+            remaining_to_allocate -= selected_alloc
 
-        # Create dispensing item
-        dispensing_item = PharmacySaleItem(
-            sale_id=dispensing.id,
-            prescription_item_id=prescription_item_id,
-            medicine_id=medicine_id,
-            batch_id=batch_id,
-            quantity=quantity,
-            unit_price=unit_price,
-            total_price=line_total,
-        )
-        db.add(dispensing_item)
+        if remaining_to_allocate > 0:
+            additional_batches = db.query(MedicineBatch).filter(
+                MedicineBatch.medicine_id == medicine_id,
+                MedicineBatch.is_active == True,
+                MedicineBatch.id != batch.id,
+                MedicineBatch.quantity > 0,
+                MedicineBatch.expiry_date >= date.today(),
+            ).order_by(MedicineBatch.expiry_date.asc()).all()
+
+            for extra_batch in additional_batches:
+                if remaining_to_allocate <= 0:
+                    break
+                alloc_qty = min(extra_batch.quantity or 0, remaining_to_allocate)
+                if alloc_qty <= 0:
+                    continue
+                batch_allocations.append((extra_batch, alloc_qty))
+                remaining_to_allocate -= alloc_qty
+
+        if remaining_to_allocate > 0:
+            total_available = sum(alloc_qty for _, alloc_qty in batch_allocations)
+            raise ValueError(
+                f"Insufficient stock for {rx_item.medicine_name}. "
+                f"Required: {quantity}, Available across active batches: {total_available}"
+            )
+
+        for alloc_batch, alloc_qty in batch_allocations:
+            # Reduce batch stock
+            alloc_batch.quantity -= alloc_qty
+
+            # Use actual batch selling price for accurate financial traceability.
+            effective_unit_price = Decimal(str(alloc_batch.selling_price)) if alloc_batch.selling_price is not None else requested_unit_price
+            line_total = effective_unit_price * alloc_qty
+            total_amount += line_total
+
+            # Create one dispensing line per allocated batch.
+            dispensing_item = PharmacySaleItem(
+                sale_id=dispensing.id,
+                prescription_item_id=prescription_item_id,
+                medicine_id=medicine_id,
+                batch_id=alloc_batch.id,
+                quantity=alloc_qty,
+                unit_price=effective_unit_price,
+                total_price=line_total,
+            )
+            db.add(dispensing_item)
+
+        processed_items_count += 1
 
         # Update prescription item dispensing status
         rx_item.dispensed_quantity = already_dispensed + quantity
@@ -440,6 +513,34 @@ def dispense_prescription(
             all_items_dispensed = False
             partial_dispensing = True
     
+    if processed_items_count == 0:
+        # All items were skipped (out of stock, patient refused, etc.).
+        # Mark prescription as partially_dispensed so it leaves the pending queue
+        # with a clear audit trail in the notes field.
+        all_already_done = all(
+            (i.is_dispensed or (i.dispensed_quantity or 0) >= (i.quantity or 0))
+            for i in db.query(PrescriptionItem).filter(
+                PrescriptionItem.prescription_id == prescription_id
+            ).all()
+        )
+        if all_already_done:
+            rx.status = "dispensed"
+        else:
+            rx.status = "partially_dispensed"
+        rx.clinical_notes = _append_dispensing_note(rx.clinical_notes, notes)
+        # Remove the empty dispensing record we created — nothing was actually dispensed
+        db.delete(dispensing)
+        db.commit()
+        return {
+            "dispensing_id": None,
+            "dispensing_number": None,
+            "prescription_id": str(prescription_id),
+            "prescription_number": rx.prescription_number,
+            "status": rx.status,
+            "total_amount": 0.0,
+            "items_dispensed": 0,
+        }
+
     # Update prescription status
     if all_items_dispensed:
         rx.status = "dispensed"
@@ -467,7 +568,7 @@ def dispense_prescription(
         "prescription_number": rx.prescription_number,
         "status": rx.status,
         "total_amount": float(total_amount),
-        "items_dispensed": len(items_to_dispense),
+        "items_dispensed": processed_items_count,
     }
 
 

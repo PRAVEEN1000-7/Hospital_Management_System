@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import pharmacyService, {
@@ -29,6 +29,8 @@ interface DispensingPendingPrescription extends PendingPrescription {
 interface DispensingItem extends DispensingPrescriptionItem {
   selectedBatchId?: string;
   dispensedQty: number;
+  prescribedQty: number;
+  remainingQty: number;
   skip: boolean;
   skipReason?: string;
 }
@@ -62,6 +64,7 @@ const calculatePrescribedQuantity = (item: Pick<DispensingPrescriptionItem, 'fre
 
 const DispensingScreen: React.FC = () => {
   const { prescriptionId } = useParams<{ prescriptionId: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user } = useAuth();
   const { showToast } = useToast();
@@ -86,17 +89,26 @@ const DispensingScreen: React.FC = () => {
 
         // Initialize dispensing items - handle empty batches gracefully
         const items: DispensingItem[] = rx.items.map((item) => {
+          const prescribedQuantity = calculatePrescribedQuantity(item);
+          const alreadyDispensed = Number(item.dispensed_quantity || 0);
+          const remainingQty = Math.max(0, prescribedQuantity - alreadyDispensed);
           const hasStock = item.available_batches && item.available_batches.length > 0;
           const isOutOfStock = item.available_quantity === 0;
-          const prescribedQuantity = calculatePrescribedQuantity(item);
+          const firstBatch = hasStock ? item.available_batches[0] : undefined;
+          const defaultDispenseQty = firstBatch ? Math.min(remainingQty, firstBatch.quantity || 0) : 0;
+          const isAlreadyFulfilled = item.is_dispensed || remainingQty <= 0;
           
           return {
             ...item,
             quantity: prescribedQuantity,
-            selectedBatchId: hasStock ? item.available_batches[0].id : undefined,
-            dispensedQty: hasStock ? prescribedQuantity : 0,
-            skip: !hasStock || isOutOfStock,  // Auto-skip if no stock
-            skipReason: !hasStock || isOutOfStock ? 'Out of stock' : undefined,
+            prescribedQty: prescribedQuantity,
+            remainingQty,
+            selectedBatchId: firstBatch?.id,
+            dispensedQty: hasStock ? defaultDispenseQty : 0,
+            skip: isAlreadyFulfilled || !hasStock || isOutOfStock,
+            skipReason: isAlreadyFulfilled
+              ? 'already_dispensed'
+              : (!hasStock || isOutOfStock ? 'out_of_stock' : undefined),
           };
         });
         setDispensingItems(items);
@@ -121,8 +133,8 @@ const DispensingScreen: React.FC = () => {
         if (idx !== itemIndex) return item;
 
         const selectedBatch = item.available_batches.find((b) => b.id === batchId);
-        // Adjust quantity if it exceeds batch stock
-        const newQty = Math.min(item.dispensedQty, selectedBatch?.quantity || 0);
+        // Keep quantity limited to remaining prescribed quantity; backend can split across batches.
+        const newQty = Math.min(item.dispensedQty, item.remainingQty);
 
         return {
           ...item,
@@ -143,10 +155,10 @@ const DispensingScreen: React.FC = () => {
           (b) => b.id === item.selectedBatchId
         )?.quantity;
         
-        // Ensure quantity doesn't exceed prescribed quantity OR available batch stock
+        // Ensure quantity doesn't exceed remaining prescribed quantity OR total available stock.
         const maxAllowed = Math.min(
-          item.quantity, // Prescribed quantity (hard limit)
-          maxQty || 0    // Available batch stock
+          item.remainingQty,
+          item.available_quantity || maxQty || 0
         );
 
         return {
@@ -182,7 +194,6 @@ const DispensingScreen: React.FC = () => {
     let subtotal = 0;
     let itemsToDispense = 0;
     let itemsSkipped = 0;
-    let itemsPartial = 0;
 
     dispensingItems.forEach((item) => {
       if (item.skip) {
@@ -199,21 +210,26 @@ const DispensingScreen: React.FC = () => {
 
       subtotal += item.dispensedQty * price;
       itemsToDispense++;
-
-      if (item.dispensedQty < item.quantity) {
-        itemsPartial++;
-      }
     });
 
-    return { subtotal, itemsToDispense, itemsSkipped, itemsPartial };
+    return { subtotal, itemsToDispense, itemsSkipped };
   };
 
   const totals = calculateTotals();
+  const isReadOnly = searchParams.get('mode') === 'view' || prescription?.status === 'dispensed';
+  const canSubmit =
+    totals.itemsToDispense > 0 ||
+    dispensingItems.every((item) => item.skip || item.is_dispensed || item.remainingQty <= 0);
 
   // Handle dispensing submission
   const handleDispense = async () => {
+    if (isReadOnly) {
+      showToast('info', 'This prescription is in view mode and cannot be dispensed again.');
+      return;
+    }
+
     const unresolvedOutOfStock = dispensingItems.filter(
-      (item) => item.available_quantity === 0 && !item.skip && !item.is_dispensed
+      (item) => item.available_quantity === 0 && !item.skip && !item.is_dispensed && item.remainingQty > 0
     );
     if (unresolvedOutOfStock.length > 0) {
       showToast(
@@ -231,8 +247,12 @@ const DispensingScreen: React.FC = () => {
       return;
     }
 
-    if (totals.itemsToDispense === 0) {
-      showToast('error', 'At least one item must be dispensed');
+    const allSkipped = dispensingItems.every(
+      (item) => item.skip || item.is_dispensed || item.remainingQty <= 0
+    );
+
+    if (totals.itemsToDispense === 0 && !allSkipped) {
+      showToast('error', 'At least one item must be dispensed, or skip all items with reasons to close this prescription.');
       return;
     }
 
@@ -242,6 +262,15 @@ const DispensingScreen: React.FC = () => {
     try {
       // Prepare items for dispensing
       const itemsToDispense: DispenseItemData[] = [];
+
+      const skipSummary = dispensingItems
+        .filter((item) => item.skip && !item.is_dispensed)
+        .map((item) => `${item.medicine_name}: ${item.skipReason || 'skipped'}`)
+        .join('; ');
+      const combinedNotes = [
+        skipSummary ? `Skipped items: ${skipSummary}` : '',
+        notes,
+      ].filter(Boolean).join(' | ');
 
       dispensingItems.forEach((item) => {
         if (item.skip || item.dispensedQty <= 0) return;
@@ -264,9 +293,15 @@ const DispensingScreen: React.FC = () => {
         });
       });
 
-      if (itemsToDispense.length === 0) {
-        showToast('error', 'No valid items to dispense');
-        setSaving(false);
+      // All-skipped case: record inability to dispense and mark prescription closed
+      if (itemsToDispense.length === 0 && allSkipped) {
+        const allSkippedNotes = [
+          'Unable to dispense - all items skipped.',
+          combinedNotes,
+        ].filter(Boolean).join(' | ');
+        await pharmacyService.dispensePrescription(prescriptionId!, [], allSkippedNotes);
+        showToast('success', 'Prescription closed — all items skipped and recorded.');
+        navigate('/pharmacy/pending-prescriptions');
         return;
       }
 
@@ -274,7 +309,7 @@ const DispensingScreen: React.FC = () => {
       const result = await pharmacyService.dispensePrescription(
         prescriptionId!,
         itemsToDispense,
-        notes || undefined
+        combinedNotes || undefined
       );
 
       showToast('success', result.message);
@@ -339,7 +374,7 @@ const DispensingScreen: React.FC = () => {
   };
 
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Header - Matches PrescriptionDetail layout */}
       <div className="flex justify-between items-start mb-6">
         <div>
@@ -351,7 +386,7 @@ const DispensingScreen: React.FC = () => {
             <span className="text-slate-600">Dispensing</span>
           </nav>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-3">
-            Dispense {prescription.prescription_number}
+            {isReadOnly ? 'View Dispensing' : 'Dispense'} {prescription.prescription_number}
             <span className={`text-xs px-2.5 py-1 rounded-full border font-medium ${
               statusColor[prescription.status] || 'bg-slate-100 text-slate-700'
             }`}>
@@ -364,15 +399,15 @@ const DispensingScreen: React.FC = () => {
             onClick={() => navigate('/pharmacy/pending-prescriptions')}
             className="px-4 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
-            Cancel
+            Back
           </button>
         </div>
       </div>
 
       {/* Main Content - Two Column Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Column - Patient & Prescription Info (1/3 width) */}
-        <div className="lg:col-span-1 space-y-4">
+        <div className="lg:col-span-4 xl:col-span-3 space-y-4">
           {/* Patient Info Card */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="bg-gradient-to-r from-primary to-primary/80 px-4 py-3">
@@ -511,7 +546,7 @@ const DispensingScreen: React.FC = () => {
         </div>
 
         {/* Right Column - Medicines to Dispense (2/3 width) */}
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-8 xl:col-span-9">
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
             {/* Header */}
             <div className="bg-gradient-to-r from-emerald-600 to-emerald-500 px-6 py-4">
@@ -520,9 +555,8 @@ const DispensingScreen: React.FC = () => {
                 Medicines to Dispense
               </h2>
               <p className="text-emerald-100 text-sm mt-1">
-                {dispensingItems.length} items prescribed | {totals.itemsToDispense} to dispense
+                {dispensingItems.length} items prescribed | {totals.itemsToDispense} items selected to dispense
                 {totals.itemsSkipped > 0 && <span className="ml-2">| {totals.itemsSkipped} skipped</span>}
-                {totals.itemsPartial > 0 && <span className="ml-2 text-amber-200">| {totals.itemsPartial} partial</span>}
               </p>
             </div>
 
@@ -532,8 +566,7 @@ const DispensingScreen: React.FC = () => {
                 const selectedBatch = item.available_batches.find(
                   (b) => b.id === item.selectedBatchId
                 );
-                const prescribedQuantity = calculatePrescribedQuantity(item);
-                const isPartial = item.dispensedQty < prescribedQuantity && item.dispensedQty > 0;
+                const prescribedQuantity = item.prescribedQty;
                 const isOutOfStock = item.available_quantity === 0;
 
                 return (
@@ -544,8 +577,6 @@ const DispensingScreen: React.FC = () => {
                         ? 'bg-slate-50 border-slate-200'
                         : isOutOfStock
                         ? 'bg-red-50 border-red-200'
-                        : isPartial
-                        ? 'bg-orange-50 border-orange-200'
                         : 'bg-white border-slate-200 hover:border-emerald-300'
                     }`}
                   >
@@ -590,6 +621,7 @@ const DispensingScreen: React.FC = () => {
                         <div className="text-xs text-slate-500 uppercase font-semibold">Prescribed</div>
                         <div className="text-xl font-bold text-slate-900">{prescribedQuantity}</div>
                         <div className="text-xs text-slate-500">units</div>
+                        <div className="text-xs text-slate-500 mt-0.5">Remaining: {item.remainingQty}</div>
                       </div>
                     </div>
 
@@ -609,14 +641,22 @@ const DispensingScreen: React.FC = () => {
                           {isOutOfStock ? (
                             <span className="font-semibold">❌ Out of Stock</span>
                           ) : selectedBatch ? (
-                            <span>
-                              <span className="font-semibold">✓ Available:</span> {selectedBatch.quantity} units
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                              <span>
+                                <span className="font-semibold">Need now:</span> {item.remainingQty} units
+                              </span>
+                              <span>
+                                <span className="font-semibold">Selected batch:</span> {selectedBatch.quantity} units
+                              </span>
+                              <span>
+                                <span className="font-semibold">Total available:</span> {item.available_quantity} units
+                              </span>
                               {selectedBatch.expiry_date && (
-                                <span className="ml-2 text-xs">
-                                  | Exp: {new Date(selectedBatch.expiry_date).toLocaleDateString()}
+                                <span className="text-xs">
+                                  Exp: {new Date(selectedBatch.expiry_date).toLocaleDateString()}
                                 </span>
                               )}
-                            </span>
+                            </div>
                           ) : (
                             <span className="font-semibold">⚠️ No stock available</span>
                           )}
@@ -625,7 +665,7 @@ const DispensingScreen: React.FC = () => {
                     )}
 
                     {/* Dispensing Controls */}
-                    {!item.skip && !isOutOfStock && !item.is_dispensed && (
+                    {!item.skip && !isOutOfStock && !item.is_dispensed && !isReadOnly && (
                       <div className="grid grid-cols-2 gap-4 mb-3">
                         {/* Batch Selection */}
                         <div>
@@ -654,17 +694,17 @@ const DispensingScreen: React.FC = () => {
                           <input
                             type="number"
                             min="0"
-                            max={selectedBatch?.quantity || 0}
+                            max={Math.min(item.available_quantity || 0, item.remainingQty)}
                             value={item.dispensedQty}
                             onChange={(e) =>
                               handleQuantityChange(index, parseInt(e.target.value) || 0)
                             }
                             className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 transition-all font-semibold"
                           />
-                          {isPartial && (
-                            <div className="text-xs text-orange-600 mt-1 flex items-center gap-1">
-                              <span className="material-symbols-outlined text-sm">warning</span>
-                              Partial: {prescribedQuantity - item.dispensedQty} units short
+                          {selectedBatch && item.dispensedQty > (selectedBatch.quantity || 0) && (
+                            <div className="text-xs text-emerald-700 mt-1 flex items-center gap-1">
+                              <span className="material-symbols-outlined text-sm">sync_alt</span>
+                              Remaining quantity will be auto-allocated from additional batches in this dispense.
                             </div>
                           )}
                         </div>
@@ -672,7 +712,7 @@ const DispensingScreen: React.FC = () => {
                     )}
 
                     {/* Skip/Actions */}
-                    {!item.skip && !item.is_dispensed && (
+                    {!item.skip && !item.is_dispensed && item.remainingQty > 0 && !isReadOnly && (
                       <div className="flex items-center gap-3 mt-3 pt-3 border-t border-slate-200">
                         <button
                           onClick={() => handleSkipItem(index, true)}
@@ -691,7 +731,7 @@ const DispensingScreen: React.FC = () => {
                     )}
 
                     {/* Skip Reason (when skipped) */}
-                    {item.skip && (
+                    {item.skip && !item.is_dispensed && !isReadOnly && (
                       <div className="mt-4 p-3 bg-slate-100 rounded-lg">
                         <label className="block text-xs font-semibold text-slate-600 uppercase mb-1.5">
                           Skip Reason
@@ -742,6 +782,7 @@ const DispensingScreen: React.FC = () => {
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Add any notes about this dispensing (e.g., patient counseling provided, special instructions)..."
                 rows={2}
+                readOnly={Boolean(isReadOnly)}
                 className="w-full px-4 py-3 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 transition-all"
               />
             </div>
@@ -760,12 +801,6 @@ const DispensingScreen: React.FC = () => {
                       {totals.itemsSkipped} skipped
                     </span>
                   )}
-                  {totals.itemsPartial > 0 && (
-                    <span className="ml-3 text-amber-600 flex items-center gap-1 inline-flex">
-                      <span className="material-symbols-outlined text-sm">warning</span>
-                      {totals.itemsPartial} partial
-                    </span>
-                  )}
                 </div>
                 <div className="text-right">
                   <div className="text-xs text-slate-500 uppercase font-semibold">Total Amount</div>
@@ -779,32 +814,29 @@ const DispensingScreen: React.FC = () => {
                   disabled={saving}
                   className="flex-1 px-6 py-3 border border-slate-300 rounded-lg text-sm font-semibold text-slate-700 hover:bg-slate-100 transition-colors disabled:opacity-50"
                 >
-                  Cancel
+                  {isReadOnly ? 'Back to Queue' : 'Cancel'}
                 </button>
-                <button
-                  onClick={handleDispense}
-                  disabled={saving || totals.itemsToDispense === 0}
-                  className="flex-1 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-emerald-200"
-                >
-                  {saving ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <span className="material-symbols-outlined text-sm animate-spin">
-                        progress_activity
-                      </span>
-                      Processing...
-                    </span>
-                  ) : (
-                    <span className="flex items-center justify-center gap-2">
-                      <span className="material-symbols-outlined text-sm">check_circle</span>
-                      Confirm Dispense
-                      {totals.itemsPartial > 0 && (
-                        <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">
-                          {totals.itemsPartial} partial
+                {!isReadOnly && (
+                  <button
+                    onClick={handleDispense}
+                    disabled={saving || !canSubmit}
+                    className="flex-1 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-emerald-200"
+                  >
+                    {saving ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <span className="material-symbols-outlined text-sm animate-spin">
+                          progress_activity
                         </span>
-                      )}
-                    </span>
-                  )}
-                </button>
+                        Processing...
+                      </span>
+                    ) : (
+                      <span className="flex items-center justify-center gap-2">
+                        <span className="material-symbols-outlined text-sm">check_circle</span>
+                        Confirm Dispense
+                      </span>
+                    )}
+                  </button>
+                )}
               </div>
             </div>
           </div>

@@ -107,7 +107,7 @@ const DispensingBilling: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="max-w-4xl mx-auto p-6">
+      <div className="max-w-6xl mx-auto p-6">
         <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
           <span className="material-symbols-outlined text-4xl text-slate-300 animate-spin">
             progress_activity
@@ -123,7 +123,7 @@ const DispensingBilling: React.FC = () => {
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
+    <div className="max-w-6xl mx-auto p-6">
       {/* Header - Hidden when printing */}
       <div className="flex justify-between items-center mb-6 print:hidden">
         <div>

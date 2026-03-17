@@ -68,7 +68,7 @@ const BatchForm: React.FC = () => {
   };
 
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className="max-w-5xl space-y-6">
       <div className="flex items-center gap-3">
         <button onClick={() => navigate(-1)} className="text-slate-400 hover:text-slate-600">
           <span className="material-symbols-outlined">arrow_back</span>
@@ -77,7 +77,7 @@ const BatchForm: React.FC = () => {
       </div>
 
       <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-slate-200 p-6 space-y-5">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Medicine *</label>
             <select name="medicine_id" value={form.medicine_id} onChange={handleChange} required
@@ -93,7 +93,7 @@ const BatchForm: React.FC = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Mfg Date</label>
             <input type="date" name="mfg_date" value={form.mfg_date || ''} onChange={handleChange}
@@ -106,7 +106,7 @@ const BatchForm: React.FC = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Quantity *</label>
             <input type="number" name="quantity" min={1} value={form.quantity} onChange={handleChange} required
@@ -114,7 +114,7 @@ const BatchForm: React.FC = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Purchase Price *</label>
             <input type="number" name="purchase_price" min={0} step={0.01} value={form.purchase_price} onChange={handleChange} required
@@ -132,7 +132,7 @@ const BatchForm: React.FC = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Tax %</label>
             <input type="number" name="tax_percent" min={0} max={100} step={0.01} value={form.tax_percent} onChange={handleChange}
@@ -145,7 +145,7 @@ const BatchForm: React.FC = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Supplier</label>
             <select name="supplier_id" value={form.supplier_id || ''} onChange={handleChange}

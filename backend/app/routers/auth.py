@@ -55,7 +55,7 @@ async def login(credentials: LoginRequest, db: Session = Depends(get_db)):
     try:
         # DEBUG: Log incoming credentials (remove in production!)
         logger.info(f"LOGIN ATTEMPT: username='{credentials.username}', password_length={len(credentials.password)}")
-        
+
         user, reason = authenticate_user(db, credentials.username, credentials.password)
 
         if not user:
@@ -66,9 +66,6 @@ async def login(credentials: LoginRequest, db: Session = Depends(get_db)):
                 "account_inactive": "Your account has been deactivated. Please contact the administrator.",
                 "account_locked": "Your account is temporarily locked due to multiple failed login attempts. Please try again later.",
             }
-        user = authenticate_user(db, credentials.username, credentials.password)
-
-        if not user:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail=error_messages.get(reason, "Incorrect username or password"),

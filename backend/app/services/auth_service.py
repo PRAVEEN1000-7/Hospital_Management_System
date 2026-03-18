@@ -35,18 +35,16 @@ def _apply_lockout(user: User) -> None:
                 break
 
 
-def authenticate_user(db: Session, username: str, password: str) -> Tuple[Optional[User], str]:
+def authenticate_user(db: Session, username: str, password: str) -> tuple:
     """
     Authenticate by username and password. Eagerly loads roles.
     Returns (user, reason) where reason is:
       - 'success' if authenticated
-            - 'invalid_username' if user not found
-            - 'invalid_password' if password is wrong
+      - 'invalid_username' if user not found
+      - 'invalid_password' if password is wrong
       - 'account_inactive' if account is deactivated
       - 'account_locked' if account is temporarily locked
     """
-def authenticate_user(db: Session, username: str, password: str) -> User | None:
-    """Authenticate by username and password. Eagerly loads roles and permissions."""
     user = (
         db.query(User)
         .options(
@@ -56,41 +54,21 @@ def authenticate_user(db: Session, username: str, password: str) -> User | None:
         .filter(User.username == username, User.is_deleted == False)
         .first()
     )
-    
+
     if not user:
         logger.warning(f"AUTH: No user found with username='{username}'")
         return None, "invalid_username"
-    
+
     logger.info(f"AUTH: Found user '{username}', is_active={user.is_active}, is_deleted={user.is_deleted}, locked_until={user.locked_until}")
-    
-    if not verify_password(password, user.password_hash):
-        logger.warning(f"AUTH: Password verification FAILED for user '{username}'")
-        user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
-        db.commit()
-        return None, "invalid_password"
-    
-    if not user.is_active:
-        logger.warning(f"AUTH: User '{username}' is not active")
-        return None, "account_inactive"
-
-    if user.locked_until and user.locked_until > datetime.now(timezone.utc):
-        logger.warning(f"AUTH: User '{username}' is locked until {user.locked_until}")
-        return None, "account_locked"
-
-    # Reset failed attempts on success
-
-    if not user:
-        logger.warning("AUTH: Login attempt for unknown username (not exposing details)")
-        return None
 
     # Check lockout BEFORE password verification to prevent timing attacks
     if user.locked_until and user.locked_until > datetime.now(timezone.utc):
         logger.warning(f"AUTH: Blocked login for locked account id={user.id}")
-        return None
+        return None, "account_locked"
 
     if not user.is_active:
         logger.warning(f"AUTH: Login attempt on inactive account id={user.id}")
-        return None
+        return None, "account_inactive"
 
     if not verify_password(password, user.password_hash):
         user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
@@ -99,17 +77,15 @@ def authenticate_user(db: Session, username: str, password: str) -> User | None:
         logger.warning(
             f"AUTH: Failed login attempt #{user.failed_login_attempts} for user id={user.id}"
         )
-        return None
+        return None, "invalid_password"
 
     # Successful login — reset counters
     user.failed_login_attempts = 0
     user.locked_until = None
     user.last_login_at = datetime.now(timezone.utc)
     db.commit()
-    logger.info(f"AUTH: Login SUCCESS for user '{username}'")
-    return user, "success"
     logger.info(f"AUTH: Login SUCCESS for user id={user.id}")
-    return user
+    return user, "success"
 
 
 def get_user_by_id(db: Session, user_id: str | uuid.UUID) -> User | None:

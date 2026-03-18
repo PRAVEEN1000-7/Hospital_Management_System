@@ -104,6 +104,7 @@ const Layout: React.FC = () => {
     }
     if (location.pathname.startsWith('/inventory')) {
       setInventoryOpen(true);
+    }
     if (location.pathname.startsWith('/billing')) {
       setBillingOpen(true);
     }
@@ -406,6 +407,16 @@ const Layout: React.FC = () => {
   // ── System navigation ── admin / super_admin only
   const systemNavItems: { to: string; label: string; icon: string }[] = [];
   if (role === 'super_admin') {
+    systemNavItems.push(
+      { to: '/hospital-setup', label: 'Hospital Setup', icon: 'local_hospital' },
+      { to: '/user-management', label: 'User Management', icon: 'admin_panel_settings' },
+    );
+  } else if (role === 'admin') {
+    systemNavItems.push(
+      { to: '/user-management', label: 'User Management', icon: 'admin_panel_settings' },
+    );
+  }
+
   // ── Billing navigation ── admin, cashier, pharmacist, doctor (view only)
   const billingItems: { to: string; label: string; icon: string; stub?: boolean }[] = [];
   if (['super_admin', 'admin', 'cashier', 'pharmacist', 'doctor'].includes(role || '')) {
@@ -420,18 +431,6 @@ const Layout: React.FC = () => {
     billingItems.push({ to: '/billing/insurance-claims', label: 'Insurance Claims', icon: 'health_and_safety', stub: true });
     billingItems.push({ to: '/billing/credit-notes', label: 'Credit Notes', icon: 'credit_score', stub: true });
     billingItems.push({ to: '/billing/insurance-providers', label: 'Insurance Providers', icon: 'domain', stub: true });
-  }
-
-  // ── System navigation ── admin / super_admin / receptionist
-  const systemNavItems: { to: string; label: string; icon: string }[] = [];  if (role === 'super_admin') {
-    systemNavItems.push(
-      { to: '/hospital-setup', label: 'Hospital Setup', icon: 'local_hospital' },
-      { to: '/user-management', label: 'User Management', icon: 'admin_panel_settings' },
-    );
-  } else if (role === 'admin') {
-    systemNavItems.push(
-      { to: '/user-management', label: 'User Management', icon: 'admin_panel_settings' },
-    );
   }
 
   const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path + '/');

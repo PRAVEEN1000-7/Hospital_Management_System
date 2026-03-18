@@ -333,6 +333,9 @@ const App: React.FC = () => {
             <Route path="/inventory/cycle-counts" element={
               <ProtectedRoute allowedRoles={['super_admin', 'admin', 'inventory_manager']}>
                 <CycleCountsPage />
+              </ProtectedRoute>
+            } />
+
             {/* ── Billing Routes ── */}
             <Route path="/billing/invoices" element={
               <ProtectedRoute allowedRoles={['super_admin', 'admin', 'cashier', 'pharmacist', 'doctor']}>

@@ -21,7 +21,6 @@ from .routers import (
     departments, doctors, hospital_settings as hospital_settings_router,
     walk_ins, waitlist, prescriptions, pharmacy, pharmacy_dispensing,
     inventory, notifications,
-    walk_ins, waitlist, prescriptions,
     # Billing & Invoice module
     invoices, payments, refunds, settlements, tax_configurations,
 )
@@ -31,8 +30,7 @@ logger = get_logger(__name__)
 
 # Import models so they're registered with Base.metadata
 from .models import user, patient, appointment, patient_id_sequence, department, hospital_settings, prescription, inventory as inventory_models, notification  # noqa: F401
-from .models import user, patient, appointment, patient_id_sequence, department, hospital_settings, prescription  # noqa: F401
-from .models import tax_config, invoice, payment, refund, settlement, insurance  # noqa: F401  — billing models
+from .models import tax_config, invoice, payment, refund, settlement, insurance  # noqa: F401
 
 # NOTE: We do NOT call Base.metadata.create_all() — the new hms_db schema
 # is managed via the SQL migration files (01_schema.sql, 02_seed_data.sql).
@@ -145,6 +143,13 @@ app.include_router(inventory.movements_router, prefix="/api/v1")
 app.include_router(inventory.adjustments_router, prefix="/api/v1")
 app.include_router(inventory.cycle_counts_router, prefix="/api/v1")
 
+# Billing & Invoice module
+app.include_router(invoices.router, prefix="/api/v1")
+app.include_router(payments.router, prefix="/api/v1")
+app.include_router(refunds.router, prefix="/api/v1")
+app.include_router(settlements.router, prefix="/api/v1")
+app.include_router(tax_configurations.router, prefix="/api/v1")
+
 
 # ── Startup / Shutdown events ──────────────────────────────────────────────
 @app.on_event("startup")
@@ -155,13 +160,6 @@ async def on_startup():
 @app.on_event("shutdown")
 async def on_shutdown():
     logger.info("HMS Backend server shutting down")
-
-# ── Billing & Invoice module ──
-app.include_router(invoices.router, prefix="/api/v1")
-app.include_router(payments.router, prefix="/api/v1")
-app.include_router(refunds.router, prefix="/api/v1")
-app.include_router(settlements.router, prefix="/api/v1")
-app.include_router(tax_configurations.router, prefix="/api/v1")
 
 
 @app.get("/")

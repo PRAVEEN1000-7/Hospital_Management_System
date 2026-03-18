@@ -10,6 +10,8 @@ export interface User {
   first_name: string;
   last_name: string;
   roles: string[];
+  /** module:action:resource permission strings (e.g. "billing:read:invoice") */
+  permissions: string[];
   hospital_id?: string;
   hospital_name?: string;
   reference_number?: string;

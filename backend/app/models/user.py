@@ -87,6 +87,21 @@ class User(Base):
         return [ur.role.name for ur in self.user_roles if ur.role]
 
     @property
+    def permissions(self) -> list[str]:
+        """
+        Return deduplicated list of 'module:action:resource' permission strings
+        sourced from all roles.  Requires role.role_permissions to be loaded.
+        """
+        perms: set[str] = set()
+        for ur in self.user_roles:
+            if ur.role:
+                for rp in ur.role.role_permissions:
+                    if rp.permission:
+                        p = rp.permission
+                        perms.add(f"{p.module}:{p.action}:{p.resource or '*'}")
+        return sorted(perms)
+
+    @property
     def full_name(self) -> str:
         """Return full name of the user."""
         return f"{self.first_name} {self.last_name}".strip()
@@ -107,6 +122,9 @@ class Role(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Eagerly load associated permissions for the User.permissions property
+    role_permissions = relationship("RolePermission", back_populates="role", lazy="selectin")
 
 
 # ──────────────────────────────────────────────────
@@ -152,8 +170,8 @@ class RolePermission(Base):
     role_id = Column(UUID(as_uuid=True), ForeignKey("roles.id"), nullable=False)
     permission_id = Column(UUID(as_uuid=True), ForeignKey("permissions.id"), nullable=False)
 
-    role = relationship("Role")
-    permission = relationship("Permission")
+    role = relationship("Role", back_populates="role_permissions")
+    permission = relationship("Permission", lazy="joined")
 
 
 # ──────────────────────────────────────────────────

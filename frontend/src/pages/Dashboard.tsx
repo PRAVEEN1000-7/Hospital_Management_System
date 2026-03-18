@@ -26,7 +26,7 @@ const dashboardTitles: Record<string, string> = {
   admin: 'Admin Dashboard Overview',
   doctor: 'Doctor Dashboard',
   receptionist: 'Reception Dashboard',
-  pharmacist: 'Pharmacy Dashboard',
+  pharmacist: 'Pharmacy & Billing Dashboard',
   cashier: 'Billing Dashboard',
   optical_staff: 'Optical Dashboard',
   inventory_manager: 'Inventory Dashboard',
@@ -58,7 +58,9 @@ function getQuickActions(role: string, isSuperAdmin: boolean): QuickAction[] {
     case 'pharmacist':
       return [
         { icon: 'list_alt', iconColor: 'text-primary', label: 'Prescriptions', desc: 'View pending prescriptions', to: '/prescriptions' },
-        { icon: 'group', iconColor: 'text-emerald-500', label: 'Patient Directory', desc: 'Look up patient records', to: '/patients' },
+        { icon: 'receipt_long', iconColor: 'text-green-500', label: 'New Invoice', desc: 'Create a billing invoice', to: '/billing/invoices/new' },
+        { icon: 'payments', iconColor: 'text-emerald-500', label: 'Payments', desc: 'Record & view payments', to: '/billing/payments' },
+        { icon: 'group', iconColor: 'text-blue-500', label: 'Patient Directory', desc: 'Look up patient records', to: '/patients' },
         { icon: 'person', iconColor: 'text-purple-500', label: 'My Profile', desc: 'Update your information', to: '/profile' },
       ];
     case 'cashier':
@@ -111,7 +113,9 @@ function getQuickLinks(role: string): QuickLink[] {
     case 'pharmacist':
       return [
         { icon: 'list_alt', iconColor: 'text-blue-400', label: 'Prescriptions', to: '/prescriptions' },
-        { icon: 'group', iconColor: 'text-emerald-400', label: 'Patients', to: '/patients' },
+        { icon: 'receipt_long', iconColor: 'text-green-400', label: 'Invoices', to: '/billing/invoices' },
+        { icon: 'payments', iconColor: 'text-emerald-400', label: 'Payments', to: '/billing/payments' },
+        { icon: 'group', iconColor: 'text-cyan-400', label: 'Patients', to: '/patients' },
       ];
     case 'cashier':
       return [
@@ -246,6 +250,7 @@ const Dashboard: React.FC = () => {
         return [
           { label: 'Total Patients', value: totalPatients.toLocaleString(), icon: 'group', iconColor: 'text-blue-500' },
           { label: 'System Status', value: 'Online', icon: 'check_circle', iconColor: 'text-emerald-500' },
+          { label: 'Billing Access', value: 'Active', icon: 'receipt_long', iconColor: 'text-green-500' },
         ];
       case 'cashier':
         return [

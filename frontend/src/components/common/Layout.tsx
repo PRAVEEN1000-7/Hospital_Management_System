@@ -51,6 +51,9 @@ const Layout: React.FC = () => {
 
   const role = user?.roles?.[0];
   const canAccessPatients = role === 'super_admin' || role === 'admin' || role === 'receptionist' || role === 'nurse' || role === 'pharmacist' || role === 'doctor';
+  const [billingOpen, setBillingOpen] = useState(
+    () => location.pathname.startsWith('/billing')
+  );
 
   useEffect(() => {
     hospitalService.getHospitalDetails()
@@ -101,6 +104,8 @@ const Layout: React.FC = () => {
     }
     if (location.pathname.startsWith('/inventory')) {
       setInventoryOpen(true);
+    if (location.pathname.startsWith('/billing')) {
+      setBillingOpen(true);
     }
   }, [location.pathname]);
 
@@ -401,6 +406,24 @@ const Layout: React.FC = () => {
   // ── System navigation ── admin / super_admin only
   const systemNavItems: { to: string; label: string; icon: string }[] = [];
   if (role === 'super_admin') {
+  // ── Billing navigation ── admin, cashier, pharmacist, doctor (view only)
+  const billingItems: { to: string; label: string; icon: string; stub?: boolean }[] = [];
+  if (['super_admin', 'admin', 'cashier', 'pharmacist', 'doctor'].includes(role || '')) {
+    billingItems.push({ to: '/billing/invoices', label: 'Invoices', icon: 'receipt_long' });
+    billingItems.push({ to: '/billing/payments', label: 'Payments', icon: 'payments' });
+  }
+  if (['super_admin', 'admin', 'cashier', 'pharmacist'].includes(role || '')) {
+    billingItems.push({ to: '/billing/refunds', label: 'Refunds', icon: 'currency_exchange' });
+    billingItems.push({ to: '/billing/settlements', label: 'Daily Settlements', icon: 'account_balance_wallet' });
+  }
+  if (['super_admin', 'admin'].includes(role || '')) {
+    billingItems.push({ to: '/billing/insurance-claims', label: 'Insurance Claims', icon: 'health_and_safety', stub: true });
+    billingItems.push({ to: '/billing/credit-notes', label: 'Credit Notes', icon: 'credit_score', stub: true });
+    billingItems.push({ to: '/billing/insurance-providers', label: 'Insurance Providers', icon: 'domain', stub: true });
+  }
+
+  // ── System navigation ── admin / super_admin / receptionist
+  const systemNavItems: { to: string; label: string; icon: string }[] = [];  if (role === 'super_admin') {
     systemNavItems.push(
       { to: '/hospital-setup', label: 'Hospital Setup', icon: 'local_hospital' },
       { to: '/user-management', label: 'User Management', icon: 'admin_panel_settings' },
@@ -640,6 +663,55 @@ const Layout: React.FC = () => {
                   >
                     <span className="material-symbols-outlined mr-3 text-[18px]">{item.icon}</span>
                     {item.label}
+                  </NavLink>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ══ BILLING — collapsible ══ */}
+          {billingItems.length > 0 && (
+            <div className="mt-4">
+              <div className="px-6 mb-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Billing</span>
+              </div>
+              <button
+                onClick={() => setBillingOpen(!billingOpen)}
+                aria-expanded={billingOpen}
+                aria-controls="billing-menu"
+                className={`w-full flex items-center justify-between px-6 py-2.5 text-sm font-medium transition-all ${
+                  location.pathname.startsWith('/billing')
+                    ? 'text-primary bg-primary/5'
+                    : 'text-slate-500 hover:text-primary hover:bg-slate-50'
+                }`}
+              >
+                <div className="flex items-center">
+                  <span className="material-symbols-outlined mr-3 text-[20px]">receipt_long</span>
+                  Billing & Invoice
+                </div>
+                <span className={`material-symbols-outlined text-[18px] transition-transform duration-200 ${billingOpen ? 'rotate-180' : ''}`}>
+                  expand_more
+                </span>
+              </button>
+              <div id="billing-menu" className={`overflow-hidden transition-all duration-200 ${billingOpen ? 'max-h-[700px] opacity-100' : 'max-h-0 opacity-0'}`}>
+                {billingItems.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    onClick={() => setSidebarOpen(false)}
+                    className={`flex items-center pl-10 pr-6 py-2.5 text-[13px] font-medium transition-all ${
+                      isActive(item.to)
+                        ? 'sidebar-item-active'
+                        : 'text-slate-400 hover:text-primary hover:bg-slate-50'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined mr-3 text-[18px]">{item.icon}</span>
+                    {item.label}
+                    {item.stub && (
+                      <span className="ml-auto text-[9px] font-semibold bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-full uppercase tracking-wide">
+                        Soon
+                      </span>
+                    )}
                   </NavLink>
                 ))}
               </div>

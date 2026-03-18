@@ -14,6 +14,7 @@ class UserResponse(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     roles: List[str] = []
+    permissions: List[str] = []
     hospital_id: Optional[str] = None
     hospital_name: Optional[str] = None
     reference_number: Optional[str] = None
@@ -34,4 +35,20 @@ class TokenData(BaseModel):
     user_id: Optional[str] = None
     username: Optional[str] = None
     roles: Optional[List[str]] = None
+    permissions: Optional[List[str]] = None
     hospital_id: Optional[str] = None
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+    confirm_password: str

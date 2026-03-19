@@ -1,0 +1,48 @@
+# ================================================================
+#  BACKEND  (Python / FastAPI)
+# ================================================================
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# Environment variables
+.env
+.env.local
+
+# Uploads (user-generated – recreated at runtime)
+uploads/
+
+# Testing & coverage
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# Build & packaging
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Linters & type-checkers
+.mypy_cache/
+.ruff_cache/
+
+# Logs
+logs/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

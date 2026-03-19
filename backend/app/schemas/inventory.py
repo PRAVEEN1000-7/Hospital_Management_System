@@ -11,6 +11,7 @@ class SupplierBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     code: str = Field(..., min_length=1, max_length=20)
     contact_person: Optional[str] = Field(None, max_length=100)
+    phone_country_code: Optional[str] = Field("+1", max_length=5, pattern=r"^\+[0-9]{1,4}$")
     phone: Optional[str] = Field(None, max_length=20)
     email: Optional[str] = Field(None, max_length=255)
     address: Optional[str] = None
@@ -18,6 +19,7 @@ class SupplierBase(BaseModel):
     payment_terms: Optional[str] = Field(None, max_length=50)
     lead_time_days: Optional[int] = Field(None, ge=0)
     rating: Optional[float] = Field(None, ge=0, le=5)
+    product_type: str = Field(default="medicine", description="Type of products: medicine, optical, equipment, consumables, etc.")
 
 class SupplierCreate(SupplierBase):
     pass
@@ -25,6 +27,7 @@ class SupplierCreate(SupplierBase):
 class SupplierUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=200)
     contact_person: Optional[str] = Field(None, max_length=100)
+    phone_country_code: Optional[str] = Field(None, max_length=5, pattern=r"^\+[0-9]{1,4}$")
     phone: Optional[str] = Field(None, max_length=20)
     email: Optional[str] = Field(None, max_length=255)
     address: Optional[str] = None
@@ -32,6 +35,7 @@ class SupplierUpdate(BaseModel):
     payment_terms: Optional[str] = Field(None, max_length=50)
     lead_time_days: Optional[int] = Field(None, ge=0)
     rating: Optional[float] = Field(None, ge=0, le=5)
+    product_type: Optional[str] = Field(None, description="Type of products: medicine, optical, equipment, consumables, etc.")
     is_active: Optional[bool] = None
 
 class SupplierResponse(BaseModel):
@@ -39,6 +43,7 @@ class SupplierResponse(BaseModel):
     name: str
     code: str
     contact_person: Optional[str] = None
+    phone_country_code: str = "+1"
     phone: Optional[str] = None
     email: Optional[str] = None
     address: Optional[str] = None
@@ -46,6 +51,7 @@ class SupplierResponse(BaseModel):
     payment_terms: Optional[str] = None
     lead_time_days: Optional[int] = None
     rating: Optional[float] = None
+    product_type: str
     is_active: bool
     created_at: datetime
     updated_at: datetime
@@ -57,17 +63,25 @@ class SupplierResponse(BaseModel):
 # ─── Purchase Order ─────────────────────────────────────────────────────────
 
 class PurchaseOrderItemCreate(BaseModel):
-    item_type: str = Field(..., pattern=r"^(medicine|optical_product)$")
-    item_id: str
-    item_name: Optional[str] = Field(None, max_length=200)
+    item_type: str = Field(..., min_length=1, max_length=50, description="Type of item: medicine, optical_product, or custom product type")
+    item_id: Optional[str] = Field(None, description="UUID of existing medicine/optical product (optional for custom items)")
+    item_name: Optional[str] = Field(None, max_length=200, description="Item name (required if item_id is not provided)")
     quantity_ordered: int = Field(..., gt=0)
-    unit_price: float = Field(..., ge=0)
+    unit_price: float = Field(..., gt=0, description="Unit price must be greater than 0")
     total_price: float = Field(..., ge=0)
+
+    @field_validator("item_name")
+    @classmethod
+    def validate_item_name(cls, v: Optional[str], info) -> Optional[str]:
+        # Item name is required if item_id is not provided
+        if not v and not info.data.get("item_id"):
+            raise ValueError("item_name is required when item_id is not provided")
+        return v
 
 class PurchaseOrderItemResponse(BaseModel):
     id: str
     item_type: str
-    item_id: str
+    item_id: Optional[str] = None
     item_name: Optional[str] = None
     quantity_ordered: int
     quantity_received: int
@@ -84,6 +98,16 @@ class PurchaseOrderCreate(BaseModel):
     status: Optional[str] = Field("draft", pattern=r"^(draft|submitted)$")
     notes: Optional[str] = None
     items: List[PurchaseOrderItemCreate] = Field(..., min_length=1)
+
+    @field_validator("expected_delivery_date")
+    @classmethod
+    def validate_expected_delivery_date(cls, v: Optional[date], info) -> Optional[date]:
+        # Expected delivery date should be >= order date (not in past)
+        if v is not None:
+            order_date = info.data.get("order_date")
+            if order_date and v < order_date:
+                raise ValueError("Expected delivery date cannot be before order date")
+        return v
 
 class PurchaseOrderUpdate(BaseModel):
     expected_delivery_date: Optional[date] = None

@@ -120,15 +120,10 @@ export const pharmacyService = {
 
   // ═══ Suppliers ═══
   async getSuppliers(search?: string, activeOnly = true): Promise<Supplier[]> {
-    const res = await api.get<SupplierListResponse>('/pharmacy/suppliers', {
-      params: { active_only: activeOnly },
-    });
-    const suppliers = res.data?.data ?? [];
-    if (search) {
-      const q = search.toLowerCase();
-      return suppliers.filter(s => s.name.toLowerCase().includes(q) || s.contact_person?.toLowerCase().includes(q));
-    }
-    return suppliers;
+    const params: Record<string, string | boolean> = { active_only: activeOnly };
+    if (search) params.search = search;
+    const res = await api.get<SupplierListResponse>('/pharmacy/suppliers', { params });
+    return res.data?.data ?? [];
   },
 
   async getSupplier(id: string): Promise<Supplier> {

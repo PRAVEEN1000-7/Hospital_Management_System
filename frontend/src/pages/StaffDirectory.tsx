@@ -7,7 +7,7 @@ import { format, formatDistanceToNow } from 'date-fns';
 import userService from '../services/userService';
 import doctorService from '../services/doctorService';
 import type { UserData, UserCreateData, UserUpdateData } from '../types/user';
-import { ROLE_TEXT_COLORS, ROLE_LABELS, COUNTRIES } from '../utils/constants';
+import { ROLE_TEXT_COLORS, ROLE_LABELS, COUNTRIES_BY_PHONE_CODE } from '../utils/constants';
 import { useToast } from '../contexts/ToastContext';
 import feLogger from '../services/loggerService';
 
@@ -819,6 +819,7 @@ const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => void; o
         role: data.role,
         password: finalPassword,
         phone_number: data.phone_number,
+        phone_country_code: data.country_code,
       };
       if (data.role === 'doctor') {
         payload.specialization = data.specialization;
@@ -902,7 +903,7 @@ const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => void; o
           <Field label="Phone Number" error={errors.phone_number?.message}>
             <div className="flex gap-2">
               <select {...register('country_code')} className="input-field w-28">
-                {COUNTRIES.map(c => <option key={c.code} value={c.phoneCode}>{c.phoneCode}</option>)}
+                {COUNTRIES_BY_PHONE_CODE.map(c => <option key={c.code} value={c.phoneCode}>{c.phoneCode}</option>)}
               </select>
               <input {...register('phone_number')} className={`input-field flex-1 ${inputErr(errors.phone_number)}`} placeholder="1234567890" />
             </div>
@@ -1029,7 +1030,7 @@ const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onSuccess:
       first_name: user.first_name || '',
       last_name: user.last_name || '',
       phone_number: user.phone_number || user.phone || '',
-      country_code: '+91',
+      country_code: user.phone_country_code || '+91',
       role: user.roles?.[0] || '',
       is_active: user.is_active,
       specialization: user.specialization || '',
@@ -1067,7 +1068,7 @@ const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onSuccess:
     try {
       const payload: UserUpdateData = {
         email: data.email, first_name: data.first_name, last_name: data.last_name,
-        phone_number: data.phone_number, role: data.role, is_active: data.is_active,
+        phone_number: data.phone_number, phone_country_code: data.country_code, role: data.role, is_active: data.is_active,
       };
       // Include doctor-specific fields when role is doctor
       if (data.role === 'doctor') {
@@ -1127,7 +1128,7 @@ const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onSuccess:
           <Field label="Phone Number" error={errors.phone_number?.message}>
             <div className="flex gap-2">
               <select {...register('country_code')} className="input-field w-28">
-                {COUNTRIES.map(c => <option key={c.code} value={c.phoneCode}>{c.phoneCode}</option>)}
+                {COUNTRIES_BY_PHONE_CODE.map(c => <option key={c.code} value={c.phoneCode}>{c.phoneCode}</option>)}
               </select>
               <input {...register('phone_number')} className={`input-field flex-1 ${inputErr(errors.phone_number)}`} placeholder="1234567890" />
             </div>

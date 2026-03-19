@@ -220,11 +220,12 @@ def create_supplier(db: Session, data: SupplierCreate, hospital_id: uuid.UUID) -
         payment_terms=data.payment_terms,
         lead_time_days=data.lead_time_days,
         rating=data.rating,
+        product_type=data.product_type or "medicine",
     )
     db.add(supplier)
     db.commit()
     db.refresh(supplier)
-    logger.info("Supplier created: %s (code=%s)", supplier.name, supplier.code)
+    logger.info("Supplier created: %s (code=%s, product_type=%s)", supplier.name, supplier.code, supplier.product_type)
     return supplier
 
 

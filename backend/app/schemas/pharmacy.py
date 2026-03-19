@@ -45,6 +45,8 @@ class MedicineCreate(BaseModel):
     storage_conditions: Optional[str] = Field(None, max_length=200)
     drug_interaction_notes: Optional[str] = None
     side_effects: Optional[str] = None
+    selling_price: Decimal = Field(..., gt=0)
+    purchase_price: Optional[Decimal] = Field(None, ge=0)
     is_active: bool = True
 
 
@@ -69,6 +71,8 @@ class MedicineUpdate(BaseModel):
     storage_conditions: Optional[str] = Field(None, max_length=200)
     drug_interaction_notes: Optional[str] = None
     side_effects: Optional[str] = None
+    selling_price: Optional[Decimal] = Field(None, gt=0)
+    purchase_price: Optional[Decimal] = Field(None, ge=0)
     is_active: Optional[bool] = None
 
 
@@ -95,6 +99,8 @@ class MedicineResponse(BaseModel):
     storage_conditions: Optional[str] = None
     drug_interaction_notes: Optional[str] = None
     side_effects: Optional[str] = None
+    selling_price: Decimal
+    purchase_price: Optional[Decimal] = None
     is_active: bool = True
     created_at: datetime
     updated_at: datetime

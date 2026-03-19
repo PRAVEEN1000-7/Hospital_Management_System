@@ -154,22 +154,26 @@ const InventoryDashboard: React.FC = () => {
           {/* Quick Actions */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
             <h2 className="text-base font-bold text-slate-900 mb-4">Quick Actions</h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
               {[
+                { label: 'Low Stock', icon: 'warning', path: '/inventory/low-stock', badge: data.low_stock_count },
                 { label: 'Suppliers', icon: 'local_shipping', path: '/inventory/suppliers' },
                 { label: 'Purchase Orders', icon: 'receipt_long', path: '/inventory/purchase-orders' },
                 { label: 'Goods Receipt', icon: 'inventory_2', path: '/inventory/grns' },
-                { label: 'Stock Movements', icon: 'swap_vert', path: '/inventory/stock-movements' },
+                { label: 'Stock Report', icon: 'swap_vert', path: '/inventory/stock-movements' },
                 { label: 'Adjustments', icon: 'tune', path: '/inventory/adjustments' },
                 { label: 'Cycle Counts', icon: 'fact_check', path: '/inventory/cycle-counts' },
               ].map((action) => (
                 <button
                   key={action.path}
                   onClick={() => navigate(action.path)}
-                  className="flex flex-col items-center gap-2 p-4 rounded-xl border border-slate-100 hover:border-primary/30 hover:bg-primary/5 transition-all"
+                  className="flex flex-col items-center gap-2 p-4 rounded-xl border border-slate-100 hover:border-primary/30 hover:bg-primary/5 transition-all relative"
                 >
                   <span className="material-symbols-outlined text-2xl text-primary">{action.icon}</span>
                   <span className="text-xs font-semibold text-slate-700">{action.label}</span>
+                  {action.badge && action.badge > 0 && (
+                    <span className="absolute top-1 right-1 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center">{action.badge}</span>
+                  )}
                 </button>
               ))}
             </div>

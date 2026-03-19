@@ -680,17 +680,17 @@ VALUES
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 24. SUPPLIERS  (sample)
 -- ─────────────────────────────────────────────────────────────────────────────
-INSERT INTO suppliers (id, hospital_id, name, code, contact_person, phone, email, payment_terms, lead_time_days, rating)
+INSERT INTO suppliers (id, hospital_id, name, code, contact_person, phone_country_code, phone, email, payment_terms, lead_time_days, rating, product_type)
 VALUES
     ('a1000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001',
-     'PharmaCorp Distributors', 'SUP-PHARM', 'John Hayes', '+12125556001', 'orders@pharmacorp.com',
-     'Net 30', 5, 4.5),
+     'PharmaCorp Distributors', 'SUP-PHARM', 'John Hayes', '+1', '+12125556001', 'orders@pharmacorp.com',
+     'Net 30', 5, 4.5, 'medicine'),
     ('a1000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000001',
-     'MedSupply International', 'SUP-MED',  'Alice Wang', '+12125556002', 'sales@medsupply.com',
-     'Net 15', 3, 4.2),
+     'MedSupply International', 'SUP-MED',  'Alice Wang', '+1', '+12125556002', 'sales@medsupply.com',
+     'Net 15', 3, 4.2, 'medicine'),
     ('a1000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000001',
-     'OptiVision Wholesale', 'SUP-OPT',  'Mark Rivera', '+12125556003', 'wholesale@optivision.com',
-     'Net 30', 7, 4.0);
+     'OptiVision Wholesale', 'SUP-OPT',  'Mark Rivera', '+1', '+12125556003', 'wholesale@optivision.com',
+     'Net 30', 7, 4.0, 'optical');
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 25. INSURANCE PROVIDERS  (sample)

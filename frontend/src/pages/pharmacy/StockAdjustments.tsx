@@ -1,12 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import pharmacyService from '../../services/pharmacyService';
-import type { StockAdjustment as InventoryStockAdjustment } from '../../types/inventory';
+import type { StockAdjustment } from '../../types/pharmacy';
 import { useToast } from '../../contexts/ToastContext';
 import { format } from 'date-fns';
-
-interface PharmacyStockAdjustment extends InventoryStockAdjustment {
-  medicine_name?: string | null;
-}
 
 const ADJ_TYPE_COLORS: Record<string, string> = {
   damage: 'bg-red-100 text-red-700',
@@ -20,7 +16,7 @@ const ADJ_TYPE_COLORS: Record<string, string> = {
 
 const StockAdjustments: React.FC = () => {
   const toast = useToast();
-  const [adjustments, setAdjustments] = useState<PharmacyStockAdjustment[]>([]);
+  const [adjustments, setAdjustments] = useState<StockAdjustment[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
 
@@ -183,7 +179,7 @@ const StockAdjustments: React.FC = () => {
                       <span className="material-icons text-slate-400 text-sm">medication</span>
                       {a.medicine_name || (
                         <span className="text-slate-400 text-xs font-mono">
-                          {a.item_id?.substring(0, 8)}...
+                          {a.medicine_id?.substring(0, 8)}...
                         </span>
                       )}
                     </div>

@@ -8,7 +8,7 @@ import userService from '../services/userService';
 import doctorService from '../services/doctorService';
 import api from '../services/api';
 import type { UserData, UserCreateData, UserUpdateData } from '../types/user';
-import { ROLE_TEXT_COLORS, ROLE_LABELS } from '../utils/constants';
+import { ROLE_TEXT_COLORS, ROLE_LABELS, COUNTRIES_BY_PHONE_CODE } from '../utils/constants';
 import { useToast } from '../contexts/ToastContext';
 
 const userCreateSchema = z.object({
@@ -16,6 +16,7 @@ const userCreateSchema = z.object({
   email: z.string().email('Invalid email'),
   first_name: z.string().min(1, 'Required'),
   last_name: z.string().min(1, 'Required'),
+  phone_country_code: z.string().regex(/^\+[0-9]{1,4}$/, 'Invalid country code').optional(),
   phone_number: z.string().optional(),
   role: z.string().min(1, 'Required'),
   password: z.string().min(8, 'Min 8 characters')
@@ -54,6 +55,7 @@ const userEditSchema = z.object({
   email: z.string().email('Invalid email'),
   first_name: z.string().min(1, 'Required'),
   last_name: z.string().min(1, 'Required'),
+  phone_country_code: z.string().regex(/^\+[0-9]{1,4}$/, 'Invalid country code').optional(),
   phone_number: z.string().optional(),
   role: z.string().min(1, 'Required'),
   is_active: z.boolean(),
@@ -417,6 +419,9 @@ const CreateUserModal: React.FC<{ onClose: () => void; onSuccess: () => void; on
 
   const { register, handleSubmit, watch, setValue, formState: { errors, isSubmitting } } = useForm<CreateFormData>({
     resolver: zodResolver(userCreateSchema),
+    defaultValues: {
+      phone_country_code: '+91',
+    },
   });
 
   const firstName = watch('first_name', '');
@@ -475,6 +480,7 @@ const CreateUserModal: React.FC<{ onClose: () => void; onSuccess: () => void; on
         email: data.email,
         first_name: data.first_name,
         last_name: data.last_name,
+        phone_country_code: data.phone_country_code,
         phone_number: data.phone_number,
         role: data.role,
         password: data.password,
@@ -561,8 +567,13 @@ const CreateUserModal: React.FC<{ onClose: () => void; onSuccess: () => void; on
           <Field label="Email" error={errors.email?.message}>
             <input {...register('email')} type="email" className="input-field" placeholder="Enter email" />
           </Field>
-          <Field label="Phone Number" error={errors.phone_number?.message}>
-            <input {...register('phone_number')} className="input-field" placeholder="+1 (555) 000-0000" />
+          <Field label="Phone Number" error={errors.phone_number?.message || errors.phone_country_code?.message}>
+            <div className="flex gap-2">
+              <select {...register('phone_country_code')} className="input-field w-32">
+                {COUNTRIES_BY_PHONE_CODE.map(c => <option key={c.code} value={c.phoneCode}>{c.phoneCode}</option>)}
+              </select>
+              <input {...register('phone_number')} className="input-field flex-1" placeholder="9876543210" />
+            </div>
           </Field>
         </section>
 
@@ -676,7 +687,8 @@ const EditUserModal: React.FC<{ user: UserData; onClose: () => void; onSuccess: 
       email: user.email,
       first_name: user.first_name || '',
       last_name: user.last_name || '',
-      phone_number: user.phone_number || '',
+      phone_country_code: user.phone_country_code || '+91',
+      phone_number: user.phone_number || user.phone || '',
       role: user.roles?.[0] || '',
       is_active: user.is_active,
       specialization: user.specialization || '',
@@ -742,6 +754,7 @@ const EditUserModal: React.FC<{ user: UserData; onClose: () => void; onSuccess: 
         email: data.email,
         first_name: data.first_name,
         last_name: data.last_name,
+        phone_country_code: data.phone_country_code,
         phone_number: data.phone_number,
         role: data.role,
         is_active: data.is_active,
@@ -825,8 +838,13 @@ const EditUserModal: React.FC<{ user: UserData; onClose: () => void; onSuccess: 
           <Field label="Email" error={errors.email?.message}>
             <input {...register('email')} type="email" className="input-field" />
           </Field>
-          <Field label="Phone Number" error={errors.phone_number?.message}>
-            <input {...register('phone_number')} className="input-field" placeholder="+1 (555) 000-0000" />
+          <Field label="Phone Number" error={errors.phone_number?.message || errors.phone_country_code?.message}>
+            <div className="flex gap-2">
+              <select {...register('phone_country_code')} className="input-field w-32">
+                {COUNTRIES_BY_PHONE_CODE.map(c => <option key={c.code} value={c.phoneCode}>{c.phoneCode}</option>)}
+              </select>
+              <input {...register('phone_number')} className="input-field flex-1" placeholder="9876543210" />
+            </div>
           </Field>
         </section>
 

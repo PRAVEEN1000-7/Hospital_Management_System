@@ -1,11 +1,11 @@
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
 import feLogger from './loggerService';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000, // 30 second timeout — prevents infinite loading if backend is unresponsive
+  timeout: 15000, // 15 second timeout — balances between slow operations and UX
   headers: {
     'Content-Type': 'application/json',
   },
@@ -26,14 +26,15 @@ api.interceptors.request.use(
 // Response interceptor: handle 401 and log API failures
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  (error: AxiosError<{ detail?: string }>) => {
     const url = error.config?.url || 'unknown';
     const status = error.response?.status;
     const method = (error.config?.method || 'unknown').toUpperCase();
 
     // Log all API failures (4xx/5xx or network errors)
     if (status) {
-      feLogger.error('api', `${method} ${url} → ${status} ${error.response?.statusText || ''}`);
+      const detail = error.response?.data?.detail || error.response?.statusText || 'Unknown error';
+      feLogger.error('api', `${method} ${url} → ${status} ${detail}`);
     } else {
       feLogger.error('api', `${method} ${url} → Network error: ${error.message}`);
     }

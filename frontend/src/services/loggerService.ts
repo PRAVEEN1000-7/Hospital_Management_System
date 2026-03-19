@@ -35,6 +35,7 @@ interface LogEntry {
 class FrontendLogger {
   private buffer: LogEntry[] = [];
   private flushTimer: ReturnType<typeof setInterval> | null = null;
+  private isFlushing = false;
 
   constructor() {
     // Periodically flush buffered logs to the server
@@ -81,22 +82,28 @@ class FrontendLogger {
 
   /** Send buffered logs to the backend. Uses sendBeacon on page unload. */
   flush(useBeacon = false): void {
-    if (this.buffer.length === 0) return;
+    if (this.buffer.length === 0 || this.isFlushing) return;
 
     const payload = JSON.stringify({ logs: this.buffer });
     this.buffer = [];
+    this.isFlushing = true;
 
     const url = `${API_BASE_URL}/logs/frontend`;
 
     if (useBeacon && typeof navigator !== 'undefined' && navigator.sendBeacon) {
       // sendBeacon guarantees delivery even during page unload
       const blob = new Blob([payload], { type: 'application/json' });
-      navigator.sendBeacon(url, blob);
+      const sent = navigator.sendBeacon(url, blob);
+      if (!sent) {
+        // If sendBeacon fails, log to console in development
+        console.warn('[Logger] sendBeacon failed, logs may be lost');
+      }
+      this.isFlushing = false;
       return;
     }
 
     // Normal async POST (fire-and-forget — logging should never block the UI)
-    const token = localStorage.getItem('access_token');
+    const token = typeof localStorage !== 'undefined' ? localStorage.getItem('access_token') : null;
     fetch(url, {
       method: 'POST',
       headers: {
@@ -107,6 +114,8 @@ class FrontendLogger {
       keepalive: true,
     }).catch(() => {
       // Silently ignore — logging failures must not break the app
+    }).finally(() => {
+      this.isFlushing = false;
     });
   }
 

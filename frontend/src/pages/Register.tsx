@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import {
   TITLE_OPTIONS, GENDER_OPTIONS, BLOOD_GROUP_OPTIONS,
-  RELATIONSHIP_OPTIONS, COUNTRIES, STATE_COUNTRY_MAP,
+  RELATIONSHIP_OPTIONS, COUNTRIES, COUNTRIES_BY_PHONE_CODE, STATE_COUNTRY_MAP,
   getStatesForCountry, getPostalLabel, getPhoneCode
 } from '../utils/constants';
 import patientService from '../services/patientService';
@@ -372,7 +372,7 @@ const Register: React.FC = () => {
             <div>
               <label className={labelClass}>Country Code <span className="text-red-500">*</span></label>
               <select {...register('phone_country_code')} className={fieldErrors.phone_country_code ? selectErrorClass : selectClass}>
-                {COUNTRIES.map(c => (
+                {COUNTRIES_BY_PHONE_CODE.map(c => (
                   <option key={c.code} value={c.phoneCode}>
                     {c.phoneCode} ({c.name})
                   </option>
@@ -480,7 +480,7 @@ const Register: React.FC = () => {
                 {...register('emergency_contact_country_code')}
                 className={selectClass}
               >
-                {COUNTRIES.map(c => (
+                {COUNTRIES_BY_PHONE_CODE.map(c => (
                   <option key={c.code} value={c.phoneCode}>
                     {c.phoneCode} ({c.name})
                   </option>

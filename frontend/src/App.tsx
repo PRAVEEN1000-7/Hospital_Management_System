@@ -1,4 +1,4 @@
-import React from 'react';
+;import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { ToastProvider } from './contexts/ToastContext';
@@ -70,6 +70,10 @@ import SettlementList from './pages/SettlementList';
 import InsuranceClaims from './pages/InsuranceClaims';
 import CreditNotes from './pages/CreditNotes';
 import InsuranceProviders from './pages/InsuranceProviders';
+import LowStockAlertsPage from './pages/inventory/LowStockAlertsPage';
+import GRNReceiptForm from './pages/inventory/GRNReceiptForm';
+import StockMovementsReportPage from './pages/inventory/StockMovementsReportPage';
+import CycleCountDetailPage from './pages/inventory/CycleCountDetailPage';
 
 const App: React.FC = () => {
   return (
@@ -295,6 +299,11 @@ const App: React.FC = () => {
                 <InventoryDashboard />
               </ProtectedRoute>
             } />
+            <Route path="/inventory/low-stock" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'inventory_manager', 'pharmacist']}>
+                <LowStockAlertsPage />
+              </ProtectedRoute>
+            } />
             <Route path="/inventory/suppliers" element={
               <ProtectedRoute allowedRoles={['super_admin', 'admin', 'inventory_manager']}>
                 <SuppliersPage />
@@ -317,12 +326,17 @@ const App: React.FC = () => {
             } />
             <Route path="/inventory/grns/new" element={
               <ProtectedRoute allowedRoles={['super_admin', 'admin', 'inventory_manager', 'pharmacist']}>
-                <NewGRNPage />
+                <GRNReceiptForm />
+              </ProtectedRoute>
+            } />
+            <Route path="/inventory/grns/:grnId" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'inventory_manager', 'pharmacist']}>
+                <GRNReceiptForm />
               </ProtectedRoute>
             } />
             <Route path="/inventory/stock-movements" element={
               <ProtectedRoute allowedRoles={['super_admin', 'admin', 'inventory_manager', 'pharmacist']}>
-                <StockMovementsPage />
+                <StockMovementsReportPage />
               </ProtectedRoute>
             } />
             <Route path="/inventory/adjustments" element={
@@ -380,6 +394,16 @@ const App: React.FC = () => {
             <Route path="/billing/insurance-providers" element={
               <ProtectedRoute allowedRoles={['super_admin', 'admin']}>
                 <InsuranceProviders />
+              </ProtectedRoute>
+            } />
+            <Route path="/inventory/cycle-counts/new" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'inventory_manager']}>
+                <CycleCountDetailPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/inventory/cycle-counts/:ccId" element={
+              <ProtectedRoute allowedRoles={['super_admin', 'admin', 'inventory_manager']}>
+                <CycleCountDetailPage />
               </ProtectedRoute>
             } />
           </Route>

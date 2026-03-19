@@ -5,6 +5,7 @@ export interface Supplier {
   name: string;
   code: string;
   contact_person: string | null;
+  phone_country_code: string;
   phone: string | null;
   email: string | null;
   address: string | null;
@@ -12,6 +13,7 @@ export interface Supplier {
   payment_terms: string | null;
   lead_time_days: number | null;
   rating: number | null;
+  product_type: string;  // medicine, optical, equipment, consumables, etc.
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -21,6 +23,7 @@ export interface SupplierCreate {
   name: string;
   code: string;
   contact_person?: string;
+  phone_country_code?: string;
   phone?: string;
   email?: string;
   address?: string;
@@ -28,11 +31,13 @@ export interface SupplierCreate {
   payment_terms?: string;
   lead_time_days?: number;
   rating?: number;
+  product_type?: string;  // medicine, optical, equipment, consumables, etc.
 }
 
 export interface SupplierUpdate {
   name?: string;
   contact_person?: string;
+  phone_country_code?: string;
   phone?: string;
   email?: string;
   address?: string;
@@ -40,6 +45,7 @@ export interface SupplierUpdate {
   payment_terms?: string;
   lead_time_days?: number;
   rating?: number;
+  product_type?: string;
   is_active?: boolean;
 }
 
@@ -48,7 +54,7 @@ export interface SupplierUpdate {
 export interface PurchaseOrderItem {
   id: string;
   item_type: string;
-  item_id: string;
+  item_id: string | null;
   item_name: string | null;
   quantity_ordered: number;
   quantity_received: number;
@@ -58,7 +64,7 @@ export interface PurchaseOrderItem {
 
 export interface PurchaseOrderItemCreate {
   item_type: string;
-  item_id: string;
+  item_id?: string;
   item_name?: string;
   quantity_ordered: number;
   unit_price: number;
@@ -251,6 +257,8 @@ export interface LowStockItem {
   item_name: string;
   current_stock: number;
   reorder_level: number;
+  max_stock_level?: number | null;
+  purchase_price?: number | null;
 }
 
 export interface ExpiringItem {

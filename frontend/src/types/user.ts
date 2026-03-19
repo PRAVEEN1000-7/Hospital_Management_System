@@ -7,6 +7,7 @@ export interface UserData {
   roles: string[];
   reference_number?: string;
   phone_number?: string;
+  phone_country_code?: string;
   phone?: string;
   avatar_url?: string;
   hospital_id?: string;
@@ -27,6 +28,7 @@ export interface UserCreateData {
   last_name: string;
   role: string;
   phone_number?: string;
+  phone_country_code?: string;
   hospital_id?: string;
   // Doctor-specific fields
   specialization?: string;
@@ -46,6 +48,7 @@ export interface UserUpdateData {
   last_name?: string;
   role?: string;
   phone_number?: string;
+  phone_country_code?: string;
   is_active?: boolean;
   // Doctor-specific fields
   specialization?: string;

@@ -72,6 +72,7 @@ async def create_new_user(
             last_name=user_data.last_name,
             role_name=user_data.role,
             hospital_id=str(current_user.hospital_id),
+            phone_country_code=user_data.phone_country_code,
             phone=user_data.phone_number,
             # Doctor-specific fields
             specialization=user_data.specialization,
@@ -217,6 +218,10 @@ async def update_existing_user(
         # Handle phone_number → phone mapping
         if "phone_number" in update_fields:
             update_fields["phone"] = update_fields.pop("phone_number")
+
+        # Normalize blank phone_country_code to avoid storing empty strings
+        if "phone_country_code" in update_fields and not update_fields["phone_country_code"]:
+            update_fields.pop("phone_country_code")
 
         # Handle role change via user_roles junction table
         new_role_name = update_fields.pop("role", None)

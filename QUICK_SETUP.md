@@ -71,12 +71,17 @@ Open: `http://localhost:3000`
 
 ## 4. Default Logins
 
+Pattern: **`<username>@123`**. All non-superadmin users must change password on first login.
+
 | Role         | Username     | Password         |
 |--------------|-------------|------------------|
 | Super Admin  | superadmin  | superadmin@123   |
 | Admin        | admin       | admin@123        |
 | Doctor 1     | doctor1     | doctor@123       |
 | Doctor 2     | doctor2     | doctor@123       |
+| Receptionist | receptionist| receptionist@123 |
+| Pharmacist   | pharmacist  | pharmacist@123   |
+| Cashier      | cashier     | cashier@123      |
 
 ---
 

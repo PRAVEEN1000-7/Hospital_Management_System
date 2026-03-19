@@ -5,7 +5,7 @@ import scheduleService from '../services/scheduleService';
 import patientService from '../services/patientService';
 import {
   TITLE_OPTIONS, GENDER_OPTIONS, BLOOD_GROUP_OPTIONS,
-  COUNTRIES, getStatesForCountry, getPostalLabel, getPhoneCode,
+  COUNTRIES, COUNTRIES_BY_PHONE_CODE, getStatesForCountry, getPostalLabel, getPhoneCode,
 } from '../utils/constants';
 import type { DoctorOption } from '../types/appointment';
 import type { Patient } from '../types/patient';
@@ -211,17 +211,17 @@ const WalkInRegistration: React.FC = () => {
       e.preventDefault();
   };
   const blockNonAlpha = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (!/^[A-Za-z\s.'\-]$/.test(e.key) && !['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Home', 'End'].includes(e.key))
+    if (!/^[A-Za-z\s.'-]$/.test(e.key) && !['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Home', 'End'].includes(e.key))
       e.preventDefault();
   };
   const validateField = (field: keyof RegForm, value: string) => {
     let error = '';
     if (field === 'first_name') {
       if (!value.trim()) error = 'Required';
-      else if (!/^[A-Za-z\s.'\-]+$/.test(value)) error = 'Alphabets only';
+      else if (!/^[A-Za-z\s.'-]+$/.test(value)) error = 'Alphabets only';
     } else if (field === 'last_name') {
       if (!value.trim()) error = 'Required';
-      else if (!/^[A-Za-z\s.'\-]+$/.test(value)) error = 'Alphabets only';
+      else if (!/^[A-Za-z\s.'-]+$/.test(value)) error = 'Alphabets only';
     } else if (field === 'phone_number') {
       if (!value) error = 'Phone is required';
       else if (!/^\d{10}$/.test(value)) error = 'Must be exactly 10 digits';
@@ -580,7 +580,7 @@ const WalkInRegistration: React.FC = () => {
                       <label className="block text-xs font-bold text-slate-500 mb-1">Country Code <span className="text-red-500">*</span></label>
                       <select value={regForm.phone_country_code} onChange={e => setReg('phone_country_code', e.target.value)}
                         className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none">
-                        {COUNTRIES.map(c => (
+                        {COUNTRIES_BY_PHONE_CODE.map(c => (
                           <option key={c.code} value={c.phoneCode}>{c.phoneCode} ({c.name})</option>
                         ))}
                       </select>
@@ -682,7 +682,7 @@ const WalkInRegistration: React.FC = () => {
                           onChange={e => setReg('emergency_contact_country_code', e.target.value)}
                           className="w-32 shrink-0 px-2 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
                         >
-                          {COUNTRIES.map(c => (
+                          {COUNTRIES_BY_PHONE_CODE.map(c => (
                             <option key={c.code} value={c.phoneCode}>{c.phoneCode} ({c.name})</option>
                           ))}
                         </select>

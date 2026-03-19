@@ -200,6 +200,13 @@ export const COUNTRIES: CountryData[] = [
   { name: 'Iraq', code: 'IQ', phoneCode: '+964', postalLabel: 'Postal Code' },
 ];
 
+export const COUNTRIES_BY_PHONE_CODE: CountryData[] = [...COUNTRIES].sort((a, b) => {
+  const aCode = parseInt(a.phoneCode.replace('+', ''), 10);
+  const bCode = parseInt(b.phoneCode.replace('+', ''), 10);
+  if (aCode !== bCode) return aCode - bCode;
+  return a.name.localeCompare(b.name);
+});
+
 // Build a reverse map: state name → country name
 export const STATE_COUNTRY_MAP: Record<string, string> = {};
 COUNTRIES.forEach(country => {

@@ -23,6 +23,7 @@ class Supplier(Base):
     name = Column(String(200), nullable=False)
     code = Column(String(20), nullable=False)
     contact_person = Column(String(100))
+    phone_country_code = Column(String(5), default="+1", nullable=False)
     phone = Column(String(20))
     email = Column(String(255))
     address = Column(Text)
@@ -30,6 +31,7 @@ class Supplier(Base):
     payment_terms = Column(String(50))
     lead_time_days = Column(Integer)
     rating = Column(Numeric(3, 1))
+    product_type = Column(String(50), default="medicine", nullable=False)  # medicine, optical, equipment, consumables, etc.
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -74,8 +76,9 @@ class PurchaseOrderItem(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     purchase_order_id = Column(UUID(as_uuid=True), ForeignKey("purchase_orders.id"), nullable=False)
-    item_type = Column(String(20), nullable=False)  # medicine, optical_product
-    item_id = Column(UUID(as_uuid=True), nullable=False)
+    item_type = Column(String(50), nullable=False)  # medicine, optical_product, or custom product type
+    item_name = Column(String(200))  # Free text item name for custom items
+    item_id = Column(UUID(as_uuid=True))  # FK to medicines or optical_products (NULL for custom items)
     quantity_ordered = Column(Integer, nullable=False)
     quantity_received = Column(Integer, default=0)
     unit_price = Column(Numeric(12, 2), nullable=False)

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import api from '../services/api';
 import { useToast } from '../contexts/ToastContext';
-import { COUNTRIES } from '../utils/constants';
+import { COUNTRIES_BY_PHONE_CODE } from '../utils/constants';
 
 // Types
 interface HospitalData {
@@ -189,7 +189,7 @@ const PhoneInput = React.memo<{
         onChange={onChange}
         className="w-28 px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
       >
-        {COUNTRIES.map(c => (
+        {COUNTRIES_BY_PHONE_CODE.map(c => (
           <option key={c.code} value={c.phoneCode}>{c.phoneCode}</option>
         ))}
       </select>

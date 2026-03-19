@@ -21,6 +21,7 @@ class UserCreate(BaseModel):
     role: str = Field(default="staff")
     employee_id: Optional[str] = Field(None, max_length=50)
     department: Optional[str] = Field(None, max_length=100)
+    phone_country_code: Optional[str] = Field('+1', max_length=5)
     phone_number: Optional[str] = Field(None, max_length=20)
 
     # Doctor-specific fields (required when role == 'doctor')
@@ -56,6 +57,15 @@ class UserCreate(BaseModel):
         if v is not None and v != "":
             if not re.match(r"^\d{10}$", v):
                 raise ValueError("Phone number must be exactly 10 digits")
+        return v
+
+    @field_validator("phone_country_code")
+    @classmethod
+    def validate_phone_country_code(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v == "":
+            return "+1"
+        if not re.match(r"^\+[0-9]{1,4}$", v):
+            raise ValueError("Phone country code must be in +<digits> format")
         return v
 
     @field_validator("password")
@@ -98,6 +108,7 @@ class UserUpdate(BaseModel):
     role: Optional[str] = None
     employee_id: Optional[str] = Field(None, max_length=50)
     department: Optional[str] = Field(None, max_length=100)
+    phone_country_code: Optional[str] = Field(None, max_length=5)
     phone_number: Optional[str] = Field(None, max_length=20)
     is_active: Optional[bool] = None
 
@@ -111,6 +122,15 @@ class UserUpdate(BaseModel):
     def validate_role(cls, v: Optional[str]) -> Optional[str]:
         if v is not None and v not in VALID_ROLES:
             raise ValueError(f'Role must be one of: {", ".join(VALID_ROLES)}')
+        return v
+
+    @field_validator("phone_country_code")
+    @classmethod
+    def validate_optional_phone_country_code(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v == "":
+            return v
+        if not re.match(r"^\+[0-9]{1,4}$", v):
+            raise ValueError("Phone country code must be in +<digits> format")
         return v
 
 
@@ -142,6 +162,8 @@ class UserResponse(BaseModel):
     reference_number: Optional[str] = None
     hospital_id: Optional[str] = None
     hospital_name: Optional[str] = None
+    phone_country_code: Optional[str] = None
+    phone_number: Optional[str] = None
     phone: Optional[str] = None
     avatar_url: Optional[str] = None
     is_active: bool = True
@@ -179,6 +201,8 @@ class UserResponse(BaseModel):
                 "reference_number": data.reference_number,
                 "hospital_id": str(data.hospital_id) if data.hospital_id else None,
                 "hospital_name": hospital_name,
+                "phone_country_code": getattr(data, 'phone_country_code', None),
+                "phone_number": data.phone,
                 "phone": data.phone,
                 "avatar_url": data.avatar_url,
                 "is_active": data.is_active,
@@ -194,6 +218,8 @@ class UserResponse(BaseModel):
                 data["id"] = str(data["id"])
             if "first_name" in data and "last_name" in data and "full_name" not in data:
                 data["full_name"] = f"{data.get('first_name', '')} {data.get('last_name', '')}".strip()
+            if "phone" in data and "phone_number" not in data:
+                data["phone_number"] = data.get("phone")
         return data
 
     class Config:

@@ -16,8 +16,11 @@ const SupplierList: React.FC = () => {
     try {
       const data = await pharmacyService.getSuppliers(search || undefined);
       setSuppliers(data);
-    } catch {
-      toast.error('Failed to load suppliers');
+    } catch (error: unknown) {
+      const msg = error && typeof error === 'object' && 'response' in error 
+        ? (error as { response?: { data?: { detail?: string } } }).response?.data?.detail 
+        : 'Failed to load suppliers';
+      toast.error(msg || 'Failed to load suppliers');
     } finally {
       setLoading(false);
     }

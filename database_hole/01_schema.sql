@@ -1065,23 +1065,27 @@ CREATE TABLE optical_repairs (
 -- 11.1 suppliers
 -- ─────────────────────────────────────────────────────────────────────────────
 CREATE TABLE suppliers (
-    id             UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    hospital_id    UUID         NOT NULL REFERENCES hospitals(id),
-    name           VARCHAR(200) NOT NULL,
-    code           VARCHAR(20)  NOT NULL,
-    contact_person VARCHAR(100),
-    phone          VARCHAR(20),
-    email          VARCHAR(255),
-    address        TEXT,
-    tax_id         VARCHAR(50),
-    payment_terms  VARCHAR(50),
-    lead_time_days INTEGER,
-    rating         DECIMAL(3,1),
-    is_active      BOOLEAN      DEFAULT true,
-    created_at     TIMESTAMPTZ  DEFAULT NOW(),
-    updated_at     TIMESTAMPTZ  DEFAULT NOW(),
+    id                  UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    hospital_id         UUID         NOT NULL REFERENCES hospitals(id),
+    name               VARCHAR(200) NOT NULL,
+    code               VARCHAR(20)  NOT NULL,
+    contact_person     VARCHAR(100),
+    phone_country_code VARCHAR(5)   DEFAULT '+1' NOT NULL,
+    phone              VARCHAR(20),
+    email              VARCHAR(255),
+    address            TEXT,
+    tax_id             VARCHAR(50),
+    payment_terms      VARCHAR(50),
+    lead_time_days     INTEGER,
+    rating             DECIMAL(3,1),
+    product_type       VARCHAR(50)  DEFAULT 'medicine' NOT NULL,
+    is_active          BOOLEAN      DEFAULT true,
+    created_at         TIMESTAMPTZ  DEFAULT NOW(),
+    updated_at         TIMESTAMPTZ  DEFAULT NOW(),
     UNIQUE (hospital_id, code)
 );
+
+COMMENT ON COLUMN suppliers.product_type IS 'Type of products supplied: medicine, optical, equipment, consumables, etc.';
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 11.2 purchase_orders
@@ -1109,8 +1113,9 @@ CREATE TABLE purchase_orders (
 CREATE TABLE purchase_order_items (
     id                UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
     purchase_order_id UUID          NOT NULL REFERENCES purchase_orders(id),
-    item_type         VARCHAR(20)   NOT NULL,       -- 'medicine','optical_product'
-    item_id           UUID          NOT NULL,        -- FK to medicines or optical_products
+    item_type         VARCHAR(50)   NOT NULL,       -- 'medicine','optical_product', or other product types from supplier
+    item_name         VARCHAR(200),                  -- Free text item name if item_id is NULL (for custom items)
+    item_id           UUID,                          -- FK to medicines or optical_products (NULL for custom items)
     quantity_ordered  INTEGER       NOT NULL,
     quantity_received INTEGER       DEFAULT 0,
     unit_price        DECIMAL(12,2) NOT NULL,
@@ -1428,6 +1433,10 @@ CREATE INDEX idx_invoices_status      ON invoices(status);
 
 -- Stock movements
 CREATE INDEX idx_stock_movements_item ON stock_movements(item_type, item_id, created_at DESC);
+
+-- Suppliers
+CREATE INDEX idx_suppliers_product_type ON suppliers(product_type);
+CREATE INDEX idx_suppliers_hospital_product ON suppliers(hospital_id, product_type);
 
 -- Notifications
 CREATE INDEX idx_notifications_user ON notifications(user_id, is_read, created_at DESC);

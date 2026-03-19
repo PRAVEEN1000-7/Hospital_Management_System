@@ -116,6 +116,7 @@ def create_user(
     last_name: str,
     role_name: str,
     hospital_id: str | uuid.UUID,
+    phone_country_code: Optional[str] = "+1",
     phone: Optional[str] = None,
     # Doctor-specific fields
     specialization: Optional[str] = None,
@@ -145,6 +146,7 @@ def create_user(
         password_hash=password_hash,
         first_name=first_name,
         last_name=last_name,
+        phone_country_code=phone_country_code or "+1",
         phone=phone,
         reference_number=reference_number,
     )

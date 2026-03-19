@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import inventoryService from '../../services/inventoryService';
 import type { PurchaseOrder, Supplier } from '../../types/inventory';
@@ -16,6 +17,7 @@ const STATUS_COLORS: Record<string, string> = {
 const PurchaseOrdersPage: React.FC = () => {
   const toast = useToast();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -26,6 +28,21 @@ const PurchaseOrdersPage: React.FC = () => {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [supplierFilter, setSupplierFilter] = useState('');
   const [detailPO, setDetailPO] = useState<PurchaseOrder | null>(null);
+
+  // Role-based access control
+  const roleAlias: Record<string, string> = {
+    administrator: 'admin',
+    hospital_admin: 'admin',
+    'inventory-admin': 'inventory_manager',
+    inventoryadmin: 'inventory_manager',
+  };
+  const roles = (user?.roles || []).map(r => {
+    const normalized = String(r).trim().toLowerCase();
+    return roleAlias[normalized] || normalized;
+  });
+  const isAdminUser = roles.includes('admin') || roles.includes('super_admin');
+  const isInventoryManager = roles.includes('inventory_manager') && !isAdminUser;
+  const isPharmacyLogin = roles.includes('pharmacist');
 
   useEffect(() => {
     inventoryService.getSuppliers(1, 100, '', true).then(r => setSuppliers(r.data)).catch(() => {});
@@ -151,12 +168,17 @@ const PurchaseOrdersPage: React.FC = () => {
                             <span className="material-symbols-outlined text-lg text-blue-500">send</span>
                           </button>
                         )}
-                        {po.status === 'submitted' && (
-                          <button onClick={() => handleStatusChange(po, 'approved')} className="p-1.5 hover:bg-emerald-50 rounded-lg transition-colors" title="Approve">
-                            <span className="material-symbols-outlined text-lg text-emerald-500">check_circle</span>
-                          </button>
+                        {po.status === 'submitted' && isAdminUser && (
+                          <>
+                            <button onClick={() => handleStatusChange(po, 'approved')} className="p-1.5 hover:bg-emerald-50 rounded-lg transition-colors" title="Approve">
+                              <span className="material-symbols-outlined text-lg text-emerald-500">check_circle</span>
+                            </button>
+                            <button onClick={() => handleStatusChange(po, 'cancelled')} className="p-1.5 hover:bg-red-50 rounded-lg transition-colors" title="Reject">
+                              <span className="material-symbols-outlined text-lg text-red-400">cancel</span>
+                            </button>
+                          </>
                         )}
-                        {(po.status === 'draft' || po.status === 'submitted') && (
+                        {po.status === 'draft' && !isAdminUser && (
                           <button onClick={() => handleStatusChange(po, 'cancelled')} className="p-1.5 hover:bg-red-50 rounded-lg transition-colors" title="Cancel">
                             <span className="material-symbols-outlined text-lg text-red-400">cancel</span>
                           </button>

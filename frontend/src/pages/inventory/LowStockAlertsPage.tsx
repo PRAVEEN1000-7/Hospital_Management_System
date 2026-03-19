@@ -25,7 +25,6 @@ const LowStockAlertsPage: React.FC = () => {
   // Role-based access control
   const hasInventoryAccess = 
     roles.includes('inventory_manager') || roles.includes('admin') || roles.includes('super_admin');
-  const isPharmacistOnly = roles.includes('pharmacist') && !hasInventoryAccess;
   
   const [items, setItems] = useState<LowStockItem[]>([]);
   const [suggestions, setSuggestions] = useState<ReorderSuggestion[]>([]);
@@ -121,6 +120,7 @@ const LowStockAlertsPage: React.FC = () => {
 
   // Handle item selection
   const toggleItemSelection = (itemId: string) => {
+    if (!hasInventoryAccess) return;
     const newSelected = new Set(selectedItems);
     if (newSelected.has(itemId)) {
       newSelected.delete(itemId);
@@ -131,6 +131,7 @@ const LowStockAlertsPage: React.FC = () => {
   };
 
   const selectAll = () => {
+    if (!hasInventoryAccess) return;
     if (selectedItems.size === filteredItems.length) {
       setSelectedItems(new Set());
     } else {
@@ -229,11 +230,6 @@ const LowStockAlertsPage: React.FC = () => {
             Create PO ({selectedItems.size})
           </button>
         )}
-        {isPharmacistOnly && (
-          <div className="text-sm text-slate-500 italic">
-            View only - Create PO requires inventory manager role
-          </div>
-        )}
       </header>
 
       {loading ? (
@@ -271,15 +267,17 @@ const LowStockAlertsPage: React.FC = () => {
                   <option value="name">Sort by Name</option>
                 </select>
               </div>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={selectedItems.size === filteredItems.length && filteredItems.length > 0}
-                  onChange={selectAll}
-                  className="w-4 h-4 text-primary rounded border-slate-300"
-                />
-                <span className="text-sm font-medium text-slate-700">Select All ({filteredItems.length})</span>
-              </label>
+              {hasInventoryAccess && (
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedItems.size === filteredItems.length && filteredItems.length > 0}
+                    onChange={selectAll}
+                    className="w-4 h-4 text-primary rounded border-slate-300"
+                  />
+                  <span className="text-sm font-medium text-slate-700">Select All ({filteredItems.length})</span>
+                </label>
+              )}
             </div>
           </div>
 
@@ -289,14 +287,16 @@ const LowStockAlertsPage: React.FC = () => {
               <table className="w-full text-sm">
                 <thead className="border-b border-slate-200 bg-slate-50">
                   <tr>
-                    <th className="px-4 py-3 text-left">
-                      <input
-                        type="checkbox"
-                        checked={selectedItems.size === filteredItems.length && filteredItems.length > 0}
-                        onChange={selectAll}
-                        className="w-4 h-4 text-primary rounded border-slate-300"
-                      />
-                    </th>
+                    {hasInventoryAccess && (
+                      <th className="px-4 py-3 text-left">
+                        <input
+                          type="checkbox"
+                          checked={selectedItems.size === filteredItems.length && filteredItems.length > 0}
+                          onChange={selectAll}
+                          className="w-4 h-4 text-primary rounded border-slate-300"
+                        />
+                      </th>
+                    )}
                     <th className="px-4 py-3 text-left font-semibold text-slate-700">Medicine Name</th>
                     <th className="px-4 py-3 text-center font-semibold text-slate-700">Current Stock</th>
                     <th className="px-4 py-3 text-center font-semibold text-slate-700">Reorder Level</th>
@@ -309,17 +309,19 @@ const LowStockAlertsPage: React.FC = () => {
                   {filteredItems.map((item) => (
                     <tr
                       key={item.item_id}
-                      className={`border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors cursor-pointer ${getSeverityColor(item)}`}
-                      onClick={() => toggleItemSelection(item.item_id)}
+                      className={`border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors ${hasInventoryAccess ? 'cursor-pointer' : ''} ${getSeverityColor(item)}`}
+                      onClick={hasInventoryAccess ? () => toggleItemSelection(item.item_id) : undefined}
                     >
-                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={selectedItems.has(item.item_id)}
-                          onChange={() => toggleItemSelection(item.item_id)}
-                          className="w-4 h-4 text-primary rounded border-slate-300"
-                        />
-                      </td>
+                      {hasInventoryAccess && (
+                        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={selectedItems.has(item.item_id)}
+                            onChange={() => toggleItemSelection(item.item_id)}
+                            className="w-4 h-4 text-primary rounded border-slate-300"
+                          />
+                        </td>
+                      )}
                       <td className="px-4 py-3 font-medium text-slate-900">{item.item_name}</td>
                       <td className="px-4 py-3 text-center font-bold text-slate-900">{item.current_stock}</td>
                       <td className="px-4 py-3 text-center text-slate-600">{item.reorder_level}</td>

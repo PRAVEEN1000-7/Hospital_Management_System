@@ -182,8 +182,6 @@ const PharmacyDashboard: React.FC = () => {
           { label: 'Medicine Inventory', desc: 'Browse & manage all medicines', icon: 'medication', to: '/pharmacy/medicines' },
           { label: 'New Sale / Dispense', desc: 'Create a pharmacy sale', icon: 'point_of_sale', to: '/pharmacy/sales/new' },
           { label: 'Sales History', desc: 'View past sales & invoices', icon: 'receipt_long', to: '/pharmacy/sales' },
-          { label: 'Suppliers', desc: 'Manage medicine suppliers', icon: 'local_shipping', to: '/pharmacy/suppliers' },
-          { label: 'Purchase Orders', desc: 'Stock-in from suppliers', icon: 'inventory_2', to: '/pharmacy/purchase-orders' },
           { label: 'Stock Adjustments', desc: 'Manual stock corrections', icon: 'tune', to: '/pharmacy/stock-adjustments' },
         ].map((item) => (
           <button key={item.label} onClick={() => navigate(item.to)}

@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx';
 import pharmacyService from '../../services/pharmacyService';
 import type { Medicine, MedicineCreateData } from '../../types/pharmacy';
 import { useToast } from '../../contexts/ToastContext';
+import { useAuth } from '../../contexts/AuthContext';
 
 const CATEGORY_OPTIONS = [
   { value: '', label: 'All Categories' },
@@ -35,6 +36,7 @@ const formatCategory = (value?: string | null) => {
 const MedicineList: React.FC = () => {
   const navigate = useNavigate();
   const toast = useToast();
+  const { user } = useAuth();
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [loading, setLoading] = useState(true);
   const [bulkUploading, setBulkUploading] = useState(false);
@@ -45,6 +47,7 @@ const MedicineList: React.FC = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const deferredSearch = useDeferredValue(search);
+  const isPharmacist = user?.roles?.includes('pharmacist') ?? false;
 
   const fetchMedicines = useCallback(async () => {
     setLoading(true);
@@ -295,34 +298,36 @@ const MedicineList: React.FC = () => {
           <h1 className="text-2xl font-bold text-slate-900">Medicine Inventory</h1>
           <p className="mt-1 text-sm text-slate-500">Browse, search, and narrow your inventory with live filters.</p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap justify-end">
-          <button
-            type="button"
-            onClick={handleDownloadMedicineTemplate}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
-          >
-            <span className="material-symbols-outlined text-base">download</span>
-            Download Template
-          </button>
-          <label className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-blue-700 bg-blue-100 rounded-lg hover:bg-blue-200 transition-colors cursor-pointer">
-            <span className="material-symbols-outlined text-base">upload_file</span>
-            {bulkUploading ? 'Uploading...' : 'Bulk Upload'}
-            <input
-              type="file"
-              accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
-              className="hidden"
-              onChange={handleBulkMedicineUpload}
-              disabled={bulkUploading}
-            />
-          </label>
-          <button
-            onClick={() => navigate('/pharmacy/medicines/new')}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 transition-colors"
-          >
-            <span className="material-symbols-outlined text-base">add</span>
-            Add Medicine
-          </button>
-        </div>
+        {!isPharmacist && (
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            <button
+              type="button"
+              onClick={handleDownloadMedicineTemplate}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+            >
+              <span className="material-symbols-outlined text-base">download</span>
+              Download Template
+            </button>
+            <label className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-blue-700 bg-blue-100 rounded-lg hover:bg-blue-200 transition-colors cursor-pointer">
+              <span className="material-symbols-outlined text-base">upload_file</span>
+              {bulkUploading ? 'Uploading...' : 'Bulk Upload'}
+              <input
+                type="file"
+                accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
+                className="hidden"
+                onChange={handleBulkMedicineUpload}
+                disabled={bulkUploading}
+              />
+            </label>
+            <button
+              onClick={() => navigate('/pharmacy/medicines/new')}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 transition-colors"
+            >
+              <span className="material-symbols-outlined text-base">add</span>
+              Add Medicine
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">

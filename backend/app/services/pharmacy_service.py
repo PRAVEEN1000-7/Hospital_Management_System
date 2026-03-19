@@ -695,6 +695,8 @@ def create_stock_adjustment(
     db: Session, hospital_id: uuid.UUID, data: dict, user_id: uuid.UUID
 ) -> StockAdjustment:
     """Create pharmacy stock adjustment using inventory StockAdjustment model."""
+    from ..models.inventory import StockMovement
+
     medicine_id = uuid.UUID(data["medicine_id"])
     batch_id = uuid.UUID(data["batch_id"]) if data.get("batch_id") else None
     qty = data["quantity"]
@@ -707,16 +709,70 @@ def create_stock_adjustment(
     elif adj_type == "return":
         qty = abs(qty)   # Always positive
     # correction keeps the sign as provided
-    
-    # Update batch stock if batch specified
+
+    movement_batch_id = batch_id
+
+    # Apply stock delta to batches (single source of truth).
     if batch_id:
-        batch = db.query(MedicineBatch).filter(MedicineBatch.id == batch_id).first()
+        batch = db.query(MedicineBatch).filter(
+            MedicineBatch.id == batch_id,
+            MedicineBatch.medicine_id == medicine_id,
+            MedicineBatch.is_active == True,
+        ).first()
         if not batch:
             raise ValueError("Batch not found")
-        new_qty = batch.quantity + qty
+        new_qty = (batch.quantity or 0) + qty
         if new_qty < 0:
             raise ValueError("Adjustment would result in negative stock")
+        if qty > 0:
+            batch.initial_quantity = (batch.initial_quantity or 0) + qty
         batch.quantity = new_qty
+    elif qty > 0:
+        # No batch specified for stock-in adjustment: write into system adjustment batch.
+        system_batch_number = f"SYS-ADJ-{datetime.now(timezone.utc).strftime('%Y%m%d')}"
+        batch = db.query(MedicineBatch).filter(
+            MedicineBatch.medicine_id == medicine_id,
+            MedicineBatch.batch_number == system_batch_number,
+        ).first()
+        if batch:
+            batch.quantity = (batch.quantity or 0) + qty
+            batch.initial_quantity = (batch.initial_quantity or 0) + qty
+            batch.is_active = True
+        else:
+            batch = MedicineBatch(
+                medicine_id=medicine_id,
+                batch_number=system_batch_number,
+                mfg_date=date.today(),
+                expiry_date=date.today() + timedelta(days=3650),
+                initial_quantity=qty,
+                quantity=qty,
+                purchase_price=0,
+                selling_price=0,
+                is_active=True,
+            )
+            db.add(batch)
+            db.flush()
+        movement_batch_id = batch.id
+    elif qty < 0:
+        # No batch specified for stock-out adjustment: consume FEFO across active batches.
+        remaining = -qty
+        batches = db.query(MedicineBatch).filter(
+            MedicineBatch.medicine_id == medicine_id,
+            MedicineBatch.is_active == True,
+            MedicineBatch.quantity > 0,
+        ).order_by(MedicineBatch.expiry_date.asc(), MedicineBatch.created_at.asc()).all()
+
+        available = sum(int(b.quantity or 0) for b in batches)
+        if available < remaining:
+            raise ValueError("Insufficient stock across batches for adjustment")
+
+        for b in batches:
+            if remaining <= 0:
+                break
+            take = min(int(b.quantity or 0), remaining)
+            b.quantity = int(b.quantity or 0) - take
+            remaining -= take
+        movement_batch_id = None
 
     # Create adjustment record using inventory model (auto-approved for pharmacy)
     adj = StockAdjustment(
@@ -733,6 +789,36 @@ def create_stock_adjustment(
         created_by=user_id,
     )
     db.add(adj)
+    db.flush()
+
+    balance_after = int(
+        db.query(func.coalesce(func.sum(MedicineBatch.quantity), 0)).filter(
+            MedicineBatch.medicine_id == medicine_id,
+            MedicineBatch.is_active == True,
+        ).scalar() or 0
+    )
+
+    movement_type = "adjustment"
+    if adj_type == "damage":
+        movement_type = "damaged"
+    elif adj_type == "expired":
+        movement_type = "expired"
+
+    movement = StockMovement(
+        hospital_id=hospital_id,
+        item_type="medicine",
+        item_id=medicine_id,
+        batch_id=movement_batch_id,
+        movement_type=movement_type,
+        reference_type="adjustment",
+        reference_id=adj.id,
+        quantity=qty,
+        balance_after=balance_after,
+        notes=f"Pharmacy adjustment {adj.adjustment_number}: {adj.reason}",
+        performed_by=user_id,
+    )
+    db.add(movement)
+
     db.commit()
     db.refresh(adj)
     return adj

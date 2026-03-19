@@ -24,12 +24,12 @@ export const getNotificationTarget = (notification: AppNotification): Notificati
     prescription: '/prescriptions',
   };
 
-  const basePath = basePaths[notification.reference_type] || '/dashboard';
-  
+  const basePath = basePaths[notification.reference_type || ''] || '/dashboard';
+
   return {
     path: basePath,
     referenceId: notification.reference_id || undefined,
-    referenceType: notification.reference_type,
+    referenceType: notification.reference_type || 'unknown',
   };
 };
 
@@ -91,7 +91,7 @@ export const formatNotificationMessage = (notification: AppNotification): string
     expiry: `Items expiring soon`,
   };
 
-  return templates[notification.reference_type] || notification.message || 'New notification';
+  return templates[notification.reference_type || ''] || notification.message || 'New notification';
 };
 
 /**

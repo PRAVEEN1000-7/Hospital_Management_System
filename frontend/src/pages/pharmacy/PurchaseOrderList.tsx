@@ -27,7 +27,9 @@ const STATUS_LABELS: Record<PurchaseOrderStatus, string> = {
 };
 
 const SHARED_TABS: PurchaseOrderStatus[] = ['ordered', 'received', 'cancelled'];
-const INVENTORY_ONLY_TABS: PurchaseOrderStatus[] = ['draft', 'submitted', 'approved'];
+const PHARMACY_TABS: PurchaseOrderStatus[] = ['draft', 'submitted', 'approved', 'ordered', 'received', 'cancelled'];
+const INVENTORY_MGMT_TABS: PurchaseOrderStatus[] = ['draft', 'ordered', 'received', 'cancelled'];
+const ADMIN_APPROVAL_TABS: PurchaseOrderStatus[] = ['submitted', 'approved', 'ordered', 'received', 'cancelled'];
 
 interface PendingOrderAction {
   orderId: string;
@@ -40,13 +42,26 @@ const PurchaseOrderList: React.FC = () => {
   const navigate = useNavigate();
   const toast = useToast();
   const { user } = useAuth();
-  const roles = user?.roles || [];
-  const hasInventoryAccess =
-    roles.includes('inventory_manager') || roles.includes('admin') || roles.includes('super_admin');
-  const isPharmacyLogin = roles.includes('pharmacist') && !hasInventoryAccess;
+  const roleAlias: Record<string, string> = {
+    administrator: 'admin',
+    hospital_admin: 'admin',
+    'inventory-admin': 'inventory_manager',
+    inventoryadmin: 'inventory_manager',
+  };
+  const roles = (user?.roles || []).map(r => {
+    const normalized = String(r).trim().toLowerCase();
+    return roleAlias[normalized] || normalized;
+  });
+  const isAdminUser = roles.includes('admin') || roles.includes('super_admin');
+  const isInventoryManager = roles.includes('inventory_manager') && !isAdminUser;
+  const isPharmacyLogin = roles.includes('pharmacist');
   const visibleStatusTabs: PurchaseOrderStatus[] = isPharmacyLogin
-    ? SHARED_TABS
-    : [...INVENTORY_ONLY_TABS, ...SHARED_TABS];
+    ? PHARMACY_TABS
+    : isAdminUser
+    ? ADMIN_APPROVAL_TABS
+    : isInventoryManager
+    ? INVENTORY_MGMT_TABS
+    : PHARMACY_TABS;
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<PurchaseOrderStatus | ''>(isPharmacyLogin ? 'ordered' : '');
@@ -89,6 +104,24 @@ const PurchaseOrderList: React.FC = () => {
   }, [isPharmacyLogin, statusFilter]);
 
   const handleAction = async (orderId: string, action: string) => {
+    // Defensive role checks - block unauthorized actions before API call
+    if (action === 'submit' && !isInventoryManager && !isPharmacyLogin) {
+      toast.error('Only inventory managers or pharmacists can submit orders');
+      return;
+    }
+    if (action === 'approve' && !isAdminUser) {
+      toast.error('Only admins can approve orders');
+      return;
+    }
+    if (action === 'place' && !isInventoryManager) {
+      toast.error('You do not have permission to place orders');
+      return;
+    }
+    if (action === 'receive') {
+      toast.error('Only pharmacists can receive orders');
+      return;
+    }
+    
     setActionLoading(action);
     try {
       switch (action) {
@@ -169,30 +202,77 @@ const PurchaseOrderList: React.FC = () => {
 
     switch (order.status) {
       case 'draft':
-        actions.push(
-          { label: 'Submit', action: 'submit', color: 'blue', icon: 'send', confirm: 'Submit this order for approval?' },
-          { label: 'Edit', action: 'edit', color: 'slate', icon: 'edit' },
-          { label: 'Delete', action: 'delete', color: 'red', icon: 'delete', confirm: 'Delete this draft order?' }
-        );
+        // Draft: Pharmacist gets Submit + View only
+        if (isPharmacyLogin) {
+          actions.push(
+            { label: 'Submit', action: 'submit', color: 'blue', icon: 'send', confirm: 'Submit this order for approval?' },
+            { label: 'View', action: 'view', color: 'slate', icon: 'visibility' }
+          );
+        }
+        // Draft: Inventory managers can submit, edit, delete
+        if (isInventoryManager) {
+          actions.push(
+            { label: 'Submit', action: 'submit', color: 'blue', icon: 'send', confirm: 'Submit this order for approval?' },
+            { label: 'Edit', action: 'edit', color: 'slate', icon: 'edit' },
+            { label: 'Delete', action: 'delete', color: 'red', icon: 'delete', confirm: 'Delete this draft order?' }
+          );
+        } else if (!isPharmacyLogin) {
+          // Admin and pharmacist view only
+          actions.push(
+            { label: 'View', action: 'view', color: 'slate', icon: 'visibility' }
+          );
+        }
         break;
       case 'submitted':
-        actions.push(
-          { label: 'Approve', action: 'approve', color: 'blue', icon: 'check_circle', confirm: 'Approve this order?' },
-          { label: 'View', action: 'view', color: 'slate', icon: 'visibility' }
-        );
+        if (isPharmacyLogin) {
+          actions.push(
+            { label: 'View', action: 'view', color: 'slate', icon: 'visibility' }
+          );
+          break;
+        }
+        // Submitted: Only admin can approve; inventory managers view only
+        if (isAdminUser) {
+          actions.push(
+            { label: 'Approve', action: 'approve', color: 'blue', icon: 'check_circle', confirm: 'Approve this order?' },
+            { label: 'View', action: 'view', color: 'slate', icon: 'visibility' }
+          );
+        } else {
+          // Inventory manager and pharmacist view only
+          actions.push(
+            { label: 'View', action: 'view', color: 'slate', icon: 'visibility' }
+          );
+        }
         break;
       case 'approved':
-        actions.push(
-          { label: 'Place Order', action: 'place', color: 'purple', icon: 'local_shipping', confirm: 'Send this order to the supplier?' },
-          { label: 'View', action: 'view', color: 'slate', icon: 'visibility' }
-        );
+        // Approved: Pharmacist view only
+        if (isPharmacyLogin) {
+          actions.push(
+            { label: 'View', action: 'view', color: 'slate', icon: 'visibility' }
+          );
+        }
+        // Approved: Inventory managers can place order (admin cannot)
+        else if (isInventoryManager) {
+          actions.push(
+            { label: 'Place Order', action: 'place', color: 'purple', icon: 'local_shipping', confirm: 'Send this order to the supplier?' },
+            { label: 'View', action: 'view', color: 'slate', icon: 'visibility' }
+          );
+        } else if (isAdminUser) {
+          // Admin view only after approving
+          actions.push(
+            { label: 'View', action: 'view', color: 'slate', icon: 'visibility' }
+          );
+        }
         break;
       case 'ordered':
+        // Ordered: Pharmacist view only
         actions.push(
-          { label: 'Receive', action: 'receive', color: 'green', icon: 'inventory', confirm: 'Mark this order as received?' },
-          { label: 'Cancel', action: 'cancel', color: 'red', icon: 'cancel', confirm: 'Cancel this order?' },
           { label: 'View', action: 'view', color: 'slate', icon: 'visibility' }
         );
+        if (!isPharmacyLogin && (isInventoryManager || isAdminUser)) {
+          actions.push(
+            { label: 'Cancel', action: 'cancel', color: 'red', icon: 'cancel', confirm: 'Cancel this order?' }
+          );
+        }
         break;
       case 'received':
         actions.push(
@@ -201,9 +281,13 @@ const PurchaseOrderList: React.FC = () => {
         break;
       case 'cancelled':
         actions.push(
-          { label: 'View', action: 'view', color: 'slate', icon: 'visibility' },
-          { label: 'Delete', action: 'delete', color: 'red', icon: 'delete', confirm: 'Delete this cancelled order?' }
+          { label: 'View', action: 'view', color: 'slate', icon: 'visibility' }
         );
+        if (isInventoryManager || isAdminUser) {
+          actions.push(
+            { label: 'Delete', action: 'delete', color: 'red', icon: 'delete', confirm: 'Delete this cancelled order?' }
+          );
+        }
         break;
     }
 
@@ -447,6 +531,9 @@ const PurchaseOrderList: React.FC = () => {
             requestActionConfirmation(selectedOrder.id, action, action, confirm)
           }
           actionLoading={actionLoading}
+          isAdminUser={isAdminUser}
+          isPharmacyLogin={isPharmacyLogin}
+          isInventoryManager={isInventoryManager}
         />
       )}
 
@@ -469,6 +556,9 @@ interface PurchaseOrderDetailModalProps {
   onClose: () => void;
   onAction: (action: string, confirm?: string) => void;
   actionLoading: string | null;
+  isAdminUser: boolean;
+  isPharmacyLogin: boolean;
+  isInventoryManager: boolean;
 }
 
 interface ActionConfirmModalProps {
@@ -518,6 +608,9 @@ const PurchaseOrderDetailModal: React.FC<PurchaseOrderDetailModalProps> = ({
   onClose,
   onAction,
   actionLoading,
+  isAdminUser,
+  isPharmacyLogin,
+  isInventoryManager,
 }) => {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
@@ -672,7 +765,7 @@ const PurchaseOrderDetailModal: React.FC<PurchaseOrderDetailModalProps> = ({
               {actionLoading === 'submit' ? 'Submitting...' : 'Submit Order'}
             </button>
           )}
-          {order.status === 'submitted' && (
+          {order.status === 'submitted' && isAdminUser && (
             <button
               onClick={() => onAction('approve', 'Approve this order?')}
               disabled={!!actionLoading}
@@ -681,7 +774,7 @@ const PurchaseOrderDetailModal: React.FC<PurchaseOrderDetailModalProps> = ({
               {actionLoading === 'approve' ? 'Approving...' : 'Approve Order'}
             </button>
           )}
-          {order.status === 'approved' && (
+          {order.status === 'approved' && isInventoryManager && (
             <button
               onClick={() => onAction('place', 'Send this order to the supplier?')}
               disabled={!!actionLoading}
@@ -692,13 +785,15 @@ const PurchaseOrderDetailModal: React.FC<PurchaseOrderDetailModalProps> = ({
           )}
           {order.status === 'ordered' && (
             <>
-              <button
-                onClick={() => onAction('cancel', 'Cancel this order?')}
-                disabled={!!actionLoading}
-                className="px-4 py-2 text-sm font-semibold text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 disabled:opacity-50 transition-colors"
-              >
-                {actionLoading === 'cancel' ? 'Cancelling...' : 'Cancel Order'}
-              </button>
+              {!isPharmacyLogin && (isInventoryManager || isAdminUser) && (
+                <button
+                  onClick={() => onAction('cancel', 'Cancel this order?')}
+                  disabled={!!actionLoading}
+                  className="px-4 py-2 text-sm font-semibold text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 disabled:opacity-50 transition-colors"
+                >
+                  {actionLoading === 'cancel' ? 'Cancelling...' : 'Cancel Order'}
+                </button>
+              )}
               <button
                 onClick={() => onAction('receive', 'Mark this order as received?')}
                 disabled={!!actionLoading}

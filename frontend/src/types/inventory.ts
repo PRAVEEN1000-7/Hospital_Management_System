@@ -251,6 +251,8 @@ export interface LowStockItem {
   item_name: string;
   current_stock: number;
   reorder_level: number;
+  max_stock_level?: number | null;
+  purchase_price?: number | null;
 }
 
 export interface ExpiringItem {

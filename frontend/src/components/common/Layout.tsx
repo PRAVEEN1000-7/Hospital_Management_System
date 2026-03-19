@@ -50,10 +50,23 @@ const Layout: React.FC = () => {
   );
 
   const role = user?.roles?.[0];
-  const canAccessPatients = role === 'super_admin' || role === 'admin' || role === 'receptionist' || role === 'nurse' || role === 'pharmacist' || role === 'doctor';
   const [billingOpen, setBillingOpen] = useState(
     () => location.pathname.startsWith('/billing')
   );
+  const normalizedRoles = (user?.roles || []).map(r => String(r).trim().toLowerCase());
+  const roleAliases: Record<string, string> = {
+    administrator: 'admin',
+    hospital_admin: 'admin',
+    'inventory-admin': 'inventory_manager',
+    inventoryadmin: 'inventory_manager',
+  };
+  const effectiveRoles = normalizedRoles.map(r => roleAliases[r] || r);
+  const hasRole = (...allowed: string[]) => {
+    const allowedSet = new Set(allowed.map(a => String(a).trim().toLowerCase()));
+    return effectiveRoles.some(r => allowedSet.has(r));
+  };
+  const hasPendingPrescriptionAccess = hasRole('pharmacist', 'admin', 'super_admin', 'inventory_manager');
+  const canAccessPatients = hasRole('super_admin', 'admin', 'receptionist', 'nurse', 'pharmacist', 'doctor');
 
   useEffect(() => {
     hospitalService.getHospitalDetails()
@@ -68,8 +81,7 @@ const Layout: React.FC = () => {
 
   // Fetch pending prescription count for pharmacy badge
   useEffect(() => {
-    const userRole = user?.roles?.[0];
-    if (!userRole || !['pharmacist', 'admin', 'super_admin', 'inventory_manager'].includes(userRole)) {
+    if (!hasPendingPrescriptionAccess) {
       return;
     }
 
@@ -88,7 +100,7 @@ const Layout: React.FC = () => {
     fetchPendingCount();
     const interval = setInterval(fetchPendingCount, 30000);
     return () => clearInterval(interval);
-  }, [user]);
+  }, [hasPendingPrescriptionAccess]);
 
   // Auto-expand sections when navigating to their routes
   useEffect(() => {
@@ -268,7 +280,7 @@ const Layout: React.FC = () => {
   const globalSearchContext = getGlobalSearchContext();
 
   // Receptionist and Doctor get flat appointment links (no dropdown)
-  const isFlatNav = role === 'receptionist' || role === 'doctor';
+  const isFlatNav = hasRole('receptionist', 'doctor');
 
   // ── Main navigation ── visible to every authenticated user
   const mainNavItems = [
@@ -277,17 +289,17 @@ const Layout: React.FC = () => {
   if (canAccessPatients) {
     mainNavItems.push({ to: '/patients', label: 'Patient Directory', icon: 'group' });
   }
-  if (role === 'super_admin' || role === 'admin' || role === 'receptionist') {
+  if (hasRole('super_admin', 'admin', 'receptionist')) {
     mainNavItems.push({ to: '/register', label: 'Register Patient', icon: 'person_add' });
   }
-  if (role === 'super_admin' || role === 'admin') {
+  if (hasRole('super_admin', 'admin')) {
     mainNavItems.push({ to: '/staff', label: 'Staff Directory', icon: 'badge' });
   }
 
   // ── Appointment navigation ── fully role-driven
   const appointmentItems: { to: string; label: string; icon: string }[] = [];
 
-  if (role === 'super_admin' || role === 'admin') {
+  if (hasRole('super_admin', 'admin')) {
     appointmentItems.push(
       { to: '/appointments/walk-in', label: 'Walk-in Registration', icon: 'directions_walk' },
       { to: '/appointments/queue', label: 'Walk-in Queue', icon: 'queue' },
@@ -297,18 +309,18 @@ const Layout: React.FC = () => {
       { to: '/appointments/reports', label: 'Reports', icon: 'analytics' },
       { to: '/appointments/settings', label: 'Settings', icon: 'tune' },
     );
-  } else if (role === 'doctor') {
+  } else if (hasRole('doctor')) {
     appointmentItems.push(
       { to: '/appointments/queue', label: 'Today Patients', icon: 'queue' },
       { to: '/appointments/doctor-schedule', label: 'Manage My Schedule', icon: 'edit_calendar' },
       { to: '/appointments/waitlist', label: 'Waitlist', icon: 'playlist_add' },
     );
-  } else if (role === 'nurse') {
+  } else if (hasRole('nurse')) {
     appointmentItems.push(
       { to: '/appointments/queue', label: 'Walk-in Queue', icon: 'queue' },
       { to: '/appointments/manage', label: 'Appointments', icon: 'event_note' },
     );
-  } else if (isFlatNav && role === 'receptionist') {
+  } else if (isFlatNav && hasRole('receptionist')) {
     appointmentItems.push(
       { to: '/appointments/walk-in', label: 'Walk-in Registration', icon: 'directions_walk' },
       { to: '/appointments/queue', label: 'Walk-in Queue', icon: 'queue' },
@@ -316,7 +328,7 @@ const Layout: React.FC = () => {
       { to: '/appointments/waitlist', label: 'Waitlist', icon: 'playlist_add' },
       { to: '/appointments/reports', label: 'Reports', icon: 'analytics' },
     );
-  } else if (role === 'report_viewer') {
+  } else if (hasRole('report_viewer')) {
     appointmentItems.push(
       { to: '/appointments/reports', label: 'Appointment Reports', icon: 'analytics' },
     );
@@ -325,17 +337,17 @@ const Layout: React.FC = () => {
   // ── Prescription navigation ── FLAT (no dropdown)
   const prescriptionItems: { to: string; label: string; icon: string }[] = [];
 
-  if (role === 'super_admin' || role === 'admin') {
+  if (hasRole('super_admin', 'admin')) {
     prescriptionItems.push(
       { to: '/prescriptions', label: 'All Prescriptions', icon: 'list_alt' },
       { to: '/prescriptions/new', label: 'New Prescription', icon: 'note_add' },
     );
-  } else if (role === 'doctor') {
+  } else if (hasRole('doctor')) {
     prescriptionItems.push(
       { to: '/prescriptions', label: 'My Prescriptions', icon: 'list_alt' },
       { to: '/prescriptions/new', label: 'New Prescription', icon: 'note_add' },
     );
-  } else if (role === 'nurse' || role === 'pharmacist') {
+  } else if (hasRole('nurse', 'pharmacist')) {
     prescriptionItems.push(
       { to: '/prescriptions', label: 'Prescriptions', icon: 'prescriptions' },
     );
@@ -344,8 +356,8 @@ const Layout: React.FC = () => {
   // ── Pharmacy navigation ── FLAT (no dropdown), simplified for pharmacists
   const pharmacyItems: { to: string; label: string; icon: string; badge?: number }[] = [];
 
-  if (role === 'super_admin' || role === 'admin' || role === 'pharmacist' || role === 'inventory_manager') {
-    if (role === 'pharmacist') {
+  if (hasRole('super_admin', 'admin', 'pharmacist', 'inventory_manager')) {
+    if (hasRole('pharmacist') && !hasRole('super_admin', 'admin', 'inventory_manager')) {
       // Simplified pharmacy menu for pharmacists - essential items only
       pharmacyItems.push(
         { to: '/pharmacy/medicines', label: 'Medicines', icon: 'medication' },
@@ -355,9 +367,7 @@ const Layout: React.FC = () => {
           icon: 'queue',
           badge: pendingPrescriptionCount > 0 ? pendingPrescriptionCount : undefined,
         },
-        { to: '/pharmacy/sales', label: 'Sales', icon: 'point_of_sale' },
-        { to: '/pharmacy/purchase-orders', label: 'Purchase Orders', icon: 'local_shipping' },
-        { to: '/pharmacy/suppliers', label: 'Suppliers', icon: 'local_shipping' },
+        { to: '/pharmacy/sales', label: 'Sales', icon: 'point_of_sale' }
       );
     } else {
       // Full pharmacy menu for admin/super_admin/inventory_manager
@@ -377,7 +387,7 @@ const Layout: React.FC = () => {
       );
     }
   }
-  if (role === 'cashier') {
+  if (hasRole('cashier')) {
     pharmacyItems.push(
       { to: '/pharmacy/sales', label: 'Sales', icon: 'point_of_sale' },
     );
@@ -386,9 +396,10 @@ const Layout: React.FC = () => {
   // ── Inventory navigation ── role-driven
   const inventoryItems: { to: string; label: string; icon: string }[] = [];
 
-  if (role === 'super_admin' || role === 'admin' || role === 'inventory_manager') {
+  if (hasRole('super_admin', 'admin', 'inventory_manager')) {
     inventoryItems.push(
       { to: '/inventory', label: 'Dashboard', icon: 'space_dashboard' },
+      { to: '/inventory/low-stock', label: 'Low Stock', icon: 'warning' },
       { to: '/inventory/suppliers', label: 'Suppliers', icon: 'local_shipping' },
       { to: '/inventory/purchase-orders', label: 'Purchase Orders', icon: 'receipt_long' },
       { to: '/inventory/grns', label: 'Goods Receipt', icon: 'inventory' },
@@ -396,9 +407,10 @@ const Layout: React.FC = () => {
       { to: '/inventory/adjustments', label: 'Adjustments', icon: 'tune' },
       { to: '/inventory/cycle-counts', label: 'Cycle Counts', icon: 'inventory_2' },
     );
-  } else if (role === 'pharmacist') {
+  } else if (hasRole('pharmacist')) {
     inventoryItems.push(
       { to: '/inventory', label: 'Dashboard', icon: 'space_dashboard' },
+      { to: '/inventory/low-stock', label: 'Low Stock', icon: 'warning' },
       { to: '/inventory/grns', label: 'Goods Receipt', icon: 'inventory' },
       { to: '/inventory/stock-movements', label: 'Stock Movements', icon: 'swap_vert' },
     );
@@ -406,12 +418,12 @@ const Layout: React.FC = () => {
 
   // ── System navigation ── admin / super_admin only
   const systemNavItems: { to: string; label: string; icon: string }[] = [];
-  if (role === 'super_admin') {
+  if (hasRole('super_admin')) {
     systemNavItems.push(
       { to: '/hospital-setup', label: 'Hospital Setup', icon: 'local_hospital' },
       { to: '/user-management', label: 'User Management', icon: 'admin_panel_settings' },
     );
-  } else if (role === 'admin') {
+  } else if (hasRole('admin')) {
     systemNavItems.push(
       { to: '/user-management', label: 'User Management', icon: 'admin_panel_settings' },
     );

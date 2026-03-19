@@ -5,7 +5,7 @@ stock movements, adjustments, and cycle counts.
 import logging
 import math
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 from sqlalchemy import func, or_
@@ -19,6 +19,7 @@ from ..models.inventory import (
 from ..models.prescription import Medicine
 from ..models.optical import OpticalProduct
 from ..models.notification import Notification
+from ..models.pharmacy import MedicineBatch
 from ..models.user import User, Role, UserRole
 from ..schemas.inventory import (
     SupplierCreate, SupplierUpdate,
@@ -136,6 +137,93 @@ def _generate_number(db: Session, prefix: str, model_class, number_field: str) -
     else:
         seq = 1
     return f"{prefix}-{today}-{seq:04d}"
+
+
+def _get_medicine_batch_stock(db: Session, medicine_id: uuid.UUID) -> int:
+    """Single source of truth for medicine stock: sum of active batch quantities."""
+    total = db.query(func.coalesce(func.sum(MedicineBatch.quantity), 0)).filter(
+        MedicineBatch.medicine_id == medicine_id,
+        MedicineBatch.is_active == True,
+    ).scalar() or 0
+    return int(total)
+
+
+def _apply_medicine_batch_delta(
+    db: Session,
+    medicine_id: uuid.UUID,
+    delta: int,
+    batch_id: Optional[uuid.UUID] = None,
+) -> Optional[uuid.UUID]:
+    """Apply stock delta to medicine batches and return affected batch id when deterministic."""
+    if delta == 0:
+        return batch_id
+
+    # Adjust against an explicit batch when provided.
+    if batch_id:
+        batch = db.query(MedicineBatch).filter(
+            MedicineBatch.id == batch_id,
+            MedicineBatch.medicine_id == medicine_id,
+            MedicineBatch.is_active == True,
+        ).first()
+        if not batch:
+            raise ValueError("Specified batch not found for medicine")
+
+        new_qty = (batch.quantity or 0) + delta
+        if new_qty < 0:
+            raise ValueError("Adjustment would result in negative batch stock")
+
+        if delta > 0:
+            batch.initial_quantity = (batch.initial_quantity or 0) + delta
+        batch.quantity = new_qty
+        return batch.id
+
+    # No batch specified: positive deltas go to a system-managed adjustment batch.
+    if delta > 0:
+        batch_number = f"SYS-ADJ-{date.today().strftime('%Y%m%d')}"
+        batch = db.query(MedicineBatch).filter(
+            MedicineBatch.medicine_id == medicine_id,
+            MedicineBatch.batch_number == batch_number,
+        ).first()
+        if batch:
+            batch.quantity = (batch.quantity or 0) + delta
+            batch.initial_quantity = (batch.initial_quantity or 0) + delta
+            batch.is_active = True
+        else:
+            batch = MedicineBatch(
+                medicine_id=medicine_id,
+                batch_number=batch_number,
+                mfg_date=date.today(),
+                expiry_date=date.today() + timedelta(days=3650),
+                initial_quantity=delta,
+                quantity=delta,
+                purchase_price=0,
+                selling_price=0,
+                is_active=True,
+            )
+            db.add(batch)
+            db.flush()
+        return batch.id
+
+    # No batch specified: negative deltas are consumed FEFO across active batches.
+    remaining = -delta
+    batches = db.query(MedicineBatch).filter(
+        MedicineBatch.medicine_id == medicine_id,
+        MedicineBatch.is_active == True,
+        MedicineBatch.quantity > 0,
+    ).order_by(MedicineBatch.expiry_date.asc(), MedicineBatch.created_at.asc()).all()
+
+    available = sum(int(b.quantity or 0) for b in batches)
+    if available < remaining:
+        raise ValueError("Insufficient stock across batches for adjustment")
+
+    for b in batches:
+        if remaining <= 0:
+            break
+        take = min(int(b.quantity or 0), remaining)
+        b.quantity = int(b.quantity or 0) - take
+        remaining -= take
+
+    return None
 
 
 def _paginate(total: int, page: int, limit: int) -> dict:
@@ -770,7 +858,10 @@ def get_stock_level(
     db: Session, hospital_id: uuid.UUID,
     item_type: str, item_id: uuid.UUID,
 ) -> int:
-    """Get current stock balance for an item."""
+    """Get current stock balance. Medicines use batch totals as source of truth."""
+    if item_type == "medicine":
+        return _get_medicine_batch_stock(db, item_id)
+
     last = (
         db.query(StockMovement.balance_after)
         .filter(
@@ -785,23 +876,42 @@ def get_stock_level(
 
 
 def get_low_stock_items(db: Session, hospital_id: uuid.UUID, limit: int = 20) -> list:
-    """Return medicines below their reorder level."""
+    """Return medicines below reorder level using batch totals (same source as medicine inventory)."""
     medicines = (
-        db.query(Medicine)
+        db.query(Medicine.id, Medicine.name, Medicine.reorder_level, Medicine.purchase_price)
         .filter(Medicine.hospital_id == hospital_id, Medicine.is_active == True)
         .all()
     )
+
+    med_ids = [m.id for m in medicines]
+    stock_map: dict[uuid.UUID, int] = {}
+    if med_ids:
+        rows = (
+            db.query(MedicineBatch.medicine_id, func.coalesce(func.sum(MedicineBatch.quantity), 0))
+            .filter(
+                MedicineBatch.medicine_id.in_(med_ids),
+                MedicineBatch.is_active == True,
+            )
+            .group_by(MedicineBatch.medicine_id)
+            .all()
+        )
+        stock_map = {row[0]: int(row[1]) for row in rows}
+
     low_stock = []
     for med in medicines:
-        current = get_stock_level(db, hospital_id, "medicine", med.id)
-        if current <= (med.reorder_level or 10):
+        current = stock_map.get(med.id, 0)
+        reorder = med.reorder_level or 10
+        if current <= reorder:
             low_stock.append({
                 "item_id": str(med.id),
                 "item_type": "medicine",
                 "item_name": med.name,
                 "current_stock": current,
-                "reorder_level": med.reorder_level or 10,
+                "reorder_level": reorder,
+                "purchase_price": float(med.purchase_price or 0),
             })
+
+    low_stock.sort(key=lambda x: (x["current_stock"], x["item_name"] or ""))
     return low_stock[:limit]
 
 
@@ -900,29 +1010,38 @@ def approve_stock_adjustment(
         return None
     adj.status = data.status
     adj.approved_by = approver_id
-    db.commit()
-    db.refresh(adj)
 
-    # If approved, create stock movement
+    # If approved, apply stock change and create stock movement in one flow
     if adj.status == "approved":
-        current_balance = get_stock_level(db, adj.hospital_id, adj.item_type, adj.item_id)
         qty = adj.quantity if adj.adjustment_type == "increase" else -adj.quantity
+
+        movement_batch_id = adj.batch_id
+        if adj.item_type == "medicine":
+            movement_batch_id = _apply_medicine_batch_delta(db, adj.item_id, qty, adj.batch_id)
+            balance_after = _get_medicine_batch_stock(db, adj.item_id)
+        else:
+            current_balance = get_stock_level(db, adj.hospital_id, adj.item_type, adj.item_id)
+            balance_after = current_balance + qty
+
         movement = StockMovement(
             hospital_id=adj.hospital_id,
             item_type=adj.item_type,
             item_id=adj.item_id,
-            batch_id=adj.batch_id,
+            batch_id=movement_batch_id,
             movement_type="adjustment",
             reference_type="adjustment",
             reference_id=adj.id,
             quantity=qty,
-            balance_after=current_balance + qty,
+            balance_after=balance_after,
             notes=f"Adjustment {adj.adjustment_number}: {adj.reason}",
             performed_by=approver_id,
         )
         db.add(movement)
-        db.commit()
+
         logger.info("Stock adjustment approved: %s (qty=%d)", adj.adjustment_number, qty)
+
+    db.commit()
+    db.refresh(adj)
 
     _notify_hospital_users(
         db,
@@ -1048,11 +1167,43 @@ def update_cycle_count(
     cc = db.query(CycleCount).filter(CycleCount.id == cc_id).first()
     if not cc:
         return None
+    previous_status = cc.status
     update_data = data.model_dump(exclude_unset=True)
     if "status" in update_data and update_data["status"] == "verified" and verifier_id:
         cc.verified_by = verifier_id
     for k, v in update_data.items():
         setattr(cc, k, v)
+
+    # Reconcile variances exactly once when moving to verified.
+    if previous_status != "verified" and cc.status == "verified":
+        actor_id = verifier_id or cc.verified_by or cc.counted_by
+        for it in cc.items:
+            delta = int(it.variance or 0)
+            if delta == 0:
+                continue
+
+            movement_batch_id = it.batch_id
+            if it.item_type == "medicine":
+                movement_batch_id = _apply_medicine_batch_delta(db, it.item_id, delta, it.batch_id)
+                balance_after = _get_medicine_batch_stock(db, it.item_id)
+            else:
+                current_balance = get_stock_level(db, cc.hospital_id, it.item_type, it.item_id)
+                balance_after = current_balance + delta
+
+            db.add(StockMovement(
+                hospital_id=cc.hospital_id,
+                item_type=it.item_type,
+                item_id=it.item_id,
+                batch_id=movement_batch_id,
+                movement_type="adjustment",
+                reference_type="cycle_count",
+                reference_id=cc.id,
+                quantity=delta,
+                balance_after=balance_after,
+                notes=f"Cycle count {cc.count_number} reconciliation",
+                performed_by=actor_id,
+            ))
+
     db.commit()
     db.refresh(cc)
     _notify_hospital_users(

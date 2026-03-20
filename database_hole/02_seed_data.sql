@@ -681,17 +681,17 @@ VALUES
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 24. SUPPLIERS  (sample)
 -- ─────────────────────────────────────────────────────────────────────────────
-INSERT INTO suppliers (id, hospital_id, name, code, contact_person, phone, email, payment_terms, lead_time_days, rating)
+INSERT INTO suppliers (id, hospital_id, name, code, contact_person, phone, email, payment_terms, lead_time_days, rating, product_categories)
 VALUES
     ('a1000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001',
      'PharmaCorp Distributors', 'SUP-PHARM', 'John Hayes', '+12125556001', 'orders@pharmacorp.com',
-     'Net 30', 5, 4.5),
+     'Net 30', 5, 4.5, ARRAY['medicine', 'disposable']),
     ('a1000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000001',
      'MedSupply International', 'SUP-MED',  'Alice Wang', '+12125556002', 'sales@medsupply.com',
-     'Net 15', 3, 4.2),
+     'Net 15', 3, 4.2, ARRAY['medicine', 'surgical', 'equipment']),
     ('a1000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000001',
      'OptiVision Wholesale', 'SUP-OPT',  'Mark Rivera', '+12125556003', 'wholesale@optivision.com',
-     'Net 30', 7, 4.0);
+     'Net 30', 7, 4.0, ARRAY['optical']);
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 25. INSURANCE PROVIDERS  (sample)

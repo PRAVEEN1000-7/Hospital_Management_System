@@ -6,7 +6,7 @@ Includes: Supplier, PurchaseOrder, PurchaseOrderItem, GoodsReceiptNote,
 import uuid
 from sqlalchemy import (
     Column, String, Boolean, DateTime, Date, Integer, Text,
-    ForeignKey, Numeric, UniqueConstraint,
+    ForeignKey, Numeric, UniqueConstraint, ARRAY,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -30,6 +30,7 @@ class Supplier(Base):
     payment_terms = Column(String(50))
     lead_time_days = Column(Integer)
     rating = Column(Numeric(3, 1))
+    product_categories = Column(ARRAY(String), default=list)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

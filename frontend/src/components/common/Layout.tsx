@@ -295,6 +295,10 @@ const Layout: React.FC = () => {
   if (hasRole('super_admin', 'admin')) {
     mainNavItems.push({ to: '/staff', label: 'Staff Directory', icon: 'badge' });
   }
+  // Analytics - admin only
+  if (role === 'super_admin' || role === 'admin') {
+    mainNavItems.push({ to: '/analytics', label: 'Analytics', icon: 'monitoring' });
+  }
 
   // ── Appointment navigation ── fully role-driven
   const appointmentItems: { to: string; label: string; icon: string }[] = [];
@@ -331,6 +335,10 @@ const Layout: React.FC = () => {
   } else if (hasRole('report_viewer')) {
     appointmentItems.push(
       { to: '/appointments/reports', label: 'Appointment Reports', icon: 'analytics' },
+      { to: '/appointments/walk-in', label: 'Walk-in Registration', icon: 'directions_walk' },
+      { to: '/appointments/queue', label: 'Walk-in Queue', icon: 'queue' },
+      { to: '/appointments/manage', label: 'Manage Appointments', icon: 'event_note' },
+      { to: '/appointments/waitlist', label: 'Waitlist', icon: 'playlist_add' },
     );
   }
 

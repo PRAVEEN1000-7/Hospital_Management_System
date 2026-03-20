@@ -366,6 +366,22 @@ psql -U hms_user -d hms_db -f database_hole/02_seed_data.sql
 psql -U hms_user -d hms_db -c "SELECT COUNT(*) FROM users;"
 # Expected: 10
 ```
+### Delete the entire DB ( if needed to delete DB)
+```
+psql -U postgres
+
+\c postgres
+
+SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='hms_db';
+
+DROP DATABASE IF EXISTS hms_db;
+
+REASSIGN OWNED BY hms_user TO postgres;
+
+DROP OWNED BY hms_user;
+
+DROP ROLE IF EXISTS hms_user;
+```
 
 ---
 

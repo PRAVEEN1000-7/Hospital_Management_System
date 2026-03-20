@@ -34,6 +34,7 @@ const PaymentList: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { showToast } = useToast();
+  const today = new Date().toISOString().split('T')[0];
 
   const [payments, setPayments] = useState<PaymentListItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,15 +42,15 @@ const PaymentList: React.FC = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [modeFilter, setModeFilter] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [dateFrom, setDateFrom] = useState(today);
+  const [dateTo, setDateTo] = useState(today);
   const [dateRange, setDateRange] = useState('');
 
   const applyDateRange = (range: string) => {
     setDateRange(range);
     setPage(1);
-    setDateFrom('');
-    setDateTo('');
+    setDateFrom(today);
+    setDateTo(today);
   };
 
   // Pre-filter from invoice detail
@@ -168,9 +169,9 @@ const PaymentList: React.FC = () => {
             <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setDateRange(''); setPage(1); }}
               className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
           </div>
-          {(dateFrom || dateTo || dateRange || modeFilter) && (
+          {(dateFrom !== today || dateTo !== today || dateRange || modeFilter) && (
             <button
-              onClick={() => { setDateFrom(''); setDateTo(''); setDateRange(''); setModeFilter(''); setPage(1); }}
+              onClick={() => { setDateFrom(today); setDateTo(today); setDateRange(''); setModeFilter(''); setPage(1); }}
               className="px-3 py-2 text-xs font-medium text-red-500 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded-lg"
             >
               Clear Filters

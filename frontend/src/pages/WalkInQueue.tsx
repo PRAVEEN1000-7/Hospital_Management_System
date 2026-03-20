@@ -46,6 +46,7 @@ const WalkInQueue: React.FC = () => {
   const isAdmin = roles.includes('admin') || roles.includes('super_admin');
   const canFilter = isReception || isAdmin;
   const canActOnQueue = isDoctor;  // Only doctors can perform clinical actions
+  const today = new Date().toISOString().split('T')[0];
 
   const [queueData, setQueueData] = useState<QueueStatusType | null>(null);
   const [loading, setLoading] = useState(true);
@@ -70,7 +71,7 @@ const WalkInQueue: React.FC = () => {
   const [upcomingLoading, setUpcomingLoading] = useState(false);
 
   // ── Date Picker for browsing queue by date ────────────────────
-  const [selectedDate, setSelectedDate] = useState<string>('');  // empty = today
+  const [selectedDate, setSelectedDate] = useState<string>(today);
 
   // ── Book Next Appointment Modal State ─────────────────────────
   const [bookNextItem, setBookNextItem] = useState<QueueItem | null>(null);
@@ -374,7 +375,7 @@ const WalkInQueue: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold text-slate-900">
             {isDoctor
-              ? (selectedDate && selectedDate !== new Date().toISOString().split('T')[0]
+              ? (selectedDate && selectedDate !== today
                 ? `Patients — ${new Date(selectedDate + 'T00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`
                 : 'Today Patients')
               : 'Walk-in Queue'}
@@ -396,8 +397,8 @@ const WalkInQueue: React.FC = () => {
               title="Browse queue by date"
             />
           </div>
-          {selectedDate && selectedDate !== new Date().toISOString().split('T')[0] && (
-            <button onClick={() => { setSelectedDate(''); setLoading(true); }}
+          {selectedDate && selectedDate !== today && (
+            <button onClick={() => { setSelectedDate(today); setLoading(true); }}
               className="inline-flex items-center gap-1.5 px-3 py-2 bg-primary/10 text-primary border border-primary/20 rounded-lg text-xs font-semibold hover:bg-primary/20 transition-colors">
               <span className="material-symbols-outlined text-sm">today</span> Back to Today
             </button>

@@ -13,6 +13,7 @@ from sqlalchemy import and_, func, or_
 from ..models.appointment import Appointment, AppointmentStatusLog, Doctor
 from ..models.patient import Patient
 from ..models.user import User
+from ..models.invoice import Invoice
 
 logger = logging.getLogger(__name__)
 
@@ -326,6 +327,22 @@ def enrich_appointment(db: Session, appt: Appointment) -> dict:
             d["doctor_name"] = None
     else:
         d["doctor_name"] = None
+
+    consultation_invoice = (
+        db.query(Invoice)
+        .filter(
+            Invoice.appointment_id == appt.id,
+            Invoice.is_deleted == False,
+        )
+        .order_by(Invoice.created_at.desc())
+        .first()
+    )
+    d["consultation_invoice_id"] = str(consultation_invoice.id) if consultation_invoice else None
+    d["consultation_invoice_number"] = consultation_invoice.invoice_number if consultation_invoice else None
+    d["consultation_invoice_status"] = consultation_invoice.status if consultation_invoice else None
+    balance_amount = float(consultation_invoice.balance_amount) if consultation_invoice and consultation_invoice.balance_amount is not None else None
+    d["consultation_balance_amount"] = balance_amount
+    d["consultation_fee_collected"] = bool(consultation_invoice and (balance_amount is not None) and balance_amount <= 0)
     
     return d
 
@@ -347,6 +364,22 @@ def enrich_appointments(db: Session, appointments: list[Appointment]) -> list[di
         for doc in doctor_records:
             if doc.user:
                 doctors[doc.id] = doc.user.full_name
+
+    appointment_ids = [a.id for a in appointments]
+    invoice_map = {}
+    if appointment_ids:
+        invoice_rows = (
+            db.query(Invoice)
+            .filter(
+                Invoice.appointment_id.in_(appointment_ids),
+                Invoice.is_deleted == False,
+            )
+            .order_by(Invoice.created_at.desc())
+            .all()
+        )
+        for inv in invoice_rows:
+            if inv.appointment_id and inv.appointment_id not in invoice_map:
+                invoice_map[inv.appointment_id] = inv
     
     result = []
     for a in appointments:
@@ -360,6 +393,14 @@ def enrich_appointments(db: Session, appointments: list[Appointment]) -> list[di
         p = patients.get(a.patient_id)
         d["patient_name"] = p.full_name if p else None
         d["doctor_name"] = doctors.get(a.doctor_id)
+
+        consultation_invoice = invoice_map.get(a.id)
+        d["consultation_invoice_id"] = str(consultation_invoice.id) if consultation_invoice else None
+        d["consultation_invoice_number"] = consultation_invoice.invoice_number if consultation_invoice else None
+        d["consultation_invoice_status"] = consultation_invoice.status if consultation_invoice else None
+        balance_amount = float(consultation_invoice.balance_amount) if consultation_invoice and consultation_invoice.balance_amount is not None else None
+        d["consultation_balance_amount"] = balance_amount
+        d["consultation_fee_collected"] = bool(consultation_invoice and (balance_amount is not None) and balance_amount <= 0)
         result.append(d)
     
     return result

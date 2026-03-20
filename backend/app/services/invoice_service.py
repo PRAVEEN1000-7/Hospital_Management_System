@@ -16,6 +16,7 @@ from sqlalchemy import or_, func
 
 from ..models.invoice import Invoice, InvoiceItem
 from ..models.patient import Patient
+from ..models.appointment import Appointment, Doctor
 from ..models.tax_config import TaxConfiguration
 from ..schemas.invoice import (
     InvoiceCreate, InvoiceUpdate, InvoiceResponse,
@@ -293,7 +294,6 @@ def _add_item_to_invoice(db: Session, invoice: Invoice, item_data: InvoiceItemCr
         tax_amount=Decimal(str(calcs["tax_amount"])),
         total_price=Decimal(str(calcs["total_price"])),
         display_order=item_data.display_order or 0,
-        batch_number=item_data.batch_number or None,
     )
     # Use the ORM relationship so invoice.items is updated in-memory immediately.
     # Setting invoice_id alone (FK column) does NOT propagate to the parent
@@ -330,3 +330,110 @@ def remove_invoice_item(db: Session, invoice: Invoice, item_id: str) -> None:
     # reload items
     db.refresh(invoice)
     _recalculate_invoice(db, invoice)
+
+
+def get_or_create_consultation_invoice_for_appointment(
+    db: Session,
+    *,
+    hospital_id: uuid.UUID,
+    user_id: uuid.UUID,
+    appointment_id: str | uuid.UUID,
+    patient_id: str | uuid.UUID,
+) -> Optional[Invoice]:
+    """Return an issued consultation invoice for the appointment, creating one if needed."""
+    if isinstance(appointment_id, str):
+        try:
+            appointment_id = uuid.UUID(appointment_id)
+        except ValueError:
+            return None
+
+    if isinstance(patient_id, str):
+        try:
+            patient_id = uuid.UUID(patient_id)
+        except ValueError:
+            return None
+
+    appointment = (
+        db.query(Appointment)
+        .options(joinedload(Appointment.doctor).joinedload(Doctor.user))
+        .filter(
+            Appointment.id == appointment_id,
+            Appointment.hospital_id == hospital_id,
+            Appointment.is_deleted == False,
+        )
+        .first()
+    )
+    if not appointment:
+        return None
+
+    consultation_fee = Decimal(appointment.consultation_fee or Decimal("0"))
+    if consultation_fee <= Decimal("0") and appointment.doctor:
+        consultation_fee = Decimal(appointment.doctor.consultation_fee or Decimal("0"))
+    if consultation_fee <= Decimal("0"):
+        return None
+
+    existing_invoice = (
+        db.query(Invoice)
+        .options(joinedload(Invoice.items))
+        .filter(
+            Invoice.hospital_id == hospital_id,
+            Invoice.appointment_id == appointment.id,
+            Invoice.patient_id == patient_id,
+            Invoice.is_deleted == False,
+        )
+        .order_by(Invoice.created_at.desc())
+        .first()
+    )
+
+    doctor_name = appointment.doctor.user.full_name if appointment.doctor and appointment.doctor.user else "Doctor"
+    consultation_desc = f"Consultation Fee - Dr. {doctor_name}"
+
+    if existing_invoice:
+        has_consultation_line = any(item.item_type == "consultation" for item in (existing_invoice.items or []))
+        if existing_invoice.status == "draft" and not has_consultation_line:
+            add_invoice_item(
+                db,
+                existing_invoice,
+                InvoiceItemCreate(
+                    item_type="consultation",
+                    reference_id=str(appointment.id),
+                    description=consultation_desc,
+                    quantity=Decimal("1"),
+                    unit_price=consultation_fee,
+                    discount_percent=Decimal("0"),
+                    tax_rate=Decimal("0"),
+                    display_order=len(existing_invoice.items or []),
+                ),
+            )
+
+        if existing_invoice.status == "draft" and (existing_invoice.items or []):
+            issue_invoice(db, existing_invoice)
+        db.refresh(existing_invoice)
+        return existing_invoice
+
+    created_invoice = create_invoice(
+        db,
+        InvoiceCreate(
+            patient_id=str(patient_id),
+            appointment_id=str(appointment.id),
+            invoice_type="opd",
+            invoice_date=date.today(),
+            items=[
+                InvoiceItemCreate(
+                    item_type="consultation",
+                    reference_id=str(appointment.id),
+                    description=consultation_desc,
+                    quantity=Decimal("1"),
+                    unit_price=consultation_fee,
+                    discount_percent=Decimal("0"),
+                    tax_rate=Decimal("0"),
+                    display_order=0,
+                )
+            ],
+        ),
+        user_id,
+        hospital_id,
+    )
+    issue_invoice(db, created_invoice)
+    db.refresh(created_invoice)
+    return created_invoice

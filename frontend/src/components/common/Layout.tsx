@@ -347,17 +347,17 @@ const Layout: React.FC = () => {
 
   if (hasRole('super_admin', 'admin')) {
     prescriptionItems.push(
-      { to: '/prescriptions', label: 'All Prescriptions', icon: 'list_alt' },
+      { to: '/prescriptions', label: 'All Prescription', icon: 'list_alt' },
       { to: '/prescriptions/new', label: 'New Prescription', icon: 'note_add' },
     );
   } else if (hasRole('doctor')) {
     prescriptionItems.push(
-      { to: '/prescriptions', label: 'My Prescriptions', icon: 'list_alt' },
+      { to: '/prescriptions', label: 'All Prescription', icon: 'list_alt' },
       { to: '/prescriptions/new', label: 'New Prescription', icon: 'note_add' },
     );
   } else if (hasRole('nurse', 'pharmacist')) {
     prescriptionItems.push(
-      { to: '/prescriptions', label: 'Prescriptions', icon: 'prescriptions' },
+      { to: '/prescriptions', label: 'All Prescription', icon: 'prescriptions' },
     );
   }
 

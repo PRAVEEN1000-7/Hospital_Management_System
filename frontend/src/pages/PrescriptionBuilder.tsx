@@ -91,8 +91,10 @@ const PrescriptionBuilder: React.FC = () => {
   // Medicine search — scoped to a specific block + item
   const [medicineSearch, setMedicineSearch] = useState('');
   const [medicineResults, setMedicineResults] = useState<Medicine[]>([]);
+  const [medicineStockById, setMedicineStockById] = useState<Record<string, number>>({});
   const [activeMedBlockIdx, setActiveMedBlockIdx] = useState<number | null>(null);
   const [activeMedItemIdx, setActiveMedItemIdx] = useState<number | null>(null);
+  const [activeMedResultIdx, setActiveMedResultIdx] = useState<number>(-1);
 
   // Templates
   const [templates, setTemplates] = useState<PrescriptionTemplate[]>([]);
@@ -216,6 +218,18 @@ const PrescriptionBuilder: React.FC = () => {
     return () => clearTimeout(timer);
   }, [medicineSearch, searchMedicines]);
 
+  useEffect(() => {
+    if (medicineResults.length === 0) {
+      setActiveMedResultIdx(-1);
+      return;
+    }
+    setActiveMedResultIdx((idx) => {
+      if (idx < 0) return 0;
+      if (idx >= medicineResults.length) return medicineResults.length - 1;
+      return idx;
+    });
+  }, [medicineResults]);
+
   const selectPatient = (p: Patient) => {
     setPatient(p);
     setPatientId(p.id);
@@ -241,10 +255,12 @@ const PrescriptionBuilder: React.FC = () => {
     };
     newBlocks[blockIdx] = { ...newBlocks[blockIdx], items: updatedItems };
     setBlocks(newBlocks);
+    setMedicineStockById((prev) => ({ ...prev, [med.id]: med.total_stock ?? 0 }));
     setMedicineSearch('');
     setMedicineResults([]);
     setActiveMedBlockIdx(null);
     setActiveMedItemIdx(null);
+    setActiveMedResultIdx(-1);
   };
 
   const updateItem = (blockIdx: number, itemIdx: number, field: keyof PrescriptionItemCreate, value: unknown) => {
@@ -284,6 +300,42 @@ const PrescriptionBuilder: React.FC = () => {
     setMedicineSearch(value);
     setActiveMedBlockIdx(blockIdx);
     setActiveMedItemIdx(itemIdx);
+    setActiveMedResultIdx(0);
+  };
+
+  const handleMedicineInputKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement>,
+    blockIdx: number,
+    itemIdx: number,
+  ) => {
+    const isActiveInput = activeMedBlockIdx === blockIdx && activeMedItemIdx === itemIdx;
+    if (!isActiveInput || medicineResults.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveMedResultIdx((idx) => Math.min(idx + 1, medicineResults.length - 1));
+      return;
+    }
+
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveMedResultIdx((idx) => Math.max(idx - 1, 0));
+      return;
+    }
+
+    if (e.key === 'Enter') {
+      if (activeMedResultIdx >= 0 && activeMedResultIdx < medicineResults.length) {
+        e.preventDefault();
+        selectMedicine(medicineResults[activeMedResultIdx], blockIdx, itemIdx);
+      }
+      return;
+    }
+
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      setMedicineResults([]);
+      setActiveMedResultIdx(-1);
+    }
   };
 
   const addBlock = () => {
@@ -321,7 +373,10 @@ const PrescriptionBuilder: React.FC = () => {
     showToast('success', `Template "${tmpl.name}" applied`);
   };
 
-  const handleSave = async (finalize: boolean = false, completeQueue: boolean = false) => {
+  const handleSave = async (
+    finalize: boolean = false,
+    completeQueue: boolean = false,
+  ) => {
     if (!patient) { showToast('error', 'Please select a patient'); return; }
 
     // Flatten blocks into single diagnosis string & ordered items for the API
@@ -719,9 +774,13 @@ const PrescriptionBuilder: React.FC = () => {
 
                     {/* Medicine Rows */}
                     {block.items.map((item, itemIdx) => (
+                      (() => {
+                        const selectedStock = item.medicine_id ? medicineStockById[item.medicine_id] : undefined;
+                        const isSelectedOutOfStock = typeof selectedStock === 'number' && selectedStock <= 0;
+                        return (
                       <div
                         key={itemIdx}
-                        className={`grid grid-cols-[40px_1fr_80px_100px_120px_80px_1fr_40px] gap-1 items-center px-3 py-1.5 border-b border-slate-100 last:border-0 hover:bg-blue-50/30 transition-colors ${item.medicine_name.trim() ? 'bg-white' : 'bg-slate-50/50'}`}
+                        className={`grid grid-cols-[40px_1fr_80px_100px_120px_80px_1fr_40px] gap-1 items-center px-3 py-1.5 border-b border-slate-100 last:border-0 hover:bg-blue-50/30 transition-colors ${item.medicine_name.trim() ? 'bg-white' : 'bg-slate-50/50'} ${isSelectedOutOfStock ? 'bg-red-50/60' : ''}`}
                       >
                         {/* Row number */}
                         <div className="text-xs text-slate-400 font-medium">{itemIdx + 1}</div>
@@ -734,26 +793,47 @@ const PrescriptionBuilder: React.FC = () => {
                             onChange={e => handleMedicineNameChange(blockIdx, itemIdx, e.target.value)}
                             onFocus={() => { setActiveMedBlockIdx(blockIdx); setActiveMedItemIdx(itemIdx); }}
                             onBlur={() => setTimeout(() => { setActiveMedBlockIdx(null); setActiveMedItemIdx(null); }, 200)}
+                            onKeyDown={(e) => handleMedicineInputKeyDown(e, blockIdx, itemIdx)}
                             className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
                             placeholder="Type medicine name..."
                           />
                           {item.generic_name && (
                             <p className="text-[9px] text-slate-400 mt-0.5 truncate">{item.generic_name}</p>
                           )}
+                          {isSelectedOutOfStock && (
+                            <p className="text-[10px] text-red-600 mt-0.5 font-semibold">Out of stock now - doctor can still finalize</p>
+                          )}
                           {activeMedBlockIdx === blockIdx && activeMedItemIdx === itemIdx && medicineResults.length > 0 && (
                             <div className="absolute z-50 left-0 top-full mt-1 w-72 bg-white border border-slate-200 rounded-lg shadow-xl max-h-48 overflow-y-auto">
-                              {medicineResults.map(med => (
+                              {medicineResults.map(med => {
+                                const isOutOfStock = (med.total_stock ?? 0) <= 0;
+                                return (
                                 <button
                                   key={med.id}
                                   onMouseDown={e => e.preventDefault()}
                                   onClick={() => selectMedicine(med, blockIdx, itemIdx)}
-                                  className="w-full text-left px-3 py-2 hover:bg-slate-50 text-xs border-b border-slate-100 last:border-0"
+                                  onMouseEnter={() => {
+                                    const idx = medicineResults.findIndex((m) => m.id === med.id);
+                                    if (idx >= 0) setActiveMedResultIdx(idx);
+                                  }}
+                                  className={`w-full text-left px-3 py-2 text-xs border-b border-slate-100 last:border-0 ${
+                                    medicineResults[activeMedResultIdx]?.id === med.id
+                                      ? 'bg-primary/10'
+                                      : isOutOfStock
+                                      ? 'bg-red-50 hover:bg-red-100'
+                                      : 'hover:bg-slate-50'
+                                  }`}
                                 >
-                                  <span className="font-medium">{med.name}</span>
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="font-medium">{med.name}</span>
+                                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${isOutOfStock ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                                      {isOutOfStock ? 'Out of stock' : `Stock: ${med.total_stock ?? 0}`}
+                                    </span>
+                                  </div>
                                   {med.strength && <span className="text-slate-500"> {med.strength}</span>}
                                   <span className="text-[10px] text-slate-400 block">{med.generic_name}</span>
                                 </button>
-                              ))}
+                              );})}
                             </div>
                           )}
                         </div>
@@ -839,6 +919,8 @@ const PrescriptionBuilder: React.FC = () => {
                           </button>
                         </div>
                       </div>
+                        );
+                      })()
                     ))}
 
                     {/* Quick Add Row */}

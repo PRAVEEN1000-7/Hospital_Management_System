@@ -1,16 +1,19 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useToast } from '../contexts/ToastContext';
 import invoiceService from '../services/invoiceService';
+import pharmacyService from '../services/pharmacyService';
 import paymentService from '../services/paymentService';
 import taxService from '../services/taxService';
 import { patientService } from '../services/patientService';
 import hospitalService from '../services/hospitalService';
 import type { HospitalDetails } from '../services/hospitalService';
 import type { Patient } from '../types/patient';
+import type { Medicine } from '../types/pharmacy';
 import type { TaxConfig, InvoiceType, InvoiceItemCreateData, InvoiceItemType, PaymentMode } from '../types/billing';
 
 interface MedicineLookupResult {
+  id: string;
   name: string;
   selling_price: number;
   tax_config_id?: string;
@@ -21,12 +24,15 @@ interface MedicineLookupResult {
     quantity_available: number;
     expiry_date: string;
     selling_price: number;
+    days_to_expiry?: number;
+    is_expiring_soon?: boolean;
   }>;
 }
 
 interface LineItem {
   key: string;
   item_type: InvoiceItemType;
+  reference_id: string;
   description: string;
   quantity: number;
   unit_price: number;
@@ -59,6 +65,7 @@ const PAYMENT_MODES: { value: PaymentMode; label: string }[] = [
 const emptyLine = (type: InvoiceItemType = 'service'): LineItem => ({
   key: crypto.randomUUID(),
   item_type: type,
+  reference_id: '',
   description: '',
   quantity: 1,
   unit_price: 0,
@@ -121,6 +128,9 @@ const InvoiceCreate: React.FC = () => {
   // UI
   const [saving, setSaving] = useState(false);
   const [medicineLoadingIdx, setMedicineLoadingIdx] = useState<number | null>(null);
+  const [medicineSuggestions, setMedicineSuggestions] = useState<Record<string, Medicine[]>>({});
+  const [medicineSuggestOpen, setMedicineSuggestOpen] = useState<Record<string, boolean>>({});
+  const medicineSearchTimers = useRef<Record<string, number>>({});
 
   // Hospital info (display only)
   const [hospital, setHospital] = useState<HospitalDetails | null>(null);
@@ -192,23 +202,51 @@ const InvoiceCreate: React.FC = () => {
     return ITEM_TYPES.filter(t => allowedValues.includes(t.value));
   };
 
+  const isUuid = (value: string): boolean => {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.trim());
+  };
+
+  const resolveMedicineId = async (input: string): Promise<string | null> => {
+    const term = input.trim();
+    if (!term) return null;
+    if (isUuid(term)) return term;
+
+    const res = await pharmacyService.getMedicines(1, 20, term, '', true);
+    const q = term.toLowerCase();
+    const startsWith = res.data.find((m) => (m.name || '').toLowerCase().startsWith(q));
+    if (startsWith) return startsWith.id;
+
+    const genericStartsWith = res.data.find((m) => (m.generic_name || '').toLowerCase().startsWith(q));
+    if (genericStartsWith) return genericStartsWith.id;
+
+    return res.data[0]?.id || null;
+  };
+
   // Lookup medicine from inventory and auto-populate line item
-  const handleMedicineLookup = async (idx: number, medicineId: string) => {
-    if (!medicineId.trim()) {
+  const handleMedicineLookup = async (idx: number, medicineInput: string) => {
+    if (!medicineInput.trim()) {
       showToast('error', 'Please enter or select a medicine ID/name');
       return;
     }
     setMedicineLoadingIdx(idx);
     try {
-      const medicineData = await invoiceService.getMedicineDetails(medicineId);
+      const resolvedMedicineId = await resolveMedicineId(medicineInput);
+      if (!resolvedMedicineId) {
+        showToast('error', 'No matching medicine found in inventory');
+        return;
+      }
+
+      const medicineData = await invoiceService.getMedicineDetails(resolvedMedicineId);
       
       // STEP 2: Auto-populate line item with medicine details + batch info
       updateLine(idx, {
+        reference_id: medicineData.id,
         description: medicineData.name,
         unit_price: medicineData.selling_price,
         tax_config_id: medicineData.tax_config ? medicineData.tax_config.id : '',
         batch_number: medicineData.available_batches[0]?.batch_number || '',  // Pre-select first batch (FEFO)
         medicineLookup: {
+          id: medicineData.id,
           name: medicineData.name,
           selling_price: medicineData.selling_price,
           tax_config_id: medicineData.tax_config?.id,
@@ -222,12 +260,70 @@ const InvoiceCreate: React.FC = () => {
         ? `Stock: ${medicineData.total_stock_available} units (${medicineData.batch_count} batch${medicineData.batch_count === 1 ? '' : 'es'})`
         : 'No stock available';
       showToast('success', `${medicineData.name} loaded. ${stockMsg}`);
+
+      if (medicineData.batch_count === 0) {
+        showToast('warning', 'No active batches available for selected medicine');
+      }
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       showToast('error', msg || 'Failed to lookup medicine');
     } finally {
       setMedicineLoadingIdx(null);
     }
+  };
+
+  const handleMedicineDescriptionChange = (idx: number, value: string, lineKey: string) => {
+    updateLine(idx, {
+      description: value,
+      reference_id: '',
+      batch_number: '',
+      medicineLookup: undefined,
+    });
+
+    const term = value.trim();
+    if (term.length < 2) {
+      setMedicineSuggestions(prev => ({ ...prev, [lineKey]: [] }));
+      setMedicineSuggestOpen(prev => ({ ...prev, [lineKey]: false }));
+      return;
+    }
+
+    const existingTimer = medicineSearchTimers.current[lineKey];
+    if (existingTimer) {
+      window.clearTimeout(existingTimer);
+    }
+
+    medicineSearchTimers.current[lineKey] = window.setTimeout(async () => {
+      try {
+        const res = await pharmacyService.getMedicines(1, 20, term, '', true);
+        const q = term.toLowerCase();
+        const startsWithMatches = res.data.filter((m) => {
+          const name = (m.name || '').toLowerCase();
+          const generic = (m.generic_name || '').toLowerCase();
+          const sku = (m.sku || '').toLowerCase();
+          return name.startsWith(q) || generic.startsWith(q) || sku.startsWith(q);
+        });
+
+        setMedicineSuggestions(prev => ({ ...prev, [lineKey]: startsWithMatches }));
+        setMedicineSuggestOpen(prev => ({ ...prev, [lineKey]: startsWithMatches.length > 0 }));
+      } catch {
+        setMedicineSuggestions(prev => ({ ...prev, [lineKey]: [] }));
+        setMedicineSuggestOpen(prev => ({ ...prev, [lineKey]: false }));
+      }
+    }, 250);
+  };
+
+  const handleSelectMedicineSuggestion = async (idx: number, lineKey: string, med: Medicine) => {
+    setMedicineSuggestOpen(prev => ({ ...prev, [lineKey]: false }));
+    setMedicineSuggestions(prev => ({ ...prev, [lineKey]: [] }));
+
+    updateLine(idx, {
+      description: med.name,
+      reference_id: med.id,
+      batch_number: '',
+      medicineLookup: undefined,
+    });
+
+    await handleMedicineLookup(idx, med.id);
   };
 
   // When invoice type changes, validate/fix line items
@@ -237,7 +333,13 @@ const InvoiceCreate: React.FC = () => {
     // Reset any line items with invalid types to the first allowed type
     setLines(prev => prev.map(line => {
       if (!allowedValues.includes(line.item_type)) {
-        return { ...line, item_type: (allowedValues[0] || 'service') as InvoiceItemType };
+        return {
+          ...line,
+          item_type: (allowedValues[0] || 'service') as InvoiceItemType,
+          reference_id: '',
+          batch_number: '',
+          medicineLookup: undefined,
+        };
       }
       return line;
     }));
@@ -246,6 +348,12 @@ const InvoiceCreate: React.FC = () => {
   const validateMedicineQuantity = (line: LineItem): string | null => {
     if (line.item_type !== 'medicine') {
       return null;
+    }
+    if (!line.reference_id) {
+      return 'Please lookup and select a valid medicine';
+    }
+    if (!line.batch_number) {
+      return 'Please select a medicine batch';
     }
     if (!line.medicineLookup) {
       return null;
@@ -273,6 +381,17 @@ const InvoiceCreate: React.FC = () => {
       const updated = [...prev];
       const merged = { ...updated[idx], ...patch };
       const computed = computeLine(merged, taxes);
+
+      if (patch.batch_number !== undefined && computed.item_type === 'medicine' && computed.medicineLookup) {
+        const selectedBatch = computed.medicineLookup.available_batches.find(
+          b => b.batch_number === computed.batch_number,
+        );
+        if (selectedBatch?.is_expiring_soon) {
+          const days = selectedBatch.days_to_expiry;
+          const suffix = typeof days === 'number' ? ` (${days} days left)` : '';
+          showToast('warning', `Selected batch is expiring soon${suffix}`);
+        }
+      }
 
       if (patch.quantity !== undefined) {
         const error = validateMedicineQuantity(computed);
@@ -309,6 +428,7 @@ const InvoiceCreate: React.FC = () => {
     notes: notes || undefined,
     items: lines.map((l, i): InvoiceItemCreateData => ({
       item_type: l.item_type,
+      reference_id: l.reference_id || undefined,
       description: l.description,
       quantity: l.quantity,
       unit_price: l.unit_price,
@@ -322,6 +442,14 @@ const InvoiceCreate: React.FC = () => {
   const handleSaveDraft = async () => {
     if (!selectedPatient) { showToast('error', 'Please select a patient'); return; }
     if (lines.some(l => !l.description.trim())) { showToast('error', 'All line items must have a description'); return; }
+    if (lines.some(l => l.item_type === 'medicine' && !l.reference_id)) {
+      showToast('error', 'All medicine lines must be selected via Lookup');
+      return;
+    }
+    if (lines.some(l => l.item_type === 'medicine' && !l.batch_number)) {
+      showToast('error', 'All medicine lines must have a selected batch');
+      return;
+    }
     setSaving(true);
     try {
       const inv = await invoiceService.create(buildPayload());
@@ -338,6 +466,8 @@ const InvoiceCreate: React.FC = () => {
   const handleIssue = async () => {
     if (!selectedPatient) { showToast('error', 'Please select a patient'); return; }
     if (lines.some(l => !l.description.trim())) { showToast('error', 'All line items must have a description'); return; }
+    if (lines.some(l => l.item_type === 'medicine' && !l.reference_id)) { showToast('error', 'All medicine lines must be selected via Lookup'); return; }
+    if (lines.some(l => l.item_type === 'medicine' && !l.batch_number)) { showToast('error', 'All medicine lines must have a selected batch'); return; }
     const netTotal = Math.max(0, grandTotal);
     if (payNow && netTotal <= 0) { showToast('error', 'Invoice total must be greater than zero to collect payment'); return; }
     if (payNow && payMode === 'cash' && cashReceived <= 0) { showToast('error', 'Please enter the cash amount received from the patient'); return; }
@@ -537,19 +667,53 @@ const InvoiceCreate: React.FC = () => {
                   {/* Description (col 1–4) */}
                   <div className="col-span-12 sm:col-span-4">
                     <label className="block text-[10px] font-medium text-slate-500 mb-1">Description *</label>
-                    <div className="flex gap-1 items-end">
+                    <div className="flex gap-1 items-end relative">
                       <input
                         type="text"
                         placeholder={line.item_type === 'medicine' ? 'Medicine name or ID' : 'Item description'}
                         value={line.description}
-                        onChange={e => updateLine(idx, { description: e.target.value })}
+                        onChange={e => {
+                          if (line.item_type === 'medicine') {
+                            handleMedicineDescriptionChange(idx, e.target.value, line.key);
+                          } else {
+                            updateLine(idx, { description: e.target.value });
+                          }
+                        }}
+                        onFocus={() => {
+                          if (line.item_type === 'medicine' && (medicineSuggestions[line.key]?.length || 0) > 0) {
+                            setMedicineSuggestOpen(prev => ({ ...prev, [line.key]: true }));
+                          }
+                        }}
+                        onBlur={() => {
+                          if (line.item_type === 'medicine') {
+                            window.setTimeout(() => {
+                              setMedicineSuggestOpen(prev => ({ ...prev, [line.key]: false }));
+                            }, 150);
+                          }
+                        }}
                         className="flex-1 px-2 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-primary/30 bg-white"
                       />
+                      {line.item_type === 'medicine' && medicineSuggestOpen[line.key] && (medicineSuggestions[line.key]?.length || 0) > 0 && (
+                        <div className="absolute z-20 left-0 right-16 top-full mt-1 bg-white border border-slate-200 rounded shadow-lg max-h-44 overflow-y-auto">
+                          {(medicineSuggestions[line.key] || []).map((m) => (
+                            <button
+                              key={m.id}
+                              type="button"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => handleSelectMedicineSuggestion(idx, line.key, m)}
+                              className="w-full text-left px-2 py-1.5 hover:bg-slate-50 text-xs"
+                            >
+                              <span className="font-medium text-slate-900">{m.name}</span>
+                              <span className="ml-1 text-slate-500">({m.id.slice(0, 8)})</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       {/* Medicine lookup button */}
                       {line.item_type === 'medicine' && (
                         <button
                           type="button"
-                          onClick={() => handleMedicineLookup(idx, line.description)}
+                          onClick={() => handleMedicineLookup(idx, line.reference_id || line.description)}
                           disabled={medicineLoadingIdx === idx || !line.description.trim()}
                           className="px-2 py-1.5 bg-primary/10 hover:bg-primary/20 disabled:bg-slate-100 text-primary disabled:text-slate-400 text-xs font-medium rounded transition-colors whitespace-nowrap"
                           title="Lookup medicine from inventory"
@@ -579,10 +743,10 @@ const InvoiceCreate: React.FC = () => {
                       ) : (
                         <input
                           type="text"
-                          placeholder="Batch # (or lookup medicine)"
+                          placeholder="Lookup/select medicine to load batches"
                           value={line.batch_number}
-                          onChange={e => updateLine(idx, { batch_number: e.target.value })}
-                          className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-primary/30 bg-white"
+                          readOnly
+                          className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs bg-slate-100 text-slate-500 cursor-not-allowed"
                         />
                       )}
                     </div>
@@ -592,7 +756,15 @@ const InvoiceCreate: React.FC = () => {
                     <label className="block text-[10px] font-medium text-slate-500 mb-1">Type</label>
                     <select
                       value={line.item_type}
-                      onChange={e => updateLine(idx, { item_type: e.target.value as InvoiceItemType })}
+                      onChange={e => {
+                        const nextType = e.target.value as InvoiceItemType;
+                        updateLine(idx, {
+                          item_type: nextType,
+                          reference_id: nextType === 'medicine' ? line.reference_id : '',
+                          batch_number: nextType === 'medicine' ? line.batch_number : '',
+                          medicineLookup: nextType === 'medicine' ? line.medicineLookup : undefined,
+                        });
+                      }}
                       className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-primary/30 bg-white"
                     >
                       {getAllowedItemTypes().map(t => <option key={t.value} value={t.value}>{t.label}</option>)}

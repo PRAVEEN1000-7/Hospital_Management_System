@@ -45,7 +45,7 @@ def _find_patient_id(client: TestClient, headers: dict[str, str]) -> str:
     return data[0]["id"]
 
 
-def _find_stocked_medicine() -> tuple[str, str, int, int]:
+def _find_stocked_medicine() -> tuple[str, str, int]:
     db = SessionLocal()
     try:
         batch = (
@@ -61,22 +61,18 @@ def _find_stocked_medicine() -> tuple[str, str, int, int]:
         if not batch:
             raise RuntimeError("No active medicine batch with positive stock found")
 
-        total = (
-            db.query(MedicineBatch)
-            .filter(
-                MedicineBatch.medicine_id == batch.medicine_id,
-                MedicineBatch.is_active == True,
-                MedicineBatch.is_expired == False,
-            )
-            .all()
-        )
-        total_qty = int(sum(int(b.quantity or 0) for b in total))
-        return str(batch.medicine_id), batch.batch_number, int(batch.quantity), total_qty
+        return str(batch.medicine_id), batch.batch_number, int(batch.quantity)
     finally:
         db.close()
 
 
-def _create_invoice(client: TestClient, headers: dict[str, str], patient_id: str) -> str:
+def _create_invoice(
+    client: TestClient,
+    headers: dict[str, str],
+    patient_id: str,
+    medicine_id: str,
+    batch_number: str,
+) -> str:
     resp = client.post(
         "/api/v1/invoices",
         headers=headers,
@@ -86,9 +82,11 @@ def _create_invoice(client: TestClient, headers: dict[str, str], patient_id: str
             "items": [
                 {
                     "item_type": "medicine",
+                    "reference_id": medicine_id,
                     "description": "Step3 seed line",
                     "quantity": "1",
                     "unit_price": "1",
+                    "batch_number": batch_number,
                 }
             ],
             "notes": "step3-regression-check",
@@ -105,9 +103,9 @@ def main() -> int:
     headers = {"Authorization": f"Bearer {token}"}
 
     patient_id = _find_patient_id(client, headers)
-    medicine_id, batch_number, batch_qty, total_qty = _find_stocked_medicine()
+    medicine_id, batch_number, batch_qty = _find_stocked_medicine()
 
-    invoice_id = _create_invoice(client, headers, patient_id)
+    invoice_id = _create_invoice(client, headers, patient_id, medicine_id, batch_number)
 
     # Case 1: Batch-specific oversell should fail.
     resp = client.post(
@@ -127,20 +125,20 @@ def main() -> int:
         print(resp.status_code, resp.text)
         return 1
 
-    # Case 2: Total oversell (no batch) should fail.
+    # Case 2: Missing batch should fail (strict batch tracking).
     resp = client.post(
         f"/api/v1/invoices/{invoice_id}/items",
         headers=headers,
         json={
             "item_type": "medicine",
             "reference_id": medicine_id,
-            "description": "total-oversell",
-            "quantity": str(total_qty + 1),
+            "description": "missing-batch",
+            "quantity": "1",
             "unit_price": "1",
         },
     )
     if resp.status_code != 400:
-        print("FAIL: total oversell did not return 400")
+        print("FAIL: missing batch did not return 400")
         print(resp.status_code, resp.text)
         return 1
 

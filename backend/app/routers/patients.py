@@ -100,7 +100,7 @@ async def list_patients(
     gender: Optional[str] = None,
     blood_group: Optional[str] = None,
     city: Optional[str] = None,
-    status: Optional[str] = None,
+    status_filter: Optional[str] = Query(None, alias="status"),
     sort_by: Optional[str] = None,
     sort_order: str = Query('desc', pattern='^(asc|desc)$'),
     db: Session = Depends(get_db),
@@ -114,7 +114,7 @@ async def list_patients(
             gender=gender,
             blood_group=blood_group,
             city=city,
-            status=status,
+            status=status_filter,
             sort_by=sort_by,
             sort_order=sort_order,
         )

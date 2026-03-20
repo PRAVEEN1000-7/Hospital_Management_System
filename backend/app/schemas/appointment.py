@@ -335,6 +335,7 @@ class HospitalSettingsUpdate(BaseModel):
     max_daily_appointments_per_doctor: Optional[int] = Field(None, ge=1, le=100)
     consultation_fee_default: Optional[str] = Field(None, max_length=20)
     follow_up_validity_days: Optional[int] = Field(None, ge=1, le=365)
+    allow_opd_credit: Optional[bool] = None
     # Legacy aliases (for backward compat)
     appointment_slot_duration: Optional[int] = Field(None, ge=5, le=120)
     allow_walk_ins: Optional[bool] = None

@@ -40,6 +40,11 @@ APPOINTMENT_SETTING_KEYS = {
         "description": "Whether emergency appointments can bypass queue",
         "type": "bool",
     },
+    "allow_opd_credit": {
+        "column": "allow_opd_credit",
+        "description": "Whether OPD invoices can remain unpaid after issue",
+        "type": "bool",
+    },
     "consultation_fee_default": {
         "column": "consultation_fee_default",
         "description": "Default consultation fee",

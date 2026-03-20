@@ -10,6 +10,14 @@ VALID_INVOICE_TYPES = ["opd", "pharmacy", "optical", "combined"]
 VALID_INVOICE_STATUSES = ["draft", "issued", "partially_paid", "paid", "overdue", "cancelled", "void"]
 VALID_ITEM_TYPES = ["consultation", "medicine", "optical_product", "service", "procedure", "registration"]
 
+# Mapping: invoice_type → allowed item_types
+INVOICE_TYPE_ITEM_MAPPING = {
+    "opd": ["consultation", "service", "procedure", "registration"],
+    "pharmacy": ["medicine"],
+    "optical": ["optical_product", "service"],
+    "combined": ["consultation", "medicine", "optical_product", "service", "procedure", "registration"],
+}
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Invoice Item
@@ -102,6 +110,24 @@ class InvoiceCreate(BaseModel):
         if v not in VALID_INVOICE_TYPES:
             raise ValueError(f"invoice_type must be one of: {', '.join(VALID_INVOICE_TYPES)}")
         return v
+
+    @field_validator("items")
+    @classmethod
+    def validate_items_match_type(cls, items: List[InvoiceItemCreate], info) -> List[InvoiceItemCreate]:
+        """Validate that all items match the invoice type allowed items"""
+        if not items:
+            return items
+        
+        invoice_type = info.data.get("invoice_type", "combined")
+        allowed_types = INVOICE_TYPE_ITEM_MAPPING.get(invoice_type, VALID_ITEM_TYPES)
+        
+        for item in items:
+            if item.item_type not in allowed_types:
+                raise ValueError(
+                    f"Item type '{item.item_type}' not allowed for invoice type '{invoice_type}'. "
+                    f"Allowed types: {', '.join(allowed_types)}"
+                )
+        return items
 
 
 class InvoiceUpdate(BaseModel):
@@ -197,3 +223,20 @@ class PaginatedInvoiceResponse(BaseModel):
     page: int
     limit: int
     pages: int
+
+
+class InvoiceTypeItemMappingResponse(BaseModel):
+    """Mapping of invoice types to allowed item types for UI filtering"""
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "opd": ["consultation", "service", "procedure", "registration"],
+                "pharmacy": ["medicine"],
+                "optical": ["optical_product", "service"],
+                "combined": ["consultation", "medicine", "optical_product", "service", "procedure", "registration"]
+            }
+        }
+    
+    def __iter__(self):
+        """Make this work as a dict in responses"""
+        return iter(INVOICE_TYPE_ITEM_MAPPING.items())

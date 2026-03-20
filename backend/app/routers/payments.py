@@ -22,16 +22,19 @@ BILLING_STAFF_ROLES = {"super_admin", "admin", "cashier", "pharmacist"}
 BILLING_VIEW_ROLES  = {"super_admin", "admin", "cashier", "pharmacist", "doctor"}
 
 
+def _has_any_role(current_user: User, allowed_roles: set[str]) -> bool:
+    roles = {str(r).strip().lower() for r in (current_user.roles or [])}
+    return bool(roles & {r.lower() for r in allowed_roles})
+
+
 def _require_billing_staff(current_user: User) -> None:
-    role = current_user.roles[0] if current_user.roles else ""
-    if role not in BILLING_STAFF_ROLES:
+    if not _has_any_role(current_user, BILLING_STAFF_ROLES):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Billing staff access required")
 
 
 def _require_billing_view(current_user: User) -> None:
-    role = current_user.roles[0] if current_user.roles else ""
-    if role not in BILLING_VIEW_ROLES:
+    if not _has_any_role(current_user, BILLING_VIEW_ROLES):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Access denied")
 

@@ -12,6 +12,7 @@ from ..models.user import User
 from ..schemas.invoice import (
     InvoiceCreate, InvoiceUpdate, InvoiceResponse,
     PaginatedInvoiceResponse, InvoiceItemCreate, InvoiceItemResponse,
+    INVOICE_TYPE_ITEM_MAPPING,
 )
 from ..services.invoice_service import (
     create_invoice, get_invoice_by_id, list_invoices,
@@ -28,25 +29,80 @@ BILLING_STAFF_ROLES = {"super_admin", "admin", "cashier", "pharmacist"}
 BILLING_VIEW_ROLES  = {"super_admin", "admin", "cashier", "pharmacist", "doctor"}
 
 
+def _has_any_role(current_user: User, allowed_roles: set[str]) -> bool:
+    roles = {str(r).strip().lower() for r in (current_user.roles or [])}
+    return bool(roles & {r.lower() for r in allowed_roles})
+
+
 def _require_billing_staff(current_user: User) -> None:
-    role = current_user.roles[0] if current_user.roles else ""
-    if role not in BILLING_STAFF_ROLES:
+    if not _has_any_role(current_user, BILLING_STAFF_ROLES):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Billing staff access required")
 
 
 def _require_billing_view(current_user: User) -> None:
-    role = current_user.roles[0] if current_user.roles else ""
-    if role not in BILLING_VIEW_ROLES:
+    if not _has_any_role(current_user, BILLING_VIEW_ROLES):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Access denied")
 
 
 def _require_billing_admin(current_user: User) -> None:
-    role = current_user.roles[0] if current_user.roles else ""
-    if role not in BILLING_ADMIN_ROLES:
+    if not _has_any_role(current_user, BILLING_ADMIN_ROLES):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Admin or Super Admin role required")
+
+
+@router.get("/config/item-type-mapping", tags=["Billing — Invoices"])
+async def get_invoice_item_mapping(
+    current_user: User = Depends(get_current_active_user),
+):
+    """Get mapping of invoice types to allowed line item types for UI filtering."""
+    return INVOICE_TYPE_ITEM_MAPPING
+
+
+@router.get("/medicines/{medicine_id}", tags=["Billing — Invoices"])
+async def get_medicine_lookup(
+    medicine_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    STEP 1: Lookup medicine details from inventory for invoice line items.
+    
+    Returns:
+    - Medicine master data (name, price, tax config)
+    - Current stock level across all non-expired batches
+    - Available batches with FEFO ordering for selection
+    
+    Only accessible to billing staff.
+    """
+    _require_billing_staff(current_user)
+    
+    from ..services.inventory_service import get_medicine_for_invoice
+    
+    try:
+        import uuid
+        medicine_uuid = uuid.UUID(medicine_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid medicine ID format"
+        )
+    
+    try:
+        medicine_data = get_medicine_for_invoice(db, medicine_uuid)
+        if not medicine_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Medicine not found or inactive"
+            )
+        return medicine_data
+    except Exception as e:
+        logger.error(f"Error fetching medicine {medicine_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch medicine details"
+        )
 
 
 @router.post("", response_model=InvoiceResponse, status_code=status.HTTP_201_CREATED)

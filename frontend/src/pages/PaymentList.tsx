@@ -20,14 +20,25 @@ const MODE_COLORS: Record<string, string> = {
 const fmt = (n: number) =>
   new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
 
+const toNumber = (value: unknown): number => {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+};
+
 const getRefundedAmount = (p: PaymentListItem): number => {
-  if (typeof p.refunded_amount === 'number') return Number(p.refunded_amount);
-  return p.status === 'reversed' ? Number(p.amount) : 0;
+  const refunded = toNumber((p as PaymentListItem & { refunded_amount?: unknown }).refunded_amount);
+  if (refunded > 0) return refunded;
+  return p.status === 'reversed' ? toNumber(p.amount) : 0;
 };
 
 const getNetAmount = (p: PaymentListItem): number => {
-  if (typeof p.net_amount === 'number') return Number(p.net_amount);
-  return p.status === 'reversed' ? 0 : Number(p.amount);
+  const net = toNumber((p as PaymentListItem & { net_amount?: unknown }).net_amount);
+  if (net > 0 || p.status === 'reversed') return net;
+  return toNumber(p.amount);
 };
 
 const PaymentList: React.FC = () => {

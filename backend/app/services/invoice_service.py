@@ -14,7 +14,10 @@ from typing import Optional
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_, func
 
+from ..models.pharmacy import MedicineBatch
+from ..models.prescription import Medicine
 from ..models.invoice import Invoice, InvoiceItem
+from ..models.hospital_settings import HospitalSettings
 from ..models.patient import Patient
 from ..models.tax_config import TaxConfiguration
 from ..schemas.invoice import (
@@ -25,6 +28,84 @@ from ..schemas.invoice import (
 from ..services.tax_service import calculate_item_tax
 
 logger = logging.getLogger(__name__)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STEP 3: Stock Validation
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _validate_medicine_stock(
+    db: Session, invoice_item_data: InvoiceItemCreate
+) -> None:
+    """
+    STEP 3: Prevent overselling by validating medicine stock availability.
+    
+    If item is 'medicine' type with quantity specified:
+    - Check if batch_number is provided: validate stock in that specific batch
+    - If no batch_number: check total stock across all available batches
+    - Raise ValueError if quantity exceeds available stock
+    """
+    if invoice_item_data.item_type != 'medicine':
+        return  # No stock check needed for non-medicine items
+    
+    if not invoice_item_data.reference_id:
+        return  # No medicine ID provided, skip validation
+    
+    try:
+        medicine_id = uuid.UUID(invoice_item_data.reference_id)
+    except (ValueError, TypeError):
+        return  # Invalid ID format, let other validation handle it
+    
+    quantity = float(invoice_item_data.quantity or 0)
+    if quantity <= 0:
+        return  # No quantity to validate
+    
+    # Check medicine exists
+    medicine = db.query(Medicine).filter(
+        Medicine.id == medicine_id,
+        Medicine.is_active == True,
+    ).first()
+    if not medicine:
+        raise ValueError(f"Medicine not found or inactive: {medicine_id}")
+    
+    # If batch_number is specified, check that specific batch
+    if invoice_item_data.batch_number:
+        batch = db.query(MedicineBatch).filter(
+            MedicineBatch.medicine_id == medicine_id,
+            MedicineBatch.batch_number == invoice_item_data.batch_number,
+            MedicineBatch.is_active == True,
+            MedicineBatch.is_expired == False,
+        ).first()
+        if not batch:
+            raise ValueError(
+                f"Batch '{invoice_item_data.batch_number}' not found, "
+                f"inactive, or expired"
+            )
+        available = int(batch.quantity or 0)
+        if quantity > available:
+            raise ValueError(
+                f"Insufficient stock in batch {invoice_item_data.batch_number}: "
+                f"requested {int(quantity)} units, only {available} available"
+            )
+    else:
+        # Check total stock across all available batches
+        total_stock = db.query(func.sum(MedicineBatch.quantity)).filter(
+            MedicineBatch.medicine_id == medicine_id,
+            MedicineBatch.is_active == True,
+            MedicineBatch.is_expired == False,
+        ).scalar() or 0
+        total_stock = int(total_stock)
+        if quantity > total_stock:
+            raise ValueError(
+                f"Insufficient stock for {medicine.name}: "
+                f"requested {int(quantity)} units, only {total_stock} available"
+            )
+    
+    logger.info(
+        f"Stock validation passed: medicine={medicine.name}, "
+        f"batch={invoice_item_data.batch_number or 'any'}, "
+        f"quantity={int(quantity)}"
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -102,6 +183,14 @@ def _update_invoice_status(db: Session, invoice: Invoice) -> None:
     db.commit()
 
 
+def _is_opd_credit_allowed(db: Session, hospital_id: uuid.UUID) -> bool:
+    settings = db.query(HospitalSettings).filter(HospitalSettings.hospital_id == hospital_id).first()
+    if not settings:
+        # Safe default for legacy setups: keep existing behavior unless explicitly disabled.
+        return True
+    return bool(getattr(settings, "allow_opd_credit", True))
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # CRUD
 # ─────────────────────────────────────────────────────────────────────────────
@@ -110,14 +199,21 @@ def create_invoice(
     db: Session, data: InvoiceCreate, user_id: uuid.UUID, hospital_id: uuid.UUID
 ) -> Invoice:
     invoice_number = generate_invoice_number()
+    invoice_date = data.invoice_date or date.today()
+    due_date = data.due_date
+
+    if data.invoice_type == "opd" and not _is_opd_credit_allowed(db, hospital_id):
+        # OPD strict mode: invoice is due on the same date.
+        due_date = invoice_date
+
     invoice = Invoice(
         hospital_id=hospital_id,
         invoice_number=invoice_number,
         patient_id=uuid.UUID(data.patient_id),
         appointment_id=uuid.UUID(data.appointment_id) if data.appointment_id else None,
         invoice_type=data.invoice_type,
-        invoice_date=data.invoice_date or date.today(),
-        due_date=data.due_date,
+        invoice_date=invoice_date,
+        due_date=due_date,
         discount_amount=data.discount_amount or Decimal("0"),
         discount_reason=data.discount_reason,
         currency=data.currency or "INR",
@@ -228,7 +324,23 @@ def issue_invoice(db: Session, invoice: Invoice) -> Invoice:
         raise ValueError("Only draft invoices can be issued")
     if not invoice.items:
         raise ValueError("Cannot issue an invoice with no line items")
-    invoice.status = "issued"
+
+    if invoice.invoice_type == "opd" and not _is_opd_credit_allowed(db, invoice.hospital_id):
+        paid = invoice.paid_amount or Decimal("0")
+        total = invoice.total_amount or Decimal("0")
+        if paid < total:
+            raise ValueError("OPD invoice requires full payment before issue")
+        invoice.due_date = invoice.invoice_date
+
+    paid = invoice.paid_amount or Decimal("0")
+    total = invoice.total_amount or Decimal("0")
+    if paid <= Decimal("0"):
+        invoice.status = "issued"
+    elif paid < total:
+        invoice.status = "partially_paid"
+    else:
+        invoice.status = "paid"
+
     db.commit()
     db.refresh(invoice)
     logger.info(f"Issued invoice {invoice.invoice_number}")
@@ -260,6 +372,9 @@ def soft_delete_invoice(db: Session, invoice: Invoice) -> None:
 
 def _add_item_to_invoice(db: Session, invoice: Invoice, item_data: InvoiceItemCreate) -> InvoiceItem:
     tax_rate = item_data.tax_rate or Decimal("0")
+
+    # STEP 3: Validate medicine stock before adding item
+    _validate_medicine_stock(db, item_data)
 
     # Resolve tax_rate from tax config if provided
     if item_data.tax_config_id:

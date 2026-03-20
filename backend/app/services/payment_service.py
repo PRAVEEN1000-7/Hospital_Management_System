@@ -72,11 +72,24 @@ def record_payment(
     invoice = (
         db.query(Invoice)
         .options(joinedload(Invoice.payments))
-        .filter(Invoice.id == invoice_uuid, Invoice.is_deleted == False)
+        .filter(
+            Invoice.id == invoice_uuid,
+            Invoice.hospital_id == hospital_id,
+            Invoice.is_deleted == False,
+        )
         .first()
     )
     if not invoice:
         raise ValueError("Invoice not found")
+
+    try:
+        patient_uuid = uuid.UUID(data.patient_id)
+    except ValueError:
+        raise ValueError("Invalid patient ID")
+
+    if invoice.patient_id != patient_uuid:
+        raise ValueError("Payment patient does not match invoice patient")
+
     if invoice.status in ("void", "cancelled"):
         raise ValueError(f"Cannot accept payment for a {invoice.status} invoice")
     if invoice.status == "paid":
@@ -92,7 +105,7 @@ def record_payment(
         hospital_id=hospital_id,
         payment_number=generate_payment_number(),
         invoice_id=invoice_uuid,
-        patient_id=uuid.UUID(data.patient_id),
+        patient_id=patient_uuid,
         amount=data.amount,
         payment_mode=data.payment_mode,
         payment_reference=data.payment_reference,

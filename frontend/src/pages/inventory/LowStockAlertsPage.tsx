@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
 import inventoryService from '../../services/inventoryService';
-import pharmacyService from '../../services/pharmacyService';
 import type { LowStockItem } from '../../types/inventory';
 
 interface SupplierOption {
@@ -72,8 +71,8 @@ const LowStockAlertsPage: React.FC = () => {
   const fetchSuppliers = useCallback(async () => {
     setLoadingSuppliers(true);
     try {
-      const res = await pharmacyService.getSuppliers('', true);
-      setSuppliers(res.map(s => ({ id: s.id, name: s.name })));
+      const res = await inventoryService.getSuppliers(1, 100, '', true);
+      setSuppliers(res.data.map(s => ({ id: s.id, name: s.name })));
     } catch (err: any) {
       console.error(err);
       setSuppliers([]);

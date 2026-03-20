@@ -389,8 +389,6 @@ const Layout: React.FC = () => {
           badge: pendingPrescriptionCount > 0 ? pendingPrescriptionCount : undefined,
         },
         { to: '/pharmacy/sales', label: 'Sales', icon: 'point_of_sale' },
-        { to: '/pharmacy/purchase-orders', label: 'Purchase Orders', icon: 'local_shipping' },
-        { to: '/pharmacy/suppliers', label: 'Suppliers', icon: 'local_shipping' },
         { to: '/pharmacy/stock-adjustments', label: 'Stock Adjustments', icon: 'tune' },
       );
     }
@@ -419,6 +417,8 @@ const Layout: React.FC = () => {
     inventoryItems.push(
       { to: '/inventory', label: 'Dashboard', icon: 'space_dashboard' },
       { to: '/inventory/low-stock', label: 'Low Stock', icon: 'warning' },
+      { to: '/inventory/suppliers', label: 'Suppliers', icon: 'local_shipping' },
+      { to: '/inventory/purchase-orders', label: 'Purchase Orders', icon: 'receipt_long' },
       { to: '/inventory/grns', label: 'Goods Receipt', icon: 'inventory' },
       { to: '/inventory/stock-movements', label: 'Stock Movements', icon: 'swap_vert' },
     );

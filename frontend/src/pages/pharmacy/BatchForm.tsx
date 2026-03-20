@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import pharmacyService from '../../services/pharmacyService';
-import type { Medicine, Supplier, BatchCreateData } from '../../types/pharmacy';
+import inventoryService from '../../services/inventoryService';
+import type { Medicine, BatchCreateData } from '../../types/pharmacy';
 import { useToast } from '../../contexts/ToastContext';
 
 const BatchForm: React.FC = () => {
@@ -11,7 +12,7 @@ const BatchForm: React.FC = () => {
   const preselectedMedicine = searchParams.get('medicine_id') || '';
 
   const [medicines, setMedicines] = useState<Medicine[]>([]);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([]);
   const [form, setForm] = useState<BatchCreateData>({
     medicine_id: preselectedMedicine,
     batch_number: '',
@@ -30,7 +31,7 @@ const BatchForm: React.FC = () => {
 
   useEffect(() => {
     pharmacyService.getMedicines(1, 500).then(r => setMedicines(r.data)).catch(() => {});
-    pharmacyService.getSuppliers().then(setSuppliers).catch(() => {});
+    inventoryService.getSuppliers(1, 100, '', true).then(r => setSuppliers(r.data)).catch(() => {});
   }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {

@@ -73,7 +73,7 @@ class InvoiceItemResponse(BaseModel):
                 "tax_amount": obj.tax_amount or Decimal("0"),
                 "total_price": obj.total_price or Decimal("0"),
                 "display_order": obj.display_order or 0,
-                "batch_number": obj.batch_number or None,
+                "batch_number": getattr(obj, "batch_number", None),
                 "created_at": obj.created_at,
             }
             return cls(**data)

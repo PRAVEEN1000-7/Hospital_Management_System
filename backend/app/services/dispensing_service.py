@@ -38,6 +38,23 @@ def _append_dispensing_note(existing_notes: Optional[str], new_note: Optional[st
     return stamped_note
 
 
+def _resolve_patient_age_years(patient: Optional[Patient]) -> Optional[int]:
+    """Resolve patient age with DOB fallback when stored age is missing."""
+    if not patient:
+        return None
+
+    if patient.age_years is not None:
+        return int(patient.age_years)
+
+    if patient.date_of_birth:
+        today = date.today()
+        years = today.year - patient.date_of_birth.year
+        before_birthday = (today.month, today.day) < (patient.date_of_birth.month, patient.date_of_birth.day)
+        return max(0, years - (1 if before_birthday else 0))
+
+    return None
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Pending Prescriptions Queue
 # ═══════════════════════════════════════════════════════════════════════════
@@ -168,7 +185,7 @@ def _enrich_prescription_for_dispensing(db: Session, rx: Prescription) -> dict:
     if patient:
         d["patient_name"] = patient.full_name
         d["patient_reference_number"] = patient.patient_reference_number
-        d["patient_age"] = patient.age_years
+        d["patient_age"] = _resolve_patient_age_years(patient)
         d["patient_gender"] = patient.gender
         d["patient_phone"] = patient.phone_number
         d["patient_blood_group"] = patient.blood_group

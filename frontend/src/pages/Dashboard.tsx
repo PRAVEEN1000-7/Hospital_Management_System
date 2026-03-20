@@ -57,7 +57,7 @@ function getQuickActions(role: string, isSuperAdmin: boolean): QuickAction[] {
       ];
     case 'pharmacist':
       return [
-        { icon: 'list_alt', iconColor: 'text-primary', label: 'Prescriptions', desc: 'View pending prescriptions', to: '/prescriptions' },
+        { icon: 'list_alt', iconColor: 'text-primary', label: 'All Prescription', desc: 'View pending prescriptions', to: '/prescriptions' },
         { icon: 'receipt_long', iconColor: 'text-green-500', label: 'New Invoice', desc: 'Create a billing invoice', to: '/billing/invoices/new' },
         { icon: 'payments', iconColor: 'text-emerald-500', label: 'Payments', desc: 'Record & view payments', to: '/billing/payments' },
         { icon: 'group', iconColor: 'text-blue-500', label: 'Patient Directory', desc: 'Look up patient records', to: '/patients' },
@@ -101,7 +101,7 @@ function getQuickLinks(role: string): QuickLink[] {
     case 'doctor':
       return [
         { icon: 'queue', iconColor: 'text-amber-400', label: 'Walk-in Queue', to: '/appointments/queue' },
-        { icon: 'list_alt', iconColor: 'text-blue-400', label: 'My Prescriptions', to: '/prescriptions' },
+        { icon: 'list_alt', iconColor: 'text-blue-400', label: 'All Prescription', to: '/prescriptions' },
         { icon: 'person', iconColor: 'text-purple-400', label: 'My Profile', to: '/profile' },
       ];
     case 'receptionist':
@@ -112,7 +112,7 @@ function getQuickLinks(role: string): QuickLink[] {
       ];
     case 'pharmacist':
       return [
-        { icon: 'list_alt', iconColor: 'text-blue-400', label: 'Prescriptions', to: '/prescriptions' },
+        { icon: 'list_alt', iconColor: 'text-blue-400', label: 'All Prescription', to: '/prescriptions' },
         { icon: 'receipt_long', iconColor: 'text-green-400', label: 'Invoices', to: '/billing/invoices' },
         { icon: 'payments', iconColor: 'text-emerald-400', label: 'Payments', to: '/billing/payments' },
         { icon: 'group', iconColor: 'text-cyan-400', label: 'Patients', to: '/patients' },
@@ -509,7 +509,7 @@ const Dashboard: React.FC = () => {
                 <div className="flex items-center justify-between text-xs">
                   <span className="flex items-center gap-2 text-slate-600">
                     <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                    API Status
+                    Service
                   </span>
                   <span className="font-bold text-emerald-600">Online</span>
                 </div>

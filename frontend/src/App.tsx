@@ -362,7 +362,7 @@ const App: React.FC = () => {
 
               {/* ── Billing Routes ── */}
               <Route path="/billing/invoices" element={
-                <ProtectedRoute allowedRoles={['super_admin', 'admin', 'cashier', 'pharmacist', 'doctor']}>
+                <ProtectedRoute allowedRoles={['super_admin', 'admin', 'cashier', 'pharmacist', 'receptionist', 'doctor']}>
                   <InvoiceList />
                 </ProtectedRoute>
               } />
@@ -372,12 +372,12 @@ const App: React.FC = () => {
                 </ProtectedRoute>
               } />
               <Route path="/billing/invoices/:id" element={
-                <ProtectedRoute allowedRoles={['super_admin', 'admin', 'cashier', 'pharmacist', 'doctor']}>
+                <ProtectedRoute allowedRoles={['super_admin', 'admin', 'cashier', 'pharmacist', 'receptionist', 'doctor']}>
                   <InvoiceDetail />
                 </ProtectedRoute>
               } />
               <Route path="/billing/payments" element={
-                <ProtectedRoute allowedRoles={['super_admin', 'admin', 'cashier', 'pharmacist', 'doctor']}>
+                <ProtectedRoute allowedRoles={['super_admin', 'admin', 'cashier', 'pharmacist', 'receptionist', 'doctor']}>
                   <PaymentList />
                 </ProtectedRoute>
               } />

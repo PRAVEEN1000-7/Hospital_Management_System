@@ -61,6 +61,11 @@ const invoiceService = {
   async removeItem(invoiceId: string, itemId: string): Promise<void> {
     await api.delete(`/invoices/${invoiceId}/items/${itemId}`);
   },
+
+  async getOrCreateConsultationInvoice(appointmentId: string): Promise<Invoice> {
+    const response = await api.post<Invoice>(`/invoices/appointments/${appointmentId}/consultation-invoice`);
+    return response.data;
+  },
 };
 
 export default invoiceService;

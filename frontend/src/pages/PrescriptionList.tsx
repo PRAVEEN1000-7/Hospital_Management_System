@@ -121,7 +121,7 @@ const PrescriptionList: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Prescriptions</h1>
+          <h1 className="text-2xl font-bold text-slate-900">All Prescription</h1>
           <p className="text-sm text-slate-500 mt-1">{total} prescription{total !== 1 ? 's' : ''} found</p>
         </div>
         {(role === 'doctor' || role === 'super_admin' || role === 'admin') && (

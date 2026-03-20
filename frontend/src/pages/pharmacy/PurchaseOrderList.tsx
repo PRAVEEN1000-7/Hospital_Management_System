@@ -42,6 +42,7 @@ const PurchaseOrderList: React.FC = () => {
   const navigate = useNavigate();
   const toast = useToast();
   const { user } = useAuth();
+  const today = new Date().toISOString().split('T')[0];
   const roleAlias: Record<string, string> = {
     administrator: 'admin',
     hospital_admin: 'admin',
@@ -66,8 +67,8 @@ const PurchaseOrderList: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<PurchaseOrderStatus | ''>(isPharmacyLogin ? 'ordered' : '');
   const [searchQuery, setSearchQuery] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [dateFrom, setDateFrom] = useState(today);
+  const [dateTo, setDateTo] = useState(today);
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -358,12 +359,12 @@ const PurchaseOrderList: React.FC = () => {
           </div>
 
           {/* Clear Filters */}
-          {(searchQuery || dateFrom || dateTo || statusFilter) && (
+          {(searchQuery || dateFrom !== today || dateTo !== today || statusFilter) && (
             <button
               onClick={() => {
                 setSearchQuery('');
-                setDateFrom('');
-                setDateTo('');
+                setDateFrom(today);
+                setDateTo(today);
                 setStatusFilter(isPharmacyLogin ? 'ordered' : '');
               }}
               className="px-3 py-2 text-sm font-medium text-slate-600 hover:text-slate-900"
@@ -416,11 +417,11 @@ const PurchaseOrderList: React.FC = () => {
             <span className="material-symbols-outlined text-5xl text-slate-300 mb-3">inventory_2</span>
             <p className="font-semibold text-slate-700">No purchase orders found</p>
             <p className="text-sm text-slate-500 mt-1">
-              {searchQuery || statusFilter || dateFrom || dateTo
+              {searchQuery || statusFilter || dateFrom !== today || dateTo !== today
                 ? 'Try adjusting your filters'
                 : 'Create your first purchase order to get started'}
             </p>
-            {!searchQuery && !statusFilter && !dateFrom && !dateTo && (
+            {!searchQuery && !statusFilter && dateFrom === today && dateTo === today && (
               <button
                 onClick={() => navigate('/pharmacy/purchase-orders/new')}
                 className="mt-4 px-4 py-2 text-sm font-semibold text-primary bg-primary/10 rounded-lg hover:bg-primary/20 transition-colors"

@@ -67,6 +67,22 @@ def request_refund(
     if payment.status != "completed":
         raise ValueError("Refund can only be requested for completed payments")
 
+    try:
+        invoice_uuid = uuid.UUID(data.invoice_id)
+    except ValueError:
+        raise ValueError("Invalid invoice ID")
+
+    try:
+        patient_uuid = uuid.UUID(data.patient_id)
+    except ValueError:
+        raise ValueError("Invalid patient ID")
+
+    if payment.invoice_id != invoice_uuid:
+        raise ValueError("Refund invoice does not match payment invoice")
+
+    if payment.patient_id != patient_uuid:
+        raise ValueError("Refund patient does not match payment patient")
+
     # Check requested amount doesn't exceed payment
     existing_refunds = (
         db.query(Refund)
@@ -83,9 +99,9 @@ def request_refund(
     refund = Refund(
         hospital_id=hospital_id,
         refund_number=generate_refund_number(),
-        invoice_id=uuid.UUID(data.invoice_id),
+        invoice_id=invoice_uuid,
         payment_id=payment_uuid,
-        patient_id=uuid.UUID(data.patient_id),
+        patient_id=patient_uuid,
         amount=data.amount,
         reason_code=data.reason_code,
         reason_detail=data.reason_detail,

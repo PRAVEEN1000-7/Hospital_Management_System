@@ -1286,3 +1286,77 @@ def get_inventory_dashboard(db: Session, hospital_id: uuid.UUID) -> dict:
         "low_stock_count": len(low_stock),
         "expiring_count": len(expiring),
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  INVOICE INTEGRATION — MEDICINE LOOKUP
+# ═══════════════════════════════════════════════════════════════════════════
+
+def get_medicine_for_invoice(db: Session, medicine_id: uuid.UUID) -> Optional[dict]:
+    """STEP 1: Medicine lookup for invoice line items."""
+    medicine = db.query(Medicine).filter(
+        Medicine.id == medicine_id,
+        Medicine.is_active == True,
+    ).first()
+    if not medicine:
+        logger.warning(f"Medicine lookup failed: ID {medicine_id} not found or inactive")
+        return None
+    
+    total_stock = _get_medicine_batch_stock(db, medicine_id)
+    
+    batches = db.query(MedicineBatch).filter(
+        MedicineBatch.medicine_id == medicine_id,
+        MedicineBatch.is_active == True,
+        MedicineBatch.is_expired == False,
+    ).order_by(
+        MedicineBatch.expiry_date.asc(),
+        MedicineBatch.created_at.asc(),
+    ).all()
+    
+    batch_list = []
+    for batch in batches:
+        if (batch.quantity or 0) > 0:
+            batch_list.append({
+                "id": str(batch.id),
+                "batch_number": batch.batch_number,
+                "quantity_available": int(batch.quantity or 0),
+                "manufactured_date": batch.mfg_date,
+                "expiry_date": batch.expiry_date,
+                "selling_price": float(batch.selling_price or 0),
+                "purchase_price": float(batch.purchase_price or 0),
+            })
+    
+    tax_config = None
+    if medicine.tax_config_id:
+        from ..models.tax_config import TaxConfiguration
+        tax = db.query(TaxConfiguration).filter(
+            TaxConfiguration.id == medicine.tax_config_id,
+            TaxConfiguration.is_active == True,
+        ).first()
+        if tax:
+            tax_config = {
+                "id": str(tax.id),
+                "name": tax.name,
+                "code": tax.code,
+                "rate_percentage": float(tax.rate_percentage or 0),
+            }
+    
+    return {
+        "id": str(medicine.id),
+        "name": medicine.name,
+        "generic_name": medicine.generic_name,
+        "category": medicine.category,
+        "manufacturer": medicine.manufacturer,
+        "strength": medicine.strength,
+        "unit_of_measure": medicine.unit_of_measure,
+        "hsn_code": medicine.hsn_code,
+        "sku": medicine.sku,
+        "barcode": medicine.barcode,
+        "selling_price": float(medicine.selling_price or 0),
+        "purchase_price": float(medicine.purchase_price or 0),
+        "total_stock_available": total_stock,
+        "batch_count": len(batch_list),
+        "tax_config": tax_config,
+        "available_batches": batch_list,
+        "is_active": medicine.is_active,
+    }

@@ -85,6 +85,7 @@ CREATE TABLE hospital_settings (
     max_daily_appointments_per_doctor   INTEGER     DEFAULT 40,
     allow_walk_in                       BOOLEAN     DEFAULT true,
     allow_emergency_bypass              BOOLEAN     DEFAULT true,
+    allow_opd_credit                    BOOLEAN     DEFAULT true,
     enable_sms_notifications            BOOLEAN     DEFAULT false,
     enable_email_notifications          BOOLEAN     DEFAULT true,
     enable_whatsapp_notifications       BOOLEAN     DEFAULT false,
@@ -720,6 +721,7 @@ CREATE TABLE invoice_items (
     tax_amount       DECIMAL(12,2) DEFAULT 0,
     total_price      DECIMAL(12,2) NOT NULL,
     display_order    INTEGER       DEFAULT 0,
+    batch_number     VARCHAR(50),
     created_at       TIMESTAMPTZ   DEFAULT NOW()
 );
 

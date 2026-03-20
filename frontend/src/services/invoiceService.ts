@@ -1,7 +1,7 @@
 import api from './api';
 import type {
   Invoice, InvoiceListItem, InvoiceCreateData, InvoiceUpdateData,
-  InvoiceItem, InvoiceItemCreateData, PaginatedResponse,
+  InvoiceItem, InvoiceItemCreateData, PaginatedResponse, InvoiceItemType,
 } from '../types/billing';
 
 const invoiceService = {
@@ -62,6 +62,44 @@ const invoiceService = {
     await api.delete(`/invoices/${invoiceId}/items/${itemId}`);
   },
 
+  async getItemTypeMapping(): Promise<Record<string, InvoiceItemType[]>> {
+    const response = await api.get<Record<string, InvoiceItemType[]>>('/invoices/config/item-type-mapping');
+    return response.data;
+  },
+
+  async getMedicineDetails(medicineId: string): Promise<{
+    id: string;
+    name: string;
+    generic_name: string;
+    category: string;
+    manufacturer: string;
+    strength: string;
+    unit_of_measure: string;
+    hsn_code: string;
+    sku: string;
+    barcode: string;
+    selling_price: number;
+    purchase_price: number;
+    total_stock_available: number;
+    batch_count: number;
+    tax_config: {
+      id: string;
+      name: string;
+      code: string;
+      rate_percentage: number;
+    } | null;
+    available_batches: Array<{
+      id: string;
+      batch_number: string;
+      quantity_available: number;
+      manufactured_date: string;
+      expiry_date: string;
+      selling_price: number;
+      purchase_price: number;
+    }>;
+    is_active: boolean;
+  }> {
+    const response = await api.get(`/invoices/medicines/${medicineId}`);
   async getOrCreateConsultationInvoice(appointmentId: string): Promise<Invoice> {
     const response = await api.post<Invoice>(`/invoices/appointments/${appointmentId}/consultation-invoice`);
     return response.data;

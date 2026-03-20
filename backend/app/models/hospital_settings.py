@@ -30,6 +30,7 @@ class HospitalSettings(Base):
     max_daily_appointments_per_doctor = Column(Integer, default=40)
     allow_walk_in = Column(Boolean, default=True)
     allow_emergency_bypass = Column(Boolean, default=True)
+    allow_opd_credit = Column(Boolean, default=True)
     enable_sms_notifications = Column(Boolean, default=False)
     enable_email_notifications = Column(Boolean, default=True)
     enable_whatsapp_notifications = Column(Boolean, default=False)

@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 # Payment modes that map to card/online vs cash
 CASH_MODES = {"cash"}
-CARD_MODES = {"card"}
+CARD_MODES = {"card", "debit_card", "credit_card"}
 ONLINE_MODES = {"upi", "wallet", "bank_transfer", "online", "cheque", "insurance"}
 
 

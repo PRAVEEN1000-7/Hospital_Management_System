@@ -10,6 +10,20 @@ import type { HospitalDetails } from '../services/hospitalService';
 import type { Patient } from '../types/patient';
 import type { TaxConfig, InvoiceType, InvoiceItemCreateData, InvoiceItemType, PaymentMode } from '../types/billing';
 
+interface MedicineLookupResult {
+  name: string;
+  selling_price: number;
+  tax_config_id?: string;
+  total_stock_available: number;
+  available_batches: Array<{
+    id: string;
+    batch_number: string;
+    quantity_available: number;
+    expiry_date: string;
+    selling_price: number;
+  }>;
+}
+
 interface LineItem {
   key: string;
   item_type: InvoiceItemType;
@@ -23,6 +37,7 @@ interface LineItem {
   taxRate: number;
   taxAmount: number;
   totalPrice: number;
+  medicineLookup?: MedicineLookupResult;
 }
 
 const ITEM_TYPES: { value: InvoiceItemType; label: string }[] = [
@@ -95,14 +110,24 @@ const InvoiceCreate: React.FC = () => {
   // Taxes
   const [taxes, setTaxes] = useState<TaxConfig[]>([]);
 
+  // Invoice type → item type mapping
+  const [itemTypeMapping, setItemTypeMapping] = useState<Record<string, InvoiceItemType[]>>({
+    opd: ['consultation', 'service', 'procedure', 'registration'] as InvoiceItemType[],
+    pharmacy: ['medicine'] as InvoiceItemType[],
+    optical: ['optical_product', 'service'] as InvoiceItemType[],
+    combined: ['consultation', 'medicine', 'optical_product', 'service', 'procedure', 'registration'] as InvoiceItemType[],
+  });
+
   // UI
   const [saving, setSaving] = useState(false);
+  const [medicineLoadingIdx, setMedicineLoadingIdx] = useState<number | null>(null);
 
   // Hospital info (display only)
   const [hospital, setHospital] = useState<HospitalDetails | null>(null);
 
   // Instant payment
   const [payNow, setPayNow] = useState(false);
+
   const [payMode, setPayMode] = useState<PaymentMode>('cash');
   const [cashReceived, setCashReceived] = useState(0);
   const [payReference, setPayReference] = useState('');
@@ -123,6 +148,21 @@ const InvoiceCreate: React.FC = () => {
   // Load active taxes
   useEffect(() => {
     taxService.list(1, 50, true).then(res => setTaxes(res.items)).catch(() => {});
+  }, []);
+
+  // Load invoice item type mapping from backend
+  useEffect(() => {
+    invoiceService.getItemTypeMapping()
+      .then(mapping => setItemTypeMapping(mapping))
+      .catch(() => {
+        // Use defaults if fetch fails
+        setItemTypeMapping({
+          opd: ['consultation', 'service', 'procedure', 'registration'] as InvoiceItemType[],
+          pharmacy: ['medicine'] as InvoiceItemType[],
+          optical: ['optical_product', 'service'] as InvoiceItemType[],
+          combined: ['consultation', 'medicine', 'optical_product', 'service', 'procedure', 'registration'] as InvoiceItemType[],
+        });
+      });
   }, []);
 
   // Search patients (debounced)
@@ -146,12 +186,102 @@ const InvoiceCreate: React.FC = () => {
     setShowPatientDrop(false);
   };
 
+  // Get allowed item types for current invoice type
+  const getAllowedItemTypes = (): { value: InvoiceItemType; label: string }[] => {
+    const allowedValues = itemTypeMapping[invoiceType] || [];
+    return ITEM_TYPES.filter(t => allowedValues.includes(t.value));
+  };
+
+  // Lookup medicine from inventory and auto-populate line item
+  const handleMedicineLookup = async (idx: number, medicineId: string) => {
+    if (!medicineId.trim()) {
+      showToast('error', 'Please enter or select a medicine ID/name');
+      return;
+    }
+    setMedicineLoadingIdx(idx);
+    try {
+      const medicineData = await invoiceService.getMedicineDetails(medicineId);
+      
+      // STEP 2: Auto-populate line item with medicine details + batch info
+      updateLine(idx, {
+        description: medicineData.name,
+        unit_price: medicineData.selling_price,
+        tax_config_id: medicineData.tax_config ? medicineData.tax_config.id : '',
+        batch_number: medicineData.available_batches[0]?.batch_number || '',  // Pre-select first batch (FEFO)
+        medicineLookup: {
+          name: medicineData.name,
+          selling_price: medicineData.selling_price,
+          tax_config_id: medicineData.tax_config?.id,
+          total_stock_available: medicineData.total_stock_available,
+          available_batches: medicineData.available_batches,
+        },
+      });
+      
+      // Show stock info to user
+      const stockMsg = medicineData.total_stock_available > 0
+        ? `Stock: ${medicineData.total_stock_available} units (${medicineData.batch_count} batch${medicineData.batch_count === 1 ? '' : 'es'})`
+        : 'No stock available';
+      showToast('success', `${medicineData.name} loaded. ${stockMsg}`);
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      showToast('error', msg || 'Failed to lookup medicine');
+    } finally {
+      setMedicineLoadingIdx(null);
+    }
+  };
+
+  // When invoice type changes, validate/fix line items
+  const handleInvoiceTypeChange = (newType: InvoiceType) => {
+    setInvoiceType(newType);
+    const allowedValues = itemTypeMapping[newType] || [];
+    // Reset any line items with invalid types to the first allowed type
+    setLines(prev => prev.map(line => {
+      if (!allowedValues.includes(line.item_type)) {
+        return { ...line, item_type: (allowedValues[0] || 'service') as InvoiceItemType };
+      }
+      return line;
+    }));
+  };
+
+  const validateMedicineQuantity = (line: LineItem): string | null => {
+    if (line.item_type !== 'medicine') {
+      return null;
+    }
+    if (!line.medicineLookup) {
+      return null;
+    }
+
+    const requested = line.quantity;
+    const available = line.medicineLookup.total_stock_available;
+    if (requested > available) {
+      return `Insufficient stock: requested ${requested} units, only ${available} available`;
+    }
+
+    if (line.batch_number) {
+      const batch = line.medicineLookup.available_batches.find(b => b.batch_number === line.batch_number);
+      if (batch && requested > batch.quantity_available) {
+        return `Batch ${line.batch_number} has insufficient stock: requested ${requested} units, only ${batch.quantity_available} available`;
+      }
+    }
+
+    return null;
+  };
+
   // Line item helpers
   const updateLine = (idx: number, patch: Partial<LineItem>) => {
     setLines(prev => {
       const updated = [...prev];
       const merged = { ...updated[idx], ...patch };
-      updated[idx] = computeLine(merged, taxes);
+      const computed = computeLine(merged, taxes);
+
+      if (patch.quantity !== undefined) {
+        const error = validateMedicineQuantity(computed);
+        if (error) {
+          showToast('warning', error);
+        }
+      }
+
+      updated[idx] = computed;
       return updated;
     });
   };
@@ -348,7 +478,7 @@ const InvoiceCreate: React.FC = () => {
                 <label className="block text-xs font-medium text-slate-600 mb-1">Invoice Type *</label>
                 <select
                   value={invoiceType}
-                  onChange={e => setInvoiceType(e.target.value as InvoiceType)}
+                  onChange={e => handleInvoiceTypeChange(e.target.value as InvoiceType)}
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
                 >
                   <option value="opd">OPD</option>
@@ -407,24 +537,56 @@ const InvoiceCreate: React.FC = () => {
                   {/* Description (col 1–4) */}
                   <div className="col-span-12 sm:col-span-4">
                     <label className="block text-[10px] font-medium text-slate-500 mb-1">Description *</label>
-                    <input
-                      type="text"
-                      placeholder={line.item_type === 'medicine' ? 'Medicine name' : 'Item description'}
-                      value={line.description}
-                      onChange={e => updateLine(idx, { description: e.target.value })}
-                      className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-primary/30 bg-white"
-                    />
-                    {/* Batch # — medicine only */}
-                    {line.item_type === 'medicine' && (
+                    <div className="flex gap-1 items-end">
                       <input
                         type="text"
-                        placeholder="Batch #"
-                        value={line.batch_number}
-                        onChange={e => updateLine(idx, { batch_number: e.target.value })}
-                        className="w-full mt-1 px-2 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-primary/30 bg-white"
+                        placeholder={line.item_type === 'medicine' ? 'Medicine name or ID' : 'Item description'}
+                        value={line.description}
+                        onChange={e => updateLine(idx, { description: e.target.value })}
+                        className="flex-1 px-2 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-primary/30 bg-white"
                       />
-                    )}
+                      {/* Medicine lookup button */}
+                      {line.item_type === 'medicine' && (
+                        <button
+                          type="button"
+                          onClick={() => handleMedicineLookup(idx, line.description)}
+                          disabled={medicineLoadingIdx === idx || !line.description.trim()}
+                          className="px-2 py-1.5 bg-primary/10 hover:bg-primary/20 disabled:bg-slate-100 text-primary disabled:text-slate-400 text-xs font-medium rounded transition-colors whitespace-nowrap"
+                          title="Lookup medicine from inventory"
+                        >
+                          {medicineLoadingIdx === idx ? 'Loading...' : 'Lookup'}
+                        </button>
+                      )}
+                    </div>
                   </div>
+                  {/* Batch # — medicine only */}
+                  {line.item_type === 'medicine' && (
+                    <div className="col-span-12 sm:col-span-2">
+                      <label className="block text-[10px] font-medium text-slate-500 mb-1">Batch</label>
+                      {line.medicineLookup && line.medicineLookup.available_batches.length > 0 ? (
+                        <select
+                          value={line.batch_number}
+                          onChange={e => updateLine(idx, { batch_number: e.target.value })}
+                          className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-primary/30 bg-white"
+                        >
+                          <option value="">Select Batch...</option>
+                          {line.medicineLookup.available_batches.map((b) => (
+                            <option key={b.id} value={b.batch_number}>
+                              {b.batch_number} ({b.quantity_available} units, exp: {b.expiry_date})
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          placeholder="Batch # (or lookup medicine)"
+                          value={line.batch_number}
+                          onChange={e => updateLine(idx, { batch_number: e.target.value })}
+                          className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-primary/30 bg-white"
+                        />
+                      )}
+                    </div>
+                  )}
                   {/* Type (col 5–6) */}
                   <div className="col-span-6 sm:col-span-2">
                     <label className="block text-[10px] font-medium text-slate-500 mb-1">Type</label>
@@ -433,7 +595,7 @@ const InvoiceCreate: React.FC = () => {
                       onChange={e => updateLine(idx, { item_type: e.target.value as InvoiceItemType })}
                       className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-primary/30 bg-white"
                     >
-                      {ITEM_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                      {getAllowedItemTypes().map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                     </select>
                   </div>
                   {/* Qty (col 7) */}
@@ -447,6 +609,27 @@ const InvoiceCreate: React.FC = () => {
                       className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-primary/30 bg-white text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                     />
                   </div>
+                    {/* Qty (col 7) — with stock warning for medicine */}
+                    <div className="col-span-3 sm:col-span-1">
+                      <label className="block text-[10px] font-medium text-slate-500 mb-1">
+                        Qty
+                        {line.item_type === 'medicine' && validateMedicineQuantity(line) && (
+                          <span className="ml-1 text-orange-500 font-bold">⚠</span>
+                        )}
+                      </label>
+                      <input
+                        type="number"
+                        min={0.01} step="0.01"
+                        value={line.quantity || ''}
+                        onChange={e => updateLine(idx, { quantity: parseFloat(e.target.value) || 0 })}
+                        className={`w-full px-2 py-1.5 border rounded text-xs focus:outline-none focus:ring-1 bg-white text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${
+                          validateMedicineQuantity(line) ? 'border-orange-300 focus:ring-orange-500/30' : 'border-slate-200 focus:ring-primary/30'
+                        }`}
+                      />
+                      {validateMedicineQuantity(line) && (
+                        <p className="text-[9px] text-orange-600 mt-0.5">{validateMedicineQuantity(line)}</p>
+                      )}
+                    </div>
                   {/* Unit Price (col 8) */}
                   <div className="col-span-3 sm:col-span-1">
                     <label className="block text-[10px] font-medium text-slate-500 mb-1">

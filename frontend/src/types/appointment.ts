@@ -91,6 +91,11 @@ export interface Appointment {
   department_name?: string | null;
   patient_reference_number?: string | null;
   doctor_specialization?: string | null;
+  consultation_invoice_id?: string | null;
+  consultation_invoice_number?: string | null;
+  consultation_invoice_status?: string | null;
+  consultation_fee_collected?: boolean;
+  consultation_balance_amount?: number | null;
 }
 
 export interface AppointmentCreate {

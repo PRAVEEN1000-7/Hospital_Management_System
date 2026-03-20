@@ -18,8 +18,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/payments", tags=["Billing — Payments"])
 
-BILLING_STAFF_ROLES = {"super_admin", "admin", "cashier", "pharmacist"}
-BILLING_VIEW_ROLES  = {"super_admin", "admin", "cashier", "pharmacist", "doctor"}
+BILLING_STAFF_ROLES = {"super_admin", "admin", "cashier", "pharmacist", "receptionist"}
+BILLING_VIEW_ROLES  = {"super_admin", "admin", "cashier", "pharmacist", "receptionist", "doctor"}
 
 
 def _has_any_role(current_user: User, allowed_roles: set[str]) -> bool:

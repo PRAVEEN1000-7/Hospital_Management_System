@@ -100,6 +100,8 @@ const invoiceService = {
     is_active: boolean;
   }> {
     const response = await api.get(`/invoices/medicines/${medicineId}`);
+  async getOrCreateConsultationInvoice(appointmentId: string): Promise<Invoice> {
+    const response = await api.post<Invoice>(`/invoices/appointments/${appointmentId}/consultation-invoice`);
     return response.data;
   },
 };

@@ -20,6 +20,7 @@ from ..models.appointment import Doctor, Appointment
 from ..models.patient import Patient
 from ..models.user import User
 from ..models.hospital_settings import HospitalSettings
+from ..models.pharmacy import PharmacySale, PharmacySaleItem
 
 logger = logging.getLogger(__name__)
 
@@ -344,7 +345,12 @@ def finalize_prescription(
     prescription_id: str | uuid.UUID,
     performed_by: uuid.UUID,
 ) -> Optional[Prescription]:
-    """Finalize a prescription (lock it) after checking stock availability."""
+    """Finalize a prescription (lock it).
+
+    Note: Stock validation is handled during dispensing, not at doctor finalization
+    time. This allows doctors to finalize and complete consultation even when one
+    or more medicines are out of stock.
+    """
     rx = get_prescription(db, prescription_id)
     if not rx:
         return None
@@ -367,7 +373,7 @@ def finalize_prescription(
         PrescriptionItem.prescription_id == rx.id
     ).all()
 
-    stock_errors = []
+    stock_warnings = []
     for item in items:
         required_quantity = calculate_prescribed_quantity(
             item.frequency,
@@ -391,18 +397,21 @@ def finalize_prescription(
             total_available = sum(batch.quantity for batch in batches)
 
             if total_available == 0:
-                stock_errors.append(
+                stock_warnings.append(
                     f"'{item.medicine_name}' is out of stock. Required: {required_quantity}, Available: 0"
                 )
             elif total_available < required_quantity:
-                stock_errors.append(
+                stock_warnings.append(
                     f"'{item.medicine_name}' has insufficient stock. Required: {required_quantity}, Available: {total_available}"
                 )
 
-    # Block finalization if any medicine has insufficient stock
-    if stock_errors:
-        error_message = "Cannot finalize prescription due to insufficient stock:\n" + "\n".join(stock_errors)
-        raise ValueError(error_message)
+    # Do not block doctor finalization on stock; pharmacy handles stock at dispensing.
+    if stock_warnings:
+        logger.warning(
+            "Prescription %s finalized with stock warnings: %s",
+            rx.prescription_number,
+            " | ".join(stock_warnings),
+        )
 
     rx.status = "finalized"
     rx.is_finalized = True
@@ -491,6 +500,24 @@ def enrich_prescription(db: Session, rx: Prescription) -> dict:
             if item_dict.get(uid_col):
                 item_dict[uid_col] = str(item_dict[uid_col])
         d["items"].append(item_dict)
+
+    # Dispensing totals for this prescription (if already dispensed/partially dispensed)
+    linked_sales = (
+        db.query(PharmacySale.id, PharmacySale.total_amount, PharmacySale.sale_date)
+        .join(PharmacySaleItem, PharmacySaleItem.sale_id == PharmacySale.id)
+        .join(PrescriptionItem, PrescriptionItem.id == PharmacySaleItem.prescription_item_id)
+        .filter(PrescriptionItem.prescription_id == rx.id)
+        .distinct()
+        .all()
+    )
+
+    if linked_sales:
+        d["final_amount"] = float(sum((s.total_amount or 0) for s in linked_sales))
+        latest_sale_date = max((s.sale_date for s in linked_sales if s.sale_date), default=None)
+        d["dispensed_at"] = str(latest_sale_date) if latest_sale_date else None
+    else:
+        d["final_amount"] = None
+        d["dispensed_at"] = None
 
     return d
 
@@ -719,8 +746,25 @@ def list_medicines(
             Medicine.name
         ).offset(offset).limit(limit).all()
     
+    # Attach live stock summary for prescribing UI warnings.
+    from ..models.pharmacy import MedicineBatch
+
+    med_ids = [m.id for m in rows]
+    stock_map: dict[uuid.UUID, int] = {}
+    if med_ids:
+        stock_rows = (
+            db.query(MedicineBatch.medicine_id, func.coalesce(func.sum(MedicineBatch.quantity), 0))
+            .filter(
+                MedicineBatch.medicine_id.in_(med_ids),
+                MedicineBatch.is_active == True,
+            )
+            .group_by(MedicineBatch.medicine_id)
+            .all()
+        )
+        stock_map = {row[0]: int(row[1]) for row in stock_rows}
+
     total_pages = ceil(total / limit) if total > 0 else 0
-    return total, page, limit, total_pages, rows
+    return total, page, limit, total_pages, rows, stock_map
 
 
 def update_medicine(

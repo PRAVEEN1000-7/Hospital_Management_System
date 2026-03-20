@@ -64,6 +64,7 @@ VALUES
     ('e0000000-0000-0000-0000-000000000006', NULL, 'optical_staff',     'Optical Staff',        'Optical store operations',                 true, true),
     ('e0000000-0000-0000-0000-000000000007', NULL, 'cashier',           'Cashier',              'Billing and payment operations',            true, true),
     ('e0000000-0000-0000-0000-000000000008', NULL, 'inventory_manager', 'Inventory Manager',    'Inventory and stock management',            true, true),
+    ('e0000000-0000-0000-0000-000000000009', NULL, 'report_viewer',     'Report Viewer',        'View and export reports',                  true, true),
     ('e0000000-0000-0000-0000-000000000010', NULL, 'nurse',             'Nurse',                'Nursing and patient care support',           true, true);
 
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -680,17 +681,24 @@ VALUES
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 24. SUPPLIERS  (sample)
 -- ─────────────────────────────────────────────────────────────────────────────
-INSERT INTO suppliers (id, hospital_id, name, code, contact_person, phone, email, payment_terms, lead_time_days, rating)
+INSERT INTO suppliers (id, hospital_id, name, code, contact_person, phone, email, payment_terms, lead_time_days, rating, product_categories)
 VALUES
     ('a1000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001',
      'PharmaCorp Distributors', 'SUP-PHARM', 'John Hayes', '+12125556001', 'orders@pharmacorp.com',
-     'Net 30', 5, 4.5),
+     'Net 30', 5, 4.5, '{"medicine","disposable"}'),
     ('a1000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000001',
      'MedSupply International', 'SUP-MED',  'Alice Wang', '+12125556002', 'sales@medsupply.com',
-     'Net 15', 3, 4.2),
+     'Net 15', 3, 4.2, '{"medicine","surgical","equipment"}'),
     ('a1000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000001',
      'OptiVision Wholesale', 'SUP-OPT',  'Mark Rivera', '+12125556003', 'wholesale@optivision.com',
-     'Net 30', 7, 4.0);
+     'Net 30', 7, 4.0, '{"optical"}');
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 24b. PURCHASE ORDERS  (sample)
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Note: Purchase orders are now seeded in 04_inventory_seed.sql
+-- This section is kept for reference but commented out to avoid duplicates
+-- INSERT INTO purchase_orders...
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 25. INSURANCE PROVIDERS  (sample)

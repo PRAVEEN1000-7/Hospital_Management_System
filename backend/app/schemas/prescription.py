@@ -91,6 +91,7 @@ class MedicineResponse(BaseModel):
     reorder_level: int = 10
     storage_instructions: Optional[str] = None
     is_active: bool = True
+    total_stock: Optional[int] = None
     created_at: datetime
     updated_at: datetime
 
@@ -259,6 +260,11 @@ class PrescriptionResponse(BaseModel):
     patient_chronic_conditions: Optional[str] = None
     appointment_number: Optional[str] = None
     doctor_name: Optional[str] = None
+    consultation_invoice_id: Optional[str] = None
+    consultation_invoice_number: Optional[str] = None
+    consultation_invoice_status: Optional[str] = None
+    final_amount: Optional[float] = None
+    dispensed_at: Optional[str] = None
     items: list[PrescriptionItemResponse] = []
 
     @model_validator(mode="before")

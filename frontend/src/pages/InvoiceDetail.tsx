@@ -73,9 +73,9 @@ const InvoiceDetail: React.FC = () => {
   const printRef = useRef<HTMLDivElement>(null);
 
   const role = user?.roles?.[0];
-  const canMutate = ['super_admin', 'admin', 'cashier', 'pharmacist'].includes(role || '');
+  const canMutate = ['super_admin', 'admin', 'cashier', 'pharmacist', 'receptionist'].includes(role || '');
   const isAdmin = ['super_admin', 'admin'].includes(role || '');
-  const isBillingStaff = ['super_admin', 'admin', 'cashier', 'pharmacist'].includes(role || '');
+  const isBillingStaff = ['super_admin', 'admin', 'cashier', 'pharmacist', 'receptionist'].includes(role || '');
 
   const load = useCallback(async () => {
     if (!id) return;

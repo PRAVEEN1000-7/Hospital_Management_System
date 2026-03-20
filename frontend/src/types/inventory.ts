@@ -1,5 +1,18 @@
 /* ── Inventory module types ─────────────────────────────────────────────── */
 
+// Valid product categories for suppliers
+export const VALID_PRODUCT_CATEGORIES = [
+  'medicine',
+  'optical',
+  'surgical',
+  'equipment',
+  'laboratory',
+  'disposable',
+  'other',
+] as const;
+
+export type ProductCategory = typeof VALID_PRODUCT_CATEGORIES[number];
+
 export interface Supplier {
   id: string;
   name: string;
@@ -12,6 +25,7 @@ export interface Supplier {
   payment_terms: string | null;
   lead_time_days: number | null;
   rating: number | null;
+  product_categories: string[];
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -28,6 +42,7 @@ export interface SupplierCreate {
   payment_terms?: string;
   lead_time_days?: number;
   rating?: number;
+  product_categories?: string[];
 }
 
 export interface SupplierUpdate {
@@ -41,6 +56,7 @@ export interface SupplierUpdate {
   lead_time_days?: number;
   rating?: number;
   is_active?: boolean;
+  product_categories?: string[];
 }
 
 /* ── Purchase Orders ───────────────────────────────────────────────────── */

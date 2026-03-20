@@ -47,6 +47,7 @@ from ..services.prescription_service import (
     delete_template,
     increment_template_usage,
 )
+from ..services.invoice_service import get_or_create_consultation_invoice_for_appointment
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/prescriptions", tags=["Prescriptions"])
@@ -221,10 +222,12 @@ async def finalize_and_complete_queue(
             raise HTTPException(status_code=404, detail="Prescription not found")
 
         # 2. Complete the linked queue entry (if any)
+        queue_appointment_id = None
         if rx.queue_id:
             qe = db.query(AppointmentQueue).filter(AppointmentQueue.id == rx.queue_id).first()
             if qe and qe.status in ("called", "in_consultation", "sent_to_doctor"):
                 qe.status = "completed"
+                queue_appointment_id = qe.appointment_id
                 # Also complete the linked appointment
                 if qe.appointment_id:
                     appt = db.query(Appointment).filter(Appointment.id == qe.appointment_id).first()
@@ -233,7 +236,23 @@ async def finalize_and_complete_queue(
                         appt.consultation_end_at = datetime.now(timezone.utc)
                 db.commit()
 
-        return enrich_prescription(db, rx)
+        # 3. Auto-create (or reuse) consultation invoice when fee is configured.
+        consultation_invoice = None
+        consultation_appointment_id = rx.appointment_id or queue_appointment_id
+        if consultation_appointment_id:
+            consultation_invoice = get_or_create_consultation_invoice_for_appointment(
+                db,
+                hospital_id=current_user.hospital_id,
+                user_id=current_user.id,
+                appointment_id=consultation_appointment_id,
+                patient_id=rx.patient_id,
+            )
+
+        enriched = enrich_prescription(db, rx)
+        enriched["consultation_invoice_id"] = str(consultation_invoice.id) if consultation_invoice else None
+        enriched["consultation_invoice_number"] = consultation_invoice.invoice_number if consultation_invoice else None
+        enriched["consultation_invoice_status"] = consultation_invoice.status if consultation_invoice else None
+        return enriched
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
 
@@ -440,14 +459,19 @@ async def list_all_medicines(
     current_user: User = Depends(get_current_active_user),
 ):
     """List medicines with search and filtering."""
-    total, pg, lim, tp, rows = list_medicines(
+    total, pg, lim, tp, rows, stock_map = list_medicines(
         db, page, limit,
         hospital_id=current_user.hospital_id,
         search=search, category=category,
     )
+    response_rows = []
+    for med in rows:
+        model = MedicineResponse.model_validate(med)
+        model.total_stock = stock_map.get(med.id, 0)
+        response_rows.append(model)
     return PaginatedMedicineResponse(
         total=total, page=pg, limit=lim, total_pages=tp,
-        data=[MedicineResponse.model_validate(m) for m in rows],
+        data=response_rows,
     )
 
 

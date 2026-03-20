@@ -5,10 +5,12 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from typing import Optional
+import uuid
 
 from ..database import get_db
 from ..dependencies import get_current_active_user
 from ..models.user import User
+from ..models.appointment import Appointment
 from ..schemas.invoice import (
     InvoiceCreate, InvoiceUpdate, InvoiceResponse,
     PaginatedInvoiceResponse, InvoiceItemCreate, InvoiceItemResponse,
@@ -17,7 +19,7 @@ from ..schemas.invoice import (
 from ..services.invoice_service import (
     create_invoice, get_invoice_by_id, list_invoices,
     update_invoice, issue_invoice, void_invoice,
-    add_invoice_item, remove_invoice_item,
+    add_invoice_item, remove_invoice_item, get_or_create_consultation_invoice_for_appointment,
 )
 
 logger = logging.getLogger(__name__)
@@ -25,8 +27,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/invoices", tags=["Billing — Invoices"])
 
 BILLING_ADMIN_ROLES = {"super_admin", "admin"}
-BILLING_STAFF_ROLES = {"super_admin", "admin", "cashier", "pharmacist"}
-BILLING_VIEW_ROLES  = {"super_admin", "admin", "cashier", "pharmacist", "doctor"}
+BILLING_STAFF_ROLES = {"super_admin", "admin", "cashier", "pharmacist", "receptionist"}
+BILLING_VIEW_ROLES  = {"super_admin", "admin", "cashier", "pharmacist", "receptionist", "doctor"}
 
 
 def _has_any_role(current_user: User, allowed_roles: set[str]) -> bool:
@@ -122,6 +124,50 @@ async def create_new_invoice(
         logger.error(f"Error creating invoice: {e}", exc_info=True)
         db.rollback()
         raise HTTPException(status_code=500, detail="Failed to create invoice")
+
+
+@router.post("/appointments/{appointment_id}/consultation-invoice", response_model=InvoiceResponse)
+async def get_or_create_consultation_invoice(
+    appointment_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Create (or return existing) issued consultation invoice for an appointment."""
+    _require_billing_staff(current_user)
+    try:
+        appointment_uuid = uuid.UUID(appointment_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid appointment ID")
+
+    appt = (
+        db.query(Appointment)
+        .filter(
+            Appointment.id == appointment_uuid,
+            Appointment.hospital_id == current_user.hospital_id,
+            Appointment.is_deleted == False,
+        )
+        .first()
+    )
+    if not appt:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+
+    try:
+        invoice = get_or_create_consultation_invoice_for_appointment(
+            db,
+            hospital_id=current_user.hospital_id,
+            user_id=current_user.id,
+            appointment_id=appointment_uuid,
+            patient_id=appt.patient_id,
+        )
+        if not invoice:
+            raise HTTPException(status_code=400, detail="Consultation fee is not configured for this appointment")
+        return InvoiceResponse.model_validate(invoice)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating consultation invoice for appointment {appointment_id}: {e}", exc_info=True)
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to prepare consultation invoice")
 
 
 @router.get("", response_model=PaginatedInvoiceResponse)

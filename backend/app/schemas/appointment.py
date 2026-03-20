@@ -228,6 +228,11 @@ class AppointmentResponse(BaseModel):
     updated_at: datetime
     patient_name: Optional[str] = None
     doctor_name: Optional[str] = None
+    consultation_invoice_id: Optional[str] = None
+    consultation_invoice_number: Optional[str] = None
+    consultation_invoice_status: Optional[str] = None
+    consultation_fee_collected: bool = False
+    consultation_balance_amount: Optional[Decimal] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -254,6 +259,11 @@ class AppointmentListItem(BaseModel):
     created_at: datetime
     patient_name: Optional[str] = None
     doctor_name: Optional[str] = None
+    consultation_invoice_id: Optional[str] = None
+    consultation_invoice_number: Optional[str] = None
+    consultation_invoice_status: Optional[str] = None
+    consultation_fee_collected: bool = False
+    consultation_balance_amount: Optional[Decimal] = None
 
     @model_validator(mode="before")
     @classmethod

@@ -431,11 +431,11 @@ const DispensingScreen: React.FC = () => {
                   </div>
                 } 
               />
-              {(prescription.patient_age || prescription.patient_gender) && (
+              {(prescription.patient_age != null || prescription.patient_gender) && (
                 <InfoRow 
                   icon="cake" 
                   label="Age / Sex" 
-                  value={`${prescription.patient_age || '-'}y / ${prescription.patient_gender || '-'}`} 
+                  value={`${prescription.patient_age ?? '-'}y / ${prescription.patient_gender || '-'}`} 
                 />
               )}
               {prescription.patient_phone && (

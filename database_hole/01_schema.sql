@@ -251,6 +251,7 @@ CREATE TABLE patients (
     photo_url                   VARCHAR(500),
     emergency_contact_name      VARCHAR(200),
     emergency_contact_phone     VARCHAR(20),
+    emergency_contact_country_code VARCHAR(5) DEFAULT '+91',
     emergency_contact_relation  VARCHAR(50),
     known_allergies             TEXT,
     chronic_conditions          TEXT,
@@ -1065,23 +1066,27 @@ CREATE TABLE optical_repairs (
 -- 11.1 suppliers
 -- ─────────────────────────────────────────────────────────────────────────────
 CREATE TABLE suppliers (
-    id             UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    hospital_id    UUID         NOT NULL REFERENCES hospitals(id),
-    name           VARCHAR(200) NOT NULL,
-    code           VARCHAR(20)  NOT NULL,
-    contact_person VARCHAR(100),
-    phone          VARCHAR(20),
-    email          VARCHAR(255),
-    address        TEXT,
-    tax_id         VARCHAR(50),
-    payment_terms  VARCHAR(50),
-    lead_time_days INTEGER,
-    rating         DECIMAL(3,1),
-    is_active      BOOLEAN      DEFAULT true,
-    created_at     TIMESTAMPTZ  DEFAULT NOW(),
-    updated_at     TIMESTAMPTZ  DEFAULT NOW(),
+    id                 UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    hospital_id        UUID         NOT NULL REFERENCES hospitals(id),
+    name               VARCHAR(200) NOT NULL,
+    code               VARCHAR(20)  NOT NULL,
+    contact_person     VARCHAR(100),
+    phone              VARCHAR(20),
+    email              VARCHAR(255),
+    address            TEXT,
+    tax_id             VARCHAR(50),
+    payment_terms      VARCHAR(50),
+    lead_time_days     INTEGER,
+    rating             DECIMAL(3,1),
+    product_categories TEXT[]       DEFAULT '{}',
+    is_active          BOOLEAN      DEFAULT true,
+    created_at         TIMESTAMPTZ  DEFAULT NOW(),
+    updated_at         TIMESTAMPTZ  DEFAULT NOW(),
     UNIQUE (hospital_id, code)
 );
+
+COMMENT ON COLUMN suppliers.product_categories IS 
+    'Array of product categories supplied by this vendor: medicine, optical, surgical, equipment, laboratory, disposable, other';
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 11.2 purchase_orders

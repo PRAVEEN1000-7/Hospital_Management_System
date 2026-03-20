@@ -7,6 +7,9 @@ import uuid
 
 # ─── Supplier ───────────────────────────────────────────────────────────────
 
+# Valid product categories for suppliers
+VALID_PRODUCT_CATEGORIES = ["medicine", "optical", "surgical", "equipment", "laboratory", "disposable", "other"]
+
 class SupplierBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     code: str = Field(..., min_length=1, max_length=20)
@@ -18,6 +21,17 @@ class SupplierBase(BaseModel):
     payment_terms: Optional[str] = Field(None, max_length=50)
     lead_time_days: Optional[int] = Field(None, ge=0)
     rating: Optional[float] = Field(None, ge=0, le=5)
+    product_categories: Optional[List[str]] = Field(default_factory=list)
+
+    @field_validator("product_categories")
+    @classmethod
+    def validate_product_categories(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+        if v is None:
+            return v
+        for category in v:
+            if category not in VALID_PRODUCT_CATEGORIES:
+                raise ValueError(f"Invalid category '{category}'. Must be one of: {', '.join(VALID_PRODUCT_CATEGORIES)}")
+        return v
 
 class SupplierCreate(SupplierBase):
     pass
@@ -33,6 +47,17 @@ class SupplierUpdate(BaseModel):
     lead_time_days: Optional[int] = Field(None, ge=0)
     rating: Optional[float] = Field(None, ge=0, le=5)
     is_active: Optional[bool] = None
+    product_categories: Optional[List[str]] = None
+
+    @field_validator("product_categories")
+    @classmethod
+    def validate_product_categories(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+        if v is None:
+            return v
+        for category in v:
+            if category not in VALID_PRODUCT_CATEGORIES:
+                raise ValueError(f"Invalid category '{category}'. Must be one of: {', '.join(VALID_PRODUCT_CATEGORIES)}")
+        return v
 
 class SupplierResponse(BaseModel):
     id: uuid.UUID
@@ -46,12 +71,33 @@ class SupplierResponse(BaseModel):
     payment_terms: Optional[str] = None
     lead_time_days: Optional[int] = None
     rating: Optional[float] = None
+    product_categories: List[str] = Field(default_factory=list)
     is_active: bool
     created_at: datetime
     updated_at: datetime
 
     class Config:
         from_attributes = True
+
+    @field_validator("product_categories", mode="before")
+    @classmethod
+    def parse_product_categories(cls, v):
+        """Convert database PostgreSQL array format to list."""
+        if v is None or v == '{}' or v == '':
+            return []
+        if isinstance(v, list):
+            return v
+        if isinstance(v, str):
+            # Handle PostgreSQL array format {a,b,c} or {"a","b"}
+            if v.startswith('{') and v.endswith('}'):
+                cleaned = v[1:-1]
+                if not cleaned:
+                    return []
+                # Handle quoted and unquoted values
+                return [c.strip().strip('"').strip("'") for c in cleaned.split(",") if c.strip()]
+            # Fallback for empty or invalid format
+            return []
+        return v
 
 
 # ─── Purchase Order ─────────────────────────────────────────────────────────

@@ -308,6 +308,7 @@ def create_supplier(db: Session, data: SupplierCreate, hospital_id: uuid.UUID) -
         payment_terms=data.payment_terms,
         lead_time_days=data.lead_time_days,
         rating=data.rating,
+        product_categories=data.product_categories or [],
     )
     db.add(supplier)
     db.commit()

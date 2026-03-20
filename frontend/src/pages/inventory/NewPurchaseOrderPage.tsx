@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { useToast } from '../../contexts/ToastContext';
@@ -6,9 +6,10 @@ import inventoryService from '../../services/inventoryService';
 import pharmacyService from '../../services/pharmacyService';
 import type { Supplier, PurchaseOrderCreate } from '../../types/inventory';
 import type { Medicine } from '../../types/pharmacy';
+import { VALID_PRODUCT_CATEGORIES } from '../../types/inventory';
 
 interface ItemRow {
-  item_type: 'medicine' | 'optical_product';
+  item_type: string;
   item_id: string;
   item_name: string;
   quantity_ordered: number;
@@ -32,6 +33,37 @@ const NewPurchaseOrderPage: React.FC = () => {
     inventoryService.getSuppliers(1, 100, '', true).then(r => setSuppliers(r.data)).catch(() => {});
     pharmacyService.getMedicines(1, 500).then(r => setMedicines(r.data)).catch(() => {});
   }, []);
+
+  // Get selected supplier's product categories for item type dropdown
+  const selectedSupplier = useMemo(() => suppliers.find(s => s.id === supplierId), [suppliers, supplierId]);
+  
+  const availableItemTypes = useMemo(() => {
+    if (!selectedSupplier?.product_categories || selectedSupplier.product_categories.length === 0) {
+      // Default to medicine and optical if supplier has no categories set
+      return ['medicine', 'optical_product'];
+    }
+    // Map supplier categories to item types
+    const types: string[] = [];
+    if (selectedSupplier.product_categories.includes('medicine')) {
+      types.push('medicine');
+    }
+    if (selectedSupplier.product_categories.includes('optical')) {
+      types.push('optical_product');
+    }
+    // Add other categories as generic item types
+    selectedSupplier.product_categories.forEach(cat => {
+      if (cat !== 'medicine' && cat !== 'optical' && !types.includes(cat)) {
+        types.push(cat);
+      }
+    });
+    return types.length > 0 ? types : ['medicine', 'optical_product'];
+  }, [selectedSupplier]);
+
+  // Get minimum date for expected delivery (today or order date, whichever is later)
+  const minExpectedDate = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    return orderDate > today ? orderDate : today;
+  }, [orderDate]);
 
   const addItem = () => setItems([...items, { item_type: 'medicine', item_id: '', item_name: '', quantity_ordered: 1, unit_price: 0 }]);
 
@@ -94,7 +126,20 @@ const NewPurchaseOrderPage: React.FC = () => {
 
       rows.forEach((row) => {
         const itemTypeRaw = String(row.item_type || 'medicine').trim().toLowerCase();
-        const itemType: 'medicine' | 'optical_product' = itemTypeRaw === 'optical_product' ? 'optical_product' : 'medicine';
+        // Determine item type based on supplier categories or default
+        let itemType: string = 'medicine';
+        if (selectedSupplier?.product_categories) {
+          if (selectedSupplier.product_categories.includes('optical') && itemTypeRaw.includes('optical')) {
+            itemType = 'optical_product';
+          } else if (selectedSupplier.product_categories.includes('medicine')) {
+            itemType = 'medicine';
+          } else if (selectedSupplier.product_categories.includes(itemTypeRaw)) {
+            itemType = itemTypeRaw;
+          }
+        } else {
+          // Default fallback
+          itemType = itemTypeRaw === 'optical_product' || itemTypeRaw.includes('optical') ? 'optical_product' : 'medicine';
+        }
         const itemIdCell = String(row.item_id || '').trim();
         const itemNameCell = String(row.item_name || row.medicine_name || '').trim();
         const qty = Number(row.quantity_ordered || row.quantity || 0);
@@ -149,6 +194,17 @@ const NewPurchaseOrderPage: React.FC = () => {
     if (!supplierId) { toast.error('Please select a supplier'); return; }
     if (items.some(it => !it.item_name || it.quantity_ordered <= 0 || it.unit_price <= 0)) {
       toast.error('Please fill in all item details'); return;
+    }
+    // Validate expected delivery date
+    if (expectedDate) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const expected = new Date(expectedDate);
+      expected.setHours(0, 0, 0, 0);
+      if (expected < today) {
+        toast.error('Expected delivery date cannot be in the past');
+        return;
+      }
     }
     setSaving(true);
     try {
@@ -211,8 +267,9 @@ const NewPurchaseOrderPage: React.FC = () => {
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-500 mb-1.5">Expected Delivery</label>
-            <input type="date" value={expectedDate} onChange={e => setExpectedDate(e.target.value)}
+            <input type="date" value={expectedDate} min={minExpectedDate} onChange={e => setExpectedDate(e.target.value)}
               className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm bg-slate-50 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
+            <p className="text-xs text-slate-400 mt-1">Must be today or later</p>
           </div>
           <div className="sm:col-span-2 lg:col-span-4">
             <label className="block text-xs font-semibold text-slate-500 mb-1.5">Notes</label>
@@ -266,8 +323,15 @@ const NewPurchaseOrderPage: React.FC = () => {
                   <td className="px-3 py-2">
                     <select value={item.item_type} onChange={e => updateItem(idx, 'item_type', e.target.value)}
                       className="w-full px-2 py-2 border border-slate-200 rounded-lg text-sm bg-white">
-                      <option value="medicine">Medicine</option>
-                      <option value="optical_product">Optical Product</option>
+                      {!supplierId ? (
+                        <option value="">Select supplier first...</option>
+                      ) : (
+                        availableItemTypes.map(type => (
+                          <option key={type} value={type}>
+                            {type === 'medicine' ? 'Medicine' : type === 'optical_product' ? 'Optical Product' : type.charAt(0).toUpperCase() + type.slice(1).replace('_', ' ')}
+                          </option>
+                        ))
+                      )}
                     </select>
                   </td>
                   <td className="px-3 py-2">
@@ -322,9 +386,16 @@ const NewPurchaseOrderPage: React.FC = () => {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-slate-400">Type</label>
-                  <select value={item.item_type} onChange={e => updateItem(idx, 'item_type', e.target.value)} className="w-full px-2 py-2 border border-slate-200 rounded-lg text-sm bg-white mt-1">
-                    <option value="medicine">Medicine</option>
-                    <option value="optical_product">Optical Product</option>
+                  <select value={item.item_type} onChange={e => updateItem(idx, 'item_type', e.target.value)} className="w-full px-2 py-2 border border-slate-200 rounded-lg text-sm bg-white mt-1" disabled={!supplierId}>
+                    {!supplierId ? (
+                      <option value="">Select supplier first...</option>
+                    ) : (
+                      availableItemTypes.map(type => (
+                        <option key={type} value={type}>
+                          {type === 'medicine' ? 'Medicine' : type === 'optical_product' ? 'Optical Product' : type.charAt(0).toUpperCase() + type.slice(1).replace('_', ' ')}
+                        </option>
+                      ))
+                    )}
                   </select>
                 </div>
                 <div>

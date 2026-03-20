@@ -156,15 +156,19 @@ const LowStockAlertsPage: React.FC = () => {
       const items = selectedSuggestions.map(s => {
         const quantity = customQuantities.get(s.item_id) || s.suggestedQuantity;
         return {
-          medicine_id: s.item_id,
+          item_type: 'medicine' as const,
+          item_id: s.item_id,
           quantity_ordered: quantity,
           unit_price: s.purchase_price || 0,
+          total_price: quantity * (s.purchase_price || 0),
         };
       });
 
-      await pharmacyService.createPurchaseOrder({
+      await inventoryService.createPurchaseOrder({
         supplier_id: selectedSupplier,
-        expected_delivery: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        order_date: new Date().toISOString().split('T')[0],
+        expected_delivery_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        status: 'draft',
         notes: `Auto-generated reorder for low stock items - ${selectedItems.size} items`,
         items,
       });

@@ -223,14 +223,13 @@ const NewPurchaseOrderPage: React.FC = () => {
       toast.error('No items to export');
       return;
     }
+    // Export in format that matches bulk upload template expectations
     const exportRows = items.map((it, idx) => ({
-      item_no: idx + 1,
       item_type: it.item_type,
       item_id: it.item_id || '',
       item_name: it.item_name,
       quantity_ordered: it.quantity_ordered,
       unit_price: it.unit_price,
-      total_price: it.quantity_ordered * it.unit_price,
     }));
     const worksheet = XLSX.utils.json_to_sheet(exportRows);
     const workbook = XLSX.utils.book_new();
@@ -260,6 +259,7 @@ const NewPurchaseOrderPage: React.FC = () => {
       const medicineByName = new Map(medicines.map((m) => [m.name.toLowerCase().trim(), m]));
       const parsed: ItemRow[] = [];
       let skipped = 0;
+      let manualEntries = 0;
 
       rows.forEach((row) => {
         const itemTypeRaw = String(row.item_type || 'medicine').trim().toLowerCase();
@@ -286,13 +286,31 @@ const NewPurchaseOrderPage: React.FC = () => {
         let itemName = itemNameCell;
 
         if (itemType === 'medicine') {
-          const med = medicineById.get(itemIdCell) || medicineByName.get(itemNameCell.toLowerCase());
-          if (!med) {
+          // Try to find medicine in catalog by ID first
+          if (itemIdCell) {
+            const med = medicineById.get(itemIdCell);
+            if (med) {
+              itemId = med.id;
+              itemName = med.name;
+            }
+          }
+          // If not found by ID, try by name
+          if (!itemId && itemNameCell) {
+            const med = medicineByName.get(itemNameCell.toLowerCase());
+            if (med) {
+              itemId = med.id;
+              itemName = med.name;
+            }
+          }
+          // If still not found, treat as manual entry (allow it)
+          if (!itemId && !itemNameCell) {
             skipped += 1;
             return;
           }
-          itemId = med.id;
-          itemName = med.name;
+          if (!itemId && itemNameCell) {
+            // Manual entry - keep the name, leave itemId empty
+            manualEntries += 1;
+          }
         }
 
         if (!itemName || !Number.isFinite(qty) || qty <= 0 || !Number.isFinite(unitPrice) || unitPrice <= 0) {
@@ -315,7 +333,7 @@ const NewPurchaseOrderPage: React.FC = () => {
       }
 
       setItems(parsed);
-      toast.success(`Imported ${parsed.length} item(s)${skipped ? `, skipped ${skipped}` : ''}`);
+      toast.success(`Imported ${parsed.length} item(s)${skipped ? `, skipped ${skipped}` : ''}${manualEntries ? ` (${manualEntries} manual entries)` : ''}`);
     } catch (err) {
       console.error('Bulk upload failed:', err);
       toast.error('Failed to parse file. Upload CSV/XLSX template format.');

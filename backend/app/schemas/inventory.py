@@ -103,7 +103,7 @@ class SupplierResponse(BaseModel):
 # ─── Purchase Order ─────────────────────────────────────────────────────────
 
 class PurchaseOrderItemCreate(BaseModel):
-    item_type: str = Field(..., pattern=r"^(medicine|optical_product)$")
+    item_type: str = Field(..., min_length=1, max_length=50)
     item_id: str
     item_name: Optional[str] = Field(None, max_length=200)
     quantity_ordered: int = Field(..., gt=0)
@@ -168,7 +168,7 @@ class PurchaseOrderResponse(BaseModel):
 # ─── GRN ────────────────────────────────────────────────────────────────────
 
 class GRNItemCreate(BaseModel):
-    item_type: str = Field(..., pattern=r"^(medicine|optical_product)$")
+    item_type: str = Field(..., min_length=1, max_length=50)
     item_id: str
     item_name: Optional[str] = Field(None, max_length=200)
     batch_number: Optional[str] = Field(None, max_length=50)
@@ -268,7 +268,7 @@ class StockMovementResponse(BaseModel):
 # ─── Stock Adjustment ───────────────────────────────────────────────────────
 
 class StockAdjustmentCreate(BaseModel):
-    item_type: str = Field(..., pattern=r"^(medicine|optical_product)$")
+    item_type: str = Field(..., min_length=1, max_length=50)
     item_id: str
     batch_id: Optional[str] = None
     adjustment_type: str = Field(...)
@@ -316,7 +316,7 @@ class StockAdjustmentResponse(BaseModel):
 # ─── Cycle Count ────────────────────────────────────────────────────────────
 
 class CycleCountItemCreate(BaseModel):
-    item_type: str = Field(..., pattern=r"^(medicine|optical_product)$")
+    item_type: str = Field(..., min_length=1, max_length=50)
     item_id: str
     batch_id: Optional[str] = None
     system_quantity: int = Field(..., ge=0)

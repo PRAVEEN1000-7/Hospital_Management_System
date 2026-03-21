@@ -139,9 +139,19 @@ def _resolve_item_id(db: Session, item_type: str, item_id: str, item_name: Optio
         if parsed_id:
             return parsed_id
 
-    # Return the parsed_id if we have one, otherwise raise an error
+    # Return the parsed_id if we have one
     if parsed_id:
         return parsed_id
+    
+    # For other item types or when item_id is empty but item_name is provided,
+    # return a placeholder UUID (the system will store it as-is for generic items)
+    if item_name and item_name.strip():
+        # For non-medicine/optical items, we allow creation with just a name
+        # Generate a deterministic UUID based on the item name for consistency
+        import hashlib
+        hash_bytes = hashlib.md5(f"{item_type}:{item_name}".encode()).digest()
+        return uuid.UUID(bytes=hash_bytes)
+    
     raise ValueError(f"Could not resolve item_id for type {item_type}: item_id={item_id}, item_name={item_name}")
 
 

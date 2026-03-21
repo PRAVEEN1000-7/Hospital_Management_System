@@ -338,6 +338,7 @@ const NewPurchaseOrderPage: React.FC = () => {
           total_price: it.quantity_ordered * it.unit_price,
         })),
       };
+      console.log('Creating PO with payload:', JSON.stringify(payload, null, 2));
       await inventoryService.createPurchaseOrder(payload);
       toast.success(`Purchase order ${asDraft ? 'saved as draft' : 'submitted'}`);
 
@@ -345,8 +346,10 @@ const NewPurchaseOrderPage: React.FC = () => {
       savePreviousItems(items);
 
       navigate('/inventory/purchase-orders');
-    } catch {
-      toast.error('Failed to create purchase order');
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Failed to create purchase order:', error);
+      toast.error(`Failed to create purchase order: ${errorMessage}`);
     } finally {
       setSaving(false);
     }

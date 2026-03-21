@@ -20,7 +20,7 @@ from app.models.pharmacy import MedicineBatch
 def _login(client: TestClient) -> str:
     resp = client.post(
         "/api/v1/auth/login",
-        json={"username": "superadmin", "password": "superadmin@123"},
+        json={"username": "", "password": ""},
     )
     if resp.status_code != 200:
         raise RuntimeError(f"Login failed: {resp.status_code} {resp.text}")

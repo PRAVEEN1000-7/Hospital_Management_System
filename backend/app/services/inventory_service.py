@@ -1,6 +1,7 @@
 """
 Inventory service — business logic for suppliers, POs, GRNs,
 stock movements, adjustments, and cycle counts.
+Integrated with Products table for centralized catalog management.
 """
 import logging
 import math
@@ -18,6 +19,7 @@ from ..models.inventory import (
 )
 from ..models.prescription import Medicine
 from ..models.optical import OpticalProduct
+from ..models.products import Product, StockSummary, StockAlert
 from ..models.notification import Notification
 from ..models.pharmacy import MedicineBatch
 from ..models.user import User, Role, UserRole
@@ -952,72 +954,157 @@ def get_stock_level(
 
 
 def get_low_stock_items(db: Session, hospital_id: uuid.UUID, limit: int = 20) -> list:
-    """Return medicines below reorder level using batch totals (same source as medicine inventory)."""
-    medicines = (
-        db.query(Medicine.id, Medicine.name, Medicine.reorder_level, Medicine.purchase_price)
-        .filter(Medicine.hospital_id == hospital_id, Medicine.is_active == True)
+    """Return products and medicines below reorder level using stock_summary (centralized product catalog)."""
+    # First, get low stock from products/stock_summary (centralized)
+    low_stock_products = (
+        db.query(Product, StockSummary)
+        .join(StockSummary, Product.id == StockSummary.product_id)
+        .filter(
+            Product.hospital_id == hospital_id,
+            Product.is_active == True,
+            Product.is_deleted == False,
+            StockSummary.is_low_stock == True,
+        )
+        .order_by(StockSummary.available_stock.asc(), Product.product_name.asc())
+        .limit(limit)
         .all()
     )
-
-    med_ids = [m.id for m in medicines]
-    stock_map: dict[uuid.UUID, int] = {}
-    if med_ids:
-        rows = (
-            db.query(MedicineBatch.medicine_id, func.coalesce(func.sum(MedicineBatch.quantity), 0))
+    
+    results = []
+    for product, stock_summary in low_stock_products:
+        results.append({
+            "product_id": str(product.id),
+            "item_id": str(product.id),
+            "item_type": "product",
+            "product_name": product.product_name,
+            "item_name": product.product_name,
+            "generic_name": product.generic_name,
+            "category": product.category,
+            "sku": product.sku,
+            "current_stock": stock_summary.available_stock,
+            "reorder_level": product.reorder_level,
+            "min_stock_level": product.min_stock_level,
+            "max_stock_level": product.max_stock_level,
+            "purchase_price": float(product.purchase_price or 0),
+            "supplier_name": None,  # Will be populated if needed
+        })
+    
+    # Also include medicines that don't have product entries yet (legacy support)
+    if len(results) < limit:
+        medicines = (
+            db.query(Medicine.id, Medicine.name, Medicine.generic_name, Medicine.reorder_level, Medicine.purchase_price)
             .filter(
-                MedicineBatch.medicine_id.in_(med_ids),
-                MedicineBatch.is_active == True,
+                Medicine.hospital_id == hospital_id, 
+                Medicine.is_active == True,
             )
-            .group_by(MedicineBatch.medicine_id)
             .all()
         )
-        stock_map = {row[0]: int(row[1]) for row in rows}
 
-    low_stock = []
-    for med in medicines:
-        current = stock_map.get(med.id, 0)
-        reorder = med.reorder_level or 10
-        if current <= reorder:
-            low_stock.append({
-                "item_id": str(med.id),
-                "item_type": "medicine",
-                "item_name": med.name,
-                "current_stock": current,
-                "reorder_level": reorder,
-                "purchase_price": float(med.purchase_price or 0),
-            })
+        med_ids = [m.id for m in medicines]
+        stock_map: dict[uuid.UUID, int] = {}
+        if med_ids:
+            rows = (
+                db.query(MedicineBatch.medicine_id, func.coalesce(func.sum(MedicineBatch.quantity), 0))
+                .filter(
+                    MedicineBatch.medicine_id.in_(med_ids),
+                    MedicineBatch.is_active == True,
+                )
+                .group_by(MedicineBatch.medicine_id)
+                .all()
+            )
+            stock_map = {row[0]: int(row[1]) for row in rows}
 
-    low_stock.sort(key=lambda x: (x["current_stock"], x["item_name"] or ""))
-    return low_stock[:limit]
+        for med in medicines:
+            current = stock_map.get(med.id, 0)
+            reorder = med.reorder_level or 10
+            if current <= reorder:
+                # Check if this medicine already exists in results via product
+                if not any(r.get("item_id") == str(med.id) for r in results):
+                    results.append({
+                        "item_id": str(med.id),
+                        "item_type": "medicine",
+                        "item_name": med.name,
+                        "generic_name": med.generic_name,
+                        "current_stock": current,
+                        "reorder_level": reorder,
+                        "purchase_price": float(med.purchase_price or 0),
+                    })
+    
+    results.sort(key=lambda x: (x.get("current_stock", 0), x.get("item_name") or ""))
+    return results[:limit]
 
 
 def get_expiring_items(db: Session, hospital_id: uuid.UUID, days: int = 90) -> list:
-    """Return GRN items expiring within the given number of days."""
+    """Return products and batches expiring within the given number of days."""
     from datetime import timedelta
     cutoff = date.today() + timedelta(days=days)
-    items = (
-        db.query(GRNItem)
-        .join(GoodsReceiptNote)
+    
+    # Get expiring products from stock_summary (centralized)
+    expiring_products = (
+        db.query(Product, StockSummary)
+        .join(StockSummary, Product.id == StockSummary.product_id)
         .filter(
-            GoodsReceiptNote.hospital_id == hospital_id,
-            GoodsReceiptNote.status == "accepted",
-            GRNItem.expiry_date != None,
-            GRNItem.expiry_date <= cutoff,
+            Product.hospital_id == hospital_id,
+            Product.is_active == True,
+            Product.is_deleted == False,
+            StockSummary.is_expiring_soon == True,
+            StockSummary.earliest_expiry != None,
+            StockSummary.earliest_expiry <= cutoff,
         )
-        .order_by(GRNItem.expiry_date)
+        .order_by(StockSummary.earliest_expiry.asc())
         .limit(50)
         .all()
     )
+    
     results = []
-    for it in items:
+    for product, stock_summary in expiring_products:
+        days_until = (stock_summary.earliest_expiry - date.today()).days if stock_summary.earliest_expiry else None
         results.append({
-            "item_id": str(it.item_id),
-            "item_type": it.item_type,
-            "item_name": _resolve_item_name(db, it.item_type, it.item_id),
-            "batch_number": it.batch_number,
-            "expiry_date": it.expiry_date,
-            "quantity": it.quantity_accepted or it.quantity_received,
+            "product_id": str(product.id),
+            "item_id": str(product.id),
+            "item_type": "product",
+            "product_name": product.product_name,
+            "item_name": product.product_name,
+            "generic_name": product.generic_name,
+            "category": product.category,
+            "batch_number": None,  # Aggregated from multiple batches
+            "expiry_date": str(stock_summary.earliest_expiry) if stock_summary.earliest_expiry else None,
+            "days_until_expiry": days_until,
+            "quantity": stock_summary.available_stock,
+            "unit_price": float(product.purchase_price or 0),
         })
+    
+    # Also include medicine batches that don't have product entries yet (legacy support)
+    if len(results) < 50:
+        expiring_batches = (
+            db.query(MedicineBatch, Medicine)
+            .join(Medicine, MedicineBatch.medicine_id == Medicine.id)
+            .filter(
+                Medicine.hospital_id == hospital_id,
+                Medicine.is_active == True,
+                MedicineBatch.is_active == True,
+                MedicineBatch.expiry_date != None,
+                MedicineBatch.expiry_date <= cutoff,
+            )
+            .order_by(MedicineBatch.expiry_date.asc())
+            .limit(50 - len(results))
+            .all()
+        )
+        
+        for batch, med in expiring_batches:
+            days_until = (batch.expiry_date - date.today()).days if batch.expiry_date else None
+            results.append({
+                "item_id": str(med.id),
+                "item_type": "medicine",
+                "item_name": med.name,
+                "batch_number": batch.batch_number,
+                "expiry_date": str(batch.expiry_date),
+                "days_until_expiry": days_until,
+                "quantity": batch.quantity,
+                "unit_price": float(batch.purchase_price or 0),
+            })
+    
+    results.sort(key=lambda x: x.get("expiry_date") or "")
     return results
 
 
@@ -1328,30 +1415,84 @@ def _format_cycle_count_response(cc: CycleCount, db: Session) -> dict:
 # ═══════════════════════════════════════════════════════════════════════════
 
 def get_inventory_dashboard(db: Session, hospital_id: uuid.UUID) -> dict:
-    """Aggregate stats for the inventory dashboard."""
+    """Aggregate stats for the inventory dashboard - integrated with products catalog."""
+    # Supplier stats
     total_suppliers = db.query(func.count(Supplier.id)).filter(
         Supplier.hospital_id == hospital_id, Supplier.is_active == True
     ).scalar() or 0
 
+    # Purchase Order stats
     active_pos = db.query(func.count(PurchaseOrder.id)).filter(
         PurchaseOrder.hospital_id == hospital_id,
         PurchaseOrder.status.in_(["draft", "submitted", "approved", "partially_received"]),
     ).scalar() or 0
 
+    # GRN stats
     pending_grns = db.query(func.count(GoodsReceiptNote.id)).filter(
         GoodsReceiptNote.hospital_id == hospital_id,
         GoodsReceiptNote.status == "pending",
     ).scalar() or 0
 
+    # Adjustment stats
     pending_adjustments = db.query(func.count(StockAdjustment.id)).filter(
         StockAdjustment.hospital_id == hospital_id,
         StockAdjustment.status == "pending",
     ).scalar() or 0
 
+    # Product catalog stats (centralized)
+    total_products = db.query(func.count(Product.id)).filter(
+        Product.hospital_id == hospital_id,
+        Product.is_active == True,
+        Product.is_deleted == False,
+    ).scalar() or 0
+    
+    total_medicines = db.query(func.count(Product.id)).filter(
+        Product.hospital_id == hospital_id,
+        Product.category == "medicine",
+        Product.is_active == True,
+        Product.is_deleted == False,
+    ).scalar() or 0
+    
+    total_optical = db.query(func.count(Product.id)).filter(
+        Product.hospital_id == hospital_id,
+        Product.category == "optical",
+        Product.is_active == True,
+        Product.is_deleted == False,
+    ).scalar() or 0
+
+    # Stock summary stats
+    total_stock_value = db.query(func.coalesce(func.sum(StockSummary.total_value), 0)).filter(
+        StockSummary.hospital_id == hospital_id,
+    ).scalar() or 0
+    
+    low_stock_count = db.query(func.count(StockSummary.id)).filter(
+        StockSummary.hospital_id == hospital_id,
+        StockSummary.is_low_stock == True,
+    ).scalar() or 0
+    
+    expiring_soon_count = db.query(func.count(StockSummary.id)).filter(
+        StockSummary.hospital_id == hospital_id,
+        StockSummary.is_expiring_soon == True,
+    ).scalar() or 0
+    
+    # Stock alerts
+    total_alerts = db.query(func.count(StockAlert.id)).filter(
+        StockAlert.hospital_id == hospital_id,
+        StockAlert.is_resolved == False,
+    ).scalar() or 0
+    
+    critical_alerts = db.query(func.count(StockAlert.id)).filter(
+        StockAlert.hospital_id == hospital_id,
+        StockAlert.is_resolved == False,
+        StockAlert.severity == "critical",
+    ).scalar() or 0
+
+    # Get detailed low stock and expiring items
     low_stock = get_low_stock_items(db, hospital_id, limit=5)
     expiring = get_expiring_items(db, hospital_id, days=90)
 
     return {
+        # Legacy fields for backward compatibility
         "total_suppliers": total_suppliers,
         "active_purchase_orders": active_pos,
         "pending_grns": pending_grns,
@@ -1360,4 +1501,14 @@ def get_inventory_dashboard(db: Session, hospital_id: uuid.UUID) -> dict:
         "expiring_items": expiring[:5],
         "low_stock_count": len(low_stock),
         "expiring_count": len(expiring),
+        
+        # New product-centric fields
+        "total_products": total_products,
+        "total_medicines": total_medicines,
+        "total_optical": total_optical,
+        "total_stock_value": float(total_stock_value),
+        "low_stock_products": low_stock_count,
+        "expiring_soon_products": expiring_soon_count,
+        "total_alerts": total_alerts,
+        "critical_alerts": critical_alerts,
     }

@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
 import inventoryService from '../../services/inventoryService';
+import productsService from '../../services/productsService';
 import type { LowStockItem } from '../../types/inventory';
+import type { Product } from '../../types/products';
 
 interface SupplierOption {
   id: string;
@@ -20,11 +22,11 @@ const LowStockAlertsPage: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const roles = user?.roles || [];
-  
+
   // Role-based access control
-  const hasInventoryAccess = 
+  const hasInventoryAccess =
     roles.includes('inventory_manager') || roles.includes('admin') || roles.includes('super_admin');
-  
+
   const [items, setItems] = useState<LowStockItem[]>([]);
   const [suggestions, setSuggestions] = useState<ReorderSuggestion[]>([]);
   const [suppliers, setSuppliers] = useState<SupplierOption[]>([]);
@@ -37,12 +39,42 @@ const LowStockAlertsPage: React.FC = () => {
   const [selectedSupplier, setSelectedSupplier] = useState('');
   const [creating, setCreating] = useState(false);
   const [customQuantities, setCustomQuantities] = useState<Map<string, number>>(new Map());
+  const [useProducts, setUseProducts] = useState(true);  // Toggle between products and legacy medicines
 
-  // Fetch low stock items
+  // Fetch low stock items from products service (preferred) or inventory service (legacy)
   const fetchLowStockItems = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await inventoryService.getLowStock(100);
+      let res: LowStockItem[];
+      
+      // Try products service first (centralized catalog)
+      if (useProducts) {
+        try {
+          const productsRes = await productsService.getLowStock(100);
+          res = productsRes.map(p => ({
+            product_id: p.product_id,
+            item_id: p.product_id,
+            item_type: 'product',
+            item_name: p.product_name,
+            product_name: p.product_name,
+            generic_name: p.generic_name,
+            category: p.category,
+            sku: p.sku,
+            current_stock: p.current_stock,
+            reorder_level: p.reorder_level,
+            min_stock_level: p.min_stock_level,
+            max_stock_level: p.max_stock_level,
+            purchase_price: p.purchase_price,
+            supplier_name: p.supplier_name,
+          }));
+        } catch {
+          // Fallback to inventory service if products service fails
+          res = await inventoryService.getLowStock(100);
+        }
+      } else {
+        res = await inventoryService.getLowStock(100);
+      }
+      
       setItems(res);
 
       // Generate reorder suggestions
@@ -65,7 +97,7 @@ const LowStockAlertsPage: React.FC = () => {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [useProducts]);
 
   // Fetch suppliers
   const fetchSuppliers = useCallback(async () => {
@@ -156,8 +188,9 @@ const LowStockAlertsPage: React.FC = () => {
       const items = selectedSuggestions.map(s => {
         const quantity = customQuantities.get(s.item_id) || s.suggestedQuantity;
         return {
-          item_type: 'medicine' as const,
-          item_id: s.item_id,
+          item_type: s.item_type || 'product',
+          item_id: s.product_id || s.item_id,
+          product_id: s.product_id,  // Include product_id for products
           quantity_ordered: quantity,
           unit_price: s.purchase_price || 0,
           total_price: quantity * (s.purchase_price || 0),
@@ -220,19 +253,30 @@ const LowStockAlertsPage: React.FC = () => {
           <h1 className="text-2xl font-bold text-slate-900">Low Stock Alerts</h1>
           <p className="text-sm text-slate-500 mt-1">Monitor items below reorder level and generate purchase orders</p>
         </div>
-        {hasInventoryAccess && (
-          <button
-            onClick={() => {
-              setSelectedSupplier('');
-              setShowCreatePO(true);
-            }}
-            disabled={selectedItems.size === 0}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            <span className="material-symbols-outlined text-lg">add_shopping_cart</span>
-            Create PO ({selectedItems.size})
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={useProducts}
+              onChange={(e) => setUseProducts(e.target.checked)}
+              className="w-4 h-4 text-primary rounded border-slate-300"
+            />
+            <span className="font-medium text-slate-700">Use Products Catalog</span>
+          </label>
+          {hasInventoryAccess && (
+            <button
+              onClick={() => {
+                setSelectedSupplier('');
+                setShowCreatePO(true);
+              }}
+              disabled={selectedItems.size === 0}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <span className="material-symbols-outlined text-lg">add_shopping_cart</span>
+              Create PO ({selectedItems.size})
+            </button>
+          )}
+        </div>
       </header>
 
       {loading ? (
@@ -300,7 +344,13 @@ const LowStockAlertsPage: React.FC = () => {
                         />
                       </th>
                     )}
-                    <th className="px-4 py-3 text-left font-semibold text-slate-700">Medicine Name</th>
+                    <th className="px-4 py-3 text-left font-semibold text-slate-700">Product Name</th>
+                    {useProducts && (
+                      <>
+                        <th className="px-4 py-3 text-left font-semibold text-slate-700">Category</th>
+                        <th className="px-4 py-3 text-left font-semibold text-slate-700">SKU</th>
+                      </>
+                    )}
                     <th className="px-4 py-3 text-center font-semibold text-slate-700">Current Stock</th>
                     <th className="px-4 py-3 text-center font-semibold text-slate-700">Reorder Level</th>
                     <th className="px-4 py-3 text-center font-semibold text-slate-700">Suggested Qty</th>
@@ -325,7 +375,24 @@ const LowStockAlertsPage: React.FC = () => {
                           />
                         </td>
                       )}
-                      <td className="px-4 py-3 font-medium text-slate-900">{item.item_name}</td>
+                      <td className="px-4 py-3">
+                        <div className="font-medium text-slate-900">{item.product_name || item.item_name}</div>
+                        {item.generic_name && (
+                          <div className="text-xs text-slate-500">{item.generic_name}</div>
+                        )}
+                      </td>
+                      {useProducts && (
+                        <>
+                          <td className="px-4 py-3">
+                            <span className="px-2 py-1 bg-slate-100 text-slate-700 rounded text-xs font-medium">
+                              {item.category || 'N/A'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-slate-600 text-xs font-mono">
+                            {item.sku || 'N/A'}
+                          </td>
+                        </>
+                      )}
                       <td className="px-4 py-3 text-center font-bold text-slate-900">{item.current_stock}</td>
                       <td className="px-4 py-3 text-center text-slate-600">{item.reorder_level}</td>
                       <td className="px-4 py-3 text-center text-primary font-semibold">

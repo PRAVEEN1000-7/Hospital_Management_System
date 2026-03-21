@@ -65,6 +65,7 @@ export interface PurchaseOrderItem {
   id: string;
   item_type: string;
   item_id: string;
+  product_id?: string;  // New: link to products table
   item_name: string | null;
   quantity_ordered: number;
   quantity_received: number;
@@ -75,6 +76,7 @@ export interface PurchaseOrderItem {
 export interface PurchaseOrderItemCreate {
   item_type: string;
   item_id: string;
+  product_id?: string;  // New: link to products table
   item_name?: string;
   quantity_ordered: number;
   unit_price: number;
@@ -262,22 +264,35 @@ export interface CycleCountCreate {
 /* ── Low Stock / Expiring ──────────────────────────────────────────────── */
 
 export interface LowStockItem {
+  product_id?: string;  // New: for products-based items
   item_id: string;
   item_type: string;
   item_name: string;
+  product_name?: string;  // New: for products
+  generic_name?: string | null;  // New: for products
+  category?: string;  // New: for products
+  sku?: string | null;  // New: for products
   current_stock: number;
   reorder_level: number;
+  min_stock_level?: number | null;  // New: for products
   max_stock_level?: number | null;
   purchase_price?: number | null;
+  supplier_name?: string | null;  // New: for products
 }
 
 export interface ExpiringItem {
+  product_id?: string;  // New: for products-based items
   item_id: string;
   item_type: string;
   item_name: string | null;
+  product_name?: string;  // New: for products
+  generic_name?: string | null;  // New: for products
+  category?: string;  // New: for products
   batch_number: string | null;
   expiry_date: string;
+  days_until_expiry?: number | null;  // New: for products
   quantity: number;
+  unit_price?: number | null;
 }
 
 export interface InventoryDashboardData {
@@ -289,6 +304,15 @@ export interface InventoryDashboardData {
   expiring_items: ExpiringItem[];
   low_stock_count: number;
   expiring_count: number;
+  // New product-centric fields
+  total_products?: number;
+  total_medicines?: number;
+  total_optical?: number;
+  total_stock_value?: number;
+  low_stock_products?: number;
+  expiring_soon_products?: number;
+  total_alerts?: number;
+  critical_alerts?: number;
 }
 
 /* ── Paginated Response ────────────────────────────────────────────────── */

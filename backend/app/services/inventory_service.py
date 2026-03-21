@@ -98,27 +98,51 @@ def _resolve_item_name_with_fallback(
 
 def _resolve_item_id(db: Session, item_type: str, item_id: str, item_name: Optional[str] = None) -> uuid.UUID:
     """Prefer a valid catalog item id; fall back to name lookup when needed."""
-    parsed_id = uuid.UUID(item_id)
+    # Try to parse as UUID first
+    parsed_id = None
+    if item_id and item_id.strip():
+        try:
+            parsed_id = uuid.UUID(item_id)
+        except (ValueError, AttributeError):
+            # Not a valid UUID, treat item_id as a name
+            pass
 
     if item_type == "medicine":
-        exists = db.query(Medicine.id).filter(Medicine.id == parsed_id).first()
-        if exists:
-            return parsed_id
-        if item_name:
-            match = db.query(Medicine.id).filter(func.lower(Medicine.name) == item_name.strip().lower()).first()
+        # If we have a valid UUID, check if it exists
+        if parsed_id:
+            exists = db.query(Medicine.id).filter(Medicine.id == parsed_id).first()
+            if exists:
+                return parsed_id
+        # Fall back to name lookup
+        lookup_name = item_name or item_id
+        if lookup_name and lookup_name.strip():
+            match = db.query(Medicine.id).filter(func.lower(Medicine.name) == lookup_name.strip().lower()).first()
             if match:
                 return match[0]
+        # If UUID was provided but not found, return it anyway (might be a reference issue)
+        if parsed_id:
+            return parsed_id
 
     if item_type == "optical_product":
-        exists = db.query(OpticalProduct.id).filter(OpticalProduct.id == parsed_id).first()
-        if exists:
-            return parsed_id
-        if item_name:
-            match = db.query(OpticalProduct.id).filter(func.lower(OpticalProduct.name) == item_name.strip().lower()).first()
+        # If we have a valid UUID, check if it exists
+        if parsed_id:
+            exists = db.query(OpticalProduct.id).filter(OpticalProduct.id == parsed_id).first()
+            if exists:
+                return parsed_id
+        # Fall back to name lookup
+        lookup_name = item_name or item_id
+        if lookup_name and lookup_name.strip():
+            match = db.query(OpticalProduct.id).filter(func.lower(OpticalProduct.name) == lookup_name.strip().lower()).first()
             if match:
                 return match[0]
+        # If UUID was provided but not found, return it anyway
+        if parsed_id:
+            return parsed_id
 
-    return parsed_id
+    # Return the parsed_id if we have one, otherwise raise an error
+    if parsed_id:
+        return parsed_id
+    raise ValueError(f"Could not resolve item_id for type {item_type}: item_id={item_id}, item_name={item_name}")
 
 
 def _generate_number(db: Session, prefix: str, model_class, number_field: str) -> str:

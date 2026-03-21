@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
 import inventoryService from '../../services/inventoryService';
-import pharmacyService from '../../services/pharmacyService';
 import type { LowStockItem } from '../../types/inventory';
 
 interface SupplierOption {
@@ -72,8 +71,8 @@ const LowStockAlertsPage: React.FC = () => {
   const fetchSuppliers = useCallback(async () => {
     setLoadingSuppliers(true);
     try {
-      const res = await pharmacyService.getSuppliers('', true);
-      setSuppliers(res.map(s => ({ id: s.id, name: s.name })));
+      const res = await inventoryService.getSuppliers(1, 100, '', true);
+      setSuppliers(res.data.map(s => ({ id: s.id, name: s.name })));
     } catch (err: any) {
       console.error(err);
       setSuppliers([]);
@@ -157,15 +156,19 @@ const LowStockAlertsPage: React.FC = () => {
       const items = selectedSuggestions.map(s => {
         const quantity = customQuantities.get(s.item_id) || s.suggestedQuantity;
         return {
-          medicine_id: s.item_id,
+          item_type: 'medicine' as const,
+          item_id: s.item_id,
           quantity_ordered: quantity,
           unit_price: s.purchase_price || 0,
+          total_price: quantity * (s.purchase_price || 0),
         };
       });
 
-      await pharmacyService.createPurchaseOrder({
+      await inventoryService.createPurchaseOrder({
         supplier_id: selectedSupplier,
-        expected_delivery: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        order_date: new Date().toISOString().split('T')[0],
+        expected_delivery_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        status: 'draft',
         notes: `Auto-generated reorder for low stock items - ${selectedItems.size} items`,
         items,
       });

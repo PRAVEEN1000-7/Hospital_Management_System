@@ -2,8 +2,6 @@ import api from './api';
 import type {
   Medicine, MedicineCreateData, MedicineListResponse,
   MedicineBatch, BatchCreateData,
-  Supplier, SupplierCreateData, SupplierListResponse,
-  PurchaseOrder, PurchaseOrderCreateData, PurchaseOrderListResponse, PurchaseOrderReceiveData,
   Sale, SaleCreateData, SaleListResponse,
   StockAdjustment, StockAdjustmentCreate,
   PharmacyDashboard,
@@ -115,95 +113,6 @@ export const pharmacyService = {
 
   async updateBatch(id: string, data: Partial<BatchCreateData>): Promise<MedicineBatch> {
     const res = await api.put<MedicineBatch>(`/pharmacy/batches/${id}`, data);
-    return res.data;
-  },
-
-  // ═══ Suppliers ═══
-  async getSuppliers(search?: string, activeOnly = true): Promise<Supplier[]> {
-    const res = await api.get<SupplierListResponse>('/pharmacy/suppliers', {
-      params: { active_only: activeOnly },
-    });
-    const suppliers = res.data?.data ?? [];
-    if (search) {
-      const q = search.toLowerCase();
-      return suppliers.filter(s => s.name.toLowerCase().includes(q) || s.contact_person?.toLowerCase().includes(q));
-    }
-    return suppliers;
-  },
-
-  async getSupplier(id: string): Promise<Supplier> {
-    const res = await api.get<Supplier>(`/pharmacy/suppliers/${id}`);
-    return res.data;
-  },
-
-  async createSupplier(data: SupplierCreateData): Promise<Supplier> {
-    const res = await api.post<Supplier>('/pharmacy/suppliers', data);
-    return res.data;
-  },
-
-  async updateSupplier(id: string, data: Partial<SupplierCreateData>): Promise<Supplier> {
-    const res = await api.put<Supplier>(`/pharmacy/suppliers/${id}`, data);
-    return res.data;
-  },
-
-  async deleteSupplier(id: string): Promise<void> {
-    await api.delete(`/pharmacy/suppliers/${id}`);
-  },
-
-  // ═══ Purchase Orders ═══
-  async getPurchaseOrders(
-    page = 1, limit = 20, status?: string, supplierId?: string, dateFrom?: string, dateTo?: string
-  ): Promise<PurchaseOrderListResponse> {
-    const params: Record<string, string | number> = { page, limit };
-    if (status) params.status = status;
-    if (supplierId) params.supplier_id = supplierId;
-    if (dateFrom) params.date_from = dateFrom;
-    if (dateTo) params.date_to = dateTo;
-    const res = await api.get<PurchaseOrderListResponse>('/pharmacy/purchase-orders', { params });
-    return res.data;
-  },
-
-  async getPurchaseOrder(id: string): Promise<PurchaseOrder> {
-    const res = await api.get<PurchaseOrder>(`/pharmacy/purchase-orders/${id}`);
-    return res.data;
-  },
-
-  async createPurchaseOrder(data: PurchaseOrderCreateData): Promise<PurchaseOrder> {
-    const res = await api.post<PurchaseOrder>('/pharmacy/purchase-orders', data);
-    return res.data;
-  },
-
-  async updatePurchaseOrder(id: string, data: Partial<PurchaseOrderCreateData>): Promise<PurchaseOrder> {
-    const res = await api.put<PurchaseOrder>(`/pharmacy/purchase-orders/${id}`, data);
-    return res.data;
-  },
-
-  async deletePurchaseOrder(id: string): Promise<void> {
-    await api.delete(`/pharmacy/purchase-orders/${id}`);
-  },
-
-  async submitPurchaseOrder(id: string): Promise<PurchaseOrder> {
-    const res = await api.post<PurchaseOrder>(`/pharmacy/purchase-orders/${id}/submit`);
-    return res.data;
-  },
-
-  async approvePurchaseOrder(id: string, comments?: string): Promise<PurchaseOrder> {
-    const res = await api.post<PurchaseOrder>(`/pharmacy/purchase-orders/${id}/approve`, { comments });
-    return res.data;
-  },
-
-  async placePurchaseOrder(id: string): Promise<PurchaseOrder> {
-    const res = await api.post<PurchaseOrder>(`/pharmacy/purchase-orders/${id}/place`);
-    return res.data;
-  },
-
-  async cancelPurchaseOrder(id: string, reason?: string): Promise<PurchaseOrder> {
-    const res = await api.post<PurchaseOrder>(`/pharmacy/purchase-orders/${id}/cancel`, { reason });
-    return res.data;
-  },
-
-  async receivePurchaseOrder(id: string, data?: PurchaseOrderReceiveData): Promise<PurchaseOrder> {
-    const res = await api.post<PurchaseOrder>(`/pharmacy/purchase-orders/${id}/receive`, data);
     return res.data;
   },
 

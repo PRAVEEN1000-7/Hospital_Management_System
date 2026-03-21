@@ -79,7 +79,7 @@ const PharmacyDashboard: React.FC = () => {
     { label: 'Expired', value: stats?.expired_count ?? 0, icon: 'dangerous', color: 'text-red-500', bg: 'bg-red-50', to: '/pharmacy/medicines' },
     { label: "Today's Sales", value: stats?.today_sales_count ?? 0, icon: 'receipt_long', color: 'text-emerald-500', bg: 'bg-emerald-50', to: '/pharmacy/sales' },
     { label: "Today's Revenue", value: `₹${Number(stats?.today_sales_amount ?? 0).toLocaleString()}`, icon: 'payments', color: 'text-green-600', bg: 'bg-green-50', to: '/pharmacy/sales' },
-    { label: 'Pending Orders', value: stats?.pending_orders ?? 0, icon: 'local_shipping', color: 'text-purple-500', bg: 'bg-purple-50', to: '/pharmacy/purchase-orders' },
+    { label: 'Pending Orders', value: stats?.pending_orders ?? 0, icon: 'local_shipping', color: 'text-purple-500', bg: 'bg-purple-50', to: '/inventory/purchase-orders' },
   ];
 
   return (
@@ -151,7 +151,7 @@ const PharmacyDashboard: React.FC = () => {
               <div
                 key={med.id}
                 onClick={() => navigate(
-                  `/pharmacy/purchase-orders/new?medicine_id=${med.id}&quantity=${Math.max(1, med.reorder_level ?? 1)}`
+                  `/inventory/purchase-orders/new?medicine_id=${med.id}&quantity=${Math.max(1, med.reorder_level ?? 1)}`
                 )}
                 className="bg-white rounded-lg p-3 border border-red-200 cursor-pointer hover:shadow-md transition-all"
               >

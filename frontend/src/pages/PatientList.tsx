@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import patientService from '../services/patientService';
+import { useAuth } from '../contexts/AuthContext';
 import type { Patient } from '../types/patient';
 import { format } from 'date-fns';
 
 const PatientList: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
@@ -24,6 +26,9 @@ const PatientList: React.FC = () => {
   const [isDeleting, setIsDeleting] = useState(false);
   const limit = 10;
   const searchTimeoutRef = useRef<number | null>(null);
+  const role = user?.roles?.[0] || '';
+  const canRegister = ['super_admin', 'admin', 'receptionist'].includes(role);
+  const canDelete = ['super_admin', 'admin'].includes(role);
 
   const fetchPatients = useCallback(async () => {
     setLoading(true);
@@ -126,13 +131,15 @@ const PatientList: React.FC = () => {
           <h1 className="text-2xl font-bold text-slate-900">Patient Directory</h1>
           <p className="text-slate-500 text-sm">Manage and track all patient records in one place.</p>
         </div>
-        <button
-          onClick={() => navigate('/register')}
-          className="bg-primary hover:bg-primary/90 text-white px-5 py-2.5 rounded-lg font-semibold flex items-center justify-center gap-2 transition-all shadow-md active:scale-95"
-        >
-          <span className="material-icons text-lg">person_add</span>
-          <span>Register New Patient</span>
-        </button>
+        {canRegister && (
+          <button
+            onClick={() => navigate('/register')}
+            className="bg-primary hover:bg-primary/90 text-white px-5 py-2.5 rounded-lg font-semibold flex items-center justify-center gap-2 transition-all shadow-md active:scale-95"
+          >
+            <span className="material-icons text-lg">person_add</span>
+            <span>Register New Patient</span>
+          </button>
+        )}
       </header>
 
       {/* Stats Cards */}
@@ -412,13 +419,15 @@ const PatientList: React.FC = () => {
                         >
                           <span className="material-icons text-base">visibility</span>
                         </button>
-                        <button
-                          onClick={() => setDeleteConfirm({ id: patient.id, name: `${patient.first_name} ${patient.last_name}` })}
-                          className="p-1.5 hover:bg-red-50 rounded-lg text-slate-400 hover:text-red-600 transition-colors"
-                          title="Delete"
-                        >
-                          <span className="material-icons text-base">delete</span>
-                        </button>
+                        {canDelete && (
+                          <button
+                            onClick={() => setDeleteConfirm({ id: patient.id, name: `${patient.first_name} ${patient.last_name}` })}
+                            className="p-1.5 hover:bg-red-50 rounded-lg text-slate-400 hover:text-red-600 transition-colors"
+                            title="Delete"
+                          >
+                            <span className="material-icons text-base">delete</span>
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

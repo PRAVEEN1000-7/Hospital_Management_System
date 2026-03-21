@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import prescriptionService from '../services/prescriptionService';
-import type { Prescription, PrescriptionVersion } from '../types/prescription';
+import type { Prescription, PrescriptionListItem } from '../types/prescription';
 
 const PrescriptionDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -12,9 +12,10 @@ const PrescriptionDetail: React.FC = () => {
   const { showToast } = useToast();
 
   const [prescription, setPrescription] = useState<Prescription | null>(null);
-  const [versions, setVersions] = useState<PrescriptionVersion[]>([]);
+  const [history, setHistory] = useState<PrescriptionListItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showVersions, setShowVersions] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [printLang, setPrintLang] = useState('en');
   const [languages, setLanguages] = useState<{ code: string; name: string }[]>([]);
   const [showLangMenu, setShowLangMenu] = useState(false);
@@ -32,19 +33,23 @@ const PrescriptionDetail: React.FC = () => {
       .then(setPrescription)
       .catch(() => {
         showToast('error', 'Prescription not found');
-        navigate('/prescriptions');
+        navigate(-1);
       })
       .finally(() => setLoading(false));
   }, [id]);
 
-  const loadVersions = async () => {
-    if (!id) return;
+  const loadPrescriptionHistory = async () => {
+    if (!prescription?.patient_id) return;
+    setHistoryLoading(true);
     try {
-      const v = await prescriptionService.getPrescriptionVersions(id);
-      setVersions(v);
-      setShowVersions(true);
+      const result = await prescriptionService.getPatientPrescriptions(prescription.patient_id, 1, 20);
+      const pastPrescriptions = result.data.filter((item) => item.id !== id);
+      setHistory(pastPrescriptions);
+      setShowHistory(true);
     } catch {
-      showToast('error', 'Failed to load versions');
+      showToast('error', 'Failed to load prescription history');
+    } finally {
+      setHistoryLoading(false);
     }
   };
 
@@ -64,7 +69,7 @@ const PrescriptionDetail: React.FC = () => {
     try {
       await prescriptionService.deletePrescription(id);
       showToast('success', 'Prescription deleted');
-      navigate('/prescriptions');
+      navigate(-1);
     } catch {
       showToast('error', 'Failed to delete');
     }
@@ -108,12 +113,14 @@ const PrescriptionDetail: React.FC = () => {
   const canFinalize = !rx.is_finalized && (userRole === 'doctor' || userRole === 'super_admin');
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className="max-w-7xl mx-auto">
       {/* Header */}
       <div className="flex justify-between items-start mb-6">
         <div>
           <nav className="flex text-sm text-slate-400 mb-1">
-            <button onClick={() => navigate('/prescriptions')} className="hover:text-primary">Prescriptions</button>
+            <button onClick={() => navigate(-1)} className="hover:text-primary">
+              <span className="material-symbols-outlined text-sm align-middle">arrow_back</span> Back
+            </button>
             <span className="mx-2">/</span>
             <span className="text-slate-600">{rx.prescription_number}</span>
           </nav>
@@ -406,38 +413,58 @@ const PrescriptionDetail: React.FC = () => {
                   </span>
                 </div>
               )}
+              {(rx.status === 'dispensed' || rx.status === 'partially_dispensed') && rx.final_amount != null && (
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Final Amount</span>
+                  <span className="font-semibold text-slate-900">₹{Number(rx.final_amount).toFixed(2)}</span>
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Version History */}
+          {/* Prescription History */}
           <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
             <button
-              onClick={() => showVersions ? setShowVersions(false) : loadVersions()}
+              onClick={() => (showHistory ? setShowHistory(false) : loadPrescriptionHistory())}
               className="w-full flex justify-between items-center"
             >
               <h4 className="text-sm font-semibold flex items-center gap-2">
                 <span className="material-symbols-outlined text-primary text-sm">history</span>
-                Version History
+                Prescription History
               </h4>
               <span className="material-symbols-outlined text-slate-400 text-sm">
-                {showVersions ? 'expand_less' : 'expand_more'}
+                {showHistory ? 'expand_less' : 'expand_more'}
               </span>
             </button>
 
-            {showVersions && (
+            {showHistory && (
               <div className="mt-3 space-y-2">
-                {versions.length > 0 ? versions.map(v => (
-                  <div key={v.id} className="p-2 bg-slate-50 rounded-lg">
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs font-medium">Version {v.version}</span>
+                {historyLoading && (
+                  <p className="text-xs text-slate-400">Loading history...</p>
+                )}
+
+                {!historyLoading && history.length > 0 && history.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => navigate(`/prescriptions/${item.id}`)}
+                    className="w-full p-2 bg-slate-50 rounded-lg text-left hover:bg-slate-100 transition-colors"
+                  >
+                    <div className="flex justify-between items-center gap-2">
+                      <span className="text-xs font-medium text-slate-700">
+                        {item.prescription_number}
+                      </span>
                       <span className="text-[10px] text-slate-400">
-                        {new Date(v.created_at).toLocaleDateString()}
+                        {new Date(item.created_at).toLocaleDateString()}
                       </span>
                     </div>
-                    {v.change_reason && <p className="text-[10px] text-slate-500 mt-0.5">{v.change_reason}</p>}
-                  </div>
-                )) : (
-                  <p className="text-xs text-slate-400">No previous versions</p>
+                    <p className="text-[10px] text-slate-500 mt-0.5 truncate">
+                      {item.diagnosis || 'No diagnosis'}
+                    </p>
+                  </button>
+                ))}
+
+                {!historyLoading && history.length === 0 && (
+                  <p className="text-xs text-slate-400">No past prescriptions found</p>
                 )}
               </div>
             )}

@@ -34,7 +34,8 @@ class Medicine(Base):
     is_controlled = Column(Boolean, default=False)
     selling_price = Column(Numeric(12, 2), nullable=False)
     purchase_price = Column(Numeric(12, 2))
-    tax_config_id = Column(UUID(as_uuid=True), ForeignKey("tax_configurations.id"), nullable=True)
+    # Keep as plain UUID until tax_configurations model/table is introduced in this codebase.
+    tax_config_id = Column(UUID(as_uuid=True), nullable=True)
     reorder_level = Column(Integer, default=10)
     max_stock_level = Column(Integer)
     storage_instructions = Column(String(255))
@@ -68,7 +69,7 @@ class Prescription(Base):
     follow_up_date = Column(Date)
     queue_id = Column(UUID(as_uuid=True), ForeignKey("appointment_queue.id"), nullable=True)
     version = Column(Integer, default=1)
-    status = Column(String(20), default="draft")  # 'draft','finalized','dispensed','partially_dispensed'
+    status = Column(String(20), default="draft")  # 'draft','finalized','dispensed'
     is_finalized = Column(Boolean, default=False)
     finalized_at = Column(DateTime(timezone=True))
     valid_until = Column(Date)

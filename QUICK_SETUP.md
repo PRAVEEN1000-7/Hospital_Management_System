@@ -29,6 +29,21 @@ psql -U hms_user -d hms_db -f database_hole/01_schema.sql
 psql -U hms_user -d hms_db -f database_hole/02_seed_data.sql
 ```
 
+### Optional: Enforce OPD On-Spot Payment
+
+If OPD payment must be completed before invoice issue:
+
+```sql
+ALTER TABLE hospital_settings ADD COLUMN IF NOT EXISTS allow_opd_credit BOOLEAN DEFAULT true;
+UPDATE hospital_settings
+SET allow_opd_credit = false
+WHERE hospital_id = 'a0000000-0000-0000-0000-000000000001';
+```
+
+Behavior when disabled:
+- OPD due date auto-matches invoice date.
+- OPD invoice issue is blocked until full payment is recorded.
+
 ### Connection String
 
 ```

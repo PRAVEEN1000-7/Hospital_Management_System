@@ -1,0 +1,860 @@
+"""
+Dispensing Service — Handles prescription dispensing workflow.
+
+This service manages the flow from finalized prescription to pharmacy dispensing:
+1. Get pending prescriptions queue (finalized but not dispensed)
+2. Dispense medicines from prescription
+3. Update prescription status
+"""
+import uuid
+import logging
+from datetime import datetime, timezone, date
+from decimal import Decimal
+from typing import Optional
+from sqlalchemy.orm import Session
+from sqlalchemy import and_, func, or_
+
+from ..models.prescription import Prescription, PrescriptionItem, Medicine
+from ..models.pharmacy import (
+    PharmacySale, PharmacySaleItem, MedicineBatch,
+)
+from ..models.patient import Patient
+from ..models.appointment import Doctor
+from .prescription_service import calculate_prescribed_quantity
+
+logger = logging.getLogger(__name__)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Preview Dispensing Calculation
+# ═══════════════════════════════════════════════════════════════════════════
+
+def preview_dispensing_totals(
+    db: Session,
+    prescription_id: str | uuid.UUID,
+    items_to_dispense: list[dict],
+) -> dict:
+    """
+    Calculate expected totals for a dispensing request without actually dispensing.
+    
+    This allows the frontend to show accurate totals before submission.
+    
+    Args:
+        db: Database session
+        prescription_id: Prescription UUID
+        items_to_dispense: List of items with prescription_item_id, medicine_id, batch_id, quantity, unit_price
+    
+    Returns:
+        Dictionary with:
+        - items: List of items with calculated totals
+        - subtotal: Total amount for all items
+        - items_dispensed: Count of items to be dispensed
+        - items_skipped: Count of items being skipped
+        - warnings: List of any warnings
+    """
+    if isinstance(prescription_id, str):
+        prescription_id = uuid.UUID(prescription_id)
+    
+    # Get prescription
+    rx = db.query(Prescription).filter(
+        Prescription.id == prescription_id,
+        Prescription.is_deleted == False,
+    ).first()
+    
+    if not rx:
+        raise ValueError("Prescription not found")
+    
+    result_items = []
+    subtotal = Decimal("0")
+    warnings = []
+    
+    # Build a map of requested items
+    requested_map = {}
+    for item_data in items_to_dispense:
+        rx_item_id = item_data.get("prescription_item_id")
+        if isinstance(rx_item_id, str):
+            rx_item_id = uuid.UUID(rx_item_id)
+        requested_map[rx_item_id] = item_data
+    
+    # Get all prescription items
+    all_rx_items = db.query(PrescriptionItem).filter(
+        PrescriptionItem.prescription_id == prescription_id
+    ).order_by(PrescriptionItem.display_order).all()
+    
+    for rx_item in all_rx_items:
+        prescribed_qty = calculate_prescribed_quantity(
+            rx_item.frequency,
+            rx_item.duration_value,
+            rx_item.duration_unit,
+            rx_item.quantity,
+        ) or 0
+        
+        already_dispensed = rx_item.dispensed_quantity or 0
+        remaining_qty = prescribed_qty - already_dispensed
+        is_open_line = remaining_qty > 0 and not rx_item.is_dispensed
+        
+        # Check if this item is in the request
+        if rx_item.id in requested_map:
+            item_data = requested_map[rx_item.id]
+            quantity = item_data.get("quantity", 0)
+            unit_price = Decimal(str(item_data.get("unit_price", 0)))
+            
+            if quantity > 0 and remaining_qty > 0:
+                line_total = unit_price * quantity
+                subtotal += line_total
+                
+                result_items.append({
+                    "prescription_item_id": str(rx_item.id),
+                    "medicine_id": str(rx_item.medicine_id) if rx_item.medicine_id else None,
+                    "medicine_name": rx_item.medicine_name,
+                    "quantity": quantity,
+                    "unit_price": float(unit_price),
+                    "total_price": float(line_total),
+                    "status": "to_dispense",
+                })
+            else:
+                result_items.append({
+                    "prescription_item_id": str(rx_item.id),
+                    "medicine_id": str(rx_item.medicine_id) if rx_item.medicine_id else None,
+                    "medicine_name": rx_item.medicine_name,
+                    "quantity": 0,
+                    "unit_price": 0,
+                    "total_price": 0,
+                    "remaining_quantity": max(0, remaining_qty),
+                    "status": "skipped" if is_open_line else "already_dispensed",
+                })
+        else:
+            # Item not in request - being skipped
+            result_items.append({
+                "prescription_item_id": str(rx_item.id),
+                "medicine_id": str(rx_item.medicine_id) if rx_item.medicine_id else None,
+                "medicine_name": rx_item.medicine_name,
+                "prescribed_quantity": prescribed_qty,
+                "already_dispensed": already_dispensed,
+                "remaining_quantity": max(0, remaining_qty),
+                "quantity": 0,
+                "unit_price": 0,
+                "total_price": 0,
+                "status": "skipped" if is_open_line else "already_dispensed",
+            })
+    
+    items_to_dispense_count = sum(1 for item in result_items if item["status"] == "to_dispense")
+    items_skipped_count = sum(1 for item in result_items if item["status"] == "skipped")
+    
+    return {
+        "prescription_id": str(prescription_id),
+        "prescription_number": rx.prescription_number,
+        "items": result_items,
+        "subtotal": float(subtotal),
+        "tax_amount": 0.0,
+        "discount_amount": 0.0,
+        "total_amount": float(subtotal),
+        "items_dispensed": items_to_dispense_count,
+        "items_skipped": items_skipped_count,
+        "warnings": warnings,
+    }
+
+
+def _resolve_patient_age_years(patient: Optional[Patient]) -> Optional[int]:
+    """Resolve patient age with DOB fallback when stored age is missing."""
+    if not patient:
+        return None
+
+    if patient.age_years is not None:
+        return int(patient.age_years)
+
+    if patient.date_of_birth:
+        today = date.today()
+        years = today.year - patient.date_of_birth.year
+        before_birthday = (today.month, today.day) < (patient.date_of_birth.month, patient.date_of_birth.day)
+        return max(0, years - (1 if before_birthday else 0))
+
+    return None
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Pending Prescriptions Queue
+# ═══════════════════════════════════════════════════════════════════════════
+
+def get_pending_prescriptions(
+    db: Session,
+    hospital_id: uuid.UUID,
+    page: int = 1,
+    limit: int = 20,
+    status_filter: Optional[str] = None,
+    doctor_id: Optional[str] = None,
+    search: Optional[str] = None,
+) -> dict:
+    """
+    Get prescriptions that are finalized but not fully dispensed.
+    
+    Status logic:
+    - 'finalized' → Pending work queue
+    - 'dispensed' → Closed/completed
+    """
+    from math import ceil
+    
+    # Base query: finalized prescriptions for this hospital
+    query = db.query(Prescription).filter(
+        Prescription.hospital_id == hospital_id,
+        Prescription.is_finalized == True,
+        Prescription.is_deleted == False,
+    )
+    
+    # Filter by status
+    if status_filter:
+        if status_filter == 'pending':
+            query = query.filter(Prescription.status == 'finalized')
+        elif status_filter == 'dispensed':
+            query = query.filter(Prescription.status == 'dispensed')
+        else:
+            query = query.filter(Prescription.status == 'finalized')
+    else:
+        # Default: show active work queue (pending).
+        query = query.filter(Prescription.status == 'finalized')
+    
+    # Filter by doctor
+    if doctor_id:
+        if isinstance(doctor_id, str):
+            doctor_id = uuid.UUID(doctor_id)
+        query = query.filter(Prescription.doctor_id == doctor_id)
+    
+    # Search by prescription number or patient name
+    if search:
+        term = f"%{search}%"
+        query = query.outerjoin(Patient, Prescription.patient_id == Patient.id).filter(
+            or_(
+                Prescription.prescription_number.ilike(term),
+                func.concat(Patient.first_name, ' ', Patient.last_name).ilike(term),
+                Patient.first_name.ilike(term),
+                Patient.last_name.ilike(term),
+            )
+        )
+    
+    # Count and paginate
+    total = query.count()
+    offset = (page - 1) * limit
+    
+    # Order by priority (stat first), then by creation time
+    rows = (
+        query
+        .order_by(
+            # Stat prescriptions first (you can add priority field later)
+            Prescription.created_at.desc()
+        )
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    
+    # Enrich with patient name, doctor name, item counts
+    enriched = []
+    for rx in rows:
+        item = _enrich_prescription_for_dispensing(db, rx)
+        enriched.append(item)
+    
+    total_pages = ceil(total / limit) if total > 0 else 0
+    
+    return {
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "total_pages": total_pages,
+        "data": enriched,
+    }
+
+
+def _enrich_prescription_for_dispensing(db: Session, rx: Prescription) -> dict:
+    """Add patient name, doctor name, and item details for dispensing view."""
+    queue_status = "dispensed" if rx.status == "dispensed" else "finalized"
+
+    d = {
+        "id": str(rx.id),
+        "prescription_number": rx.prescription_number,
+        "status": queue_status,
+        "is_finalized": rx.is_finalized,
+        "finalized_at": str(rx.finalized_at) if rx.finalized_at else None,
+        "created_at": str(rx.created_at),
+        "hospital_id": str(rx.hospital_id),
+        "patient_id": str(rx.patient_id),
+        "doctor_id": str(rx.doctor_id),
+        "appointment_id": str(rx.appointment_id) if rx.appointment_id else None,
+        "diagnosis": rx.diagnosis,
+        "clinical_notes": rx.clinical_notes,
+        "advice": rx.advice,
+        "vitals_bp": rx.vitals_bp,
+        "vitals_pulse": rx.vitals_pulse,
+        "vitals_temp": rx.vitals_temp,
+        "vitals_weight": rx.vitals_weight,
+        "vitals_spo2": rx.vitals_spo2,
+    }
+    
+    # Patient info
+    patient = db.query(Patient).filter(Patient.id == rx.patient_id).first()
+    if patient:
+        d["patient_name"] = patient.full_name
+        d["patient_reference_number"] = patient.patient_reference_number
+        d["patient_age"] = _resolve_patient_age_years(patient)
+        d["patient_gender"] = patient.gender
+        d["patient_phone"] = patient.phone_number
+        d["patient_blood_group"] = patient.blood_group
+    else:
+        d["patient_name"] = None
+        d["patient_reference_number"] = None
+        d["patient_age"] = None
+        d["patient_gender"] = None
+        d["patient_phone"] = None
+        d["patient_blood_group"] = None
+    
+    # Doctor info
+    doctor = db.query(Doctor).filter(Doctor.id == rx.doctor_id).first()
+    if doctor and doctor.user:
+        d["doctor_name"] = doctor.user.full_name
+        d["doctor_specialization"] = doctor.specialization
+    else:
+        d["doctor_name"] = None
+        d["doctor_specialization"] = None
+    
+    # Items with dispensing status
+    items = db.query(PrescriptionItem).filter(
+        PrescriptionItem.prescription_id == rx.id
+    ).order_by(PrescriptionItem.display_order).all()
+    
+    d["items"] = []
+    total_items = len(items)
+    dispensed_items = 0
+    
+    for item in items:
+        prescribed_quantity = calculate_prescribed_quantity(
+            item.frequency,
+            item.duration_value,
+            item.duration_unit,
+            item.quantity,
+        ) or 0
+
+        item_dict = {
+            "id": str(item.id),
+            "prescription_item_id": str(item.id),
+            "medicine_id": str(item.medicine_id) if item.medicine_id else None,
+            "medicine_name": item.medicine_name,
+            "generic_name": item.generic_name,
+            "dosage": item.dosage,
+            "frequency": item.frequency,
+            "duration_value": item.duration_value,
+            "duration_unit": item.duration_unit,
+            "route": item.route,
+            "instructions": item.instructions,
+            "quantity": prescribed_quantity,
+            "dispensed_quantity": item.dispensed_quantity,
+            "allow_substitution": item.allow_substitution,
+            "is_dispensed": item.is_dispensed,
+        }
+        
+        # Get available stock for this medicine across all active batches (FEFO ordered).
+        if item.medicine_id:
+            batches = db.query(MedicineBatch).filter(
+                MedicineBatch.medicine_id == item.medicine_id,
+                MedicineBatch.is_active == True,
+                MedicineBatch.quantity > 0,
+            ).order_by(MedicineBatch.expiry_date.asc()).all()
+
+            if batches:
+                item_dict["available_batches"] = [
+                    {
+                        "id": str(batch.id),
+                        "batch_number": batch.batch_number,
+                        "expiry_date": str(batch.expiry_date),
+                        "quantity": batch.quantity,
+                        "selling_price": float(batch.selling_price) if batch.selling_price else 0,
+                    }
+                    for batch in batches
+                ]
+                item_dict["available_quantity"] = sum(batch.quantity or 0 for batch in batches)
+            else:
+                item_dict["available_batches"] = []
+                item_dict["available_quantity"] = 0
+        else:
+            item_dict["available_batches"] = []
+            item_dict["available_quantity"] = 0
+        
+        d["items"].append(item_dict)
+        
+        if item.is_dispensed:
+            dispensed_items += 1
+    
+    d["total_items"] = total_items
+    d["dispensed_items"] = dispensed_items
+    d["pending_items"] = total_items - dispensed_items
+    
+    return d
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Dispensing Logic
+# ═══════════════════════════════════════════════════════════════════════════
+
+def dispense_prescription(
+    db: Session,
+    prescription_id: str | uuid.UUID,
+    hospital_id: uuid.UUID,
+    user_id: uuid.UUID,
+    items_to_dispense: list[dict],
+    skipped_items: Optional[list[dict]] = None,
+    notes: Optional[str] = None,
+) -> dict:
+    """
+    Dispense medicines from a prescription.
+    
+    Args:
+        prescription_id: Prescription UUID
+        hospital_id: Hospital UUID
+        user_id: Pharmacist user UUID
+        items_to_dispense: List of dicts with:
+            - prescription_item_id: UUID
+            - medicine_id: UUID
+            - batch_id: UUID
+            - quantity: int
+            - unit_price: Decimal
+        notes: Optional notes for this dispensing
+    
+    Returns:
+        dict with dispensing_id, status, and details
+    
+    Raises:
+        ValueError: If prescription not found, not finalized, or insufficient stock
+    """
+    
+    if isinstance(prescription_id, str):
+        prescription_id = uuid.UUID(prescription_id)
+    
+    # Get prescription
+    rx = db.query(Prescription).filter(
+        Prescription.id == prescription_id,
+        Prescription.hospital_id == hospital_id,
+        Prescription.is_deleted == False,
+    ).first()
+    
+    if not rx:
+        raise ValueError("Prescription not found")
+    
+    if not rx.is_finalized:
+        raise ValueError("Prescription must be finalized before dispensing")
+    
+    # Create pharmacy_dispensing record
+    dispensing = PharmacySale(
+        hospital_id=hospital_id,
+        invoice_number=_generate_dispensing_number(db, hospital_id),
+        patient_id=rx.patient_id,
+        sale_type="prescription",
+        status="dispensed",
+        created_by=user_id,  # Use created_by (which maps to dispensed_by in DB)
+        notes=notes,
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(dispensing)
+    db.flush()
+    
+    total_amount = Decimal("0")
+    tax_amount = Decimal("0")
+    processed_items_count = 0
+    skipped_items_count = 0
+    
+    seen_prescription_items: set[uuid.UUID] = set()
+
+    # Process each item
+    for item_data in items_to_dispense:
+        prescription_item_id = item_data.get("prescription_item_id")
+        medicine_id = item_data.get("medicine_id")
+        batch_id = item_data.get("batch_id")
+        quantity = item_data.get("quantity", 0)
+        requested_unit_price = Decimal(str(item_data.get("unit_price", 0)))
+        
+        if not prescription_item_id or not medicine_id or not batch_id or quantity <= 0:
+            continue
+
+        # Convert UUIDs
+        if isinstance(prescription_item_id, str):
+            prescription_item_id = uuid.UUID(prescription_item_id)
+        if isinstance(medicine_id, str):
+            medicine_id = uuid.UUID(medicine_id)
+        if isinstance(batch_id, str):
+            batch_id = uuid.UUID(batch_id)
+
+        if prescription_item_id in seen_prescription_items:
+            raise ValueError("Duplicate prescription item in dispensing request")
+        seen_prescription_items.add(prescription_item_id)
+
+        # Get prescription item
+        rx_item = db.query(PrescriptionItem).filter(
+            PrescriptionItem.id == prescription_item_id,
+            PrescriptionItem.prescription_id == prescription_id,
+        ).first()
+
+        if not rx_item:
+            logger.warning(f"Prescription item {prescription_item_id} not found")
+            continue
+
+        if not rx_item.medicine_id:
+            raise ValueError(f"Prescription item {rx_item.medicine_name} is missing medicine linkage")
+
+        if rx_item.medicine_id != medicine_id:
+            raise ValueError(
+                f"Medicine mismatch for {rx_item.medicine_name}. "
+                "Selected medicine does not match prescription item."
+            )
+
+        # Validate quantity doesn't exceed prescribed quantity.
+        # Some older prescriptions may have null/0 quantity and rely on frequency+duration,
+        # so derive and persist a usable prescribed quantity before validating.
+        already_dispensed = rx_item.dispensed_quantity or 0
+        prescribed_qty = calculate_prescribed_quantity(
+            rx_item.frequency,
+            rx_item.duration_value,
+            rx_item.duration_unit,
+            rx_item.quantity,
+        ) or 0
+
+        if prescribed_qty <= 0:
+            # Last-resort fallback: allow current dispensing request to establish baseline.
+            prescribed_qty = max(already_dispensed + quantity, 1)
+
+        if not rx_item.quantity or rx_item.quantity <= 0:
+            rx_item.quantity = prescribed_qty
+
+        remaining_qty = prescribed_qty - already_dispensed
+
+        if remaining_qty <= 0:
+            logger.info(
+                f"Skipping {rx_item.medicine_name}: already fully dispensed "
+                f"(Prescribed: {prescribed_qty}, Dispensed: {already_dispensed})"
+            )
+            continue
+        
+        if quantity > remaining_qty:
+            raise ValueError(
+                f"Cannot dispense {quantity} units of {rx_item.medicine_name}. "
+                f"Prescribed: {prescribed_qty}, Already dispensed: {already_dispensed}, "
+                f"Remaining: {remaining_qty}. You can dispense less than or equal to {remaining_qty} units."
+            )
+        
+        if quantity <= 0:
+            logger.warning(f"Skipping item {rx_item.medicine_name} with quantity {quantity}")
+            continue
+
+        # Get batch and validate stock
+        batch = db.query(MedicineBatch).filter(
+            MedicineBatch.id == batch_id,
+            MedicineBatch.medicine_id == medicine_id,
+            MedicineBatch.is_active == True,
+        ).first()
+
+        if not batch:
+            raise ValueError(f"Batch not found for medicine {rx_item.medicine_name}")
+
+        if batch.expiry_date and batch.expiry_date < date.today():
+            raise ValueError(
+                f"Selected batch {batch.batch_number} for {rx_item.medicine_name} is expired"
+            )
+
+        # Allocate requested quantity from selected batch first, then other FEFO batches.
+        remaining_to_allocate = quantity
+        batch_allocations: list[tuple[MedicineBatch, int]] = []
+
+        selected_alloc = min(batch.quantity or 0, remaining_to_allocate)
+        if selected_alloc > 0:
+            batch_allocations.append((batch, selected_alloc))
+            remaining_to_allocate -= selected_alloc
+
+        if remaining_to_allocate > 0:
+            additional_batches = db.query(MedicineBatch).filter(
+                MedicineBatch.medicine_id == medicine_id,
+                MedicineBatch.is_active == True,
+                MedicineBatch.id != batch.id,
+                MedicineBatch.quantity > 0,
+                MedicineBatch.expiry_date >= date.today(),
+            ).order_by(MedicineBatch.expiry_date.asc()).all()
+
+            for extra_batch in additional_batches:
+                if remaining_to_allocate <= 0:
+                    break
+                alloc_qty = min(extra_batch.quantity or 0, remaining_to_allocate)
+                if alloc_qty <= 0:
+                    continue
+                batch_allocations.append((extra_batch, alloc_qty))
+                remaining_to_allocate -= alloc_qty
+
+        if remaining_to_allocate > 0:
+            total_available = sum(alloc_qty for _, alloc_qty in batch_allocations)
+            raise ValueError(
+                f"Insufficient stock for {rx_item.medicine_name}. "
+                f"Required: {quantity}, Available across active batches: {total_available}"
+            )
+
+        for alloc_batch, alloc_qty in batch_allocations:
+            # Reduce batch stock
+            alloc_batch.quantity -= alloc_qty
+
+            # Use actual batch selling price for accurate financial traceability.
+            effective_unit_price = Decimal(str(alloc_batch.selling_price)) if alloc_batch.selling_price is not None else requested_unit_price
+            line_total = effective_unit_price * alloc_qty
+            total_amount += line_total
+
+            # Create one dispensing line per allocated batch.
+            dispensing_item = PharmacySaleItem(
+                sale_id=dispensing.id,
+                prescription_item_id=prescription_item_id,
+                medicine_id=medicine_id,
+                batch_id=alloc_batch.id,
+                quantity=alloc_qty,
+                unit_price=effective_unit_price,
+                total_price=line_total,
+                medicine_name=rx_item.medicine_name,
+            )
+            db.add(dispensing_item)
+
+        processed_items_count += 1
+
+        # Update prescription item dispensing status
+        rx_item.dispensed_quantity = already_dispensed + quantity
+        
+        # Cap at prescribed quantity and mark as dispensed if complete
+        if rx_item.dispensed_quantity >= prescribed_qty:
+            rx_item.is_dispensed = True
+            rx_item.dispensed_quantity = prescribed_qty  # Ensure exact match
+        else:
+            # Item remains open unless explicitly skipped in this request.
+            pass
+
+        logger.info(
+            f"Dispensed {quantity} of {rx_item.medicine_name} "
+            f"(Batch: {batch.batch_number}, Remaining prescribed: {prescribed_qty - rx_item.dispensed_quantity})"
+        )
+    # Apply explicit skipped items to close remaining undispensed lines.
+    for skipped in (skipped_items or []):
+        skipped_item_id = skipped.get("prescription_item_id")
+        if not skipped_item_id:
+            continue
+
+        if isinstance(skipped_item_id, str):
+            skipped_item_id = uuid.UUID(skipped_item_id)
+
+        rx_item = db.query(PrescriptionItem).filter(
+            PrescriptionItem.id == skipped_item_id,
+            PrescriptionItem.prescription_id == prescription_id,
+        ).first()
+
+        if not rx_item:
+            raise ValueError(f"Skipped item {skipped_item_id} not found in prescription")
+
+        prescribed_qty = calculate_prescribed_quantity(
+            rx_item.frequency,
+            rx_item.duration_value,
+            rx_item.duration_unit,
+            rx_item.quantity,
+        ) or 0
+        if prescribed_qty <= 0:
+            prescribed_qty = max(rx_item.dispensed_quantity or 0, 1)
+
+        if not rx_item.quantity or rx_item.quantity <= 0:
+            rx_item.quantity = prescribed_qty
+
+        if not rx_item.is_dispensed:
+            rx_item.is_dispensed = True
+            rx_item.dispensed_quantity = prescribed_qty
+            skipped_items_count += 1
+
+    # Validate strict no-partial workflow: every line must be closed by dispense or skip.
+    all_rx_items = db.query(PrescriptionItem).filter(
+        PrescriptionItem.prescription_id == prescription_id
+    ).all()
+    open_items: list[str] = []
+
+    for rx_item in all_rx_items:
+        prescribed_qty = calculate_prescribed_quantity(
+            rx_item.frequency,
+            rx_item.duration_value,
+            rx_item.duration_unit,
+            rx_item.quantity,
+        ) or 0
+        current_dispensed = rx_item.dispensed_quantity or 0
+
+        if prescribed_qty <= 0:
+            prescribed_qty = max(current_dispensed, 1)
+
+        if not rx_item.is_dispensed and current_dispensed < prescribed_qty:
+            open_items.append(rx_item.medicine_name)
+
+    if open_items:
+        raise ValueError(
+            "Partial dispensing is not allowed. Dispense or skip all remaining items before confirming. "
+            f"Open items: {', '.join(open_items[:3])}{'...' if len(open_items) > 3 else ''}"
+        )
+    
+    if processed_items_count == 0:
+        # All items were skipped (out of stock, patient refused, etc.).
+        # Keep prescription pending/completed and preserve the audit trail
+        # on the dispensing record notes, without mutating doctor clinical notes.
+        all_already_done = all(
+            (i.is_dispensed or (i.dispensed_quantity or 0) >= (i.quantity or 0))
+            for i in db.query(PrescriptionItem).filter(
+                PrescriptionItem.prescription_id == prescription_id
+            ).all()
+        )
+        if all_already_done:
+            rx.status = "dispensed"
+        else:
+            rx.status = "finalized"
+        # Remove the empty dispensing record we created — nothing was actually dispensed
+        db.delete(dispensing)
+        db.commit()
+        return {
+            "dispensing_id": None,
+            "dispensing_number": None,
+            "prescription_id": str(prescription_id),
+            "prescription_number": rx.prescription_number,
+            "status": rx.status,
+            "total_amount": 0.0,
+            "items_dispensed": 0,
+        }
+
+    # Update prescription status
+    rx.status = "dispensed"
+    
+    # Update dispensing totals
+    dispensing.total_amount = total_amount
+    dispensing.subtotal = total_amount
+    dispensing.tax_amount = tax_amount
+    dispensing.net_amount = total_amount
+    
+    db.commit()
+    db.refresh(dispensing)
+    
+    logger.info(
+        f"Dispensing completed for prescription {rx.prescription_number}. "
+        f"Status: {rx.status}"
+    )
+    
+    return {
+        "dispensing_id": str(dispensing.id),
+        "dispensing_number": dispensing.invoice_number,
+        "prescription_id": str(prescription_id),
+        "prescription_number": rx.prescription_number,
+        "status": rx.status,
+        "total_amount": float(total_amount),
+        "items_dispensed": processed_items_count,
+        "items_skipped": skipped_items_count,
+    }
+
+
+def get_dispensing_details(
+    db: Session,
+    dispensing_id: str | uuid.UUID,
+) -> Optional[dict]:
+    """Get dispensing record with items."""
+    if isinstance(dispensing_id, str):
+        dispensing_id = uuid.UUID(dispensing_id)
+    
+    dispensing = db.query(PharmacySale).filter(
+        PharmacySale.id == dispensing_id
+    ).first()
+    
+    if not dispensing:
+        return None
+    
+    # Get items with medicine + batch details for complete billing display.
+    items = (
+        db.query(PharmacySaleItem)
+        .filter(PharmacySaleItem.sale_id == dispensing_id)
+        .all()
+    )
+    
+    # Get patient info
+    patient = db.query(Patient).filter(Patient.id == dispensing.patient_id).first()
+    
+    result = {
+        "id": str(dispensing.id),
+        "dispensing_number": dispensing.invoice_number,
+        "hospital_id": str(dispensing.hospital_id),
+        "patient_id": str(dispensing.patient_id) if dispensing.patient_id else None,
+        "patient_name": patient.full_name if patient else None,
+        "patient_reference_number": patient.patient_reference_number if patient else None,
+        "sale_type": dispensing.sale_type,
+        "status": dispensing.status,
+        # subtotal maps to DB column total_amount in PharmacySale model
+        "total_amount": float(dispensing.subtotal) if dispensing.subtotal else 0,
+        "discount_amount": float(dispensing.discount_amount) if dispensing.discount_amount else 0,
+        "tax_amount": float(dispensing.tax_amount) if dispensing.tax_amount else 0,
+        # total_amount maps to DB column net_amount in PharmacySale model
+        "net_amount": float(dispensing.total_amount) if dispensing.total_amount else 0,
+        "notes": dispensing.notes,
+        "dispensed_at": str(dispensing.sale_date) if dispensing.sale_date else None,  # Use sale_date
+        "created_at": str(dispensing.created_at),
+        "items": [],
+    }
+    
+    for item in items:
+        resolved_medicine_name = (
+            item.medicine_name
+            or (item.medicine.name if item.medicine else None)
+            or "Medicine"
+        )
+        resolved_batch_number = item.batch.batch_number if item.batch else None
+
+        result["items"].append({
+            "id": str(item.id),
+            "medicine_id": str(item.medicine_id),
+            "batch_id": str(item.batch_id),
+            "batch_number": resolved_batch_number,
+            "medicine_name": resolved_medicine_name,
+            "quantity": item.quantity,
+            "unit_price": float(item.unit_price) if item.unit_price else 0,
+            "total_price": float(item.total_price) if item.total_price else 0,
+        })
+    
+    return result
+
+
+def _generate_dispensing_number(db: Session, hospital_id: uuid.UUID) -> str:
+    """Generate unique dispensing number: DISP-YYYYMMDD-XXXXXX."""
+    from datetime import date
+    today = date.today().strftime("%Y%m%d")
+    unique_part = uuid.uuid4().hex[:6].upper()
+    return f"DISP-{today}-{unique_part}"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Get Available Batches for Medicine
+# ═══════════════════════════════════════════════════════════════════════════
+
+def get_available_batches(
+    db: Session,
+    medicine_id: str | uuid.UUID,
+    min_quantity: int = 1,
+) -> list[dict]:
+    """
+    Get available batches for a medicine (FEFO - First Expiry First Out).
+    
+    Returns batches sorted by expiry date (earliest first).
+    """
+    if isinstance(medicine_id, str):
+        medicine_id = uuid.UUID(medicine_id)
+    
+    batches = db.query(MedicineBatch).filter(
+        MedicineBatch.medicine_id == medicine_id,
+        MedicineBatch.is_active == True,
+        MedicineBatch.quantity >= min_quantity,
+    ).order_by(MedicineBatch.expiry_date.asc()).all()
+    
+    result = []
+    for batch in batches:
+        result.append({
+            "id": str(batch.id),
+            "batch_number": batch.batch_number,
+            "expiry_date": str(batch.expiry_date),
+            "manufactured_date": str(batch.mfg_date) if batch.mfg_date else None,
+            "quantity": batch.quantity,
+            "selling_price": float(batch.selling_price) if batch.selling_price else 0,
+            "purchase_price": float(batch.purchase_price) if batch.purchase_price else 0,
+        })
+    
+    return result

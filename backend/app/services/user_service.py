@@ -237,7 +237,7 @@ def delete_user(db: Session, user_id: str | uuid.UUID) -> Optional[User]:
 def save_user_photo(db: Session, user_id: str | uuid.UUID, file: UploadFile) -> dict:
     """Save user photo file and update database"""
     ensure_upload_directory()
-    
+
     # Validate file extension
     file_ext = os.path.splitext(file.filename)[1].lower()
     if file_ext not in ALLOWED_PHOTO_EXTENSIONS:
@@ -245,23 +245,27 @@ def save_user_photo(db: Session, user_id: str | uuid.UUID, file: UploadFile) -> 
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid file type. Allowed: {', '.join(ALLOWED_PHOTO_EXTENSIONS)}"
         )
-    
+
+    # Normalize extension: .jpeg -> .jpg for consistency
+    if file_ext == '.jpeg':
+        file_ext = '.jpg'
+
     # Check file size
     file.file.seek(0, 2)
     file_size_bytes = file.file.tell()
     file.file.seek(0)
-    
+
     file_size_mb = file_size_bytes / (1024 * 1024)
     if file_size_mb > MAX_PHOTO_SIZE_MB:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"File too large. Maximum size: {MAX_PHOTO_SIZE_MB}MB"
         )
-    
+
     user = get_user_by_id(db, user_id)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    
+
     # Delete old photo if exists
     if user.avatar_url:
         old_photo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), user.avatar_url.lstrip('/'))
@@ -270,11 +274,11 @@ def save_user_photo(db: Session, user_id: str | uuid.UUID, file: UploadFile) -> 
                 os.remove(old_photo_path)
             except Exception:
                 pass
-    
-    # Generate unique filename
+
+    # Generate unique filename with normalized extension
     filename = f"user_{user.id}_{int(datetime.now().timestamp())}{file_ext}"
     file_path = os.path.join(UPLOAD_DIR, filename)
-    
+
     try:
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
@@ -283,13 +287,13 @@ def save_user_photo(db: Session, user_id: str | uuid.UUID, file: UploadFile) -> 
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to save photo: {str(e)}"
         )
-    
+
     user.avatar_url = f"/uploads/photos/{filename}"
     db.commit()
     db.refresh(user)
-    
+
     logger.info(f"Saved photo for user {user.id}: {filename}")
-    
+
     return {
         "message": "Photo uploaded successfully",
         "avatar_url": user.avatar_url,

@@ -7,7 +7,7 @@ from typing import Optional, Any
 from datetime import date, datetime
 
 
-VALID_PRESCRIPTION_STATUSES = ["draft", "finalized", "dispensed", "partially_dispensed"]
+VALID_PRESCRIPTION_STATUSES = ["draft", "finalized", "dispensed"]
 VALID_DURATION_UNITS = ["days", "weeks", "months"]
 VALID_ROUTES = ["oral", "topical", "injection", "inhalation", "sublingual", "rectal", "nasal", "ophthalmic", "otic"]
 VALID_MEDICINE_CATEGORIES = ["tablet", "capsule", "syrup", "injection", "cream", "drops", "ointment", "inhaler", "powder", "suspension"]
@@ -91,6 +91,7 @@ class MedicineResponse(BaseModel):
     reorder_level: int = 10
     storage_instructions: Optional[str] = None
     is_active: bool = True
+    total_stock: Optional[int] = None
     created_at: datetime
     updated_at: datetime
 
@@ -259,6 +260,11 @@ class PrescriptionResponse(BaseModel):
     patient_chronic_conditions: Optional[str] = None
     appointment_number: Optional[str] = None
     doctor_name: Optional[str] = None
+    consultation_invoice_id: Optional[str] = None
+    consultation_invoice_number: Optional[str] = None
+    consultation_invoice_status: Optional[str] = None
+    final_amount: Optional[float] = None
+    dispensed_at: Optional[str] = None
     items: list[PrescriptionItemResponse] = []
 
     @model_validator(mode="before")

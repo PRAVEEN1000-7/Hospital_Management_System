@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import walkInService from '../services/walkInService';
@@ -8,6 +8,7 @@ import type { UnassignedWalkIn } from '../services/walkInService';
 import scheduleService from '../services/scheduleService';
 import type { QueueStatus as QueueStatusType, QueueItem, DoctorOption, Appointment } from '../types/appointment';
 import AppointmentStatusBadge from '../components/appointments/AppointmentStatusBadge';
+import type { Patient } from '../types/patient';
 
 // ── Priority helpers ───────────────────────────────────────────────
 const PRIORITY_CONFIG: Record<string, { label: string; bg: string; text: string; icon: string }> = {
@@ -34,6 +35,13 @@ function timeAgo(iso: string | null): string {
   return `${Math.floor(mins / 60)}h ${mins % 60}m ago`;
 }
 
+function formatLocalDateISO(input: Date = new Date()): string {
+  const year = input.getFullYear();
+  const month = String(input.getMonth() + 1).padStart(2, '0');
+  const day = String(input.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 // ── Main Component ─────────────────────────────────────────────────
 const WalkInQueue: React.FC = () => {
   const { user } = useAuth();
@@ -46,6 +54,7 @@ const WalkInQueue: React.FC = () => {
   const isAdmin = roles.includes('admin') || roles.includes('super_admin');
   const canFilter = isReception || isAdmin;
   const canActOnQueue = isDoctor;  // Only doctors can perform clinical actions
+  const today = formatLocalDateISO();
 
   const [queueData, setQueueData] = useState<QueueStatusType | null>(null);
   const [loading, setLoading] = useState(true);
@@ -68,9 +77,12 @@ const WalkInQueue: React.FC = () => {
   // ── Upcoming Queue State ──────────────────────────────────────
   const [upcomingData, setUpcomingData] = useState<Awaited<ReturnType<typeof walkInService.getUpcomingQueue>> | null>(null);
   const [upcomingLoading, setUpcomingLoading] = useState(false);
+  const [upcomingDays, setUpcomingDays] = useState<7 | 14 | 30>(7);
+  const [upcomingDateFilter, setUpcomingDateFilter] = useState<string>('all');
+  const [upcomingSearch, setUpcomingSearch] = useState<string>('');
 
   // ── Date Picker for browsing queue by date ────────────────────
-  const [selectedDate, setSelectedDate] = useState<string>('');  // empty = today
+  const [selectedDate, setSelectedDate] = useState<string>(today);
 
   // ── Book Next Appointment Modal State ─────────────────────────
   const [bookNextItem, setBookNextItem] = useState<QueueItem | null>(null);
@@ -129,11 +141,11 @@ const WalkInQueue: React.FC = () => {
   const fetchUpcoming = useCallback(async () => {
     setUpcomingLoading(true);
     try {
-      const data = await walkInService.getUpcomingQueue(7);
+      const data = await walkInService.getUpcomingQueue(upcomingDays);
       setUpcomingData(data);
     } catch { /* silent */ }
     setUpcomingLoading(false);
-  }, []);
+  }, [upcomingDays]);
 
   // Load doctor list for filter dropdown and send modal (reception/admin only)
   useEffect(() => {
@@ -213,12 +225,12 @@ const WalkInQueue: React.FC = () => {
 
   // ── Book Next Appointment Handler ────────────────────────────────
   const handleBookNextAppointment = async () => {
-    if (!bookNextItem || !bookNextDate || !user?.id || !bookNextItem.patient_id) return;
+    if (!bookNextItem || !bookNextDate || !bookNextItem.patient_id || !bookNextItem.doctor_id) return;
     setBookingSaving(true);
     try {
       await appointmentService.createAppointment({
         patient_id: bookNextItem.patient_id,
-        doctor_id: user.id,
+        doctor_id: bookNextItem.doctor_id,
         appointment_type: 'follow-up',
         visit_type: 'scheduled',
         appointment_date: bookNextDate,
@@ -227,6 +239,7 @@ const WalkInQueue: React.FC = () => {
         priority: 'normal',
       });
       toast.success('Follow-up appointment booked successfully');
+      fetchUpcoming();
       setBookNextItem(null);
       setBookNextDate('');
       setBookNextTime('');
@@ -366,6 +379,27 @@ const WalkInQueue: React.FC = () => {
     return Date.now() - new Date(item.consultation_end_at).getTime() < 60000;
   };
 
+  const upcomingDateGroups = upcomingData?.date_groups || [];
+  const normalizedUpcomingSearch = upcomingSearch.trim().toLowerCase();
+  const filteredUpcomingDateGroups = upcomingDateGroups
+    .filter(group => upcomingDateFilter === 'all' || group.date === upcomingDateFilter)
+    .map(group => {
+      const items = normalizedUpcomingSearch
+        ? group.items.filter(item =>
+            (item.patient_name || '').toLowerCase().includes(normalizedUpcomingSearch) ||
+            (item.patient_reference_number || '').toLowerCase().includes(normalizedUpcomingSearch) ||
+            (item.chief_complaint || '').toLowerCase().includes(normalizedUpcomingSearch),
+          )
+        : group.items;
+
+      return {
+        ...group,
+        count: items.length,
+        items,
+      };
+    })
+    .filter(group => group.items.length > 0);
+
   // ── Render ─────────────────────────────────────────────────────
   return (
     <div className="max-w-7xl mx-auto">
@@ -374,7 +408,7 @@ const WalkInQueue: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold text-slate-900">
             {isDoctor
-              ? (selectedDate && selectedDate !== new Date().toISOString().split('T')[0]
+              ? (selectedDate && selectedDate !== today
                 ? `Patients — ${new Date(selectedDate + 'T00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`
                 : 'Today Patients')
               : 'Walk-in Queue'}
@@ -396,8 +430,8 @@ const WalkInQueue: React.FC = () => {
               title="Browse queue by date"
             />
           </div>
-          {selectedDate && selectedDate !== new Date().toISOString().split('T')[0] && (
-            <button onClick={() => { setSelectedDate(''); setLoading(true); }}
+          {selectedDate && selectedDate !== today && (
+            <button onClick={() => { setSelectedDate(today); setLoading(true); }}
               className="inline-flex items-center gap-1.5 px-3 py-2 bg-primary/10 text-primary border border-primary/20 rounded-lg text-xs font-semibold hover:bg-primary/20 transition-colors">
               <span className="material-symbols-outlined text-sm">today</span> Back to Today
             </button>
@@ -541,11 +575,6 @@ const WalkInQueue: React.FC = () => {
                           className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-purple-700 bg-white border border-purple-200 rounded-lg hover:bg-purple-50 transition-colors">
                           <span className="material-symbols-outlined text-sm">edit_note</span>
                           Consultation
-                        </button>
-                        <button onClick={() => handleComplete(currentPatient.queue_id)}
-                          className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 transition-colors shadow-sm">
-                          <span className="material-symbols-outlined text-sm">task_alt</span>
-                          Complete
                         </button>
                         <button onClick={() => { setBookNextItem(currentPatient); setBookNextDate(''); setBookNextTime(''); }}
                           className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-blue-700 bg-white border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors">
@@ -911,15 +940,15 @@ const WalkInQueue: React.FC = () => {
             <div className="text-center py-20 text-slate-400">
               <span className="material-symbols-outlined animate-spin text-4xl">progress_activity</span>
             </div>
-          ) : !upcomingData || upcomingData.date_groups.length === 0 ? (
+          ) : filteredUpcomingDateGroups.length === 0 ? (
             <div className="text-center py-20 text-slate-400 bg-white rounded-xl border border-slate-200">
               <span className="material-symbols-outlined text-5xl mb-3 block">event_available</span>
-              <p className="text-sm font-medium">No upcoming patients in the next 7 days</p>
-              <p className="text-xs mt-1">Referrals, follow-ups, and scheduled appointments will appear here</p>
+              <p className="text-sm font-medium">No upcoming patients found</p>
+              <p className="text-xs mt-1">Try changing date range or clearing filters</p>
             </div>
           ) : (
             <div className="space-y-6">
-              {upcomingData.date_groups.map(group => {
+              {filteredUpcomingDateGroups.map(group => {
                 const groupDate = new Date(group.date + 'T00:00');
                 const dayLabel = groupDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' });
                 return (
@@ -1388,6 +1417,38 @@ const WalkInQueue: React.FC = () => {
       {/* ── Doctor Upcoming View — Future bookings grouped by date ── */}
       {isDoctor && activeTab === 'upcoming' && (
         <div>
+          <div className="mb-4 bg-white border border-slate-200 rounded-xl p-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <select
+                value={upcomingDays}
+                onChange={(e) => setUpcomingDays(Number(e.target.value) as 7 | 14 | 30)}
+                className="input-field"
+              >
+                <option value={7}>Next 7 days</option>
+                <option value={14}>Next 14 days</option>
+                <option value={30}>Next 30 days</option>
+              </select>
+              <select
+                value={upcomingDateFilter}
+                onChange={(e) => setUpcomingDateFilter(e.target.value)}
+                className="input-field"
+              >
+                <option value="all">All dates</option>
+                {upcomingDateGroups.map(group => (
+                  <option key={group.date} value={group.date}>
+                    {new Date(group.date + 'T00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="text"
+                value={upcomingSearch}
+                onChange={(e) => setUpcomingSearch(e.target.value)}
+                placeholder="Search patient / MRN / complaint"
+                className="input-field"
+              />
+            </div>
+          </div>
           {upcomingLoading ? (
             <div className="text-center py-20 text-slate-400">
               <span className="material-symbols-outlined animate-spin text-4xl">progress_activity</span>
@@ -1800,7 +1861,7 @@ const WalkInQueue: React.FC = () => {
                   type="date"
                   value={bookNextDate}
                   onChange={(e) => setBookNextDate(e.target.value)}
-                  min={new Date(Date.now() + 86400000).toISOString().split('T')[0]}
+                  min={formatLocalDateISO(new Date(Date.now() + 86400000))}
                   className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
                 />
               </div>
@@ -1879,7 +1940,7 @@ const WalkInQueue: React.FC = () => {
                   type="date"
                   value={referDate}
                   onChange={(e) => setReferDate(e.target.value)}
-                  min={new Date().toISOString().split('T')[0]}
+                  min={formatLocalDateISO()}
                   className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
                 />
               </div>

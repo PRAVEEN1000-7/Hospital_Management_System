@@ -191,7 +191,17 @@ const Register: React.FC = () => {
       const result = await patientService.createPatient(data as any);
       feLogger.info('patient_registration', `Patient registered: ${result.patient_reference_number}`);
       toast.success(`Patient registered successfully! ID: ${result.patient_reference_number}`);
-      setTimeout(() => navigate('/patients'), 2000);
+      
+      // Check if we came from walk-ins and should redirect back
+      const returnUrl = sessionStorage.getItem('walkInReturnUrl');
+      if (returnUrl) {
+        sessionStorage.removeItem('walkInReturnUrl');
+        // Redirect back with new patient ID
+        setTimeout(() => navigate(`${returnUrl}?new_patient_id=${result.id}`), 1000);
+      } else {
+        // Default redirect to patient list
+        setTimeout(() => navigate('/patients'), 2000);
+      }
     } catch (err: unknown) {
       const axiosError = err as { response?: { data?: { detail?: string | Array<{ msg: string }> } }; code?: string };
       let message: string;
@@ -454,7 +464,7 @@ const Register: React.FC = () => {
             <span className="w-8 h-[2px] bg-amber-400/40 rounded-full"></span>
             <h2 className="text-sm font-bold text-amber-600 uppercase tracking-wider">Emergency Contact</h2>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className={labelClass}>Contact Name</label>
               <input
@@ -464,7 +474,7 @@ const Register: React.FC = () => {
                 maxLength={200}
                 onKeyDown={blockNonAlpha}
               />
-              <p className={hintClass}>Alphabets only — person to contact in emergencies</p>
+              <p className={hintClass}>Person to contact in emergencies</p>
             </div>
             <div>
               <label className={labelClass}>Relationship</label>
@@ -472,33 +482,35 @@ const Register: React.FC = () => {
                 <option value="">Select relationship</option>
                 {RELATIONSHIP_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
               </select>
-              <p className={hintClass}>How is this person related to the patient?</p>
+              <p className={hintClass}>Relation to the patient</p>
             </div>
-            <div className="lg:col-span-1">
-              <label className={labelClass}>Contact Mobile</label>
-              <div className="flex gap-2">
-                <select
-                  {...register('emergency_contact_country_code')}
-                  className={`w-32 shrink-0 ${selectClass}`}
-                >
-                  {COUNTRIES.map(c => (
-                    <option key={c.code} value={c.phoneCode}>
-                      {c.phoneCode} ({c.name})
-                    </option>
-                  ))}
-                </select>
-                <input
-                  {...register('emergency_contact_phone')}
-                  type="tel"
-                  className={`flex-1 ${fieldErrors.emergency_contact_phone ? inputErrorClass : inputClass}`}
-                  placeholder="10-digit number"
-                  maxLength={10}
-                  onKeyDown={blockNonDigit}
-                />
-              </div>
+            <div>
+              <label className={labelClass}>Country Code</label>
+              <select
+                {...register('emergency_contact_country_code')}
+                className={selectClass}
+              >
+                {COUNTRIES.map(c => (
+                  <option key={c.code} value={c.phoneCode}>
+                    {c.phoneCode} ({c.name})
+                  </option>
+                ))}
+              </select>
+              <p className={hintClass}>Select country dial code</p>
+            </div>
+            <div>
+              <label className={labelClass}>Mobile Number</label>
+              <input
+                {...register('emergency_contact_phone')}
+                type="tel"
+                className={fieldErrors.emergency_contact_phone ? inputErrorClass : inputClass}
+                placeholder="9876543210"
+                maxLength={10}
+                onKeyDown={blockNonDigit}
+              />
               {fieldErrors.emergency_contact_phone
                 ? <p className={errorClass}><span className="material-symbols-outlined text-xs">error</span>{fieldErrors.emergency_contact_phone}</p>
-                : <p className={hintClass}>10 digits — must differ from the patient's phone number</p>}
+                : <p className={hintClass}>10 digits — must differ from patient's number</p>}
             </div>
           </div>
         </div>

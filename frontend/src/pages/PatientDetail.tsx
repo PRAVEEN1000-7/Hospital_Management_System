@@ -66,8 +66,8 @@ const PatientDetail: React.FC = () => {
       <div className="text-center py-20">
         <span className="material-icons text-5xl text-red-300 mb-4">error_outline</span>
         <p className="text-lg font-bold text-slate-900">{fetchError || 'Patient not found'}</p>
-        <button onClick={() => navigate('/patients')} className="mt-4 text-primary hover:underline text-sm font-semibold">
-          Back to patients
+        <button onClick={() => navigate(-1)} className="mt-4 text-primary hover:underline text-sm font-semibold">
+          Back
         </button>
       </div>
     );
@@ -81,9 +81,9 @@ const PatientDetail: React.FC = () => {
     <div>
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-        <button onClick={() => navigate('/patients')} className="flex items-center gap-2 text-slate-500 hover:text-slate-700 transition-colors">
+        <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-slate-500 hover:text-slate-700 transition-colors">
           <span className="material-icons text-lg">arrow_back</span>
-          <span className="text-sm font-semibold">Back to Patients</span>
+          <span className="text-sm font-semibold">Back</span>
         </button>
         <div className="flex items-center gap-2">
           <button

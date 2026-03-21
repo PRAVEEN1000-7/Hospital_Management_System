@@ -20,6 +20,22 @@ const statusColor: Record<string, string> = {
   partially_dispensed: 'bg-orange-100 text-orange-700',
 };
 
+const dispensingStatusBadge = (status: string) => {
+  const badges: Record<string, { label: string; color: string; icon: string }> = {
+    draft: { label: 'Not Sent', color: 'bg-gray-100 text-gray-700', icon: '📝' },
+    finalized: { label: 'Pending', color: 'bg-blue-100 text-blue-700', icon: '⏳' },
+    dispensed: { label: 'Dispensed', color: 'bg-green-100 text-green-700', icon: '✅' },
+    partially_dispensed: { label: 'Partial', color: 'bg-orange-100 text-orange-700', icon: '⚠️' },
+  };
+  const badge = badges[status] || badges.finalized;
+  return (
+    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${badge.color}`}>
+      <span>{badge.icon}</span>
+      <span>{badge.label}</span>
+    </span>
+  );
+};
+
 const PrescriptionList: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -105,7 +121,7 @@ const PrescriptionList: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Prescriptions</h1>
+          <h1 className="text-2xl font-bold text-slate-900">All Prescription</h1>
           <p className="text-sm text-slate-500 mt-1">{total} prescription{total !== 1 ? 's' : ''} found</p>
         </div>
         {(role === 'doctor' || role === 'super_admin' || role === 'admin') && (

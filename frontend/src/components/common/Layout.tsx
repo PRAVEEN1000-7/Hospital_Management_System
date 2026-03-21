@@ -1,9 +1,19 @@
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { NavLink, useNavigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatRole, ROLE_ICONS } from '../../utils/constants';
 import hospitalService from '../../services/hospitalService';
 import userService from '../../services/userService';
+import pharmacyService from '../../services/pharmacyService';
+import notificationsService, { type AppNotification } from '../../services/notificationsService';
+import {
+  getNotificationTarget,
+  getNotificationIcon,
+  getNotificationColor,
+  formatNotificationMessage,
+  getRelativeTime,
+} from '../../utils/notificationUtils';
 
 const Layout: React.FC = () => {
   const { user, logout } = useAuth();
@@ -16,6 +26,9 @@ const Layout: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const searchDebounceRef = useRef<number | null>(null);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const notificationsRef = useRef<HTMLDivElement>(null);
   const [appointmentsOpen, setAppointmentsOpen] = useState(
@@ -24,6 +37,36 @@ const Layout: React.FC = () => {
   const [prescriptionsOpen, setPrescriptionsOpen] = useState(
     () => location.pathname.startsWith('/prescriptions')
   );
+  const [pharmacyOpen, setPharmacyOpen] = useState(
+    () => location.pathname.startsWith('/pharmacy')
+  );
+  const [pharmacyExpanded, setPharmacyExpanded] = useState(
+    () => location.pathname.startsWith('/pharmacy')
+  );
+  const [pendingPrescriptionCount, setPendingPrescriptionCount] = useState(0);
+  const [loadingPendingCount, setLoadingPendingCount] = useState(false);
+  const [inventoryOpen, setInventoryOpen] = useState(
+    () => location.pathname.startsWith('/inventory')
+  );
+
+  const role = user?.roles?.[0];
+  const [billingOpen, setBillingOpen] = useState(
+    () => location.pathname.startsWith('/billing')
+  );
+  const normalizedRoles = (user?.roles || []).map(r => String(r).trim().toLowerCase());
+  const roleAliases: Record<string, string> = {
+    administrator: 'admin',
+    hospital_admin: 'admin',
+    'inventory-admin': 'inventory_manager',
+    inventoryadmin: 'inventory_manager',
+  };
+  const effectiveRoles = normalizedRoles.map(r => roleAliases[r] || r);
+  const hasRole = (...allowed: string[]) => {
+    const allowedSet = new Set(allowed.map(a => String(a).trim().toLowerCase()));
+    return effectiveRoles.some(r => allowedSet.has(r));
+  };
+  const hasPendingPrescriptionAccess = hasRole('pharmacist', 'admin', 'super_admin', 'inventory_manager');
+  const canAccessPatients = hasRole('super_admin', 'admin', 'receptionist', 'nurse', 'pharmacist', 'doctor');
 
   useEffect(() => {
     hospitalService.getHospitalDetails()
@@ -36,7 +79,30 @@ const Layout: React.FC = () => {
       });
   }, []);
 
-  // Auto-expand appointments section when navigating to an appointment route
+  // Fetch pending prescription count for pharmacy badge
+  useEffect(() => {
+    if (!hasPendingPrescriptionAccess) {
+      return;
+    }
+
+    const fetchPendingCount = async () => {
+      setLoadingPendingCount(true);
+      try {
+        const result = await pharmacyService.getPendingPrescriptions(1, 1);
+        setPendingPrescriptionCount(result.total);
+      } catch (err) {
+        setPendingPrescriptionCount(0);
+      } finally {
+        setLoadingPendingCount(false);
+      }
+    };
+
+    fetchPendingCount();
+    const interval = setInterval(fetchPendingCount, 30000);
+    return () => clearInterval(interval);
+  }, [hasPendingPrescriptionAccess]);
+
+  // Auto-expand sections when navigating to their routes
   useEffect(() => {
     if (location.pathname.startsWith('/appointments')) {
       setAppointmentsOpen(true);
@@ -44,7 +110,66 @@ const Layout: React.FC = () => {
     if (location.pathname.startsWith('/prescriptions')) {
       setPrescriptionsOpen(true);
     }
+    if (location.pathname.startsWith('/pharmacy')) {
+      setPharmacyOpen(true);
+      setPharmacyExpanded(true);
+    }
+    if (location.pathname.startsWith('/inventory')) {
+      setInventoryOpen(true);
+    }
+    if (location.pathname.startsWith('/billing')) {
+      setBillingOpen(true);
+    }
   }, [location.pathname]);
+
+  const fetchNotifications = useCallback(async (silent = false) => {
+    if (!silent) setNotificationsLoading(true);
+    try {
+      const res = await notificationsService.getNotifications(1, 15, false);
+      setNotifications(res.data);
+      setUnreadCount(res.unread_count || 0);
+    } catch {
+      // Keep previous notifications on transient API failures
+    } finally {
+      if (!silent) setNotificationsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!notificationsOpen) return;
+    fetchNotifications();
+  }, [notificationsOpen, fetchNotifications]);
+
+  useEffect(() => {
+    fetchNotifications(true);
+  }, [fetchNotifications]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      fetchNotifications(true);
+    }, 30000);
+    return () => clearInterval(timer);
+  }, [fetchNotifications]);
+
+  const handleMarkRead = async (id: string) => {
+    try {
+      await notificationsService.markRead(id);
+      setNotifications(prev => prev.map(n => (n.id === id ? { ...n, is_read: true } : n)));
+      setUnreadCount(prev => Math.max(0, prev - 1));
+    } catch {
+      // Ignore individual mark-read failures
+    }
+  };
+
+  const handleMarkAllRead = async () => {
+    try {
+      await notificationsService.markAllRead();
+      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+      setUnreadCount(0);
+    } catch {
+      // Ignore mark-all failures
+    }
+  };
 
   const handleLogout = async () => {
     setShowLogoutConfirm(false);
@@ -75,9 +200,6 @@ const Layout: React.FC = () => {
     const { path } = getGlobalSearchContext();
     if (trimmed) {
       navigate(`${path}?search=${encodeURIComponent(trimmed)}`);
-      setSidebarOpen(false);
-    } else {
-      navigate(path);
     }
   }, [searchQuery, navigate, getGlobalSearchContext]);
 
@@ -114,6 +236,24 @@ const Layout: React.FC = () => {
     };
   }, [searchQuery, location.pathname, location.search, getGlobalSearchContext, navigate]);
 
+  const handleNotificationClick = async (notification: AppNotification) => {
+    if (!notification.is_read) {
+      await handleMarkRead(notification.id);
+    }
+    setNotificationsOpen(false);
+    
+    const target = getNotificationTarget(notification);
+    
+    // Navigate to the target page
+    navigate(target.path, {
+      state: {
+        fromNotification: true,
+        referenceType: notification.reference_type,
+        referenceId: notification.reference_id,
+      },
+    });
+  };
+
   // Close user menu on outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -136,106 +276,185 @@ const Layout: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [notificationsOpen]);
 
-  const role = user?.roles?.[0];
   const isRegisterPatientPage = location.pathname.startsWith('/register');
   const globalSearchContext = getGlobalSearchContext();
 
   // Receptionist and Doctor get flat appointment links (no dropdown)
-  const isFlatNav = role === 'receptionist' || role === 'doctor';
+  const isFlatNav = hasRole('receptionist', 'doctor');
 
   // ── Main navigation ── visible to every authenticated user
   const mainNavItems = [
-    { to: '/dashboard', label: 'Dashboard',        icon: 'dashboard' },
+    { to: '/dashboard', label: 'Dashboard', icon: 'dashboard' },
   ];
-  // Patient Directory - NOT for doctors
-  if (role !== 'doctor') {
+  if (canAccessPatients) {
     mainNavItems.push({ to: '/patients', label: 'Patient Directory', icon: 'group' });
   }
-  // Register Patient - only roles with actual route access
-  if (role === 'super_admin' || role === 'admin' || role === 'receptionist') {
+  if (hasRole('super_admin', 'admin', 'receptionist')) {
     mainNavItems.push({ to: '/register', label: 'Register Patient', icon: 'person_add' });
   }
-  if (role === 'super_admin' || role === 'admin') {
+  if (hasRole('super_admin', 'admin')) {
     mainNavItems.push({ to: '/staff', label: 'Staff Directory', icon: 'badge' });
+  }
+  // Analytics - admin only
+  if (role === 'super_admin' || role === 'admin') {
+    mainNavItems.push({ to: '/analytics', label: 'Analytics', icon: 'monitoring' });
   }
 
   // ── Appointment navigation ── fully role-driven
   const appointmentItems: { to: string; label: string; icon: string }[] = [];
 
-  if (role === 'super_admin' || role === 'admin') {
+  if (hasRole('super_admin', 'admin')) {
     appointmentItems.push(
-      // { to: '/appointments/book',            label: 'Book Appointment',    icon: 'event' },
-      { to: '/appointments/walk-in',         label: 'Walk-in Registration',icon: 'directions_walk' },
-      { to: '/appointments/queue',           label: 'Walk-in Queue',       icon: 'queue' },
-      { to: '/appointments/doctor-schedule', label: 'Doctor Schedule',     icon: 'calendar_month' },
-      { to: '/appointments/manage',          label: 'Manage Appointments', icon: 'event_note' },
-      { to: '/appointments/waitlist',        label: 'Waitlist',            icon: 'playlist_add' },
-      { to: '/appointments/reports',         label: 'Reports',             icon: 'analytics' },
-      { to: '/appointments/settings',        label: 'Settings',            icon: 'tune' },
+      { to: '/appointments/walk-in', label: 'Walk-in Registration', icon: 'directions_walk' },
+      { to: '/appointments/queue', label: 'Walk-in Queue', icon: 'queue' },
+      { to: '/appointments/doctor-schedule', label: 'Doctor Schedule', icon: 'calendar_month' },
+      { to: '/appointments/manage', label: 'Manage Appointments', icon: 'event_note' },
+      { to: '/appointments/waitlist', label: 'Waitlist', icon: 'playlist_add' },
+      { to: '/appointments/reports', label: 'Reports', icon: 'analytics' },
+      { to: '/appointments/settings', label: 'Settings', icon: 'tune' },
     );
-  } else if (role === 'doctor') {
+  } else if (hasRole('doctor')) {
     appointmentItems.push(
-      { to: '/appointments/queue',           label: 'Today Patients',   icon: 'queue' },
-      { to: '/appointments/doctor-schedule', label: 'Manage My Schedule',  icon: 'edit_calendar' },
-      { to: '/appointments/waitlist',        label: 'Waitlist',            icon: 'playlist_add' },
+      { to: '/appointments/queue', label: 'Today Patients', icon: 'queue' },
+      { to: '/appointments/doctor-schedule', label: 'Manage My Schedule', icon: 'edit_calendar' },
+      { to: '/appointments/waitlist', label: 'Waitlist', icon: 'playlist_add' },
     );
-  } else if (role === 'nurse') {
+  } else if (hasRole('nurse')) {
     appointmentItems.push(
-      { to: '/appointments/queue',  label: 'Walk-in Queue',  icon: 'queue' },
-      { to: '/appointments/manage', label: 'Appointments',   icon: 'event_note' },
+      { to: '/appointments/queue', label: 'Walk-in Queue', icon: 'queue' },
+      { to: '/appointments/manage', label: 'Appointments', icon: 'event_note' },
     );
-  } else if (isFlatNav && role === 'receptionist') {
-    // Receptionist items are shown flat (outside dropdown) — see render below
+  } else if (isFlatNav && hasRole('receptionist')) {
     appointmentItems.push(
-      { to: '/appointments/walk-in', label: 'Walk-in Registration',icon: 'directions_walk' },
-      { to: '/appointments/queue',   label: 'Walk-in Queue',       icon: 'queue' },
-      { to: '/appointments/manage',  label: 'Manage Appointments', icon: 'event_note' },
-      { to: '/appointments/waitlist',label: 'Waitlist',            icon: 'playlist_add' },
-      { to: '/appointments/reports', label: 'Reports',             icon: 'analytics' },
+      { to: '/appointments/walk-in', label: 'Walk-in Registration', icon: 'directions_walk' },
+      { to: '/appointments/queue', label: 'Walk-in Queue', icon: 'queue' },
+      { to: '/appointments/manage', label: 'Manage Appointments', icon: 'event_note' },
+      { to: '/appointments/waitlist', label: 'Waitlist', icon: 'playlist_add' },
+      { to: '/appointments/reports', label: 'Reports', icon: 'analytics' },
     );
-  }
-  // report_viewer only sees Reports
-  else if (role === 'report_viewer') {
+  } else if (hasRole('report_viewer')) {
     appointmentItems.push(
       { to: '/appointments/reports', label: 'Appointment Reports', icon: 'analytics' },
+      { to: '/appointments/walk-in', label: 'Walk-in Registration', icon: 'directions_walk' },
+      { to: '/appointments/queue', label: 'Walk-in Queue', icon: 'queue' },
+      { to: '/appointments/manage', label: 'Manage Appointments', icon: 'event_note' },
+      { to: '/appointments/waitlist', label: 'Waitlist', icon: 'playlist_add' },
     );
   }
-  // pharmacist, cashier, inventory_manager, optical_staff — no appointment items
 
-  // ── Prescription navigation ── role-driven
+  // ── Prescription navigation ── FLAT (no dropdown)
   const prescriptionItems: { to: string; label: string; icon: string }[] = [];
 
-  if (role === 'super_admin' || role === 'admin') {
+  if (hasRole('super_admin', 'admin')) {
     prescriptionItems.push(
-      { to: '/prescriptions',     label: 'All Prescriptions', icon: 'list_alt' },
-      { to: '/prescriptions/new', label: 'New Prescription',  icon: 'note_add' },
+      { to: '/prescriptions', label: 'All Prescription', icon: 'list_alt' },
+      { to: '/prescriptions/new', label: 'New Prescription', icon: 'note_add' },
     );
-  } else if (role === 'doctor') {
+  } else if (hasRole('doctor')) {
     prescriptionItems.push(
-      { to: '/prescriptions',     label: 'My Prescriptions',  icon: 'list_alt' },
-      { to: '/prescriptions/new', label: 'New Prescription',  icon: 'note_add' },
+      { to: '/prescriptions', label: 'All Prescription', icon: 'list_alt' },
+      { to: '/prescriptions/new', label: 'New Prescription', icon: 'note_add' },
     );
-  } else if (role === 'nurse' || role === 'pharmacist') {
+  } else if (hasRole('nurse', 'pharmacist')) {
     prescriptionItems.push(
-      { to: '/prescriptions', label: 'Prescriptions', icon: 'list_alt' },
+      { to: '/prescriptions', label: 'All Prescription', icon: 'prescriptions' },
     );
   }
 
-  // ── System navigation ── admin / super_admin / receptionist
+  // ── Pharmacy navigation ── FLAT (no dropdown), simplified for pharmacists
+  const pharmacyItems: { to: string; label: string; icon: string; badge?: number }[] = [];
+
+  if (hasRole('super_admin', 'admin', 'pharmacist', 'inventory_manager')) {
+    if (hasRole('pharmacist') && !hasRole('super_admin', 'admin', 'inventory_manager')) {
+      // Simplified pharmacy menu for pharmacists - essential items only
+      pharmacyItems.push(
+        { to: '/pharmacy/medicines', label: 'Medicines', icon: 'medication' },
+        {
+          to: '/pharmacy/pending-prescriptions',
+          label: 'Pending Prescriptions',
+          icon: 'queue',
+          badge: pendingPrescriptionCount > 0 ? pendingPrescriptionCount : undefined,
+        },
+        { to: '/pharmacy/sales', label: 'Sales', icon: 'point_of_sale' }
+      );
+    } else {
+      // Full pharmacy menu for admin/super_admin/inventory_manager
+      pharmacyItems.push(
+        { to: '/pharmacy', label: 'Dashboard', icon: 'dashboard' },
+        { to: '/pharmacy/medicines', label: 'Medicines', icon: 'medication' },
+        {
+          to: '/pharmacy/pending-prescriptions',
+          label: 'Pending Prescriptions',
+          icon: 'queue',
+          badge: pendingPrescriptionCount > 0 ? pendingPrescriptionCount : undefined,
+        },
+        { to: '/pharmacy/sales', label: 'Sales', icon: 'point_of_sale' },
+        { to: '/pharmacy/stock-adjustments', label: 'Stock Adjustments', icon: 'tune' },
+      );
+    }
+  }
+  if (hasRole('cashier')) {
+    pharmacyItems.push(
+      { to: '/pharmacy/sales', label: 'Sales', icon: 'point_of_sale' },
+    );
+  }
+
+  // ── Inventory navigation ── role-driven
+  const inventoryItems: { to: string; label: string; icon: string }[] = [];
+
+  if (hasRole('super_admin', 'admin', 'inventory_manager')) {
+    inventoryItems.push(
+      { to: '/inventory', label: 'Dashboard', icon: 'space_dashboard' },
+      { to: '/inventory/low-stock', label: 'Low Stock', icon: 'warning' },
+      { to: '/inventory/suppliers', label: 'Suppliers', icon: 'local_shipping' },
+      { to: '/inventory/purchase-orders', label: 'Purchase Orders', icon: 'receipt_long' },
+      { to: '/inventory/grns', label: 'Goods Receipt', icon: 'inventory' },
+      { to: '/inventory/stock-movements', label: 'Stock Movements', icon: 'swap_vert' },
+      { to: '/inventory/adjustments', label: 'Adjustments', icon: 'tune' },
+      { to: '/inventory/cycle-counts', label: 'Cycle Counts', icon: 'inventory_2' },
+    );
+  } else if (hasRole('pharmacist')) {
+    inventoryItems.push(
+      { to: '/inventory', label: 'Dashboard', icon: 'space_dashboard' },
+      { to: '/inventory/low-stock', label: 'Low Stock', icon: 'warning' },
+      { to: '/inventory/suppliers', label: 'Suppliers', icon: 'local_shipping' },
+      { to: '/inventory/purchase-orders', label: 'Purchase Orders', icon: 'receipt_long' },
+      { to: '/inventory/grns', label: 'Goods Receipt', icon: 'inventory' },
+      { to: '/inventory/stock-movements', label: 'Stock Movements', icon: 'swap_vert' },
+    );
+  }
+
+  // ── System navigation ── admin / super_admin only
   const systemNavItems: { to: string; label: string; icon: string }[] = [];
-  if (role === 'super_admin') {
+  if (hasRole('super_admin')) {
     systemNavItems.push(
-      { to: '/hospital-setup',  label: 'Hospital Setup',  icon: 'local_hospital' },
+      { to: '/hospital-setup', label: 'Hospital Setup', icon: 'local_hospital' },
       { to: '/user-management', label: 'User Management', icon: 'admin_panel_settings' },
     );
-  } else if (role === 'admin') {
+  } else if (hasRole('admin')) {
     systemNavItems.push(
       { to: '/user-management', label: 'User Management', icon: 'admin_panel_settings' },
     );
+  }
+
+  // ── Billing navigation ── admin, cashier, pharmacist, doctor (view only)
+  const billingItems: { to: string; label: string; icon: string; stub?: boolean }[] = [];
+  if (['super_admin', 'admin', 'cashier', 'pharmacist', 'doctor'].includes(role || '')) {
+    billingItems.push({ to: '/billing/invoices', label: 'Invoices', icon: 'receipt_long' });
+    billingItems.push({ to: '/billing/payments', label: 'Payments', icon: 'payments' });
+  }
+  if (['super_admin', 'admin', 'cashier', 'pharmacist'].includes(role || '')) {
+    billingItems.push({ to: '/billing/refunds', label: 'Refunds', icon: 'currency_exchange' });
+    billingItems.push({ to: '/billing/settlements', label: 'Daily Settlements', icon: 'account_balance_wallet' });
+  }
+  if (['super_admin', 'admin'].includes(role || '')) {
+    billingItems.push({ to: '/billing/insurance-claims', label: 'Insurance Claims', icon: 'health_and_safety', stub: true });
+    billingItems.push({ to: '/billing/credit-notes', label: 'Credit Notes', icon: 'credit_score', stub: true });
+    billingItems.push({ to: '/billing/insurance-providers', label: 'Insurance Providers', icon: 'domain', stub: true });
   }
 
   const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path + '/');
-  // For dropdown sub-items: exact match only (prevents parent path from matching sibling child routes)
+  // For flat nav items: exact match only
   const isExactActive = (path: string) => location.pathname === path;
 
   const fullName = user ? `${user.first_name} ${user.last_name}`.trim() : '';
@@ -289,7 +508,6 @@ const Layout: React.FC = () => {
 
           {/* ══ APPOINTMENTS — collapsible (or flat for receptionist) ══ */}
           {appointmentItems.length > 0 && isFlatNav ? (
-            /* ── Receptionist: flat links, no dropdown ── */
             <div className="mt-4">
               <div className="px-6 mb-1">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Appointments</span>
@@ -353,32 +571,56 @@ const Layout: React.FC = () => {
             </div>
           )}
 
-          {/* ══ PRESCRIPTIONS — collapsible ══ */}
+          {/* ══ PRESCRIPTIONS — FLAT (no dropdown) ══ */}
           {prescriptionItems.length > 0 && (
             <div className="mt-4">
               <div className="px-6 mb-1">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Prescriptions</span>
               </div>
+              {prescriptionItems.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  onClick={() => setSidebarOpen(false)}
+                  className={`flex items-center px-6 py-3 text-sm font-medium transition-all ${
+                    isExactActive(item.to)
+                      ? 'sidebar-item-active'
+                      : 'text-slate-500 hover:text-primary hover:bg-slate-50'
+                  }`}
+                >
+                  <span className="material-symbols-outlined mr-3 text-[20px]">{item.icon}</span>
+                  {item.label}
+                </NavLink>
+              ))}
+            </div>
+          )}
+
+          {/* ══ PHARMACY — collapsible (with badge notifications) ══ */}
+          {pharmacyItems.length > 0 && (
+            <div className="mt-4">
+              <div className="px-6 mb-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Pharmacy</span>
+              </div>
               <button
-                onClick={() => setPrescriptionsOpen(!prescriptionsOpen)}
-                aria-expanded={prescriptionsOpen}
-                aria-controls="prescriptions-menu"
+                onClick={() => setPharmacyOpen(!pharmacyOpen)}
+                aria-expanded={pharmacyOpen}
+                aria-controls="pharmacy-menu"
                 className={`w-full flex items-center justify-between px-6 py-2.5 text-sm font-medium transition-all ${
-                  location.pathname.startsWith('/prescriptions')
+                  location.pathname.startsWith('/pharmacy')
                     ? 'text-primary bg-primary/5'
                     : 'text-slate-500 hover:text-primary hover:bg-slate-50'
                 }`}
               >
                 <div className="flex items-center">
-                  <span className="material-symbols-outlined mr-3 text-[20px]">prescriptions</span>
-                  Prescriptions
+                  <span className="material-symbols-outlined mr-3 text-[20px]">local_pharmacy</span>
+                  Pharmacy
                 </div>
-                <span className={`material-symbols-outlined text-[18px] transition-transform duration-200 ${prescriptionsOpen ? 'rotate-180' : ''}`}>
+                <span className={`material-symbols-outlined text-[18px] transition-transform duration-200 ${pharmacyOpen ? 'rotate-180' : ''}`}>
                   expand_more
                 </span>
               </button>
-              <div id="prescriptions-menu" className={`overflow-hidden transition-all duration-200 ${prescriptionsOpen ? 'max-h-[700px] opacity-100' : 'max-h-0 opacity-0'}`}>
-                {prescriptionItems.map((item) => (
+              <div id="pharmacy-menu" className={`overflow-hidden transition-all duration-200 ${pharmacyOpen ? 'max-h-[700px] opacity-100' : 'max-h-0 opacity-0'}`}>
+                {pharmacyItems.map((item) => (
                   <NavLink
                     key={item.to}
                     to={item.to}
@@ -391,6 +633,104 @@ const Layout: React.FC = () => {
                   >
                     <span className="material-symbols-outlined mr-3 text-[18px]">{item.icon}</span>
                     {item.label}
+                    {item.badge !== undefined && item.badge > 0 && (
+                      <span className="ml-2 px-2 py-0.5 text-xs font-semibold bg-red-500 text-white rounded-full min-w-[1.25rem] text-center notification-badge">
+                        {item.badge > 99 ? '99+' : item.badge}
+                      </span>
+                    )}
+                  </NavLink>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ══ INVENTORY — collapsible ══ */}
+          {inventoryItems.length > 0 && (
+            <div className="mt-4">
+              <div className="px-6 mb-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Inventory</span>
+              </div>
+              <button
+                onClick={() => setInventoryOpen(!inventoryOpen)}
+                aria-expanded={inventoryOpen}
+                aria-controls="inventory-menu"
+                className={`w-full flex items-center justify-between px-6 py-2.5 text-sm font-medium transition-all ${
+                  location.pathname.startsWith('/inventory')
+                    ? 'text-primary bg-primary/5'
+                    : 'text-slate-500 hover:text-primary hover:bg-slate-50'
+                }`}
+              >
+                <div className="flex items-center">
+                  <span className="material-symbols-outlined mr-3 text-[20px]">inventory_2</span>
+                  Inventory
+                </div>
+                <span className={`material-symbols-outlined text-[18px] transition-transform duration-200 ${inventoryOpen ? 'rotate-180' : ''}`}>
+                  expand_more
+                </span>
+              </button>
+              <div id="inventory-menu" className={`overflow-hidden transition-all duration-200 ${inventoryOpen ? 'max-h-[700px] opacity-100' : 'max-h-0 opacity-0'}`}>
+                {inventoryItems.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    onClick={() => setSidebarOpen(false)}
+                    className={`flex items-center pl-10 pr-6 py-2.5 text-[13px] font-medium transition-all ${
+                      isExactActive(item.to)
+                        ? 'sidebar-item-active'
+                        : 'text-slate-400 hover:text-primary hover:bg-slate-50'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined mr-3 text-[18px]">{item.icon}</span>
+                    {item.label}
+                  </NavLink>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ══ BILLING — collapsible ══ */}
+          {billingItems.length > 0 && (
+            <div className="mt-4">
+              <div className="px-6 mb-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Billing</span>
+              </div>
+              <button
+                onClick={() => setBillingOpen(!billingOpen)}
+                aria-expanded={billingOpen}
+                aria-controls="billing-menu"
+                className={`w-full flex items-center justify-between px-6 py-2.5 text-sm font-medium transition-all ${
+                  location.pathname.startsWith('/billing')
+                    ? 'text-primary bg-primary/5'
+                    : 'text-slate-500 hover:text-primary hover:bg-slate-50'
+                }`}
+              >
+                <div className="flex items-center">
+                  <span className="material-symbols-outlined mr-3 text-[20px]">receipt_long</span>
+                  Billing & Invoice
+                </div>
+                <span className={`material-symbols-outlined text-[18px] transition-transform duration-200 ${billingOpen ? 'rotate-180' : ''}`}>
+                  expand_more
+                </span>
+              </button>
+              <div id="billing-menu" className={`overflow-hidden transition-all duration-200 ${billingOpen ? 'max-h-[700px] opacity-100' : 'max-h-0 opacity-0'}`}>
+                {billingItems.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    onClick={() => setSidebarOpen(false)}
+                    className={`flex items-center pl-10 pr-6 py-2.5 text-[13px] font-medium transition-all ${
+                      isActive(item.to)
+                        ? 'sidebar-item-active'
+                        : 'text-slate-400 hover:text-primary hover:bg-slate-50'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined mr-3 text-[18px]">{item.icon}</span>
+                    {item.label}
+                    {item.stub && (
+                      <span className="ml-auto text-[9px] font-semibold bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-full uppercase tracking-wide">
+                        Soon
+                      </span>
+                    )}
                   </NavLink>
                 ))}
               </div>
@@ -489,6 +829,9 @@ const Layout: React.FC = () => {
               {mainNavItems.find(i => isActive(i.to))?.label ||
               appointmentItems.find(i => isActive(i.to))?.label ||
               prescriptionItems.find(i => isActive(i.to))?.label ||
+              pharmacyItems.find(i => isActive(i.to))?.label ||
+              inventoryItems.find(i => isActive(i.to))?.label ||
+              (isActive('/inventory') ? 'Inventory' : '') ||
               systemNavItems.find(i => isActive(i.to))?.label ||
               (isActive('/profile') ? 'My Profile' : 'HMS')}
             </h1>
@@ -517,11 +860,11 @@ const Layout: React.FC = () => {
                 </form>
                 {/* Mobile search - navigates to patients page */}
                 <button
-                  className="sm:hidden p-2 text-slate-400 hover:bg-slate-100 rounded-full transition-colors"
-                  onClick={() => navigate(globalSearchContext.path)}
+                  onClick={() => navigate('/patients')}
+                  className="sm:hidden p-2 hover:bg-slate-100 rounded-lg text-slate-500 transition-colors"
                   aria-label="Search patients"
                 >
-                  <span className="material-symbols-outlined">search</span>
+                  <span className="material-icons">search</span>
                 </button>
               </>
             )}
@@ -529,84 +872,161 @@ const Layout: React.FC = () => {
             {/* Notifications */}
             <div className="relative" ref={notificationsRef}>
               <button
-                className="relative p-2 text-slate-400 hover:bg-slate-100 rounded-full transition-colors"
                 onClick={() => setNotificationsOpen(!notificationsOpen)}
+                className="relative p-2 hover:bg-slate-100 rounded-lg text-slate-500 transition-colors"
                 aria-label="Notifications"
                 aria-expanded={notificationsOpen}
-                aria-haspopup="true"
               >
-                <span className="material-symbols-outlined">notifications</span>
+                <span className="material-icons">notifications</span>
+                {unreadCount > 0 && (
+                  <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white animate-pulse"></span>
+                )}
               </button>
+
               {notificationsOpen && (
-                <div className="absolute right-0 top-full mt-2 w-72 sm:w-80 bg-white rounded-xl border border-slate-200 shadow-xl z-50" role="menu">
-                  <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
-                    <p className="text-sm font-bold text-slate-900">Notifications</p>
-                    <span className="text-[10px] font-medium text-slate-400 uppercase">All caught up</span>
+                <div className="absolute right-0 mt-2 w-96 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 overflow-hidden">
+                  {/* Header */}
+                  <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-primary/5 to-transparent">
+                    <div className="flex items-center gap-2">
+                      <span className="material-icons text-primary text-lg">notifications</span>
+                      <h3 className="font-bold text-slate-900">Notifications</h3>
+                      {unreadCount > 0 && (
+                        <span className="px-2 py-0.5 text-xs font-bold bg-red-500 text-white rounded-full min-w-[1.25rem] text-center">
+                          {unreadCount}
+                        </span>
+                      )}
+                    </div>
+                    {unreadCount > 0 && (
+                      <button
+                        onClick={handleMarkAllRead}
+                        className="text-xs font-semibold text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
+                      >
+                        <span className="material-icons text-sm">done_all</span>
+                        Mark all read
+                      </button>
+                    )}
                   </div>
-                  <div className="py-8 flex flex-col items-center text-center">
-                    <span className="material-symbols-outlined text-4xl text-slate-200 mb-2">notifications_none</span>
-                    <p className="text-sm text-slate-400">No new notifications</p>
-                    <p className="text-xs text-slate-300 mt-1">You're all up to date</p>
+
+                  {/* Notifications List */}
+                  <div className="max-h-[28rem] overflow-y-auto custom-scrollbar">
+                    {notificationsLoading ? (
+                      <div className="p-12 text-center">
+                        <span className="material-icons animate-spin text-3xl text-primary">progress_activity</span>
+                        <p className="text-sm text-slate-500 mt-3">Loading notifications...</p>
+                      </div>
+                    ) : notifications.length === 0 ? (
+                      <div className="p-12 text-center">
+                        <span className="material-icons text-5xl text-slate-300">notifications_none</span>
+                        <p className="text-sm font-semibold text-slate-700 mt-3">All caught up!</p>
+                        <p className="text-xs text-slate-400 mt-1">No new notifications</p>
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-slate-50">
+                        {notifications.map((notification) => {
+                          const referenceType = notification.reference_type || '';
+                          const icon = getNotificationIcon(referenceType);
+                          const colorClass = getNotificationColor(referenceType);
+                          const formattedMessage = formatNotificationMessage(notification);
+                          
+                          return (
+                            <button
+                              key={notification.id}
+                              onClick={() => handleNotificationClick(notification)}
+                              className={`w-full px-4 py-3 text-left hover:bg-slate-50 transition-all border-l-4 ${
+                                !notification.is_read
+                                  ? 'border-primary bg-blue-50/30'
+                                  : 'border-transparent'
+                              }`}
+                            >
+                              <div className="flex items-start gap-3">
+                                {/* Icon */}
+                                <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${colorClass}`}>
+                                  <span className="material-icons text-lg">{icon}</span>
+                                </div>
+
+                                {/* Content */}
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <p className={`text-sm font-semibold ${
+                                      !notification.is_read ? 'text-slate-900' : 'text-slate-600'
+                                    }`}>
+                                      {notification.title}
+                                    </p>
+                                    {!notification.is_read && (
+                                      <span className="w-2 h-2 rounded-full bg-primary flex-shrink-0 mt-1.5"></span>
+                                    )}
+                                  </div>
+                                  <p className="text-xs text-slate-500 mt-1 line-clamp-2">
+                                    {formattedMessage}
+                                  </p>
+                                  <p className="text-[10px] text-slate-400 mt-1.5 flex items-center gap-1">
+                                    <span className="material-icons text-[10px]">schedule</span>
+                                    {notification.created_at ? getRelativeTime(notification.created_at) : 'Unknown'}
+                                  </p>
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
+
+                  {/* Footer */}
+                  {notifications.length > 0 && (
+                    <div className="px-4 py-2 border-t border-slate-100 bg-slate-50 text-center">
+                      <p className="text-xs text-slate-500">
+                        {unreadCount === 0
+                          ? 'All notifications read'
+                          : `${unreadCount} unread notification${unreadCount > 1 ? 's' : ''}`
+                        }
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
 
-            <div className="h-8 w-px bg-slate-200 hidden sm:block"></div>
-            {/* User avatar dropdown */}
+            {/* User Menu */}
             <div className="relative" ref={userMenuRef}>
               <button
                 onClick={() => setUserMenuOpen(!userMenuOpen)}
-                className="flex items-center gap-2 hover:bg-slate-50 rounded-lg px-2 py-1.5 transition-colors"
+                className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
                 aria-label="User menu"
                 aria-expanded={userMenuOpen}
-                aria-haspopup="true"
               >
-                <div className="w-8 h-8 rounded-full overflow-hidden bg-primary/10 text-primary flex items-center justify-center text-xs font-bold">
-                  {user?.avatar_url
-                    ? <img src={userService.getPhotoUrl(user.avatar_url) ?? ''} alt={fullName} className="w-full h-full object-cover" />
-                    : <span className="material-symbols-outlined text-[16px]">{ROLE_ICONS[user?.roles?.[0] || ''] || 'person'}</span>
-                  }
+                <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold">
+                  {user?.avatar_url ? (
+                    <img src={userService.getPhotoUrl(user.avatar_url) ?? ''} alt={fullName} className="w-full h-full object-cover rounded-full" />
+                  ) : (
+                    initials
+                  )}
                 </div>
-                <span className="text-xs font-bold text-slate-700 hidden sm:block">{fullName}</span>
-                <span className={`material-symbols-outlined text-slate-400 text-[16px] hidden sm:block transition-transform duration-200 ${userMenuOpen ? 'rotate-180' : ''}`}>expand_more</span>
+                <span className="material-icons text-sm text-slate-400">expand_more</span>
               </button>
 
-              {/* Dropdown */}
               {userMenuOpen && (
-                <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl border border-slate-200 shadow-xl py-1.5 z-50 animate-in fade-in slide-in-from-top-2 duration-150" role="menu">
-                  {/* User info header */}
+                <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-xl border border-slate-200 z-50 overflow-hidden">
                   <div className="px-4 py-3 border-b border-slate-100">
-                    <p className="text-sm font-bold text-slate-900 truncate">{fullName}</p>
-                    <p className="text-[11px] text-slate-500">{formatRole(user?.roles?.[0] || '')}</p>
+                    <p className="font-bold text-slate-900 text-sm">{fullName}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">{formatRole(user?.roles?.[0] || '')}</p>
                   </div>
-
-                  <div className="py-1">
-                    <button
-                      onClick={() => { setUserMenuOpen(false); navigate('/profile'); }}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
-                      role="menuitem"
+                  <div className="py-2">
+                    <NavLink
+                      to="/profile"
+                      onClick={() => setUserMenuOpen(false)}
+                      className="px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
                     >
-                      <span className="material-symbols-outlined text-[18px] text-slate-400">manage_accounts</span>
+                      <span className="material-icons text-lg">person</span>
                       My Profile
-                    </button>
-                    <button
-                      onClick={() => { setUserMenuOpen(false); navigate('/dashboard'); }}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
-                      role="menuitem"
-                    >
-                      <span className="material-symbols-outlined text-[18px] text-slate-400">dashboard</span>
-                      Dashboard
-                    </button>
+                    </NavLink>
                   </div>
-
-                  <div className="border-t border-slate-100 py-1">
+                  <div className="py-2 border-t border-slate-100">
                     <button
-                      onClick={() => { setUserMenuOpen(false); setShowLogoutConfirm(true); }}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
-                      role="menuitem"
+                      onClick={handleLogout}
+                      className="w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors"
                     >
-                      <span className="material-symbols-outlined text-[18px]">logout</span>
+                      <span className="material-icons text-lg">logout</span>
                       Sign Out
                     </button>
                   </div>
@@ -618,41 +1038,39 @@ const Layout: React.FC = () => {
 
         {/* Page Content */}
         <div className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar">
-          <div className="max-w-7xl mx-auto">
-            <Outlet />
-          </div>
+          <Outlet />
         </div>
-      </main>
 
-      {/* Logout Confirmation Modal */}
-      {showLogoutConfirm && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="logout-dialog-title">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowLogoutConfirm(false)} />
-          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6 animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex flex-col items-center text-center">
-              <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center mb-4">
-                <span className="material-symbols-outlined text-red-500 text-3xl">logout</span>
-              </div>
-              <h3 id="logout-dialog-title" className="text-lg font-bold text-slate-900 mb-1">Sign Out</h3>
-              <p className="text-sm text-slate-500 mb-6">Are you sure you want to sign out of your account?</p>
-              <div className="flex gap-3 w-full">
-                <button
-                  onClick={() => setShowLogoutConfirm(false)}
-                  className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleLogout}
-                  className="flex-1 px-4 py-2.5 rounded-lg bg-red-600 text-sm font-semibold text-white hover:bg-red-700 transition-colors active:scale-[0.98]"
-                >
-                  Sign Out
-                </button>
+        {/* Logout Confirmation Modal */}
+        {showLogoutConfirm && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center" role="dialog" aria-modal="true">
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowLogoutConfirm(false)} />
+            <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6 animate-in fade-in zoom-in-95 duration-200">
+              <div className="flex flex-col items-center text-center">
+                <div className="w-14 h-14 rounded-full bg-amber-50 flex items-center justify-center mb-4">
+                  <span className="material-symbols-outlined text-amber-500 text-3xl">logout</span>
+                </div>
+                <h3 className="text-lg font-bold text-slate-900 mb-1">Sign Out</h3>
+                <p className="text-sm text-slate-500 mb-6">Are you sure you want to sign out?</p>
+                <div className="flex gap-3 w-full">
+                  <button
+                    onClick={() => setShowLogoutConfirm(false)}
+                    className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleLogout}
+                    className="flex-1 px-4 py-2.5 rounded-lg bg-red-600 text-sm font-semibold text-white hover:bg-red-700 transition-colors active:scale-[0.98]"
+                  >
+                    Sign Out
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </main>
     </div>
   );
 };

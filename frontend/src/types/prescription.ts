@@ -1,6 +1,6 @@
 // —— Prescription Types ——————————————————————————————————————————
 
-export type PrescriptionStatus = 'draft' | 'finalized' | 'dispensed' | 'partially_dispensed';
+export type PrescriptionStatus = 'draft' | 'finalized' | 'dispensed';
 export type DurationUnit = 'days' | 'weeks' | 'months';
 export type MedicineRoute = 'oral' | 'topical' | 'injection' | 'inhalation' | 'sublingual' | 'rectal' | 'nasal' | 'ophthalmic' | 'otic';
 export type MedicineCategory = 'tablet' | 'capsule' | 'syrup' | 'injection' | 'cream' | 'drops' | 'ointment' | 'inhaler' | 'powder' | 'suspension';
@@ -83,6 +83,11 @@ export interface Prescription {
   patient_chronic_conditions?: string | null;
   appointment_number?: string | null;
   doctor_name?: string | null;
+  consultation_invoice_id?: string | null;
+  consultation_invoice_number?: string | null;
+  consultation_invoice_status?: string | null;
+  final_amount?: number | null;
+  dispensed_at?: string | null;
   items: PrescriptionItem[];
 }
 
@@ -153,6 +158,7 @@ export interface Medicine {
   selling_price: number;
   purchase_price: number | null;
   reorder_level: number;
+  total_stock?: number | null;
   storage_instructions: string | null;
   is_active: boolean;
   created_at: string;

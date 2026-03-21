@@ -33,7 +33,7 @@ $RECYCLE.BIN/
 .env.local
 .env.*.local
 *.local
-
+INVENTORY_MODULE.md
 # ================================================================
 #  FRONTEND  (React / Vite / Node)
 # ================================================================
@@ -111,3 +111,22 @@ logs/*.log.*
 # ================================================================
 .zencoder/
 .zenflow/
+
+# ================================================================
+#  Documentation Summaries (session notes - not for version control)
+# ================================================================
+BUG_FIX_SUMMARY.md
+COMPLETE_FIXES_SUMMARY.md
+FIX_SUMMARY_INVENTORY_NOTIFICATIONS.md
+MERGE_COMPLETE.md
+MERGE_CONFLICT_RESOLUTION.md
+NOTIFICATION_SYSTEM.md
+SESSION_SUMMARY.md
+STOCK_ADJUSTMENT_FIX.md
+
+# ================================================================
+#  Analysis & Fix Documentation (auto-generated session docs)
+# ================================================================
+*_ANALYSIS.md
+*_FIX.md
+*_FIX_APPLIED.md

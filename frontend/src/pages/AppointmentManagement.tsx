@@ -1,14 +1,30 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useToast } from '../contexts/ToastContext';
+import { useAuth } from '../contexts/AuthContext';
 import appointmentService from '../services/appointmentService';
 import scheduleService from '../services/scheduleService';
+import invoiceService from '../services/invoiceService';
+import paymentService from '../services/paymentService';
 import AppointmentStatusBadge from '../components/appointments/AppointmentStatusBadge';
 import type { Appointment, DoctorOption, AppointmentStatus, AppointmentStats } from '../types/appointment';
+import type { Invoice, PaymentMode } from '../types/billing';
+
+const PAYMENT_MODES: { value: PaymentMode; label: string }[] = [
+  { value: 'cash', label: 'Cash' },
+  { value: 'upi', label: 'UPI' },
+  { value: 'debit_card', label: 'Debit Card' },
+  { value: 'credit_card', label: 'Credit Card' },
+];
+
+const formatMoney = (n: number) =>
+  new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
 
 const AppointmentManagement: React.FC = () => {
   const toast = useToast();
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
+  const today = new Date().toISOString().split('T')[0];
 
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -18,14 +34,27 @@ const AppointmentManagement: React.FC = () => {
   const [search, setSearch] = useState(() => searchParams.get('search') || '');
   const [searchInput, setSearchInput] = useState(() => searchParams.get('search') || '');
   const [filterDoctor, setFilterDoctor] = useState<string>('');
-  const [filterDate, setFilterDate] = useState('');
+  const [filterDate, setFilterDate] = useState(today);
   const [filterStatus, setFilterStatus] = useState<string>('');
   const [filterType, setFilterType] = useState<string>('');
   const [detailAppt, setDetailAppt] = useState<Appointment | null>(null);
   const [cancelId, setCancelId] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState('');
   const [stats, setStats] = useState<AppointmentStats | null>(null);
+  const [collectAppt, setCollectAppt] = useState<Appointment | null>(null);
+  const [collectInvoice, setCollectInvoice] = useState<Invoice | null>(null);
+  const [collectLoading, setCollectLoading] = useState(false);
+  const [collectSaving, setCollectSaving] = useState(false);
+  const [collectAmount, setCollectAmount] = useState(0);
+  const [collectMode, setCollectMode] = useState<PaymentMode>('cash');
+  const [collectRef, setCollectRef] = useState('');
+  const [collectNotes, setCollectNotes] = useState('');
+  const [collectDate, setCollectDate] = useState(today);
   const limit = 15;
+
+  const role = user?.roles?.[0] || '';
+  const canCollectFee = ['receptionist', 'cashier', 'admin', 'super_admin'].includes(role);
+  const canProgressConsultation = role !== 'receptionist';
 
   const fetchAppointments = useCallback(async () => {
     setLoading(true);
@@ -99,6 +128,85 @@ const AppointmentManagement: React.FC = () => {
       fetchAppointments();
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || 'Failed to cancel');
+    }
+  };
+
+  const openCollectFee = async (appt: Appointment) => {
+    setCollectAppt(appt);
+    setCollectLoading(true);
+    try {
+      const invoice = await invoiceService.getOrCreateConsultationInvoice(appt.id);
+      setCollectInvoice(invoice);
+      // Predefined consultation billing template: always collect the current outstanding amount.
+      setCollectAmount(Number(invoice.balance_amount || 0));
+      setCollectMode('cash');
+      setCollectRef('');
+      setCollectNotes('');
+      setCollectDate(today);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to prepare consultation invoice');
+      setCollectAppt(null);
+      setCollectInvoice(null);
+    } finally {
+      setCollectLoading(false);
+    }
+  };
+
+  const closeCollectFee = () => {
+    setCollectAppt(null);
+    setCollectInvoice(null);
+    setCollectLoading(false);
+    setCollectSaving(false);
+    setCollectAmount(0);
+    setCollectMode('cash');
+    setCollectRef('');
+    setCollectNotes('');
+    setCollectDate(today);
+  };
+
+  const submitCollectFee = async () => {
+    if (!collectAppt || !collectInvoice) return;
+    const balance = Number(collectInvoice.balance_amount || 0);
+    if (balance <= 0) {
+      toast.info('Consultation invoice is already paid');
+      closeCollectFee();
+      return;
+    }
+    if (collectAmount <= 0) {
+      toast.error('Payment amount must be greater than zero');
+      return;
+    }
+    if (collectAmount > balance) {
+      toast.error(`Amount cannot exceed balance (Rs ${formatMoney(balance)})`);
+      return;
+    }
+
+    setCollectSaving(true);
+    try {
+      await paymentService.record({
+        invoice_id: collectInvoice.id,
+        patient_id: collectInvoice.patient_id,
+        amount: collectAmount,
+        payment_mode: collectMode,
+        payment_reference: collectRef || undefined,
+        payment_date: collectDate,
+        notes: collectNotes || undefined,
+      });
+
+      const refreshed = await invoiceService.getById(collectInvoice.id);
+      setCollectInvoice(refreshed);
+      setCollectAmount(Number(refreshed.balance_amount || 0));
+      toast.success(
+        Number(refreshed.balance_amount || 0) <= 0
+          ? 'Consultation fee fully collected'
+          : 'Payment recorded (partial)'
+      );
+      fetchAppointments();
+      closeCollectFee();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to record payment');
+    } finally {
+      setCollectSaving(false);
     }
   };
 
@@ -225,7 +333,7 @@ const AppointmentManagement: React.FC = () => {
             <option value="walk-in">Walk-in</option>
           </select>
           <button onClick={handleSearch} className="px-4 py-2 bg-primary text-white text-sm font-semibold rounded-lg hover:bg-primary/90 shadow-sm">Search</button>
-          <button onClick={() => { setSearchInput(''); setSearch(''); setFilterDoctor(''); setFilterDate(''); setFilterStatus(''); setFilterType(''); setPage(1); }}
+          <button onClick={() => { setSearchInput(''); setSearch(''); setFilterDoctor(''); setFilterDate(today); setFilterStatus(''); setFilterType(''); setPage(1); }}
             className="px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 rounded-lg">Clear</button>
         </div>
       </div>
@@ -268,7 +376,7 @@ const AppointmentManagement: React.FC = () => {
                   <button onClick={() => setDetailAppt(appt)} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg" title="View">
                     <span className="material-symbols-outlined text-lg">visibility</span>
                   </button>
-                  {appt.status !== 'cancelled' && appt.status !== 'completed' && (
+                  {canProgressConsultation && appt.status !== 'cancelled' && appt.status !== 'completed' && (
                     <>
                       {(appt.status === 'scheduled' || appt.status === 'pending') && (
                         <button onClick={() => handleStatusChange(appt.id, 'confirmed')} className="p-1.5 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Confirm">
@@ -289,6 +397,11 @@ const AppointmentManagement: React.FC = () => {
                         <span className="material-symbols-outlined text-lg">cancel</span>
                       </button>
                     </>
+                  )}
+                  {canCollectFee && appt.status === 'completed' && !appt.consultation_fee_collected && (
+                    <button onClick={() => openCollectFee(appt)} className="p-1.5 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg" title="Collect Fee">
+                      <span className="material-symbols-outlined text-lg">payments</span>
+                    </button>
                   )}
                 </div>
               </div>
@@ -329,7 +442,7 @@ const AppointmentManagement: React.FC = () => {
                           <button onClick={() => setDetailAppt(appt)} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg" title="View">
                             <span className="material-symbols-outlined text-lg">visibility</span>
                           </button>
-                          {appt.status !== 'cancelled' && appt.status !== 'completed' && (
+                          {canProgressConsultation && appt.status !== 'cancelled' && appt.status !== 'completed' && (
                             <>
                               {(appt.status === 'scheduled' || appt.status === 'pending') && (
                                 <button onClick={() => handleStatusChange(appt.id, 'confirmed')} className="p-1.5 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Confirm">
@@ -350,6 +463,11 @@ const AppointmentManagement: React.FC = () => {
                                 <span className="material-symbols-outlined text-lg">cancel</span>
                               </button>
                             </>
+                          )}
+                          {canCollectFee && appt.status === 'completed' && !appt.consultation_fee_collected && (
+                            <button onClick={() => openCollectFee(appt)} className="p-1.5 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg" title="Collect Fee">
+                              <span className="material-symbols-outlined text-lg">payments</span>
+                            </button>
                           )}
                         </div>
                       </td>
@@ -423,6 +541,100 @@ const AppointmentManagement: React.FC = () => {
               <button onClick={() => setCancelId(null)} className="px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 rounded-lg">Keep</button>
               <button onClick={handleCancel} className="px-4 py-2 text-sm font-semibold text-white bg-red-500 rounded-lg hover:bg-red-600 shadow-sm">Cancel Appointment</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Collect Consultation Fee Modal */}
+      {collectAppt && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={closeCollectFee}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-slate-900">Collect Consultation Fee</h3>
+              <button onClick={closeCollectFee} className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"><span className="material-symbols-outlined">close</span></button>
+            </div>
+
+            {collectLoading ? (
+              <div className="py-8 text-center text-slate-400">
+                <span className="material-symbols-outlined animate-spin text-3xl">progress_activity</span>
+                <p className="text-sm mt-2">Preparing consultation invoice...</p>
+              </div>
+            ) : collectInvoice ? (
+              <>
+                <div className="bg-slate-50 rounded-xl p-4 mb-4 text-sm space-y-2">
+                  <div className="flex justify-between"><span className="text-slate-500">Appointment</span><span className="font-medium text-slate-900">{collectAppt.appointment_number}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">Patient</span><span className="font-medium text-slate-900">{collectAppt.patient_name || '—'}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">Invoice</span><span className="font-medium text-slate-900">{collectInvoice.invoice_number}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">Template</span><span className="font-medium text-slate-900">Consultation Fee</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">Total</span><span className="font-semibold text-slate-900">Rs {formatMoney(Number(collectInvoice.total_amount || 0))}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">Paid</span><span className="font-semibold text-emerald-700">Rs {formatMoney(Number(collectInvoice.paid_amount || 0))}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">Balance</span><span className="font-bold text-red-600">Rs {formatMoney(Number(collectInvoice.balance_amount || 0))}</span></div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Amount</label>
+                    <input
+                      type="text"
+                      readOnly
+                      value={collectAmount}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                    />
+                    <p className="text-[11px] text-slate-400 mt-1">Fixed by consultation billing template</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Payment Mode</label>
+                    <select
+                      value={collectMode}
+                      onChange={(e) => setCollectMode(e.target.value as PaymentMode)}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                    >
+                      {PAYMENT_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Payment Date</label>
+                    <input
+                      type="date"
+                      value={collectDate}
+                      onChange={(e) => setCollectDate(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Reference</label>
+                    <input
+                      type="text"
+                      value={collectRef}
+                      onChange={(e) => setCollectRef(e.target.value)}
+                      placeholder="Txn / UPI / Card ref"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Notes</label>
+                  <textarea
+                    rows={2}
+                    value={collectNotes}
+                    onChange={(e) => setCollectNotes(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm resize-none focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-3">
+                  <button onClick={closeCollectFee} className="px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 rounded-lg">Close</button>
+                  <button
+                    onClick={submitCollectFee}
+                    disabled={collectSaving || Number(collectInvoice.balance_amount || 0) <= 0}
+                    className="px-4 py-2 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50"
+                  >
+                    {collectSaving ? 'Recording...' : 'Record Payment'}
+                  </button>
+                </div>
+              </>
+            ) : null}
           </div>
         </div>
       )}

@@ -251,6 +251,29 @@ You should see:
 
 ---
 
+## OPD Billing Policy (On-Spot Payment)
+
+The system now supports a hospital-level OPD credit toggle:
+
+- `allow_opd_credit = true` (default): OPD invoices can be issued with pending balance.
+- `allow_opd_credit = false`: OPD invoices require full payment before issue.
+
+When OPD credit is disabled:
+
+- OPD `due_date` is auto-set to `invoice_date`.
+- Attempting to issue an unpaid OPD invoice returns a validation error.
+
+Set this flag in DB if needed:
+
+```sql
+ALTER TABLE hospital_settings ADD COLUMN IF NOT EXISTS allow_opd_credit BOOLEAN DEFAULT true;
+UPDATE hospital_settings
+SET allow_opd_credit = false
+WHERE hospital_id = 'a0000000-0000-0000-0000-000000000001';
+```
+
+---
+
 ## Default Credentials
 
 All seed users share the same password. Change them after first login.

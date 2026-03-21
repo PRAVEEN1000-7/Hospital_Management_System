@@ -141,66 +141,68 @@ async def register_walk_in(
         if not patient:
             raise HTTPException(status_code=404, detail="Patient not found")
 
-        # Resolve doctor – treat empty string / "undefined" as None
+        # Resolve doctor (required for walk-in registration)
         doctor_id = None
         raw_doctor = data.doctor_id
-        if raw_doctor and raw_doctor.strip() and raw_doctor.strip().lower() != "undefined":
-            try:
-                doctor_id = uuid.UUID(raw_doctor.strip())
-            except (ValueError, AttributeError):
+        if not raw_doctor or not raw_doctor.strip() or raw_doctor.strip().lower() == "undefined":
+            raise HTTPException(status_code=400, detail="Doctor selection is required")
+
+        try:
+            doctor_id = uuid.UUID(raw_doctor.strip())
+        except (ValueError, AttributeError):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid doctor_id format: {raw_doctor!r}",
+            )
+        doctor = db.query(Doctor).filter(Doctor.id == doctor_id).first()
+        if not doctor:
+            raise HTTPException(status_code=404, detail="Doctor not found")
+
+        # ── Check if doctor is on leave ──
+        if is_doctor_on_leave(db, doctor_id, today):
+            raise HTTPException(
+                status_code=400,
+                detail="Doctor is on leave today and cannot accept walk-ins",
+            )
+
+        # ── Check if ALL slots are full → auto-waitlist ──
+        slots = get_available_slots(db, doctor_id, today)
+        has_available = any(s["available"] for s in slots) if slots else True  # no schedule = allow
+        if slots and not has_available:
+            logger.info(
+                f"All slots full for doctor {doctor_id} on {today}. "
+                f"Auto-adding patient {patient_id} to waitlist."
+            )
+            # Check if already on waitlist
+            if check_already_on_waitlist(db, patient_id, doctor_id, today):
                 raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid doctor_id format: {raw_doctor!r}",
-                )
-            doctor = db.query(Doctor).filter(Doctor.id == doctor_id).first()
-            if not doctor:
-                raise HTTPException(status_code=404, detail="Doctor not found")
-
-            # ── Check if doctor is on leave ──
-            if is_doctor_on_leave(db, doctor_id, today):
-                raise HTTPException(
-                    status_code=400,
-                    detail="Doctor is on leave today and cannot accept walk-ins",
+                    status_code=409,
+                    detail="Patient is already on the waitlist for this doctor today",
                 )
 
-            # ── Check if ALL slots are full → auto-waitlist ──
-            slots = get_available_slots(db, doctor_id, today)
-            has_available = any(s["available"] for s in slots) if slots else True  # no schedule = allow
-            if slots and not has_available:
-                logger.info(
-                    f"All slots full for doctor {doctor_id} on {today}. "
-                    f"Auto-adding patient {patient_id} to waitlist."
-                )
-                # Check if already on waitlist
-                if check_already_on_waitlist(db, patient_id, doctor_id, today):
-                    raise HTTPException(
-                        status_code=409,
-                        detail="Patient is already on the waitlist for this doctor today",
-                    )
+            entry = add_to_waitlist(
+                db,
+                data={
+                    "patient_id": str(patient_id),
+                    "doctor_id": str(doctor_id),
+                    "preferred_date": today,
+                    "appointment_type": "walk-in",
+                    "priority": data.priority or "normal",
+                    "chief_complaint": data.chief_complaint,
+                    "reason": "Auto-added: all doctor slots full at walk-in registration",
+                },
+                hospital_id=current_user.hospital_id,
+                created_by=current_user.id,
+            )
+            db.commit()
+            db.refresh(entry)
 
-                entry = add_to_waitlist(
-                    db,
-                    data={
-                        "patient_id": str(patient_id),
-                        "doctor_id": str(doctor_id),
-                        "preferred_date": today,
-                        "appointment_type": "walk-in",
-                        "priority": data.priority or "normal",
-                        "chief_complaint": data.chief_complaint,
-                        "reason": "Auto-added: all doctor slots full at walk-in registration",
-                    },
-                    hospital_id=current_user.hospital_id,
-                    created_by=current_user.id,
-                )
-                db.commit()
-                db.refresh(entry)
-
-                enriched = enrich_waitlist_entry(db, entry)
-                return {
-                    "waitlisted": True,
-                    "message": f"All slots for this doctor are full today. Patient has been added to the waitlist at position #{entry.position}.",
-                    "waitlist_entry": enriched,
-                }
+            enriched = enrich_waitlist_entry(db, entry)
+            return {
+                "waitlisted": True,
+                "message": f"All slots for this doctor are full today. Patient has been added to the waitlist at position #{entry.position}.",
+                "waitlist_entry": enriched,
+            }
 
         # Create walk-in appointment
         appt_number = generate_appointment_number("walk_in")
@@ -303,7 +305,10 @@ async def get_queue_status(
     query = (
         db.query(AppointmentQueue)
         .join(Appointment, Appointment.id == AppointmentQueue.appointment_id)
-        .filter(AppointmentQueue.queue_date == target_date)
+        .filter(
+            AppointmentQueue.queue_date == target_date,
+            Appointment.appointment_date == target_date,
+        )
     )
     if resolved_doctor_id:
         query = query.filter(AppointmentQueue.doctor_id == resolved_doctor_id)

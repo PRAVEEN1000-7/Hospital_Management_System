@@ -14,3 +14,13 @@ from .prescription import (
     Medicine, Prescription, PrescriptionItem,
     PrescriptionTemplate, PrescriptionVersion,
 )
+from .pharmacy import (
+    MedicineBatch, PharmacySale, PharmacySaleItem,
+)
+from .optical import OpticalProduct
+from .notification import Notification
+from .inventory import (
+    Supplier, PurchaseOrder, PurchaseOrderItem,
+    GoodsReceiptNote, GRNItem, StockMovement,
+    StockAdjustment, CycleCount, CycleCountItem,
+)

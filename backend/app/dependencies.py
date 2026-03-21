@@ -79,7 +79,20 @@ async def get_current_active_user(
 
 def _has_role(user: User, *role_names: str) -> bool:
     """Check if user has any of the specified roles."""
-    return any(r in role_names for r in user.roles)
+    user_roles = {str(r).strip().lower() for r in (user.roles or [])}
+    allowed_roles = {str(r).strip().lower() for r in role_names}
+
+    # Support common aliases found across environments.
+    role_aliases = {
+        "administrator": "admin",
+        "hospital_admin": "admin",
+        "inventoryadmin": "inventory_manager",
+        "inventory-admin": "inventory_manager",
+    }
+    normalized_user_roles = {role_aliases.get(r, r) for r in user_roles}
+    normalized_allowed_roles = {role_aliases.get(r, r) for r in allowed_roles}
+
+    return bool(normalized_user_roles & normalized_allowed_roles)
 
 
 async def require_super_admin(
@@ -104,3 +117,25 @@ async def require_admin_or_super_admin(
             detail="Admin or Super Admin access required",
         )
     return current_user
+
+
+def require_any_role(*role_names: str):
+    """Return a dependency that ensures current user has at least one allowed role."""
+
+    async def _role_dependency(
+        current_user: User = Depends(get_current_active_user),
+    ) -> User:
+        if not _has_role(current_user, *role_names):
+            logger.warning(
+                "RBAC deny user=%s roles=%s required_any=%s",
+                getattr(current_user, "username", "unknown"),
+                getattr(current_user, "roles", []),
+                role_names,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient role permissions",
+            )
+        return current_user
+
+    return _role_dependency

@@ -18,7 +18,7 @@ from ..schemas.patient import (
 )
 from ..models.patient import Patient
 from ..models.user import User
-from ..dependencies import get_current_active_user
+from ..dependencies import get_current_active_user, require_any_role
 from ..services.patient_service import (
     create_patient,
     get_patient_by_id,
@@ -32,12 +32,18 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/patients", tags=["Patients"])
 
+# Role guards aligned with project access policy.
+patient_create_role_guard = require_any_role("super_admin", "admin", "receptionist")
+patient_read_role_guard = require_any_role("super_admin", "admin", "receptionist", "doctor", "nurse", "pharmacist")
+patient_update_role_guard = require_any_role("super_admin", "admin", "receptionist")
+patient_delete_role_guard = require_any_role("super_admin", "admin")
+
 
 @router.post("", response_model=PatientResponse, status_code=status.HTTP_201_CREATED)
 async def create_new_patient(
     patient: PatientCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(patient_create_role_guard),
 ):
     """Create a new patient with auto-generated PRN"""
     try:
@@ -74,7 +80,7 @@ async def create_new_patient(
 async def get_patient(
     patient_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(patient_read_role_guard),
 ):
     """Get patient by ID"""
     patient = get_patient_by_id(db, patient_id)
@@ -94,11 +100,11 @@ async def list_patients(
     gender: Optional[str] = None,
     blood_group: Optional[str] = None,
     city: Optional[str] = None,
-    status: Optional[str] = None,
+    status_filter: Optional[str] = Query(None, alias="status"),
     sort_by: Optional[str] = None,
     sort_order: str = Query('desc', pattern='^(asc|desc)$'),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(patient_read_role_guard),
 ):
     """List all patients with pagination, search, filters and sorting"""
     try:
@@ -108,7 +114,7 @@ async def list_patients(
             gender=gender,
             blood_group=blood_group,
             city=city,
-            status=status,
+            status=status_filter,
             sort_by=sort_by,
             sort_order=sort_order,
         )
@@ -126,7 +132,7 @@ async def update_existing_patient(
     patient_id: str,
     patient_data: PatientUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(patient_update_role_guard),
 ):
     """Update patient information"""
     try:
@@ -163,7 +169,7 @@ async def update_existing_patient(
 async def delete_patient(
     patient_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(patient_delete_role_guard),
 ):
     """Soft delete a patient"""
     try:

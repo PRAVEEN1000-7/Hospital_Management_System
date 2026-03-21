@@ -26,7 +26,7 @@ const dashboardTitles: Record<string, string> = {
   admin: 'Admin Dashboard Overview',
   doctor: 'Doctor Dashboard',
   receptionist: 'Reception Dashboard',
-  pharmacist: 'Pharmacy Dashboard',
+  pharmacist: 'Pharmacy & Billing Dashboard',
   cashier: 'Billing Dashboard',
   optical_staff: 'Optical Dashboard',
   inventory_manager: 'Inventory Dashboard',
@@ -57,23 +57,23 @@ function getQuickActions(role: string, isSuperAdmin: boolean): QuickAction[] {
       ];
     case 'pharmacist':
       return [
-        { icon: 'list_alt', iconColor: 'text-primary', label: 'Prescriptions', desc: 'View pending prescriptions', to: '/prescriptions' },
-        { icon: 'group', iconColor: 'text-emerald-500', label: 'Patient Directory', desc: 'Look up patient records', to: '/patients' },
+        { icon: 'list_alt', iconColor: 'text-primary', label: 'All Prescription', desc: 'View pending prescriptions', to: '/prescriptions' },
+        { icon: 'receipt_long', iconColor: 'text-green-500', label: 'New Invoice', desc: 'Create a billing invoice', to: '/billing/invoices/new' },
+        { icon: 'payments', iconColor: 'text-emerald-500', label: 'Payments', desc: 'Record & view payments', to: '/billing/payments' },
+        { icon: 'group', iconColor: 'text-blue-500', label: 'Patient Directory', desc: 'Look up patient records', to: '/patients' },
         { icon: 'person', iconColor: 'text-purple-500', label: 'My Profile', desc: 'Update your information', to: '/profile' },
       ];
     case 'cashier':
       return [
-        { icon: 'group', iconColor: 'text-primary', label: 'Patient Directory', desc: 'Look up patient for billing', to: '/patients' },
         { icon: 'person', iconColor: 'text-purple-500', label: 'My Profile', desc: 'Update your information', to: '/profile' },
       ];
     case 'optical_staff':
       return [
-        { icon: 'group', iconColor: 'text-primary', label: 'Patient Directory', desc: 'Look up patient records', to: '/patients' },
         { icon: 'person', iconColor: 'text-purple-500', label: 'My Profile', desc: 'Update your information', to: '/profile' },
       ];
     case 'inventory_manager':
       return [
-        { icon: 'group', iconColor: 'text-primary', label: 'Patient Directory', desc: 'Browse patient records', to: '/patients' },
+        { icon: 'inventory_2', iconColor: 'text-primary', label: 'Inventory Dashboard', desc: 'View stock and inventory activity', to: '/inventory' },
         { icon: 'person', iconColor: 'text-purple-500', label: 'My Profile', desc: 'Update your information', to: '/profile' },
       ];
     case 'report_viewer':
@@ -101,7 +101,7 @@ function getQuickLinks(role: string): QuickLink[] {
     case 'doctor':
       return [
         { icon: 'queue', iconColor: 'text-amber-400', label: 'Walk-in Queue', to: '/appointments/queue' },
-        { icon: 'list_alt', iconColor: 'text-blue-400', label: 'My Prescriptions', to: '/prescriptions' },
+        { icon: 'list_alt', iconColor: 'text-blue-400', label: 'All Prescription', to: '/prescriptions' },
         { icon: 'person', iconColor: 'text-purple-400', label: 'My Profile', to: '/profile' },
       ];
     case 'receptionist':
@@ -112,12 +112,13 @@ function getQuickLinks(role: string): QuickLink[] {
       ];
     case 'pharmacist':
       return [
-        { icon: 'list_alt', iconColor: 'text-blue-400', label: 'Prescriptions', to: '/prescriptions' },
-        { icon: 'group', iconColor: 'text-emerald-400', label: 'Patients', to: '/patients' },
+        { icon: 'list_alt', iconColor: 'text-blue-400', label: 'All Prescription', to: '/prescriptions' },
+        { icon: 'receipt_long', iconColor: 'text-green-400', label: 'Invoices', to: '/billing/invoices' },
+        { icon: 'payments', iconColor: 'text-emerald-400', label: 'Payments', to: '/billing/payments' },
+        { icon: 'group', iconColor: 'text-cyan-400', label: 'Patients', to: '/patients' },
       ];
     case 'cashier':
       return [
-        { icon: 'group', iconColor: 'text-blue-400', label: 'Patients', to: '/patients' },
         { icon: 'person', iconColor: 'text-purple-400', label: 'My Profile', to: '/profile' },
       ];
     default:
@@ -148,16 +149,26 @@ const Dashboard: React.FC = () => {
   const isAdmin = role === 'admin' || role === 'super_admin';
   const isReceptionist = role === 'receptionist';
   const isPharmacist = role === 'pharmacist';
+  const canAccessPatients = role === 'super_admin' || role === 'admin' || role === 'receptionist' || role === 'nurse' || role === 'pharmacist' || role === 'doctor';
+
+  // Redirect pharmacists to pharmacy dashboard
+  useEffect(() => {
+    if (isPharmacist) {
+      navigate('/pharmacy', { replace: true });
+    }
+  }, [isPharmacist, navigate]);
 
   useEffect(() => {
     const fetchDashboardData = async () => {
       setLoading(true);
 
-      // Common: patient count (all roles can read patients)
-      try {
-        const patientsRes = await patientService.getPatients(1, 1);
-        setTotalPatients(patientsRes.total);
-      } catch { /* silent */ }
+      // Patient count only for roles allowed to read patient records
+      if (canAccessPatients) {
+        try {
+          const patientsRes = await patientService.getPatients(1, 1);
+          setTotalPatients(patientsRes.total);
+        } catch { /* silent */ }
+      }
 
       // Common: hospital name
       try {
@@ -208,7 +219,7 @@ const Dashboard: React.FC = () => {
     };
 
     fetchDashboardData();
-  }, []);
+  }, [isDoctor, isReceptionist, isAdmin, canAccessPatients]);
 
   /* ── stat cards per role ── */
   const getStatCards = (): StatCard[] => {
@@ -239,20 +250,21 @@ const Dashboard: React.FC = () => {
         return [
           { label: 'Total Patients', value: totalPatients.toLocaleString(), icon: 'group', iconColor: 'text-blue-500' },
           { label: 'System Status', value: 'Online', icon: 'check_circle', iconColor: 'text-emerald-500' },
+          { label: 'Billing Access', value: 'Active', icon: 'receipt_long', iconColor: 'text-green-500' },
         ];
       case 'cashier':
         return [
-          { label: 'Total Patients', value: totalPatients.toLocaleString(), icon: 'group', iconColor: 'text-blue-500' },
+          { label: 'Billing Console', value: 'Ready', icon: 'payments', iconColor: 'text-blue-500' },
           { label: 'System Status', value: 'Online', icon: 'check_circle', iconColor: 'text-emerald-500' },
         ];
       case 'optical_staff':
         return [
-          { label: 'Total Patients', value: totalPatients.toLocaleString(), icon: 'group', iconColor: 'text-blue-500' },
+          { label: 'Optical Console', value: 'Ready', icon: 'visibility', iconColor: 'text-blue-500' },
           { label: 'System Status', value: 'Online', icon: 'check_circle', iconColor: 'text-emerald-500' },
         ];
       case 'inventory_manager':
         return [
-          { label: 'Total Patients', value: totalPatients.toLocaleString(), icon: 'group', iconColor: 'text-blue-500' },
+          { label: 'Inventory Console', value: 'Ready', icon: 'inventory_2', iconColor: 'text-blue-500' },
           { label: 'System Status', value: 'Online', icon: 'check_circle', iconColor: 'text-emerald-500' },
         ];
       default:
@@ -411,7 +423,9 @@ const Dashboard: React.FC = () => {
             <>
               <div className="p-6 border-b border-slate-100 flex items-center justify-between">
                 <h3 className="font-bold text-slate-900">Your Workspace</h3>
-                <button onClick={() => navigate('/patients')} className="text-primary text-xs font-bold hover:underline">View Patients</button>
+                {canAccessPatients && (
+                  <button onClick={() => navigate('/patients')} className="text-primary text-xs font-bold hover:underline">View Patients</button>
+                )}
               </div>
               <div className="p-6">
                 <div className="grid grid-cols-2 gap-4">
@@ -419,21 +433,11 @@ const Dashboard: React.FC = () => {
                     <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Your Role</p>
                     <p className="text-sm font-semibold text-slate-800">{formatRole(role)}</p>
                   </div>
-                  <div className="p-4 rounded-lg bg-slate-50">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Total Patients</p>
-                    <p className="text-sm font-semibold text-slate-800">{totalPatients.toLocaleString()}</p>
-                  </div>
-                  {isAdmin && (
-                    <>
-                      <div className="p-4 rounded-lg bg-purple-50">
-                        <p className="text-[10px] font-bold text-purple-500 uppercase mb-1">Active Staff</p>
-                        <p className="text-sm font-semibold text-purple-700">{activeUsers}</p>
-                      </div>
-                      <div className="p-4 rounded-lg bg-emerald-50">
-                        <p className="text-[10px] font-bold text-emerald-500 uppercase mb-1">System</p>
-                        <p className="text-sm font-semibold text-emerald-700">All Operational</p>
-                      </div>
-                    </>
+                  {canAccessPatients && (
+                    <div className="p-4 rounded-lg bg-slate-50">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Total Patients</p>
+                      <p className="text-sm font-semibold text-slate-800">{totalPatients.toLocaleString()}</p>
+                    </div>
                   )}
                   {isReceptionist && (
                     <>
@@ -444,6 +448,18 @@ const Dashboard: React.FC = () => {
                       <div className="p-4 rounded-lg bg-purple-50">
                         <p className="text-[10px] font-bold text-purple-500 uppercase mb-1">Waitlisted</p>
                         <p className="text-sm font-semibold text-purple-700">{waitlistWaiting}</p>
+                      </div>
+                    </>
+                  )}
+                  {isAdmin && (
+                    <>
+                      <div className="p-4 rounded-lg bg-purple-50">
+                        <p className="text-[10px] font-bold text-purple-500 uppercase mb-1">Active Staff</p>
+                        <p className="text-sm font-semibold text-purple-700">{activeUsers}</p>
+                      </div>
+                      <div className="p-4 rounded-lg bg-emerald-50">
+                        <p className="text-[10px] font-bold text-emerald-500 uppercase mb-1">System</p>
+                        <p className="text-sm font-semibold text-emerald-700">All Operational</p>
                       </div>
                     </>
                   )}
@@ -493,7 +509,7 @@ const Dashboard: React.FC = () => {
                 <div className="flex items-center justify-between text-xs">
                   <span className="flex items-center gap-2 text-slate-600">
                     <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                    API Status
+                    Service
                   </span>
                   <span className="font-bold text-emerald-600">Online</span>
                 </div>

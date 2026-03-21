@@ -5,6 +5,7 @@ Follows the same patterns as appointment_service.py.
 import uuid
 import json
 import logging
+import re
 from datetime import date, datetime, timezone
 from math import ceil
 from typing import Optional
@@ -18,19 +19,78 @@ from ..models.prescription import (
 from ..models.appointment import Doctor, Appointment
 from ..models.patient import Patient
 from ..models.user import User
+from ..models.hospital_settings import HospitalSettings
+from ..models.pharmacy import PharmacySale, PharmacySaleItem
 
 logger = logging.getLogger(__name__)
+
+
+def calculate_prescribed_quantity(
+    frequency: Optional[str],
+    duration_value: Optional[int],
+    duration_unit: Optional[str],
+    quantity: Optional[int] = None,
+) -> Optional[int]:
+    """Derive total prescribed units from frequency and duration when quantity is missing."""
+    if quantity is not None and quantity > 0:
+        return quantity
+
+    if not frequency or not duration_value or duration_value <= 0:
+        return quantity
+
+    frequency_parts = re.findall(r"\d+(?:\.\d+)?", frequency)
+    if not frequency_parts:
+        return quantity
+
+    daily_units = sum(float(part) for part in frequency_parts)
+    if daily_units <= 0:
+        return quantity
+
+    normalized_duration_unit = (duration_unit or "days").lower()
+    duration_days = duration_value
+    if normalized_duration_unit == "weeks":
+        duration_days = duration_value * 7
+    elif normalized_duration_unit == "months":
+        duration_days = duration_value * 30
+
+    derived_quantity = ceil(daily_units * duration_days)
+    return derived_quantity if derived_quantity > 0 else quantity
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Prescription Number Generation
 # ═══════════════════════════════════════════════════════════════════════════
 
-def generate_prescription_number() -> str:
-    """Generate unique prescription number: RX-YYYYMMDD-XXXXXX."""
-    today = date.today().strftime("%Y%m%d")
-    unique_part = uuid.uuid4().hex[:6].upper()
-    return f"RX-{today}-{unique_part}"
+def generate_prescription_number(db: Session, hospital_id: uuid.UUID) -> str:
+    """
+    Generate unique sequential prescription number: {PREFIX}-{YY}-{NNNNN}
+    
+    Format: RX-26-00001, RX-26-00002, etc.
+    Uses hospital_settings.prescription_sequence with row-level locking.
+    """
+    # Get hospital settings with row-level lock to prevent race conditions
+    settings = db.query(HospitalSettings).filter(
+        HospitalSettings.hospital_id == hospital_id
+    ).with_for_update().first()
+    
+    if not settings:
+        # Fallback if no settings exist - use default
+        logger.warning(f"No hospital settings found for hospital_id={hospital_id}, using defaults")
+        prefix = "RX"
+        sequence = 1
+    else:
+        # Get prefix and increment sequence atomically
+        prefix = settings.prescription_prefix or "RX"
+        sequence = settings.prescription_sequence + 1
+        # Update the sequence counter
+        settings.prescription_sequence = sequence
+        db.flush()  # Ensure the update is visible within this transaction
+    
+    # Format: PREFIX-YY-NNNNN (e.g., RX-26-00001)
+    year_code = date.today().strftime("%y")  # 2-digit year
+    formatted_sequence = f"{sequence:05d}"  # 5-digit sequence with leading zeros
+    
+    return f"{prefix}-{year_code}-{formatted_sequence}"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -44,7 +104,7 @@ def create_prescription(
     hospital_id: uuid.UUID,
 ) -> Prescription:
     """Create a new prescription with optional items."""
-    rx_number = generate_prescription_number()
+    rx_number = generate_prescription_number(db, hospital_id)
 
     # Convert string UUIDs
     patient_id = data.get("patient_id")
@@ -112,7 +172,12 @@ def create_prescription(
             duration_unit=item_data.get("duration_unit"),
             route=item_data.get("route"),
             instructions=item_data.get("instructions"),
-            quantity=item_data.get("quantity"),
+            quantity=calculate_prescribed_quantity(
+                item_data.get("frequency"),
+                item_data.get("duration_value"),
+                item_data.get("duration_unit"),
+                item_data.get("quantity"),
+            ),
             allow_substitution=item_data.get("allow_substitution", True),
             display_order=item_data.get("display_order", idx),
         )
@@ -256,7 +321,12 @@ def update_prescription(
                 duration_unit=item_data.get("duration_unit"),
                 route=item_data.get("route"),
                 instructions=item_data.get("instructions"),
-                quantity=item_data.get("quantity"),
+                quantity=calculate_prescribed_quantity(
+                    item_data.get("frequency"),
+                    item_data.get("duration_value"),
+                    item_data.get("duration_unit"),
+                    item_data.get("quantity"),
+                ),
                 allow_substitution=item_data.get("allow_substitution", True),
                 display_order=item_data.get("display_order", idx),
             )
@@ -275,7 +345,12 @@ def finalize_prescription(
     prescription_id: str | uuid.UUID,
     performed_by: uuid.UUID,
 ) -> Optional[Prescription]:
-    """Finalize a prescription (lock it)."""
+    """Finalize a prescription (lock it).
+
+    Note: Stock validation is handled during dispensing, not at doctor finalization
+    time. This allows doctors to finalize and complete consultation even when one
+    or more medicines are out of stock.
+    """
     rx = get_prescription(db, prescription_id)
     if not rx:
         return None
@@ -289,6 +364,54 @@ def finalize_prescription(
     ).count()
     if item_count == 0:
         raise ValueError("Cannot finalize a prescription with no items")
+
+    # ✅ FIX BUG #1: Check stock availability before finalizing
+    from ..models.pharmacy import MedicineBatch
+    from datetime import date
+
+    items = db.query(PrescriptionItem).filter(
+        PrescriptionItem.prescription_id == rx.id
+    ).all()
+
+    stock_warnings = []
+    for item in items:
+        required_quantity = calculate_prescribed_quantity(
+            item.frequency,
+            item.duration_value,
+            item.duration_unit,
+            item.quantity,
+        )
+
+        if item.quantity != required_quantity:
+            item.quantity = required_quantity
+
+        if item.medicine_id and required_quantity:
+            # Check available stock from batches (FEFO - First Expiry First Out)
+            batches = db.query(MedicineBatch).filter(
+                MedicineBatch.medicine_id == item.medicine_id,
+                MedicineBatch.is_active == True,
+                MedicineBatch.expiry_date > date.today(),  # Only consider non-expired batches
+                MedicineBatch.quantity > 0,
+            ).order_by(MedicineBatch.expiry_date.asc()).all()
+
+            total_available = sum(batch.quantity for batch in batches)
+
+            if total_available == 0:
+                stock_warnings.append(
+                    f"'{item.medicine_name}' is out of stock. Required: {required_quantity}, Available: 0"
+                )
+            elif total_available < required_quantity:
+                stock_warnings.append(
+                    f"'{item.medicine_name}' has insufficient stock. Required: {required_quantity}, Available: {total_available}"
+                )
+
+    # Do not block doctor finalization on stock; pharmacy handles stock at dispensing.
+    if stock_warnings:
+        logger.warning(
+            "Prescription %s finalized with stock warnings: %s",
+            rx.prescription_number,
+            " | ".join(stock_warnings),
+        )
 
     rx.status = "finalized"
     rx.is_finalized = True
@@ -377,6 +500,24 @@ def enrich_prescription(db: Session, rx: Prescription) -> dict:
             if item_dict.get(uid_col):
                 item_dict[uid_col] = str(item_dict[uid_col])
         d["items"].append(item_dict)
+
+    # Dispensing totals for this prescription (if already dispensed/partially dispensed)
+    linked_sales = (
+        db.query(PharmacySale.id, PharmacySale.total_amount, PharmacySale.sale_date)
+        .join(PharmacySaleItem, PharmacySaleItem.sale_id == PharmacySale.id)
+        .join(PrescriptionItem, PrescriptionItem.id == PharmacySaleItem.prescription_item_id)
+        .filter(PrescriptionItem.prescription_id == rx.id)
+        .distinct()
+        .all()
+    )
+
+    if linked_sales:
+        d["final_amount"] = float(sum((s.total_amount or 0) for s in linked_sales))
+        latest_sale_date = max((s.sale_date for s in linked_sales if s.sale_date), default=None)
+        d["dispensed_at"] = str(latest_sale_date) if latest_sale_date else None
+    else:
+        d["final_amount"] = None
+        d["dispensed_at"] = None
 
     return d
 
@@ -469,7 +610,12 @@ def _save_version_snapshot(
                     "duration_unit": item.duration_unit,
                     "route": item.route,
                     "instructions": item.instructions,
-                    "quantity": item.quantity,
+                    "quantity": calculate_prescribed_quantity(
+                        item.frequency,
+                        item.duration_value,
+                        item.duration_unit,
+                        item.quantity,
+                    ),
                 }
                 for item in items
             ],
@@ -600,8 +746,25 @@ def list_medicines(
             Medicine.name
         ).offset(offset).limit(limit).all()
     
+    # Attach live stock summary for prescribing UI warnings.
+    from ..models.pharmacy import MedicineBatch
+
+    med_ids = [m.id for m in rows]
+    stock_map: dict[uuid.UUID, int] = {}
+    if med_ids:
+        stock_rows = (
+            db.query(MedicineBatch.medicine_id, func.coalesce(func.sum(MedicineBatch.quantity), 0))
+            .filter(
+                MedicineBatch.medicine_id.in_(med_ids),
+                MedicineBatch.is_active == True,
+            )
+            .group_by(MedicineBatch.medicine_id)
+            .all()
+        )
+        stock_map = {row[0]: int(row[1]) for row in stock_rows}
+
     total_pages = ceil(total / limit) if total > 0 else 0
-    return total, page, limit, total_pages, rows
+    return total, page, limit, total_pages, rows, stock_map
 
 
 def update_medicine(

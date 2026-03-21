@@ -85,6 +85,7 @@ CREATE TABLE hospital_settings (
     max_daily_appointments_per_doctor   INTEGER     DEFAULT 40,
     allow_walk_in                       BOOLEAN     DEFAULT true,
     allow_emergency_bypass              BOOLEAN     DEFAULT true,
+    allow_opd_credit                    BOOLEAN     DEFAULT true,
     enable_sms_notifications            BOOLEAN     DEFAULT false,
     enable_email_notifications          BOOLEAN     DEFAULT true,
     enable_whatsapp_notifications       BOOLEAN     DEFAULT false,
@@ -395,7 +396,7 @@ CREATE TABLE appointments (
     doctor_id                UUID          NOT NULL REFERENCES doctors(id),
     department_id            UUID          REFERENCES departments(id),
     appointment_date         DATE          NOT NULL,
-    start_time               TIME,
+    start_time               TIME          NOT NULL,
     end_time                 TIME,
     appointment_type         VARCHAR(20)   NOT NULL,                 -- 'scheduled','walk_in','emergency','follow_up'
     visit_type               VARCHAR(20)   DEFAULT 'new',            -- 'new','follow_up'
@@ -720,6 +721,7 @@ CREATE TABLE invoice_items (
     tax_amount       DECIMAL(12,2) DEFAULT 0,
     total_price      DECIMAL(12,2) NOT NULL,
     display_order    INTEGER       DEFAULT 0,
+    batch_number     VARCHAR(50),
     created_at       TIMESTAMPTZ   DEFAULT NOW()
 );
 
@@ -1066,23 +1068,27 @@ CREATE TABLE optical_repairs (
 -- 11.1 suppliers
 -- ─────────────────────────────────────────────────────────────────────────────
 CREATE TABLE suppliers (
-    id             UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    hospital_id    UUID         NOT NULL REFERENCES hospitals(id),
-    name           VARCHAR(200) NOT NULL,
-    code           VARCHAR(20)  NOT NULL,
-    contact_person VARCHAR(100),
-    phone          VARCHAR(20),
-    email          VARCHAR(255),
-    address        TEXT,
-    tax_id         VARCHAR(50),
-    payment_terms  VARCHAR(50),
-    lead_time_days INTEGER,
-    rating         DECIMAL(3,1),
-    is_active      BOOLEAN      DEFAULT true,
-    created_at     TIMESTAMPTZ  DEFAULT NOW(),
-    updated_at     TIMESTAMPTZ  DEFAULT NOW(),
+    id                 UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    hospital_id        UUID         NOT NULL REFERENCES hospitals(id),
+    name               VARCHAR(200) NOT NULL,
+    code               VARCHAR(20)  NOT NULL,
+    contact_person     VARCHAR(100),
+    phone              VARCHAR(20),
+    email              VARCHAR(255),
+    address            TEXT,
+    tax_id             VARCHAR(50),
+    payment_terms      VARCHAR(50),
+    lead_time_days     INTEGER,
+    rating             DECIMAL(3,1),
+    product_categories TEXT[]       DEFAULT '{}',
+    is_active          BOOLEAN      DEFAULT true,
+    created_at         TIMESTAMPTZ  DEFAULT NOW(),
+    updated_at         TIMESTAMPTZ  DEFAULT NOW(),
     UNIQUE (hospital_id, code)
 );
+
+COMMENT ON COLUMN suppliers.product_categories IS 
+    'Array of product categories supplied by this vendor: medicine, optical, surgical, equipment, laboratory, disposable, other';
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 11.2 purchase_orders

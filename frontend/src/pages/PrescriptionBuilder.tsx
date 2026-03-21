@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
@@ -13,6 +13,17 @@ import type { DoctorOption } from '../types/appointment';
 const FREQUENCY_OPTIONS = ['1-0-0', '0-1-0', '0-0-1', '1-0-1', '1-1-0', '0-1-1', '1-1-1', '1-1-1-1'];
 const DURATION_UNITS = ['days', 'weeks', 'months'];
 const ROUTE_OPTIONS = ['oral', 'topical', 'injection', 'inhalation', 'sublingual', 'rectal', 'nasal', 'ophthalmic', 'otic'];
+const FOOD_TIMING_OPTIONS = ['', 'Before food', 'After food'];
+
+const getDisplayMedicineName = (med: Medicine): string => {
+  if (!med.strength) return med.name;
+  const name = med.name.trim();
+  const strength = med.strength.trim();
+  if (name.toLowerCase().endsWith(strength.toLowerCase())) {
+    return name.slice(0, -strength.length).trim();
+  }
+  return name;
+};
 
 const computeAge = (p: Patient | null): string => {
   if (!p) return 'N/A';
@@ -91,8 +102,11 @@ const PrescriptionBuilder: React.FC = () => {
   // Medicine search — scoped to a specific block + item
   const [medicineSearch, setMedicineSearch] = useState('');
   const [medicineResults, setMedicineResults] = useState<Medicine[]>([]);
+  const [medicineStockById, setMedicineStockById] = useState<Record<string, number>>({});
   const [activeMedBlockIdx, setActiveMedBlockIdx] = useState<number | null>(null);
   const [activeMedItemIdx, setActiveMedItemIdx] = useState<number | null>(null);
+  const [activeMedResultIdx, setActiveMedResultIdx] = useState<number>(-1);
+  const medicineOptionRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   // Templates
   const [templates, setTemplates] = useState<PrescriptionTemplate[]>([]);
@@ -216,6 +230,23 @@ const PrescriptionBuilder: React.FC = () => {
     return () => clearTimeout(timer);
   }, [medicineSearch, searchMedicines]);
 
+  useEffect(() => {
+    if (medicineResults.length === 0) {
+      setActiveMedResultIdx(-1);
+      return;
+    }
+    setActiveMedResultIdx((idx) => {
+      if (idx < 0) return 0;
+      if (idx >= medicineResults.length) return medicineResults.length - 1;
+      return idx;
+    });
+  }, [medicineResults]);
+
+  useEffect(() => {
+    if (activeMedResultIdx < 0) return;
+    medicineOptionRefs.current[activeMedResultIdx]?.scrollIntoView({ block: 'nearest' });
+  }, [activeMedResultIdx, medicineResults]);
+
   const selectPatient = (p: Patient) => {
     setPatient(p);
     setPatientId(p.id);
@@ -227,24 +258,21 @@ const PrescriptionBuilder: React.FC = () => {
   const selectMedicine = (med: Medicine, blockIdx: number, itemIdx: number) => {
     const newBlocks = [...blocks];
     const updatedItems = [...newBlocks[blockIdx].items];
-    // Strip strength from name if it's embedded (e.g. "Paracetamol 500mg" → "Paracetamol")
-    let cleanName = med.name;
-    if (med.strength && cleanName.toLowerCase().endsWith(med.strength.toLowerCase())) {
-      cleanName = cleanName.slice(0, -med.strength.length).trim();
-    }
     updatedItems[itemIdx] = {
       ...updatedItems[itemIdx],
       medicine_id: med.id,
-      medicine_name: cleanName,
+      medicine_name: getDisplayMedicineName(med),
       generic_name: med.generic_name,
       dosage: med.strength || '',
     };
     newBlocks[blockIdx] = { ...newBlocks[blockIdx], items: updatedItems };
     setBlocks(newBlocks);
+    setMedicineStockById((prev) => ({ ...prev, [med.id]: med.total_stock ?? 0 }));
     setMedicineSearch('');
     setMedicineResults([]);
     setActiveMedBlockIdx(null);
     setActiveMedItemIdx(null);
+    setActiveMedResultIdx(-1);
   };
 
   const updateItem = (blockIdx: number, itemIdx: number, field: keyof PrescriptionItemCreate, value: unknown) => {
@@ -261,6 +289,21 @@ const PrescriptionBuilder: React.FC = () => {
       }
     }
     setBlocks(newBlocks);
+  };
+
+  const updateItemWithoutAutoAdd = (
+    blockIdx: number,
+    itemIdx: number,
+    field: keyof PrescriptionItemCreate,
+    value: unknown,
+  ) => {
+    setBlocks((prev) => {
+      const next = [...prev];
+      const updatedItems = [...next[blockIdx].items];
+      updatedItems[itemIdx] = { ...updatedItems[itemIdx], [field]: value };
+      next[blockIdx] = { ...next[blockIdx], items: updatedItems };
+      return next;
+    });
   };
 
   const addItemToBlock = (blockIdx: number) => {
@@ -280,10 +323,72 @@ const PrescriptionBuilder: React.FC = () => {
 
   /** Handle medicine name typing and trigger search */
   const handleMedicineNameChange = (blockIdx: number, itemIdx: number, value: string) => {
+    if (!value.trim()) {
+      setBlocks((prev) => {
+        const next = [...prev];
+        const updatedItems = [...next[blockIdx].items];
+        updatedItems[itemIdx] = {
+          ...emptyItem(),
+          display_order: updatedItems[itemIdx].display_order ?? itemIdx,
+        };
+        next[blockIdx] = { ...next[blockIdx], items: updatedItems };
+        return next;
+      });
+      setMedicineSearch('');
+      setMedicineResults([]);
+      setActiveMedResultIdx(-1);
+      return;
+    }
+
     updateItem(blockIdx, itemIdx, 'medicine_name', value);
     setMedicineSearch(value);
     setActiveMedBlockIdx(blockIdx);
     setActiveMedItemIdx(itemIdx);
+    setActiveMedResultIdx(0);
+  };
+
+  const handleMedicineInputKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement>,
+    blockIdx: number,
+    itemIdx: number,
+  ) => {
+    const isActiveInput = activeMedBlockIdx === blockIdx && activeMedItemIdx === itemIdx;
+    if (!isActiveInput || medicineResults.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const baseIdx = activeMedResultIdx < 0 ? 0 : activeMedResultIdx;
+      const nextIdx = Math.min(baseIdx + 1, medicineResults.length - 1);
+      setActiveMedResultIdx(nextIdx);
+      if (nextIdx >= 0) {
+        updateItemWithoutAutoAdd(blockIdx, itemIdx, 'medicine_name', getDisplayMedicineName(medicineResults[nextIdx]));
+      }
+      return;
+    }
+
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const nextIdx = Math.max(activeMedResultIdx - 1, 0);
+      setActiveMedResultIdx(nextIdx);
+      if (nextIdx >= 0) {
+        updateItemWithoutAutoAdd(blockIdx, itemIdx, 'medicine_name', getDisplayMedicineName(medicineResults[nextIdx]));
+      }
+      return;
+    }
+
+    if (e.key === 'Enter') {
+      if (activeMedResultIdx >= 0 && activeMedResultIdx < medicineResults.length) {
+        e.preventDefault();
+        selectMedicine(medicineResults[activeMedResultIdx], blockIdx, itemIdx);
+      }
+      return;
+    }
+
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      setMedicineResults([]);
+      setActiveMedResultIdx(-1);
+    }
   };
 
   const addBlock = () => {
@@ -321,7 +426,10 @@ const PrescriptionBuilder: React.FC = () => {
     showToast('success', `Template "${tmpl.name}" applied`);
   };
 
-  const handleSave = async (finalize: boolean = false, completeQueue: boolean = false) => {
+  const handleSave = async (
+    finalize: boolean = false,
+    completeQueue: boolean = false,
+  ) => {
     if (!patient) { showToast('error', 'Please select a patient'); return; }
 
     // Flatten blocks into single diagnosis string & ordered items for the API
@@ -713,15 +821,19 @@ const PrescriptionBuilder: React.FC = () => {
                       <div className="text-[10px] font-semibold text-slate-500 uppercase">Frequency</div>
                       <div className="text-[10px] font-semibold text-slate-500 uppercase">Duration</div>
                       <div className="text-[10px] font-semibold text-slate-500 uppercase">Route</div>
-                      <div className="text-[10px] font-semibold text-slate-500 uppercase">Instruction</div>
+                      <div className="text-[10px] font-semibold text-slate-500 uppercase">Food Timing</div>
                       <div className="text-[10px] font-semibold text-slate-500 uppercase text-center">×</div>
                     </div>
 
                     {/* Medicine Rows */}
                     {block.items.map((item, itemIdx) => (
+                      (() => {
+                        const selectedStock = item.medicine_id ? medicineStockById[item.medicine_id] : undefined;
+                        const isSelectedOutOfStock = typeof selectedStock === 'number' && selectedStock <= 0;
+                        return (
                       <div
                         key={itemIdx}
-                        className={`grid grid-cols-[40px_1fr_80px_100px_120px_80px_1fr_40px] gap-1 items-center px-3 py-1.5 border-b border-slate-100 last:border-0 hover:bg-blue-50/30 transition-colors ${item.medicine_name.trim() ? 'bg-white' : 'bg-slate-50/50'}`}
+                        className={`grid grid-cols-[40px_1fr_80px_100px_120px_80px_1fr_40px] gap-1 items-center px-3 py-1.5 border-b border-slate-100 last:border-0 hover:bg-blue-50/30 transition-colors ${item.medicine_name.trim() ? 'bg-white' : 'bg-slate-50/50'} ${isSelectedOutOfStock ? 'bg-red-50/60' : ''}`}
                       >
                         {/* Row number */}
                         <div className="text-xs text-slate-400 font-medium">{itemIdx + 1}</div>
@@ -734,26 +846,42 @@ const PrescriptionBuilder: React.FC = () => {
                             onChange={e => handleMedicineNameChange(blockIdx, itemIdx, e.target.value)}
                             onFocus={() => { setActiveMedBlockIdx(blockIdx); setActiveMedItemIdx(itemIdx); }}
                             onBlur={() => setTimeout(() => { setActiveMedBlockIdx(null); setActiveMedItemIdx(null); }, 200)}
+                            onKeyDown={(e) => handleMedicineInputKeyDown(e, blockIdx, itemIdx)}
                             className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
                             placeholder="Type medicine name..."
                           />
-                          {item.generic_name && (
-                            <p className="text-[9px] text-slate-400 mt-0.5 truncate">{item.generic_name}</p>
-                          )}
                           {activeMedBlockIdx === blockIdx && activeMedItemIdx === itemIdx && medicineResults.length > 0 && (
                             <div className="absolute z-50 left-0 top-full mt-1 w-72 bg-white border border-slate-200 rounded-lg shadow-xl max-h-48 overflow-y-auto">
-                              {medicineResults.map(med => (
+                              {medicineResults.map((med, idx) => {
+                                const isOutOfStock = (med.total_stock ?? 0) <= 0;
+                                return (
                                 <button
                                   key={med.id}
+                                  ref={(el) => { medicineOptionRefs.current[idx] = el; }}
                                   onMouseDown={e => e.preventDefault()}
                                   onClick={() => selectMedicine(med, blockIdx, itemIdx)}
-                                  className="w-full text-left px-3 py-2 hover:bg-slate-50 text-xs border-b border-slate-100 last:border-0"
+                                  onMouseEnter={() => {
+                                    setActiveMedResultIdx(idx);
+                                    updateItemWithoutAutoAdd(blockIdx, itemIdx, 'medicine_name', getDisplayMedicineName(med));
+                                  }}
+                                  className={`w-full text-left px-3 py-2 text-xs border-b border-slate-100 last:border-0 ${
+                                    activeMedResultIdx === idx
+                                      ? 'bg-primary/10'
+                                      : isOutOfStock
+                                      ? 'bg-red-50 hover:bg-red-100'
+                                      : 'hover:bg-slate-50'
+                                  }`}
                                 >
-                                  <span className="font-medium">{med.name}</span>
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="font-medium">{med.name}</span>
+                                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${isOutOfStock ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                                      {isOutOfStock ? 'Out of stock' : `Stock: ${med.total_stock ?? 0}`}
+                                    </span>
+                                  </div>
                                   {med.strength && <span className="text-slate-500"> {med.strength}</span>}
                                   <span className="text-[10px] text-slate-400 block">{med.generic_name}</span>
                                 </button>
-                              ))}
+                              );})}
                             </div>
                           )}
                         </div>
@@ -817,15 +945,19 @@ const PrescriptionBuilder: React.FC = () => {
                           </select>
                         </div>
 
-                        {/* Instructions */}
+                        {/* Food timing */}
                         <div className="pr-1">
-                          <input
-                            type="text"
-                            value={item.instructions || ''}
-                            onChange={e => updateItem(blockIdx, itemIdx, 'instructions', e.target.value)}
-                            className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                            placeholder="e.g., After meals, with warm water..."
-                          />
+                          <select
+                            value={(item.instructions === 'Before food' || item.instructions === 'After food') ? item.instructions : ''}
+                            onChange={e => updateItem(blockIdx, itemIdx, 'instructions', e.target.value || '')}
+                            className="w-full px-1 py-1.5 border border-slate-200 rounded text-xs bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                          >
+                            {FOOD_TIMING_OPTIONS.map(option => (
+                              <option key={option || 'none'} value={option}>
+                                {option || 'Select'}
+                              </option>
+                            ))}
+                          </select>
                         </div>
 
                         {/* Delete */}
@@ -839,6 +971,8 @@ const PrescriptionBuilder: React.FC = () => {
                           </button>
                         </div>
                       </div>
+                        );
+                      })()
                     ))}
 
                     {/* Quick Add Row */}
@@ -1146,7 +1280,6 @@ const PatientRxHistory: React.FC<{ patientId: string }> = ({ patientId }) => {
     draft: 'bg-yellow-100 text-yellow-700',
     finalized: 'bg-blue-100 text-blue-700',
     dispensed: 'bg-green-100 text-green-700',
-    partially_dispensed: 'bg-orange-100 text-orange-700',
   };
 
   return (

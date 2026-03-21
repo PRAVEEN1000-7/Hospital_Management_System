@@ -4,7 +4,7 @@ from datetime import date, time, datetime
 from decimal import Decimal
 
 
-VALID_APPOINTMENT_TYPES = ["scheduled", "walk-in"]
+VALID_APPOINTMENT_TYPES = ["scheduled", "walk-in", "walk_in", "follow-up", "follow_up", "referral"]
 VALID_APPOINTMENT_STATUSES = [
     "scheduled", "pending", "confirmed", "in-progress", "completed",
     "cancelled", "no-show", "rescheduled",
@@ -145,7 +145,7 @@ class DoctorLeaveResponse(BaseModel):
 
 class AppointmentCreate(BaseModel):
     patient_id: str
-    doctor_id: Optional[str] = None
+    doctor_id: str
     department_id: Optional[str] = None
     appointment_type: str = Field(default="scheduled")
     visit_type: Optional[str] = None
@@ -228,6 +228,11 @@ class AppointmentResponse(BaseModel):
     updated_at: datetime
     patient_name: Optional[str] = None
     doctor_name: Optional[str] = None
+    consultation_invoice_id: Optional[str] = None
+    consultation_invoice_number: Optional[str] = None
+    consultation_invoice_status: Optional[str] = None
+    consultation_fee_collected: bool = False
+    consultation_balance_amount: Optional[Decimal] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -254,6 +259,11 @@ class AppointmentListItem(BaseModel):
     created_at: datetime
     patient_name: Optional[str] = None
     doctor_name: Optional[str] = None
+    consultation_invoice_id: Optional[str] = None
+    consultation_invoice_number: Optional[str] = None
+    consultation_invoice_status: Optional[str] = None
+    consultation_fee_collected: bool = False
+    consultation_balance_amount: Optional[Decimal] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -277,7 +287,7 @@ class PaginatedAppointmentResponse(BaseModel):
 
 class WalkInRegister(BaseModel):
     patient_id: str
-    doctor_id: Optional[str] = None
+    doctor_id: str
     chief_complaint: Optional[str] = None
     priority: str = Field(default="normal")
     consultation_fee: Optional[Decimal] = None
@@ -335,6 +345,7 @@ class HospitalSettingsUpdate(BaseModel):
     max_daily_appointments_per_doctor: Optional[int] = Field(None, ge=1, le=100)
     consultation_fee_default: Optional[str] = Field(None, max_length=20)
     follow_up_validity_days: Optional[int] = Field(None, ge=1, le=365)
+    allow_opd_credit: Optional[bool] = None
     # Legacy aliases (for backward compat)
     appointment_slot_duration: Optional[int] = Field(None, ge=5, le=120)
     allow_walk_ins: Optional[bool] = None

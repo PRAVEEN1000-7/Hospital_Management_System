@@ -405,6 +405,8 @@ const Layout: React.FC = () => {
   if (hasRole('super_admin', 'admin', 'inventory_manager')) {
     inventoryItems.push(
       { to: '/inventory', label: 'Dashboard', icon: 'space_dashboard' },
+      { to: '/inventory/stock-overview', label: 'Stock Overview', icon: 'dashboard' },
+      { to: '/inventory/products', label: 'Products', icon: 'inventory_2' },
       { to: '/inventory/low-stock', label: 'Low Stock', icon: 'warning' },
       { to: '/inventory/suppliers', label: 'Suppliers', icon: 'local_shipping' },
       { to: '/inventory/purchase-orders', label: 'Purchase Orders', icon: 'receipt_long' },
@@ -416,6 +418,7 @@ const Layout: React.FC = () => {
   } else if (hasRole('pharmacist')) {
     inventoryItems.push(
       { to: '/inventory', label: 'Dashboard', icon: 'space_dashboard' },
+      { to: '/inventory/stock-overview', label: 'Stock Overview', icon: 'dashboard' },
       { to: '/inventory/low-stock', label: 'Low Stock', icon: 'warning' },
       { to: '/inventory/suppliers', label: 'Suppliers', icon: 'local_shipping' },
       { to: '/inventory/purchase-orders', label: 'Purchase Orders', icon: 'receipt_long' },

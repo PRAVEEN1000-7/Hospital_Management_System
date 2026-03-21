@@ -73,6 +73,8 @@ import LowStockAlertsPage from './pages/inventory/LowStockAlertsPage';
 import GRNReceiptForm from './pages/inventory/GRNReceiptForm';
 import StockMovementsReportPage from './pages/inventory/StockMovementsReportPage';
 import CycleCountDetailPage from './pages/inventory/CycleCountDetailPage';
+import StockOverviewPage from './pages/inventory/StockOverviewPage';
+import ProductsPage from './pages/inventory/ProductsPage';
 
 // Analytics
 import AnalyticsDashboard from './pages/analytics/AnalyticsDashboard';
@@ -328,6 +330,16 @@ const App: React.FC = () => {
               <Route path="/inventory/cycle-counts/:ccId" element={
                 <ProtectedRoute allowedRoles={['super_admin', 'admin', 'inventory_manager']}>
                   <CycleCountDetailPage />
+                </ProtectedRoute>
+              } />
+              <Route path="/inventory/stock-overview" element={
+                <ProtectedRoute allowedRoles={['super_admin', 'admin', 'inventory_manager', 'pharmacist']}>
+                  <StockOverviewPage />
+                </ProtectedRoute>
+              } />
+              <Route path="/inventory/products" element={
+                <ProtectedRoute allowedRoles={['super_admin', 'admin', 'inventory_manager']}>
+                  <ProductsPage />
                 </ProtectedRoute>
               } />
 

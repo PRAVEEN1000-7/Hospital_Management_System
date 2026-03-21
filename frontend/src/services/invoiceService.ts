@@ -94,6 +94,8 @@ const invoiceService = {
       quantity_available: number;
       manufactured_date: string;
       expiry_date: string;
+      days_to_expiry?: number;
+      is_expiring_soon?: boolean;
       selling_price: number;
       purchase_price: number;
     }>;

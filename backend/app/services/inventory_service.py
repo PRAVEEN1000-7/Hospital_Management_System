@@ -1322,6 +1322,13 @@ def get_medicine_for_invoice(db: Session, medicine_id: uuid.UUID) -> Optional[di
                 "quantity_available": int(batch.quantity or 0),
                 "manufactured_date": batch.mfg_date,
                 "expiry_date": batch.expiry_date,
+                "days_to_expiry": (
+                    (batch.expiry_date - date.today()).days if batch.expiry_date else None
+                ),
+                "is_expiring_soon": (
+                    ((batch.expiry_date - date.today()).days <= 30)
+                    if batch.expiry_date else False
+                ),
                 "selling_price": float(batch.selling_price or 0),
                 "purchase_price": float(batch.purchase_price or 0),
             })

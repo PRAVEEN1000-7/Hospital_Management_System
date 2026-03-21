@@ -7,7 +7,7 @@ from typing import Optional, Any
 from datetime import date, datetime
 
 
-VALID_PRESCRIPTION_STATUSES = ["draft", "finalized", "dispensed", "partially_dispensed"]
+VALID_PRESCRIPTION_STATUSES = ["draft", "finalized", "dispensed"]
 VALID_DURATION_UNITS = ["days", "weeks", "months"]
 VALID_ROUTES = ["oral", "topical", "injection", "inhalation", "sublingual", "rectal", "nasal", "ophthalmic", "otic"]
 VALID_MEDICINE_CATEGORIES = ["tablet", "capsule", "syrup", "injection", "cream", "drops", "ointment", "inhaler", "powder", "suspension"]

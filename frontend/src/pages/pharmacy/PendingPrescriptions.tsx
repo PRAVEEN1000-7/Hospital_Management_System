@@ -7,7 +7,6 @@ import type { PendingPrescription } from '../../services/pharmacyService';
 
 const STATUS_BADGES: Record<string, { label: string; color: string; icon: string }> = {
   finalized: { label: 'Pending', color: 'bg-blue-100 text-blue-700', icon: '⏳' },
-  partially_dispensed: { label: 'Partial', color: 'bg-orange-100 text-orange-700', icon: '⚠️' },
   dispensed: { label: 'Dispensed', color: 'bg-green-100 text-green-700', icon: '✅' },
 };
 
@@ -22,7 +21,7 @@ const PendingPrescriptions: React.FC = () => {
   const [totalPages, setTotalPages] = useState(0);
   const [total, setTotal] = useState(0);
   
-  const [statusFilter, setStatusFilter] = useState<'pending' | 'partial' | 'dispensed' | ''>('');
+  const [statusFilter, setStatusFilter] = useState<'pending' | 'dispensed' | ''>('');
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
 
@@ -168,8 +167,7 @@ const PendingPrescriptions: React.FC = () => {
           >
             <option value="">All Status</option>
             <option value="pending">Pending (Not Started)</option>
-            <option value="partial">Partially Dispensed</option>
-            <option value="dispensed">Fully Dispensed</option>
+            <option value="dispensed">Dispensed</option>
           </select>
         </div>
       </div>
@@ -242,16 +240,12 @@ const PendingPrescriptions: React.FC = () => {
                   return (
                     <tr
                       key={rx.id}
-                      className={`hover:bg-slate-50 transition-colors ${
-                        rx.status === 'partially_dispensed' ? 'bg-orange-50' : ''
-                      }`}
+                      className="hover:bg-slate-50 transition-colors"
                     >
                       <td className="px-6 py-4">
                         {/* Priority badge - can be enhanced with priority field */}
-                        <span className={`text-lg ${
-                          rx.status === 'partially_dispensed' ? 'text-orange-500' : 'text-green-500'
-                        }`}>
-                          {rx.status === 'partially_dispensed' ? '🟠' : '🟢'}
+                        <span className="text-lg text-green-500">
+                          🟢
                         </span>
                       </td>
                       <td className="px-6 py-4">
@@ -325,16 +319,10 @@ const PendingPrescriptions: React.FC = () => {
                         ) : (
                           <button
                             onClick={() => handleStartDispensing(rx.id)}
-                            className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                              rx.status === 'partially_dispensed'
-                                ? 'bg-orange-500 hover:bg-orange-600 text-white'
-                                : 'bg-primary hover:bg-primary/90 text-white'
-                            }`}
+                            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-primary hover:bg-primary/90 text-white"
                           >
-                            <span className="material-symbols-outlined text-sm">
-                              {rx.status === 'partially_dispensed' ? 'inventory' : 'local_pharmacy'}
-                            </span>
-                            {rx.status === 'partially_dispensed' ? 'Continue' : 'Dispense'}
+                            <span className="material-symbols-outlined text-sm">local_pharmacy</span>
+                            Dispense
                           </button>
                         )}
                       </td>
@@ -359,17 +347,13 @@ const PendingPrescriptions: React.FC = () => {
               return (
                 <div
                   key={rx.id}
-                  className={`bg-white rounded-xl border border-slate-200 p-4 shadow-sm ${
-                    rx.status === 'partially_dispensed' ? 'border-orange-300 bg-orange-50/30' : ''
-                  }`}
+                  className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm"
                 >
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className={`text-sm ${
-                          rx.status === 'partially_dispensed' ? 'text-orange-500' : 'text-green-500'
-                        }`}>
-                          {rx.status === 'partially_dispensed' ? '🟠' : '🟢'}
+                        <span className="text-sm text-green-500">
+                          🟢
                         </span>
                         <div className="text-sm font-semibold text-slate-900">
                           {rx.prescription_number}
@@ -430,16 +414,10 @@ const PendingPrescriptions: React.FC = () => {
                   ) : (
                     <button
                       onClick={() => handleStartDispensing(rx.id)}
-                      className={`w-full mt-4 inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                        rx.status === 'partially_dispensed'
-                          ? 'bg-orange-500 hover:bg-orange-600 text-white'
-                          : 'bg-primary hover:bg-primary/90 text-white'
-                      }`}
+                      className="w-full mt-4 inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors bg-primary hover:bg-primary/90 text-white"
                     >
-                      <span className="material-symbols-outlined text-sm">
-                        {rx.status === 'partially_dispensed' ? 'inventory' : 'local_pharmacy'}
-                      </span>
-                      {rx.status === 'partially_dispensed' ? 'Continue Dispensing' : 'Start Dispensing'}
+                      <span className="material-symbols-outlined text-sm">local_pharmacy</span>
+                      Start Dispensing
                     </button>
                   )}
                 </div>

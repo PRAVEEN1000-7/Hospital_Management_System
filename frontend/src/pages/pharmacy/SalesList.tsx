@@ -3,12 +3,30 @@ import { useNavigate } from 'react-router-dom';
 import pharmacyService from '../../services/pharmacyService';
 import type { Sale } from '../../types/pharmacy';
 import { useToast } from '../../contexts/ToastContext';
-import { format } from 'date-fns';
+import { format, subDays } from 'date-fns';
 
 const PAYMENT_STATUS_COLORS: Record<string, string> = {
   paid: 'bg-green-100 text-green-700',
   pending: 'bg-amber-100 text-amber-700',
   partial: 'bg-blue-100 text-blue-700',
+};
+
+type DatePreset = 'all' | 'today' | '7d' | '30d';
+
+const resolveDateRange = (preset: DatePreset): { dateFrom?: string; dateTo?: string } => {
+  const today = new Date();
+  const end = format(today, 'yyyy-MM-dd');
+
+  if (preset === 'today') {
+    return { dateFrom: end, dateTo: end };
+  }
+  if (preset === '7d') {
+    return { dateFrom: format(subDays(today, 6), 'yyyy-MM-dd'), dateTo: end };
+  }
+  if (preset === '30d') {
+    return { dateFrom: format(subDays(today, 29), 'yyyy-MM-dd'), dateTo: end };
+  }
+  return {};
 };
 
 const SalesList: React.FC = () => {
@@ -19,11 +37,13 @@ const SalesList: React.FC = () => {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [search, setSearch] = useState('');
+  const [datePreset, setDatePreset] = useState<DatePreset>('all');
 
   const fetchSales = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await pharmacyService.getSales(page, 20, search || undefined);
+      const { dateFrom, dateTo } = resolveDateRange(datePreset);
+      const res = await pharmacyService.getSales(page, 20, search || '', dateFrom || '', dateTo || '');
       setSales(res.data);
       setTotalPages(res.total_pages);
     } catch {
@@ -32,7 +52,7 @@ const SalesList: React.FC = () => {
       setLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, search]);
+  }, [page, search, datePreset]);
 
   useEffect(() => { fetchSales(); }, [fetchSales]);
 
@@ -52,6 +72,34 @@ const SalesList: React.FC = () => {
         <input type="text" placeholder="Search by invoice or patient..." value={search}
           onChange={e => { setSearch(e.target.value); setPage(1); }}
           className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Date</span>
+        <button
+          onClick={() => { setDatePreset('all'); setPage(1); }}
+          className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${datePreset === 'all' ? 'bg-primary text-white border-primary' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+        >
+          All
+        </button>
+        <button
+          onClick={() => { setDatePreset('today'); setPage(1); }}
+          className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${datePreset === 'today' ? 'bg-primary text-white border-primary' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+        >
+          Today
+        </button>
+        <button
+          onClick={() => { setDatePreset('7d'); setPage(1); }}
+          className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${datePreset === '7d' ? 'bg-primary text-white border-primary' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+        >
+          Last 7 days
+        </button>
+        <button
+          onClick={() => { setDatePreset('30d'); setPage(1); }}
+          className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${datePreset === '30d' ? 'bg-primary text-white border-primary' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+        >
+          Last 30 days
+        </button>
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">

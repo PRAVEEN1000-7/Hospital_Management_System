@@ -48,6 +48,7 @@ from ..services.prescription_service import (
     increment_template_usage,
 )
 from ..services.invoice_service import get_or_create_consultation_invoice_for_appointment
+from ..services.appointment_service import create_appointment
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/prescriptions", tags=["Prescriptions"])
@@ -202,6 +203,41 @@ async def finalize_rx(
         rx = finalize_prescription(db, prescription_id, current_user.id)
         if not rx:
             raise HTTPException(status_code=404, detail="Prescription not found")
+
+        # If doctor provided a follow-up date, create a future follow-up appointment
+        # so it appears in Upcoming queue views.
+        if rx.follow_up_date and rx.follow_up_date > date.today() and rx.patient_id and rx.doctor_id:
+            existing_follow_up = (
+                db.query(Appointment)
+                .filter(
+                    Appointment.hospital_id == current_user.hospital_id,
+                    Appointment.patient_id == rx.patient_id,
+                    Appointment.doctor_id == rx.doctor_id,
+                    Appointment.appointment_date == rx.follow_up_date,
+                    Appointment.appointment_type.in_(["follow-up", "follow_up"]),
+                    Appointment.parent_appointment_id == rx.appointment_id,
+                    Appointment.is_deleted == False,
+                )
+                .first()
+            )
+            if not existing_follow_up:
+                create_appointment(
+                    db,
+                    {
+                        "patient_id": str(rx.patient_id),
+                        "doctor_id": str(rx.doctor_id),
+                        "appointment_type": "follow-up",
+                        "visit_type": "follow_up",
+                        "appointment_date": rx.follow_up_date,
+                        "status": "scheduled",
+                        "priority": "normal",
+                        "chief_complaint": f"Follow-up for {rx.prescription_number}",
+                        "parent_appointment_id": str(rx.appointment_id) if rx.appointment_id else None,
+                    },
+                    current_user.id,
+                    current_user.hospital_id,
+                )
+
         return enrich_prescription(db, rx)
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
@@ -220,6 +256,40 @@ async def finalize_and_complete_queue(
         rx = finalize_prescription(db, prescription_id, current_user.id)
         if not rx:
             raise HTTPException(status_code=404, detail="Prescription not found")
+
+        # If doctor provided a follow-up date, create a future follow-up appointment
+        # so it appears in Upcoming queue views.
+        if rx.follow_up_date and rx.follow_up_date > date.today() and rx.patient_id and rx.doctor_id:
+            existing_follow_up = (
+                db.query(Appointment)
+                .filter(
+                    Appointment.hospital_id == current_user.hospital_id,
+                    Appointment.patient_id == rx.patient_id,
+                    Appointment.doctor_id == rx.doctor_id,
+                    Appointment.appointment_date == rx.follow_up_date,
+                    Appointment.appointment_type.in_(["follow-up", "follow_up"]),
+                    Appointment.parent_appointment_id == rx.appointment_id,
+                    Appointment.is_deleted == False,
+                )
+                .first()
+            )
+            if not existing_follow_up:
+                create_appointment(
+                    db,
+                    {
+                        "patient_id": str(rx.patient_id),
+                        "doctor_id": str(rx.doctor_id),
+                        "appointment_type": "follow-up",
+                        "visit_type": "follow_up",
+                        "appointment_date": rx.follow_up_date,
+                        "status": "scheduled",
+                        "priority": "normal",
+                        "chief_complaint": f"Follow-up for {rx.prescription_number}",
+                        "parent_appointment_id": str(rx.appointment_id) if rx.appointment_id else None,
+                    },
+                    current_user.id,
+                    current_user.hospital_id,
+                )
 
         # 2. Complete the linked queue entry (if any)
         queue_appointment_id = None

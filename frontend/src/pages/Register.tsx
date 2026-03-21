@@ -191,7 +191,17 @@ const Register: React.FC = () => {
       const result = await patientService.createPatient(data as any);
       feLogger.info('patient_registration', `Patient registered: ${result.patient_reference_number}`);
       toast.success(`Patient registered successfully! ID: ${result.patient_reference_number}`);
-      setTimeout(() => navigate('/patients'), 2000);
+      
+      // Check if we came from walk-ins and should redirect back
+      const returnUrl = sessionStorage.getItem('walkInReturnUrl');
+      if (returnUrl) {
+        sessionStorage.removeItem('walkInReturnUrl');
+        // Redirect back with new patient ID
+        setTimeout(() => navigate(`${returnUrl}?new_patient_id=${result.id}`), 1000);
+      } else {
+        // Default redirect to patient list
+        setTimeout(() => navigate('/patients'), 2000);
+      }
     } catch (err: unknown) {
       const axiosError = err as { response?: { data?: { detail?: string | Array<{ msg: string }> } }; code?: string };
       let message: string;

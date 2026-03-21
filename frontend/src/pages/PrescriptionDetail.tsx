@@ -33,7 +33,7 @@ const PrescriptionDetail: React.FC = () => {
       .then(setPrescription)
       .catch(() => {
         showToast('error', 'Prescription not found');
-        navigate('/prescriptions');
+        navigate(-1);
       })
       .finally(() => setLoading(false));
   }, [id]);
@@ -69,7 +69,7 @@ const PrescriptionDetail: React.FC = () => {
     try {
       await prescriptionService.deletePrescription(id);
       showToast('success', 'Prescription deleted');
-      navigate('/prescriptions');
+      navigate(-1);
     } catch {
       showToast('error', 'Failed to delete');
     }
@@ -118,7 +118,9 @@ const PrescriptionDetail: React.FC = () => {
       <div className="flex justify-between items-start mb-6">
         <div>
           <nav className="flex text-sm text-slate-400 mb-1">
-            <button onClick={() => navigate('/prescriptions')} className="hover:text-primary">Prescriptions</button>
+            <button onClick={() => navigate(-1)} className="hover:text-primary">
+              <span className="material-symbols-outlined text-sm align-middle">arrow_back</span> Back
+            </button>
             <span className="mx-2">/</span>
             <span className="text-slate-600">{rx.prescription_number}</span>
           </nav>

@@ -3,11 +3,15 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import pharmacyService from '../../services/pharmacyService';
+import hospitalService from '../../services/hospitalService';
+import type { HospitalDetails } from '../../services/hospitalService';
+import { patientService } from '../../services/patientService';
 
 interface DispensingItem {
   id: string;
   medicine_id: string;
   batch_id: string;
+  batch_number?: string;
   medicine_name?: string;
   quantity: number;
   unit_price: number;
@@ -19,6 +23,7 @@ interface DispensingRecord {
   dispensing_number: string;
   patient_id: string;
   patient_name?: string;
+  patient_reference_number?: string;
   sale_type: string;
   status: string;
   total_amount: number;
@@ -31,6 +36,9 @@ interface DispensingRecord {
   items: DispensingItem[];
 }
 
+const fmt = (n: number) =>
+  new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
+
 const DispensingBilling: React.FC = () => {
   const { dispensingId } = useParams<{ dispensingId: string }>();
   const navigate = useNavigate();
@@ -39,6 +47,8 @@ const DispensingBilling: React.FC = () => {
   const { showToast } = useToast();
 
   const [dispensing, setDispensing] = useState<DispensingRecord | null>(null);
+  const [hospital, setHospital] = useState<HospitalDetails | null>(null);
+  const [patientPrn, setPatientPrn] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
 
@@ -72,6 +82,28 @@ const DispensingBilling: React.FC = () => {
 
     loadDispensing();
   }, [dispensingId, location.state, showToast, navigate]);
+
+  useEffect(() => {
+    hospitalService.getHospitalDetails().then(setHospital).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const loadPatientPrn = async () => {
+      if (!dispensing?.patient_id) {
+        setPatientPrn('');
+        return;
+      }
+
+      try {
+        const patient = await patientService.getPatient(dispensing.patient_id);
+        setPatientPrn(patient?.patient_reference_number || '');
+      } catch {
+        setPatientPrn('');
+      }
+    };
+
+    loadPatientPrn();
+  }, [dispensing?.patient_id]);
 
   const handlePaymentAndPrint = async () => {
     if (!dispensing) return;
@@ -122,6 +154,9 @@ const DispensingBilling: React.FC = () => {
     return null;
   }
 
+  const billTimestamp = dispensing.dispensed_at || dispensing.created_at;
+  const resolvedPrn = patientPrn || dispensing.patient_reference_number || '';
+
   return (
     <div className="max-w-6xl mx-auto p-6">
       {/* Header - Hidden when printing */}
@@ -136,22 +171,6 @@ const DispensingBilling: React.FC = () => {
           </nav>
           <h1 className="text-2xl font-bold text-slate-900">Dispensing Invoice</h1>
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={handlePrint}
-            className="px-4 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2"
-          >
-            <span className="material-symbols-outlined text-sm">print</span> Print
-          </button>
-          <button
-            onClick={handlePaymentAndPrint}
-            disabled={processing}
-            className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 flex items-center gap-2"
-          >
-            <span className="material-symbols-outlined text-sm">payment</span>
-            {processing ? 'Processing...' : 'Confirm Payment & Print'}
-          </button>
-        </div>
       </div>
 
       {/* Invoice Card */}
@@ -161,19 +180,26 @@ const DispensingBilling: React.FC = () => {
           <div className="flex justify-between items-start">
             <div>
               <h2 className="text-2xl font-bold text-white print:text-slate-900">
-                Hospital Pharmacy
+                {hospital?.name || 'Hospital Pharmacy'}
               </h2>
               <p className="text-emerald-100 text-sm mt-1 print:text-slate-600">
-                Dispensing Invoice
+                Pharmacy Dispensing Bill
               </p>
+              {hospital && (
+                <p className="text-emerald-100/90 text-xs mt-1 print:text-slate-500">
+                  {[hospital.address_line_1, hospital.city, hospital.state_province, hospital.postal_code]
+                    .filter(Boolean)
+                    .join(', ')}
+                </p>
+              )}
             </div>
             <div className="text-right">
-              <div className="text-white/90 text-sm print:text-slate-600">Invoice Number</div>
+              <div className="text-white/90 text-sm print:text-slate-600">Dispensing Number</div>
               <div className="text-white font-bold text-lg print:text-slate-900">
                 {dispensing.dispensing_number}
               </div>
               <div className="text-white/80 text-xs mt-1 print:text-slate-500">
-                {new Date(dispensing.created_at).toLocaleString()}
+                {new Date(billTimestamp).toLocaleString()}
               </div>
             </div>
           </div>
@@ -185,14 +211,16 @@ const DispensingBilling: React.FC = () => {
             <div>
               <div className="text-xs text-slate-500 uppercase font-semibold mb-1">Bill To</div>
               <div className="font-semibold text-slate-900">{dispensing.patient_name || 'Walk-in Customer'}</div>
-              {dispensing.patient_id && (
-                <div className="text-sm text-slate-600 mt-1">Patient ID: {dispensing.patient_id}</div>
+              {(dispensing.patient_id || resolvedPrn) && (
+                <div className="text-sm text-slate-600 mt-1">
+                  PRN: {resolvedPrn || 'N/A'}
+                </div>
               )}
             </div>
             <div className="text-right">
               <div className="text-xs text-slate-500 uppercase font-semibold mb-1">Invoice Type</div>
               <div className="text-sm font-medium text-slate-900 capitalize">
-                {dispensing.sale_type.replace('_', ' ')}
+                Pharmacy Bill ({dispensing.sale_type.replace('_', ' ')})
               </div>
               <div className="text-xs text-slate-500 mt-1">
                 Status: <span className="font-medium text-emerald-600 capitalize">{dispensing.status}</span>
@@ -215,6 +243,9 @@ const DispensingBilling: React.FC = () => {
                 <th className="text-center text-xs font-semibold text-slate-600 uppercase py-2 print:text-slate-900">
                   Qty
                 </th>
+                <th className="text-left text-xs font-semibold text-slate-600 uppercase py-2 print:text-slate-900">
+                  Batch
+                </th>
                 <th className="text-right text-xs font-semibold text-slate-600 uppercase py-2 print:text-slate-900">
                   Unit Price
                 </th>
@@ -235,11 +266,14 @@ const DispensingBilling: React.FC = () => {
                   <td className="py-3 text-center text-sm text-slate-600 print:text-slate-900">
                     {item.quantity}
                   </td>
+                  <td className="py-3 text-sm text-slate-600 print:text-slate-900">
+                    {item.batch_number || '—'}
+                  </td>
                   <td className="py-3 text-right text-sm text-slate-600 print:text-slate-900">
-                    ₹{Number(item.unit_price).toFixed(2)}
+                    ₹{fmt(Number(item.unit_price))}
                   </td>
                   <td className="py-3 text-right text-sm font-semibold text-slate-900 print:text-slate-900">
-                    ₹{Number(item.total_price).toFixed(2)}
+                    ₹{fmt(Number(item.total_price))}
                   </td>
                 </tr>
               ))}
@@ -253,23 +287,23 @@ const DispensingBilling: React.FC = () => {
             <div className="w-64 space-y-2">
               <div className="flex justify-between text-sm text-slate-600 print:text-slate-700">
                 <span>Subtotal:</span>
-                <span className="font-medium">₹{Number(dispensing.total_amount).toFixed(2)}</span>
+                <span className="font-medium">₹{fmt(Number(dispensing.total_amount))}</span>
               </div>
               {dispensing.discount_amount > 0 && (
                 <div className="flex justify-between text-sm text-slate-600 print:text-slate-700">
                   <span>Discount:</span>
-                  <span className="font-medium text-red-600">-₹{Number(dispensing.discount_amount).toFixed(2)}</span>
+                  <span className="font-medium text-red-600">-₹{fmt(Number(dispensing.discount_amount))}</span>
                 </div>
               )}
               {dispensing.tax_amount > 0 && (
                 <div className="flex justify-between text-sm text-slate-600 print:text-slate-700">
                   <span>Tax:</span>
-                  <span className="font-medium">₹{Number(dispensing.tax_amount).toFixed(2)}</span>
+                  <span className="font-medium">₹{fmt(Number(dispensing.tax_amount))}</span>
                 </div>
               )}
               <div className="flex justify-between text-lg font-bold text-slate-900 pt-2 border-t border-slate-200 print:border-slate-900">
                 <span>Total:</span>
-                <span>₹{Number(dispensing.net_amount).toFixed(2)}</span>
+                <span>₹{fmt(Number(dispensing.net_amount))}</span>
               </div>
             </div>
           </div>
@@ -287,7 +321,7 @@ const DispensingBilling: React.FC = () => {
         <div className="px-8 py-6 bg-slate-50 border-t border-slate-200 print:hidden">
           <div className="flex justify-between items-center text-xs text-slate-500">
             <div>
-              Generated on {new Date().toLocaleString()}
+              Generated on {new Date(billTimestamp).toLocaleString()}
             </div>
             <div className="flex items-center gap-2">
               <span className="material-symbols-outlined text-sm">verified</span>
@@ -315,6 +349,23 @@ const DispensingBilling: React.FC = () => {
             </div>
           </div>
         </div>
+      </div>
+
+      <div className="mt-6 flex justify-end gap-2 print:hidden">
+        <button
+          onClick={handlePrint}
+          className="px-4 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+        >
+          <span className="material-symbols-outlined text-sm">print</span> Print
+        </button>
+        <button
+          onClick={handlePaymentAndPrint}
+          disabled={processing}
+          className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 flex items-center gap-2"
+        >
+          <span className="material-symbols-outlined text-sm">payment</span>
+          {processing ? 'Processing...' : 'Confirm Payment & Print'}
+        </button>
       </div>
 
       {/* Payment Instructions - Hidden when printing */}

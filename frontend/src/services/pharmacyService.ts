@@ -11,7 +11,7 @@ import type {
 export interface PendingPrescription {
   id: string;
   prescription_number: string;
-  status: 'finalized' | 'partially_dispensed' | 'dispensed';
+  status: 'finalized' | 'dispensed';
   patient_name: string;
   patient_reference_number?: string;
   patient_age?: number;
@@ -50,6 +50,11 @@ export interface DispenseItemData {
   unit_price: number;
 }
 
+export interface SkippedDispenseItemData {
+  prescription_item_id: string;
+  reason?: string;
+}
+
 export interface DispensingResult {
   dispensing_id: string;
   dispensing_number: string;
@@ -58,6 +63,32 @@ export interface DispensingResult {
   status: string;
   total_amount: number;
   items_dispensed: number;
+}
+
+export interface DispensingPreviewItem {
+  prescription_item_id: string;
+  medicine_id: string | null;
+  medicine_name: string;
+  quantity: number;
+  unit_price: number;
+  total_price: number;
+  status: 'to_dispense' | 'skipped' | 'already_dispensed';
+  prescribed_quantity?: number;
+  already_dispensed?: number;
+  remaining_quantity?: number;
+}
+
+export interface DispensingPreview {
+  prescription_id: string;
+  prescription_number: string;
+  items: DispensingPreviewItem[];
+  subtotal: number;
+  tax_amount: number;
+  discount_amount: number;
+  total_amount: number;
+  items_dispensed: number;
+  items_skipped: number;
+  warnings: string[];
 }
 
 export const pharmacyService = {
@@ -158,7 +189,7 @@ export const pharmacyService = {
   async getPendingPrescriptions(
     page = 1,
     limit = 20,
-    statusFilter?: 'pending' | 'partial' | 'dispensed',
+    statusFilter?: 'pending' | 'dispensed',
     doctorId?: string,
     search?: string
   ): Promise<{ total: number; page: number; limit: number; total_pages: number; data: PendingPrescription[] }> {
@@ -185,10 +216,12 @@ export const pharmacyService = {
   async dispensePrescription(
     prescriptionId: string,
     items: DispenseItemData[],
+    skippedItems?: SkippedDispenseItemData[],
     notes?: string
   ): Promise<{ success: boolean; message: string; data: DispensingResult }> {
     const res = await api.post(`/pharmacy/prescriptions/${prescriptionId}/dispense`, {
       items,
+      skipped_items: skippedItems || [],
       notes,
     });
     return res.data;
@@ -209,6 +242,20 @@ export const pharmacyService = {
    */
   async getDispensingRecord(dispensingId: string): Promise<any> {
     const res = await api.get(`/pharmacy/dispensing/${dispensingId}`);
+    return res.data;
+  },
+
+  /**
+   * Preview dispensing totals before submission
+   * Returns backend-calculated totals based on items to dispense
+   */
+  async previewDispensingTotals(
+    prescriptionId: string,
+    items: DispenseItemData[]
+  ): Promise<{ success: boolean; data: DispensingPreview }> {
+    const res = await api.post(`/pharmacy/prescriptions/${prescriptionId}/preview-dispensing`, {
+      items,
+    });
     return res.data;
   },
 };

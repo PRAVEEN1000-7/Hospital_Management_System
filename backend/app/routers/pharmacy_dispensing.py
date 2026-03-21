@@ -44,9 +44,8 @@ async def get_pending_prescriptions(
     
     **Status filters:**
     - `pending` → Finalized, not started dispensing
-    - `partial` → Partially dispensed, awaiting restock
     - `dispensed` → Fully dispensed (complete)
-    - (none) → Shows pending + partial (active work queue)
+    - (none) → Shows pending (active work queue)
     """
     try:
         result = svc.get_pending_prescriptions(
@@ -152,7 +151,7 @@ async def get_prescription_for_dispensing(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Dispense Medicines
+# Preview Dispensing Totals
 # ═══════════════════════════════════════════════════════════════════════════
 
 from pydantic import BaseModel, Field
@@ -166,7 +165,70 @@ class DispenseItemInput(BaseModel):
 
 class DispenseRequest(BaseModel):
     items: list[DispenseItemInput]
+    skipped_items: list[dict] = Field(default_factory=list)
     notes: Optional[str] = None
+
+class PreviewRequest(BaseModel):
+    items: list[DispenseItemInput]
+
+@router.post("/prescriptions/{prescription_id}/preview-dispensing")
+async def preview_dispensing_totals(
+    prescription_id: str,
+    request: PreviewRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Preview dispensing totals before submission.
+    
+    This endpoint calculates the expected total amount for a dispensing request
+    without actually dispensing the medicines. This allows the frontend to show
+    accurate totals to the pharmacist before they confirm the dispensing.
+    
+    **What this does:**
+    1. Validates prescription exists
+    2. Calculates totals based on items to dispense
+    3. Identifies skipped items
+    4. Returns itemized breakdown with totals
+    
+    **Response:**
+    - prescription_id: UUID
+    - prescription_number: String
+    - items: List of items with status (to_dispense/skipped) and prices
+    - subtotal: Total amount
+    - items_dispensed: Count of items to dispense
+    - items_skipped: Count of skipped items
+    - warnings: Any warnings
+    """
+    try:
+        # Convert Pydantic models to dicts
+        items = [item.model_dump() for item in request.items]
+        
+        # Call service
+        result = svc.preview_dispensing_totals(
+            db=db,
+            prescription_id=prescription_id,
+            items_to_dispense=items,
+        )
+        
+        return {
+            "success": True,
+            "data": result,
+        }
+    
+    except ValueError as ve:
+        logger.warning(f"Preview validation error: {ve}")
+        raise HTTPException(status_code=400, detail=str(ve))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error previewing dispensing totals: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to calculate dispensing totals")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Dispense Medicines
+# ═══════════════════════════════════════════════════════════════════════════
 
 @router.post("/prescriptions/{prescription_id}/dispense")
 async def dispense_prescription(
@@ -199,13 +261,13 @@ async def dispense_prescription(
     2. Checks stock availability in selected batches
     3. Reduces batch stock
     4. Updates prescription item dispensing status
-    5. Updates prescription status (dispensed/partially_dispensed)
+    5. Updates prescription status (pending/dispensed)
     6. Creates pharmacy_dispensing record
     7. Creates pharmacy_dispensing_items records
     
     **Response:**
     - dispensing_id: UUID of created dispensing record
-    - status: "dispensed" or "partially_dispensed"
+    - status: "dispensed" or "finalized"
     - total_amount: Total cost
     """
     try:
@@ -227,6 +289,7 @@ async def dispense_prescription(
             hospital_id=current_user.hospital_id,
             user_id=current_user.id,
             items_to_dispense=items,
+            skipped_items=request.skipped_items,
             notes=request.notes,
         )
         

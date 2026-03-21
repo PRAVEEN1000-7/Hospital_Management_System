@@ -62,6 +62,26 @@ const calculatePrescribedQuantity = (item: Pick<DispensingPrescriptionItem, 'fre
   return Math.ceil(dailyUnits * durationDays);
 };
 
+const getDisplayStatusLabel = (status: string) => {
+  if (status === 'finalized') return 'pending';
+  return status.replace('_', ' ');
+};
+
+const sanitizeClinicalNotes = (rawNotes?: string) => {
+  if (!rawNotes) return '';
+  const withoutDispensingAudit = rawNotes
+    .replace(/\[Dispensing [^\]]+\]\s*/g, '\n')
+    .replace(/(?:^|\s*\|\s*)Unable to dispense - all items skipped\.?/gi, '')
+    .replace(/(?:^|\s*\|\s*)Skipped items:[^\n]*/gi, '');
+
+  return withoutDispensingAudit
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join('\n')
+    .trim();
+};
+
 const DispensingScreen: React.FC = () => {
   const { prescriptionId } = useParams<{ prescriptionId: string }>();
   const [searchParams] = useSearchParams();
@@ -189,14 +209,102 @@ const DispensingScreen: React.FC = () => {
     );
   };
 
-  // Calculate totals
-  const calculateTotals = () => {
-    let subtotal = 0;
+  // Determine read-only mode early (before useEffect that uses it)
+  const isReadOnly = searchParams.get('mode') === 'view' || (prescription?.status === 'dispensed');
+  const clinicalNotesForDisplay = sanitizeClinicalNotes(prescription?.clinical_notes);
+
+  // Calculate totals from backend preview
+  const [previewData, setPreviewData] = useState<{
+    currentSubtotal: number;
+    overallDispensedValue: number;
+    itemsToDispense: number;
+    itemsSkipped: number;
+    totalAmount: number;
+  } | null>(null);
+
+  // Fetch preview totals from backend when items change
+  useEffect(() => {
+    // Don't fetch preview if loading, read-only, or no items
+    if (!prescriptionId || isReadOnly || !dispensingItems.length) {
+      setPreviewData(null);
+      return;
+    }
+
+    const fetchPreview = async () => {
+      try {
+        // Build items array for preview API
+        const itemsForPreview = dispensingItems
+          .filter((item) => !item.skip && !item.is_dispensed && item.dispensedQty > 0 && item.remainingQty > 0)
+          .map((item) => {
+            const selectedBatch = item.available_batches.find((b) => b.id === item.selectedBatchId);
+            const fallbackBatch = selectedBatch || item.available_batches[0];
+            return {
+              prescription_item_id: item.id,
+              medicine_id: item.medicine_id,
+              batch_id: item.selectedBatchId || '',
+              quantity: item.dispensedQty,
+              unit_price: Number(fallbackBatch?.selling_price || 0),
+            };
+          });
+
+        if (itemsForPreview.length === 0) {
+          // All items skipped or already dispensed
+          setPreviewData({
+            currentSubtotal: 0,
+            overallDispensedValue: 0,
+            itemsToDispense: 0,
+            itemsSkipped: dispensingItems.filter((item) => item.skip && !item.is_dispensed && item.remainingQty > 0).length,
+            totalAmount: 0,
+          });
+          return;
+        }
+
+        const result = await pharmacyService.previewDispensingTotals(prescriptionId, itemsForPreview);
+        
+        // Calculate overall dispensed value (including already dispensed)
+        let overallDispensedValue = 0;
+        dispensingItems.forEach((item) => {
+          const selectedBatch = item.available_batches.find((b) => b.id === item.selectedBatchId);
+          const fallbackBatch = selectedBatch || item.available_batches[0];
+          const price = fallbackBatch?.selling_price || 0;
+          overallDispensedValue += (item.dispensed_quantity || 0) * price;
+        });
+
+        setPreviewData({
+          currentSubtotal: Number(result?.data?.subtotal || 0),
+          overallDispensedValue: overallDispensedValue + Number(result?.data?.subtotal || 0),
+          itemsToDispense: Number(result?.data?.items_dispensed || 0),
+          itemsSkipped: Number(result?.data?.items_skipped || 0),
+          totalAmount: Number(result?.data?.total_amount || 0),
+        });
+      } catch (err: any) {
+        console.error('Failed to fetch preview totals:', err);
+        // Fallback to local calculation if preview fails
+        setPreviewData(null);
+      }
+    };
+
+    // Debounce the preview fetch
+    const timeoutId = setTimeout(fetchPreview, 300);
+    return () => clearTimeout(timeoutId);
+  }, [dispensingItems, prescriptionId, isReadOnly]);
+
+  // Use backend preview data if available, otherwise fallback to local calculation
+  const totals = previewData || (() => {
+    let currentSubtotal = 0;
+    let overallDispensedValue = 0;
     let itemsToDispense = 0;
     let itemsSkipped = 0;
 
     dispensingItems.forEach((item) => {
-      if (item.skip) {
+      const selectedBatch = item.available_batches.find((b) => b.id === item.selectedBatchId);
+      const fallbackBatch = selectedBatch || item.available_batches[0];
+      const price = fallbackBatch?.selling_price || 0;
+
+      // Includes already-dispensed quantity so pharmacists can see total dispensed value.
+      overallDispensedValue += (item.dispensed_quantity || 0) * price;
+
+      if (item.skip && !item.is_dispensed && item.remainingQty > 0) {
         itemsSkipped++;
         return;
       }
@@ -205,21 +313,19 @@ const DispensingScreen: React.FC = () => {
         return;
       }
 
-      const batch = item.available_batches.find((b) => b.id === item.selectedBatchId);
-      const price = batch?.selling_price || 0;
-
-      subtotal += item.dispensedQty * price;
+      currentSubtotal += item.dispensedQty * price;
+      overallDispensedValue += item.dispensedQty * price;
       itemsToDispense++;
     });
 
-    return { subtotal, itemsToDispense, itemsSkipped };
-  };
-
-  const totals = calculateTotals();
-  const isReadOnly = searchParams.get('mode') === 'view' || prescription?.status === 'dispensed';
+    return { currentSubtotal, overallDispensedValue, itemsToDispense, itemsSkipped };
+  })();
+  const currentTransactionTotal = Number((totals as any).currentSubtotal ?? (totals as any).subtotal ?? 0);
+  const overallDispensedTotal = Number((totals as any).overallDispensedValue ?? 0);
   const canSubmit =
     totals.itemsToDispense > 0 ||
     dispensingItems.every((item) => item.skip || item.is_dispensed || item.remainingQty <= 0);
+  const isSkipOnlySubmit = !isReadOnly && canSubmit && totals.itemsToDispense === 0;
 
   // Handle dispensing submission
   const handleDispense = async () => {
@@ -262,6 +368,12 @@ const DispensingScreen: React.FC = () => {
     try {
       // Prepare items for dispensing
       const itemsToDispense: DispenseItemData[] = [];
+      const skippedItems = dispensingItems
+        .filter((item) => item.skip && !item.is_dispensed && item.remainingQty > 0)
+        .map((item) => ({
+          prescription_item_id: item.id,
+          reason: item.skipReason || 'skipped',
+        }));
 
       const skipSummary = dispensingItems
         .filter((item) => item.skip && !item.is_dispensed)
@@ -299,7 +411,7 @@ const DispensingScreen: React.FC = () => {
           'Unable to dispense - all items skipped.',
           combinedNotes,
         ].filter(Boolean).join(' | ');
-        await pharmacyService.dispensePrescription(prescriptionId!, [], allSkippedNotes);
+        await pharmacyService.dispensePrescription(prescriptionId!, [], skippedItems, allSkippedNotes);
         showToast('success', 'Prescription closed — all items skipped and recorded.');
         navigate('/pharmacy/pending-prescriptions');
         return;
@@ -309,6 +421,7 @@ const DispensingScreen: React.FC = () => {
       const result = await pharmacyService.dispensePrescription(
         prescriptionId!,
         itemsToDispense,
+        skippedItems,
         combinedNotes || undefined
       );
 
@@ -369,7 +482,6 @@ const DispensingScreen: React.FC = () => {
 
   const statusColor: Record<string, string> = {
     finalized: 'bg-blue-100 text-blue-700 border-blue-300',
-    partially_dispensed: 'bg-orange-100 text-orange-700 border-orange-300',
     dispensed: 'bg-green-100 text-green-700 border-green-300',
   };
 
@@ -390,7 +502,7 @@ const DispensingScreen: React.FC = () => {
             <span className={`text-xs px-2.5 py-1 rounded-full border font-medium ${
               statusColor[prescription.status] || 'bg-slate-100 text-slate-700'
             }`}>
-              {prescription.status.replace('_', ' ')}
+              {getDisplayStatusLabel(prescription.status)}
             </span>
           </h1>
         </div>
@@ -496,10 +608,10 @@ const DispensingScreen: React.FC = () => {
                     <div className="text-sm text-slate-900">{prescription.diagnosis}</div>
                   </div>
                 )}
-                {prescription.clinical_notes && (
+                {clinicalNotesForDisplay && (
                   <div>
                     <div className="text-xs text-slate-500 uppercase font-semibold mb-1">Clinical Notes</div>
-                    <div className="text-sm text-slate-900">{prescription.clinical_notes}</div>
+                    <div className="text-sm text-slate-900 whitespace-pre-line break-words">{clinicalNotesForDisplay}</div>
                   </div>
                 )}
                 {/* Vitals Grid */}
@@ -803,8 +915,11 @@ const DispensingScreen: React.FC = () => {
                   )}
                 </div>
                 <div className="text-right">
-                  <div className="text-xs text-slate-500 uppercase font-semibold">Total Amount</div>
-                  <div className="text-2xl font-bold text-slate-900">₹{totals.subtotal.toFixed(2)}</div>
+                  <div className="text-xs text-slate-500 uppercase font-semibold">Current Transaction</div>
+                  <div className="text-2xl font-bold text-slate-900">₹{currentTransactionTotal.toFixed(2)}</div>
+                  <div className="text-[11px] text-slate-500 mt-1">
+                    Overall Dispensed: ₹{overallDispensedTotal.toFixed(2)}
+                  </div>
                 </div>
               </div>
 
@@ -832,7 +947,7 @@ const DispensingScreen: React.FC = () => {
                     ) : (
                       <span className="flex items-center justify-center gap-2">
                         <span className="material-symbols-outlined text-sm">check_circle</span>
-                        Confirm Dispense
+                        {isSkipOnlySubmit ? 'Close & Record Skips' : 'Confirm Dispense'}
                       </span>
                     )}
                   </button>

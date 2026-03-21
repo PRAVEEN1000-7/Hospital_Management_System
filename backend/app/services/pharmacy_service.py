@@ -677,7 +677,8 @@ def list_sales(
         query = query.filter(func.date(PharmacySale.sale_date) <= date_to)
 
     total = query.count()
-    items = query.order_by(PharmacySale.created_at.desc()).offset((page - 1) * limit).limit(limit).all()
+    # Sort by dispense/sale timestamp so UI Date column and row ordering match.
+    items = query.order_by(PharmacySale.sale_date.desc()).offset((page - 1) * limit).limit(limit).all()
     return {
         "total": total,
         "page": page,

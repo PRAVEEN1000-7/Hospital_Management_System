@@ -54,6 +54,7 @@ const AppointmentManagement: React.FC = () => {
 
   const role = user?.roles?.[0] || '';
   const canCollectFee = ['receptionist', 'cashier', 'admin', 'super_admin'].includes(role);
+  const canProgressConsultation = role !== 'receptionist';
 
   const fetchAppointments = useCallback(async () => {
     setLoading(true);
@@ -201,6 +202,7 @@ const AppointmentManagement: React.FC = () => {
           : 'Payment recorded (partial)'
       );
       fetchAppointments();
+      closeCollectFee();
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || 'Failed to record payment');
     } finally {
@@ -374,7 +376,7 @@ const AppointmentManagement: React.FC = () => {
                   <button onClick={() => setDetailAppt(appt)} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg" title="View">
                     <span className="material-symbols-outlined text-lg">visibility</span>
                   </button>
-                  {appt.status !== 'cancelled' && appt.status !== 'completed' && (
+                  {canProgressConsultation && appt.status !== 'cancelled' && appt.status !== 'completed' && (
                     <>
                       {(appt.status === 'scheduled' || appt.status === 'pending') && (
                         <button onClick={() => handleStatusChange(appt.id, 'confirmed')} className="p-1.5 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Confirm">
@@ -440,7 +442,7 @@ const AppointmentManagement: React.FC = () => {
                           <button onClick={() => setDetailAppt(appt)} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg" title="View">
                             <span className="material-symbols-outlined text-lg">visibility</span>
                           </button>
-                          {appt.status !== 'cancelled' && appt.status !== 'completed' && (
+                          {canProgressConsultation && appt.status !== 'cancelled' && appt.status !== 'completed' && (
                             <>
                               {(appt.status === 'scheduled' || appt.status === 'pending') && (
                                 <button onClick={() => handleStatusChange(appt.id, 'confirmed')} className="p-1.5 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Confirm">

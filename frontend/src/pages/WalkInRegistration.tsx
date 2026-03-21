@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useToast } from '../contexts/ToastContext';
 import walkInService from '../services/walkInService';
 import scheduleService from '../services/scheduleService';
@@ -413,10 +414,10 @@ const WalkInRegistration: React.FC = () => {
         <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm p-5 flex flex-col gap-4">
           {/* Doctor */}
           <div>
-            <label className="block text-xs font-bold text-slate-500 mb-1">Doctor <span className="text-slate-300">(optional)</span></label>
+            <label className="block text-xs font-bold text-slate-500 mb-1">Doctor </label>
             <select value={selectedDoctorId} onChange={(e) => setSelectedDoctorId(e.target.value as any)}
               className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none bg-white">
-              <option value="">Auto-assign (next available)</option>
+              <option value="">Choose Doctor</option>
               {doctors.map(d => <option key={d.doctor_id} value={d.doctor_id}>{d.name} — {d.specialization || 'General'}</option>)}
             </select>
           </div>

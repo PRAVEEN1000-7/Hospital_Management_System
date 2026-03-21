@@ -4,7 +4,7 @@ from datetime import date, time, datetime
 from decimal import Decimal
 
 
-VALID_APPOINTMENT_TYPES = ["scheduled", "walk-in"]
+VALID_APPOINTMENT_TYPES = ["scheduled", "walk-in", "walk_in", "follow-up", "follow_up", "referral"]
 VALID_APPOINTMENT_STATUSES = [
     "scheduled", "pending", "confirmed", "in-progress", "completed",
     "cancelled", "no-show", "rescheduled",
@@ -145,7 +145,7 @@ class DoctorLeaveResponse(BaseModel):
 
 class AppointmentCreate(BaseModel):
     patient_id: str
-    doctor_id: Optional[str] = None
+    doctor_id: str
     department_id: Optional[str] = None
     appointment_type: str = Field(default="scheduled")
     visit_type: Optional[str] = None
@@ -287,7 +287,7 @@ class PaginatedAppointmentResponse(BaseModel):
 
 class WalkInRegister(BaseModel):
     patient_id: str
-    doctor_id: Optional[str] = None
+    doctor_id: str
     chief_complaint: Optional[str] = None
     priority: str = Field(default="normal")
     consultation_fee: Optional[Decimal] = None

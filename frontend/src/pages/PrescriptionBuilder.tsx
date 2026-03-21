@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
@@ -13,6 +13,17 @@ import type { DoctorOption } from '../types/appointment';
 const FREQUENCY_OPTIONS = ['1-0-0', '0-1-0', '0-0-1', '1-0-1', '1-1-0', '0-1-1', '1-1-1', '1-1-1-1'];
 const DURATION_UNITS = ['days', 'weeks', 'months'];
 const ROUTE_OPTIONS = ['oral', 'topical', 'injection', 'inhalation', 'sublingual', 'rectal', 'nasal', 'ophthalmic', 'otic'];
+const FOOD_TIMING_OPTIONS = ['', 'Before food', 'After food'];
+
+const getDisplayMedicineName = (med: Medicine): string => {
+  if (!med.strength) return med.name;
+  const name = med.name.trim();
+  const strength = med.strength.trim();
+  if (name.toLowerCase().endsWith(strength.toLowerCase())) {
+    return name.slice(0, -strength.length).trim();
+  }
+  return name;
+};
 
 const computeAge = (p: Patient | null): string => {
   if (!p) return 'N/A';
@@ -95,6 +106,7 @@ const PrescriptionBuilder: React.FC = () => {
   const [activeMedBlockIdx, setActiveMedBlockIdx] = useState<number | null>(null);
   const [activeMedItemIdx, setActiveMedItemIdx] = useState<number | null>(null);
   const [activeMedResultIdx, setActiveMedResultIdx] = useState<number>(-1);
+  const medicineOptionRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   // Templates
   const [templates, setTemplates] = useState<PrescriptionTemplate[]>([]);
@@ -230,6 +242,11 @@ const PrescriptionBuilder: React.FC = () => {
     });
   }, [medicineResults]);
 
+  useEffect(() => {
+    if (activeMedResultIdx < 0) return;
+    medicineOptionRefs.current[activeMedResultIdx]?.scrollIntoView({ block: 'nearest' });
+  }, [activeMedResultIdx, medicineResults]);
+
   const selectPatient = (p: Patient) => {
     setPatient(p);
     setPatientId(p.id);
@@ -241,15 +258,10 @@ const PrescriptionBuilder: React.FC = () => {
   const selectMedicine = (med: Medicine, blockIdx: number, itemIdx: number) => {
     const newBlocks = [...blocks];
     const updatedItems = [...newBlocks[blockIdx].items];
-    // Strip strength from name if it's embedded (e.g. "Paracetamol 500mg" → "Paracetamol")
-    let cleanName = med.name;
-    if (med.strength && cleanName.toLowerCase().endsWith(med.strength.toLowerCase())) {
-      cleanName = cleanName.slice(0, -med.strength.length).trim();
-    }
     updatedItems[itemIdx] = {
       ...updatedItems[itemIdx],
       medicine_id: med.id,
-      medicine_name: cleanName,
+      medicine_name: getDisplayMedicineName(med),
       generic_name: med.generic_name,
       dosage: med.strength || '',
     };
@@ -279,6 +291,21 @@ const PrescriptionBuilder: React.FC = () => {
     setBlocks(newBlocks);
   };
 
+  const updateItemWithoutAutoAdd = (
+    blockIdx: number,
+    itemIdx: number,
+    field: keyof PrescriptionItemCreate,
+    value: unknown,
+  ) => {
+    setBlocks((prev) => {
+      const next = [...prev];
+      const updatedItems = [...next[blockIdx].items];
+      updatedItems[itemIdx] = { ...updatedItems[itemIdx], [field]: value };
+      next[blockIdx] = { ...next[blockIdx], items: updatedItems };
+      return next;
+    });
+  };
+
   const addItemToBlock = (blockIdx: number) => {
     const newBlocks = [...blocks];
     const updatedItems = [...newBlocks[blockIdx].items, { ...emptyItem(), display_order: newBlocks[blockIdx].items.length }];
@@ -296,6 +323,23 @@ const PrescriptionBuilder: React.FC = () => {
 
   /** Handle medicine name typing and trigger search */
   const handleMedicineNameChange = (blockIdx: number, itemIdx: number, value: string) => {
+    if (!value.trim()) {
+      setBlocks((prev) => {
+        const next = [...prev];
+        const updatedItems = [...next[blockIdx].items];
+        updatedItems[itemIdx] = {
+          ...emptyItem(),
+          display_order: updatedItems[itemIdx].display_order ?? itemIdx,
+        };
+        next[blockIdx] = { ...next[blockIdx], items: updatedItems };
+        return next;
+      });
+      setMedicineSearch('');
+      setMedicineResults([]);
+      setActiveMedResultIdx(-1);
+      return;
+    }
+
     updateItem(blockIdx, itemIdx, 'medicine_name', value);
     setMedicineSearch(value);
     setActiveMedBlockIdx(blockIdx);
@@ -313,13 +357,22 @@ const PrescriptionBuilder: React.FC = () => {
 
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setActiveMedResultIdx((idx) => Math.min(idx + 1, medicineResults.length - 1));
+      const baseIdx = activeMedResultIdx < 0 ? 0 : activeMedResultIdx;
+      const nextIdx = Math.min(baseIdx + 1, medicineResults.length - 1);
+      setActiveMedResultIdx(nextIdx);
+      if (nextIdx >= 0) {
+        updateItemWithoutAutoAdd(blockIdx, itemIdx, 'medicine_name', getDisplayMedicineName(medicineResults[nextIdx]));
+      }
       return;
     }
 
     if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setActiveMedResultIdx((idx) => Math.max(idx - 1, 0));
+      const nextIdx = Math.max(activeMedResultIdx - 1, 0);
+      setActiveMedResultIdx(nextIdx);
+      if (nextIdx >= 0) {
+        updateItemWithoutAutoAdd(blockIdx, itemIdx, 'medicine_name', getDisplayMedicineName(medicineResults[nextIdx]));
+      }
       return;
     }
 
@@ -768,7 +821,7 @@ const PrescriptionBuilder: React.FC = () => {
                       <div className="text-[10px] font-semibold text-slate-500 uppercase">Frequency</div>
                       <div className="text-[10px] font-semibold text-slate-500 uppercase">Duration</div>
                       <div className="text-[10px] font-semibold text-slate-500 uppercase">Route</div>
-                      <div className="text-[10px] font-semibold text-slate-500 uppercase">Instruction</div>
+                      <div className="text-[10px] font-semibold text-slate-500 uppercase">Food Timing</div>
                       <div className="text-[10px] font-semibold text-slate-500 uppercase text-center">×</div>
                     </div>
 
@@ -797,27 +850,22 @@ const PrescriptionBuilder: React.FC = () => {
                             className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
                             placeholder="Type medicine name..."
                           />
-                          {item.generic_name && (
-                            <p className="text-[9px] text-slate-400 mt-0.5 truncate">{item.generic_name}</p>
-                          )}
-                          {isSelectedOutOfStock && (
-                            <p className="text-[10px] text-red-600 mt-0.5 font-semibold">Out of stock now - doctor can still finalize</p>
-                          )}
                           {activeMedBlockIdx === blockIdx && activeMedItemIdx === itemIdx && medicineResults.length > 0 && (
                             <div className="absolute z-50 left-0 top-full mt-1 w-72 bg-white border border-slate-200 rounded-lg shadow-xl max-h-48 overflow-y-auto">
-                              {medicineResults.map(med => {
+                              {medicineResults.map((med, idx) => {
                                 const isOutOfStock = (med.total_stock ?? 0) <= 0;
                                 return (
                                 <button
                                   key={med.id}
+                                  ref={(el) => { medicineOptionRefs.current[idx] = el; }}
                                   onMouseDown={e => e.preventDefault()}
                                   onClick={() => selectMedicine(med, blockIdx, itemIdx)}
                                   onMouseEnter={() => {
-                                    const idx = medicineResults.findIndex((m) => m.id === med.id);
-                                    if (idx >= 0) setActiveMedResultIdx(idx);
+                                    setActiveMedResultIdx(idx);
+                                    updateItemWithoutAutoAdd(blockIdx, itemIdx, 'medicine_name', getDisplayMedicineName(med));
                                   }}
                                   className={`w-full text-left px-3 py-2 text-xs border-b border-slate-100 last:border-0 ${
-                                    medicineResults[activeMedResultIdx]?.id === med.id
+                                    activeMedResultIdx === idx
                                       ? 'bg-primary/10'
                                       : isOutOfStock
                                       ? 'bg-red-50 hover:bg-red-100'
@@ -897,15 +945,19 @@ const PrescriptionBuilder: React.FC = () => {
                           </select>
                         </div>
 
-                        {/* Instructions */}
+                        {/* Food timing */}
                         <div className="pr-1">
-                          <input
-                            type="text"
-                            value={item.instructions || ''}
-                            onChange={e => updateItem(blockIdx, itemIdx, 'instructions', e.target.value)}
-                            className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                            placeholder="e.g., After meals, with warm water..."
-                          />
+                          <select
+                            value={(item.instructions === 'Before food' || item.instructions === 'After food') ? item.instructions : ''}
+                            onChange={e => updateItem(blockIdx, itemIdx, 'instructions', e.target.value || '')}
+                            className="w-full px-1 py-1.5 border border-slate-200 rounded text-xs bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                          >
+                            {FOOD_TIMING_OPTIONS.map(option => (
+                              <option key={option || 'none'} value={option}>
+                                {option || 'Select'}
+                              </option>
+                            ))}
+                          </select>
                         </div>
 
                         {/* Delete */}
@@ -1228,7 +1280,6 @@ const PatientRxHistory: React.FC<{ patientId: string }> = ({ patientId }) => {
     draft: 'bg-yellow-100 text-yellow-700',
     finalized: 'bg-blue-100 text-blue-700',
     dispensed: 'bg-green-100 text-green-700',
-    partially_dispensed: 'bg-orange-100 text-orange-700',
   };
 
   return (

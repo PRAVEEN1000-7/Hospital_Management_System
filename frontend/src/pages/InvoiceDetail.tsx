@@ -33,6 +33,22 @@ const PAYMENT_MODES: { value: PaymentMode; label: string }[] = [
   { value: 'credit_card', label: 'Credit Card' },
 ];
 
+const INVOICE_TYPE_LABELS: Record<string, string> = {
+  opd: 'OPD Consultation Bill',
+  pharmacy: 'Pharmacy Medicine Bill',
+  optical: 'Optical Bill',
+  combined: 'Combined Bill',
+};
+
+const ITEM_TYPE_LABELS: Record<string, string> = {
+  consultation: 'Consultation',
+  medicine: 'Medicine',
+  optical_product: 'Optical Product',
+  service: 'Service',
+  procedure: 'Procedure',
+  registration: 'Registration',
+};
+
 const fmt = (n: number) =>
   new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
 
@@ -248,6 +264,8 @@ const InvoiceDetail: React.FC = () => {
   if (!invoice) return null;
 
   const isActionable = !['void', 'cancelled', 'paid'].includes(invoice.status);
+  const invoiceTypeLabel = INVOICE_TYPE_LABELS[invoice.invoice_type] || `${invoice.invoice_type} bill`;
+  const hasBatchData = invoice.items.some(item => Boolean(item.batch_number));
 
   return (
     <>
@@ -370,11 +388,14 @@ const InvoiceDetail: React.FC = () => {
               <div>
                 <p className="text-2xl font-bold text-primary">INVOICE</p>
                 <p className="text-slate-500 font-mono text-sm mt-1">#{invoice.invoice_number}</p>
-                <p className="text-slate-500 text-sm mt-0.5 capitalize">{invoice.invoice_type} billing</p>
+                <p className="text-slate-500 text-sm mt-0.5">{invoiceTypeLabel}</p>
               </div>
               <div className="text-right text-sm text-slate-600">
                 <p><span className="font-semibold">Date:</span> {new Date(invoice.invoice_date).toLocaleDateString('en-IN')}</p>
                 {invoice.due_date && <p><span className="font-semibold">Due:</span> {new Date(invoice.due_date).toLocaleDateString('en-IN')}</p>}
+                {invoice.appointment_id && (
+                  <p><span className="font-semibold">Appointment:</span> {invoice.appointment_id.slice(0, 8).toUpperCase()}</p>
+                )}
                 <span className={`inline-flex mt-2 px-2.5 py-0.5 rounded text-xs font-semibold ${STATUS_COLORS[invoice.status]}`}>
                   {STATUS_LABELS[invoice.status]}
                 </span>
@@ -401,6 +422,9 @@ const InvoiceDetail: React.FC = () => {
                   )}
                 </div>
               )}
+              <div className="mt-2 text-xs text-slate-500">
+                <span className="font-medium text-slate-700">Invoice Type:</span> {invoiceTypeLabel}
+              </div>
             </div>
           </div>
 
@@ -414,7 +438,9 @@ const InvoiceDetail: React.FC = () => {
                 <tr>
                   <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">#</th>
                   <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Description</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Batch #</th>
+                  {hasBatchData && (
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Batch #</th>
+                  )}
                   <th className="text-center px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Qty</th>
                   <th className="text-right px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Unit Price</th>
                   <th className="text-right px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Disc</th>
@@ -429,23 +455,25 @@ const InvoiceDetail: React.FC = () => {
                     <td className="px-4 py-3 text-slate-400">{i + 1}</td>
                     <td className="px-4 py-3">
                       <p className="font-medium text-slate-800">{item.description}</p>
-                      <p className="text-[11px] text-slate-400 capitalize">{item.item_type.replace('_', ' ')}</p>
+                      <p className="text-[11px] text-slate-400">
+                        {ITEM_TYPE_LABELS[item.item_type] || item.item_type.replace('_', ' ')}
+                      </p>
                     </td>
-                    <td className="px-4 py-3 text-xs text-slate-500">{item.batch_number || '—'}</td>
-                    <td className="px-4 py-3 text-center text-slate-600">{item.quantity}</td>
-                    <td className="px-4 py-3 text-right text-slate-600">₹{fmt(item.unit_price)}</td>
+                    {hasBatchData && (
+                      <td className="px-4 py-3 text-xs text-slate-500">{item.batch_number || '—'}</td>
+                    )}
+                    <td className="px-4 py-3 text-center text-slate-600">{Number(item.quantity)}</td>
+                    <td className="px-4 py-3 text-right text-slate-600">₹{fmt(Number(item.unit_price))}</td>
                     <td className="px-4 py-3 text-right text-green-600">
-                      {item.discount_amount > 0 ? `−₹${fmt(item.discount_amount)}` : '—'}
+                      {Number(item.discount_amount) > 0 ? `−₹${fmt(Number(item.discount_amount))}` : '—'}
                     </td>
                     <td className="px-4 py-3 text-right text-slate-500 text-xs">
-                      {item.tax_amount > 0
-                        ? `${Number(((item.tax_amount / (item.unit_price * item.quantity - item.discount_amount)) * 100).toFixed(1))}%`
-                        : '0%'}
+                      {`${Number(item.tax_rate || 0).toFixed(2)}%`}
                     </td>
                     <td className="px-4 py-3 text-right text-slate-500">
-                      {item.tax_amount > 0 ? `₹${fmt(item.tax_amount)}` : '—'}
+                      {Number(item.tax_amount) > 0 ? `₹${fmt(Number(item.tax_amount))}` : '—'}
                     </td>
-                    <td className="px-4 py-3 text-right font-semibold text-slate-900">₹{fmt(item.total_price)}</td>
+                    <td className="px-4 py-3 text-right font-semibold text-slate-900">₹{fmt(Number(item.total_price))}</td>
                   </tr>
                 ))}
               </tbody>

@@ -218,6 +218,28 @@ const NewPurchaseOrderPage: React.FC = () => {
     XLSX.writeFile(workbook, 'inventory_po_bulk_template.xlsx');
   };
 
+  const handleExportCurrentItems = () => {
+    if (items.length === 0 || (items.length === 1 && !items[0].item_name)) {
+      toast.error('No items to export');
+      return;
+    }
+    const exportRows = items.map((it, idx) => ({
+      item_no: idx + 1,
+      item_type: it.item_type,
+      item_id: it.item_id || '',
+      item_name: it.item_name,
+      quantity_ordered: it.quantity_ordered,
+      unit_price: it.unit_price,
+      total_price: it.quantity_ordered * it.unit_price,
+    }));
+    const worksheet = XLSX.utils.json_to_sheet(exportRows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'PO Items');
+    const fileName = `PO_Items_${new Date().toISOString().split('T')[0]}.xlsx`;
+    XLSX.writeFile(workbook, fileName);
+    toast.success(`Exported ${items.length} item(s) to Excel`);
+  };
+
   const handleBulkUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -408,6 +430,9 @@ const NewPurchaseOrderPage: React.FC = () => {
           <div className="flex items-center gap-2">
             <button onClick={handleDownloadTemplate} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200 transition-colors">
               <span className="material-symbols-outlined text-base">download</span>Template
+            </button>
+            <button onClick={handleExportCurrentItems} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-100 text-emerald-700 rounded-lg text-sm font-medium hover:bg-emerald-200 transition-colors">
+              <span className="material-symbols-outlined text-base">file_download</span>Export Items
             </button>
             <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-200 transition-colors cursor-pointer">
               <span className="material-symbols-outlined text-base">upload_file</span>{bulkUploading ? 'Uploading...' : 'Bulk Upload'}

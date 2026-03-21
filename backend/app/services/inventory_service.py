@@ -727,6 +727,11 @@ def _process_grn_acceptance(db: Session, grn: GoodsReceiptNote):
         if accepted <= 0:
             continue
 
+        # Skip items without item_id (manual entries without catalog mapping)
+        if not item.item_id:
+            logger.warning(f"Skipping GRN item without item_id: {item.item_name}")
+            continue
+
         # Calculate current balance
         last_movement = (
             db.query(StockMovement)
@@ -755,10 +760,10 @@ def _process_grn_acceptance(db: Session, grn: GoodsReceiptNote):
         )
         db.add(movement)
 
-        # ✅ FIX BUG #3: Create or update MedicineBatch for pharmacy dispensing
+        # Create or update MedicineBatch for pharmacy dispensing
         if item.item_type == "medicine":
             from ..models.pharmacy import MedicineBatch
-            
+
             batch = db.query(MedicineBatch).filter(
                 MedicineBatch.medicine_id == item.item_id,
                 MedicineBatch.batch_number == item.batch_number,

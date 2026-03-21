@@ -128,7 +128,7 @@ export interface GRNItem {
 
 export interface GRNItemCreate {
   item_type: string;
-  item_id: string;
+  item_id?: string;
   item_name?: string;
   batch_number?: string;
   manufactured_date?: string;

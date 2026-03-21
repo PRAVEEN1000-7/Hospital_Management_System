@@ -176,8 +176,9 @@ const GRNReceiptForm: React.FC = () => {
     }
 
     for (const item of items) {
-      if (!item.item_id) {
-        toast.error('All items must have a medicine selected');
+      // Check that item has either item_id (catalog item) or item_name (manual entry)
+      if (!item.item_id && !item.item_name) {
+        toast.error('All items must have a medicine/item selected');
         return false;
       }
       if (!item.batch_number) {

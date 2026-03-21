@@ -169,7 +169,7 @@ class PurchaseOrderResponse(BaseModel):
 
 class GRNItemCreate(BaseModel):
     item_type: str = Field(..., min_length=1, max_length=50)
-    item_id: str
+    item_id: Optional[str] = None
     item_name: Optional[str] = Field(None, max_length=200)
     batch_number: Optional[str] = Field(None, max_length=50)
     manufactured_date: Optional[date] = None

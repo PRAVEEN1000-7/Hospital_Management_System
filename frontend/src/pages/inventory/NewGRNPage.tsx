@@ -46,13 +46,16 @@ const NewGRNPage: React.FC = () => {
         po_item_id: it.id,
         item_type: (it.item_type as 'medicine' | 'optical_product') || 'medicine',
         item_id: it.item_id,
-        item_name: it.item_name || it.item_id,
+        item_name: it.item_name || 'Unknown Item',
         quantity_received: it.quantity_ordered - it.quantity_received,
         batch_number: '',
         expiry_date: '',
         unit_price: it.unit_price || 0,
       })));
-    }).catch(() => toast.error('Failed to load PO details'));
+    }).catch((err) => {
+      console.error('Failed to load PO details:', err);
+      toast.error('Failed to load PO details');
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPOId]);
 
@@ -86,7 +89,7 @@ const NewGRNPage: React.FC = () => {
         notes: notes || undefined,
         items: items.map(it => ({
           item_type: it.item_type,
-          item_id: it.item_id || '00000000-0000-0000-0000-000000000000',
+          item_id: it.item_id || undefined,
           item_name: it.item_name,
           quantity_received: it.quantity_received,
           batch_number: it.batch_number || undefined,

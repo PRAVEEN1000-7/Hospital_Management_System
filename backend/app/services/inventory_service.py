@@ -426,10 +426,20 @@ def create_purchase_order(
     db.flush()
 
     for item in data.items:
+        # Resolve item_id if provided, otherwise use None for manual entries
+        resolved_item_id = None
+        if item.item_id and item.item_id.strip():
+            try:
+                resolved_item_id = _resolve_item_id(db, item.item_type, item.item_id, getattr(item, "item_name", None))
+            except ValueError:
+                # If resolution fails, use None (manual entry)
+                pass
+        
         po_item = PurchaseOrderItem(
             purchase_order_id=po.id,
             item_type=item.item_type,
-            item_id=_resolve_item_id(db, item.item_type, item.item_id, getattr(item, "item_name", None)),
+            item_id=resolved_item_id,
+            item_name=item.item_name or "Unknown Item",
             quantity_ordered=item.quantity_ordered,
             unit_price=item.unit_price,
             total_price=item.total_price,
@@ -513,17 +523,25 @@ def _format_po_response(po: PurchaseOrder, db: Session) -> dict:
     """Build a PurchaseOrderResponse-compatible dict."""
     items = []
     for it in po.items:
+        # Use stored item_name, fallback to resolving from database if needed
+        item_name = it.item_name
+        if not item_name and it.item_id:
+            try:
+                item_name = _resolve_item_name_with_fallback(
+                    db,
+                    it.item_type,
+                    it.item_id if isinstance(it.item_id, uuid.UUID) else uuid.UUID(it.item_id),
+                    po.hospital_id,
+                    float(it.unit_price),
+                )
+            except (ValueError, AttributeError):
+                item_name = "Unknown Item"
+        
         items.append({
             "id": str(it.id),
             "item_type": it.item_type,
-            "item_id": str(it.item_id),
-            "item_name": _resolve_item_name_with_fallback(
-                db,
-                it.item_type,
-                it.item_id,
-                po.hospital_id,
-                float(it.unit_price),
-            ),
+            "item_id": str(it.item_id) if it.item_id else "",
+            "item_name": item_name or "Unknown Item",
             "quantity_ordered": it.quantity_ordered,
             "quantity_received": it.quantity_received or 0,
             "unit_price": float(it.unit_price),
@@ -576,10 +594,20 @@ def create_grn(
 
     for item in data.items:
         accepted = item.quantity_accepted if item.quantity_accepted is not None else item.quantity_received
+        # Resolve item_id if provided, otherwise use None for manual entries
+        resolved_item_id = None
+        if item.item_id and item.item_id.strip():
+            try:
+                resolved_item_id = _resolve_item_id(db, item.item_type, item.item_id, getattr(item, "item_name", None))
+            except ValueError:
+                # If resolution fails, use None (manual entry)
+                pass
+        
         grn_item = GRNItem(
             grn_id=grn.id,
             item_type=item.item_type,
-            item_id=_resolve_item_id(db, item.item_type, item.item_id, getattr(item, "item_name", None)),
+            item_id=resolved_item_id,
+            item_name=item.item_name or "Unknown Item",
             batch_number=item.batch_number,
             manufactured_date=item.manufactured_date,
             expiry_date=item.expiry_date,
@@ -800,17 +828,25 @@ def _update_po_receipt_status(db: Session, po_id: uuid.UUID):
 def _format_grn_response(grn: GoodsReceiptNote, db: Session) -> dict:
     items = []
     for it in grn.items:
+        # Use stored item_name, fallback to resolving from database if needed
+        item_name = it.item_name
+        if not item_name and it.item_id:
+            try:
+                item_name = _resolve_item_name_with_fallback(
+                    db,
+                    it.item_type,
+                    it.item_id if isinstance(it.item_id, uuid.UUID) else uuid.UUID(it.item_id),
+                    grn.hospital_id,
+                    float(it.unit_price),
+                )
+            except (ValueError, AttributeError):
+                item_name = "Unknown Item"
+        
         items.append({
             "id": str(it.id),
             "item_type": it.item_type,
-            "item_id": str(it.item_id),
-            "item_name": _resolve_item_name_with_fallback(
-                db,
-                it.item_type,
-                it.item_id,
-                grn.hospital_id,
-                float(it.unit_price),
-            ),
+            "item_id": str(it.item_id) if it.item_id else "",
+            "item_name": item_name or "Unknown Item",
             "batch_number": it.batch_number,
             "manufactured_date": it.manufactured_date,
             "expiry_date": it.expiry_date,

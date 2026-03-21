@@ -75,8 +75,9 @@ class PurchaseOrderItem(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     purchase_order_id = Column(UUID(as_uuid=True), ForeignKey("purchase_orders.id"), nullable=False)
-    item_type = Column(String(20), nullable=False)  # medicine, optical_product
-    item_id = Column(UUID(as_uuid=True), nullable=False)
+    item_type = Column(String(50), nullable=False)  # medicine, optical_product, or other
+    item_id = Column(UUID(as_uuid=True), nullable=True)  # Nullable for manual entries
+    item_name = Column(String(200), nullable=False)  # Store item name for display
     quantity_ordered = Column(Integer, nullable=False)
     quantity_received = Column(Integer, default=0)
     unit_price = Column(Numeric(12, 2), nullable=False)
@@ -120,8 +121,9 @@ class GRNItem(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     grn_id = Column(UUID(as_uuid=True), ForeignKey("goods_receipt_notes.id"), nullable=False)
-    item_type = Column(String(20), nullable=False)
-    item_id = Column(UUID(as_uuid=True), nullable=False)
+    item_type = Column(String(50), nullable=False)
+    item_id = Column(UUID(as_uuid=True), nullable=True)  # Nullable for manual entries
+    item_name = Column(String(200), nullable=False)  # Store item name for display
     batch_number = Column(String(50))
     manufactured_date = Column(Date)
     expiry_date = Column(Date)
@@ -142,8 +144,9 @@ class StockMovement(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=False)
-    item_type = Column(String(20), nullable=False)
-    item_id = Column(UUID(as_uuid=True), nullable=False)
+    item_type = Column(String(50), nullable=False)
+    item_id = Column(UUID(as_uuid=True), nullable=True)
+    item_name = Column(String(200))  # Store item name for display
     batch_id = Column(UUID(as_uuid=True))
     movement_type = Column(String(20), nullable=False)  # stock_in, sale, dispensing, return, adjustment, transfer, expired, damaged
     reference_type = Column(String(30))  # grn, dispensing, return, adjustment, transfer
@@ -166,8 +169,9 @@ class StockAdjustment(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=False)
     adjustment_number = Column(String(30), unique=True, nullable=False, index=True)
-    item_type = Column(String(20), nullable=False)
-    item_id = Column(UUID(as_uuid=True), nullable=False)
+    item_type = Column(String(50), nullable=False)
+    item_id = Column(UUID(as_uuid=True), nullable=True)
+    item_name = Column(String(200))  # Store item name for display
     batch_id = Column(UUID(as_uuid=True))
     adjustment_type = Column(String(20), nullable=False)  # increase, decrease, write_off
     quantity = Column(Integer, nullable=False)
@@ -208,8 +212,9 @@ class CycleCountItem(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     cycle_count_id = Column(UUID(as_uuid=True), ForeignKey("cycle_counts.id"), nullable=False)
-    item_type = Column(String(20), nullable=False)
-    item_id = Column(UUID(as_uuid=True), nullable=False)
+    item_type = Column(String(50), nullable=False)
+    item_id = Column(UUID(as_uuid=True), nullable=True)
+    item_name = Column(String(200))  # Store item name for display
     batch_id = Column(UUID(as_uuid=True))
     system_quantity = Column(Integer, nullable=False)
     counted_quantity = Column(Integer, nullable=False)

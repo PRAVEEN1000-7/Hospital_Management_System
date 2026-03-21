@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx';
 import { useToast } from '../../contexts/ToastContext';
 import inventoryService from '../../services/inventoryService';
 import pharmacyService from '../../services/pharmacyService';
+import productsService from '../../services/productsService';
 import SearchableSelect, { type SuggestionOption } from '../../components/common/SearchableSelect';
 import type { Supplier, PurchaseOrderCreate } from '../../types/inventory';
 import type { Medicine } from '../../types/pharmacy';
@@ -42,6 +43,11 @@ const NewPurchaseOrderPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [bulkUploading, setBulkUploading] = useState(false);
   const [searchInputId, setSearchInputId] = useState<string | null>(null);
+  
+  // Typeahead search state
+  const [productSuggestions, setProductSuggestions] = useState<Record<string, SuggestionOption[]>>({});
+  const [searchQueries, setSearchQueries] = useState<Record<number, string>>({});
+  const [loadingSuggestions, setLoadingSuggestions] = useState<Record<number, boolean>>({});
 
   useEffect(() => {
     inventoryService.getSuppliers(1, 100, '', true).then(r => setSuppliers(r.data)).catch(() => {});
@@ -139,8 +145,11 @@ const NewPurchaseOrderPage: React.FC = () => {
       // Selected from suggestions - auto-fill all details
       item.item_id = metadata.id as string || value;
       item.item_name = metadata.name as string;
-      item.unit_price = (metadata.price as number) || 0;
-      item.item_type = (metadata.type as string) || 'medicine';
+      item.unit_price = (metadata.price as number) || (metadata.selling_price as number) || 0;
+      item.item_type = (metadata.type as string) || (metadata.category as string) || 'medicine';
+      
+      // Additional auto-fill from product metadata
+      if (metadata.purchase_price) item.unit_price = metadata.purchase_price as number;
     } else if (value.trim()) {
       // Manual entry or typing - user typed a custom name
       item.item_name = value.trim();
@@ -156,9 +165,66 @@ const NewPurchaseOrderPage: React.FC = () => {
     setItems(updated);
   }, [items]);
 
-  // Build suggestions for searchable select
-  const getItemSuggestions = useCallback((itemType: string): SuggestionOption[] => {
+  // Fetch product suggestions with debouncing
+  const fetchProductSuggestions = useCallback(async (itemIndex: number, query: string, itemType: string) => {
+    if (!query || query.length < 2) {
+      setProductSuggestions(prev => ({ ...prev, [`${itemIndex}-${itemType}`]: [] }));
+      return;
+    }
+
+    setLoadingSuggestions(prev => ({ ...prev, [itemIndex]: true }));
+
+    try {
+      // Map item type to product category
+      const category = itemType === 'optical_product' ? 'optical' : itemType;
+      
+      // Fetch from products service
+      const suggestions = await productsService.searchProducts(query, {
+        category: category === 'medicine' || category === 'optical' ? category : undefined,
+        limit: 20,
+      });
+
+      // Format suggestions
+      const formattedSuggestions: SuggestionOption[] = suggestions.map(s => ({
+        id: s.metadata.id,
+        label: s.label,
+        sublabel: s.sublabel,
+        metadata: s.metadata,
+      }));
+
+      setProductSuggestions(prev => ({ ...prev, [`${itemIndex}-${itemType}`]: formattedSuggestions }));
+    } catch (error) {
+      console.error('Failed to fetch product suggestions:', error);
+      setProductSuggestions(prev => ({ ...prev, [`${itemIndex}-${itemType}`]: [] }));
+    } finally {
+      setLoadingSuggestions(prev => ({ ...prev, [itemIndex]: false }));
+    }
+  }, []);
+
+  // Debounced search effect
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      Object.entries(searchQueries).forEach(([itemIdxStr, query]) => {
+        const itemIdx = parseInt(itemIdxStr);
+        const item = items[itemIdx];
+        if (item && query && query.length >= 2) {
+          fetchProductSuggestions(itemIdx, query, item.item_type);
+        }
+      });
+    }, 300); // 300ms debounce
+
+    return () => clearTimeout(timer);
+  }, [searchQueries, items, fetchProductSuggestions]);
+
+  // Handle search input change for typeahead
+  const handleSearchChange = useCallback((itemIdx: number, query: string) => {
+    setSearchQueries(prev => ({ ...prev, [itemIdx]: query }));
+  }, []);
+
+  // Get suggestions for searchable select (combines previous items, medicines, and product search)
+  const getItemSuggestions = useCallback((itemType: string, itemIndex: number): SuggestionOption[] => {
     const suggestions: SuggestionOption[] = [];
+    const cacheKey = `${itemIndex}-${itemType}`;
 
     // Add previous items first (most recent)
     previousItems
@@ -180,15 +246,29 @@ const NewPurchaseOrderPage: React.FC = () => {
             id: m.id,
             label: `${m.name}${m.strength ? ` (${m.strength})` : ''}`,
             sublabel: m.generic_name || m.manufacturer || undefined,
-            metadata: { id: m.id, name: m.name, price: m.purchase_price || m.selling_price || 0, type: 'medicine' },
+            metadata: { 
+              id: m.id, 
+              name: m.name, 
+              price: m.purchase_price || m.selling_price || 0, 
+              type: 'medicine',
+              category: 'medicine',
+            },
           });
         }
       });
     }
 
+    // Add product search results (intelligent typeahead)
+    const productResults = productSuggestions[cacheKey] || [];
+    productResults.forEach(p => {
+      if (!suggestions.some(s => s.id === p.id)) {
+        suggestions.push(p);
+      }
+    });
+
     // Limit to 50 suggestions for performance
     return suggestions.slice(0, 50);
-  }, [previousItems, medicines]);
+  }, [previousItems, medicines, productSuggestions]);
 
   const handleMedicineSelect = (idx: number, medicineId: string) => {
     const selected = medicines.find((m) => m.id === medicineId);
@@ -505,10 +585,12 @@ const NewPurchaseOrderPage: React.FC = () => {
                     <SearchableSelect
                       value={item.item_name}
                       onChange={(val, meta) => handleItemSelect(idx, val, meta)}
-                      suggestions={getItemSuggestions(item.item_type)}
+                      suggestions={getItemSuggestions(item.item_type, idx)}
                       placeholder={item.item_type === 'medicine' ? 'Search medicine...' : 'Type item name...'}
                       disabled={!supplierId}
                       allowManualEntry={true}
+                      onSearchChange={(query) => handleSearchChange(idx, query)}
+                      loading={loadingSuggestions[idx] || false}
                     />
                   </td>
                   <td className="px-3 py-2">

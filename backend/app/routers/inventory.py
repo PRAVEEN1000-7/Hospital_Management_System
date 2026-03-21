@@ -330,9 +330,9 @@ async def approve_adjustment(
     adjustment_id: uuid.UUID,
     payload: StockAdjustmentUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(inventory_manage_roles),
+    current_user: User = Depends(require_any_role("super_admin", "admin")),
 ):
-    """Approve or reject a stock adjustment."""
+    """Approve or reject a stock adjustment (Admin/Super Admin only)."""
     adj = svc.approve_stock_adjustment(db, adjustment_id, payload, current_user.id)
     if not adj:
         raise HTTPException(status_code=404, detail="Adjustment not found or already processed")

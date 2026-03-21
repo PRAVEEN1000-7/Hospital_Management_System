@@ -251,17 +251,17 @@ const App: React.FC = () => {
                 </ProtectedRoute>
               } />
               <Route path="/pharmacy/pending-prescriptions" element={
-                <ProtectedRoute allowedRoles={['super_admin', 'admin', 'pharmacist', 'inventory_manager']}>
+                <ProtectedRoute allowedRoles={['super_admin', 'admin', 'pharmacist']}>
                   <PendingPrescriptions />
                 </ProtectedRoute>
               } />
               <Route path="/pharmacy/dispense/:prescriptionId" element={
-                <ProtectedRoute allowedRoles={['super_admin', 'admin', 'pharmacist', 'inventory_manager']}>
+                <ProtectedRoute allowedRoles={['super_admin', 'admin', 'pharmacist']}>
                   <DispensingScreen />
                 </ProtectedRoute>
               } />
               <Route path="/pharmacy/dispensing/:dispensingId/billing" element={
-                <ProtectedRoute allowedRoles={['super_admin', 'admin', 'pharmacist', 'cashier', 'inventory_manager']}>
+                <ProtectedRoute allowedRoles={['super_admin', 'admin', 'pharmacist', 'cashier']}>
                   <DispensingBilling />
                 </ProtectedRoute>
               } />

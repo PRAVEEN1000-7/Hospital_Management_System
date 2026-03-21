@@ -65,7 +65,7 @@ const Layout: React.FC = () => {
     const allowedSet = new Set(allowed.map(a => String(a).trim().toLowerCase()));
     return effectiveRoles.some(r => allowedSet.has(r));
   };
-  const hasPendingPrescriptionAccess = hasRole('pharmacist', 'admin', 'super_admin', 'inventory_manager');
+  const hasPendingPrescriptionAccess = hasRole('pharmacist', 'admin', 'super_admin');
   const canAccessPatients = hasRole('super_admin', 'admin', 'receptionist', 'nurse', 'pharmacist', 'doctor');
 
   useEffect(() => {
@@ -365,7 +365,7 @@ const Layout: React.FC = () => {
   const pharmacyItems: { to: string; label: string; icon: string; badge?: number }[] = [];
 
   if (hasRole('super_admin', 'admin', 'pharmacist', 'inventory_manager')) {
-    if (hasRole('pharmacist') && !hasRole('super_admin', 'admin', 'inventory_manager')) {
+    if (hasRole('pharmacist') && !hasRole('super_admin', 'admin')) {
       // Simplified pharmacy menu for pharmacists - essential items only
       pharmacyItems.push(
         { to: '/pharmacy/medicines', label: 'Medicines', icon: 'medication' },
@@ -377,8 +377,8 @@ const Layout: React.FC = () => {
         },
         { to: '/pharmacy/sales', label: 'Sales', icon: 'point_of_sale' }
       );
-    } else {
-      // Full pharmacy menu for admin/super_admin/inventory_manager
+    } else if (hasRole('super_admin', 'admin')) {
+      // Full pharmacy menu for admin/super_admin
       pharmacyItems.push(
         { to: '/pharmacy', label: 'Dashboard', icon: 'dashboard' },
         { to: '/pharmacy/medicines', label: 'Medicines', icon: 'medication' },
@@ -388,6 +388,13 @@ const Layout: React.FC = () => {
           icon: 'queue',
           badge: pendingPrescriptionCount > 0 ? pendingPrescriptionCount : undefined,
         },
+        { to: '/pharmacy/sales', label: 'Sales', icon: 'point_of_sale' },
+        { to: '/pharmacy/stock-adjustments', label: 'Stock Adjustments', icon: 'tune' },
+      );
+    } else if (hasRole('inventory_manager')) {
+      // Inventory manager - no access to pending prescriptions
+      pharmacyItems.push(
+        { to: '/pharmacy/medicines', label: 'Medicines', icon: 'medication' },
         { to: '/pharmacy/sales', label: 'Sales', icon: 'point_of_sale' },
         { to: '/pharmacy/stock-adjustments', label: 'Stock Adjustments', icon: 'tune' },
       );

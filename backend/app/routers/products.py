@@ -51,8 +51,66 @@ async def list_products(
         db, current_user.hospital_id, page, limit,
         category=category, search=search, is_active=is_active,
     )
-    data = [ProductResponse.model_validate(p) for p in result["data"]]
+    # Convert UUID fields to strings for Pydantic validation
+    data = []
+    for p in result["data"]:
+        data.append({
+            "id": str(p.id),
+            "hospital_id": str(p.hospital_id),
+            "product_name": p.product_name,
+            "generic_name": p.generic_name,
+            "brand_name": p.brand_name,
+            "category": p.category,
+            "subcategory": p.subcategory,
+            "sku": p.sku,
+            "barcode": p.barcode,
+            "manufacturer": p.manufacturer,
+            "supplier_id": str(p.supplier_id) if p.supplier_id else None,
+            "purchase_price": float(p.purchase_price or 0),
+            "selling_price": float(p.selling_price or 0),
+            "mrp": float(p.mrp or 0),
+            "tax_percentage": float(p.tax_percentage or 0),
+            "unit_type": p.unit_type,
+            "pack_size": p.pack_size,
+            "min_stock_level": p.min_stock_level,
+            "max_stock_level": p.max_stock_level,
+            "reorder_level": p.reorder_level,
+            "storage_conditions": p.storage_conditions,
+            "shelf_life_days": p.shelf_life_days,
+            "requires_refrigeration": p.requires_refrigeration,
+            "is_hazardous": p.is_hazardous,
+            "is_narcotic": p.is_narcotic,
+            "requires_prescription": p.requires_prescription,
+            "is_active": p.is_active,
+            "is_deleted": p.is_deleted,
+            "created_by_name": None,  # Will be populated if needed
+            "updated_by_name": None,
+            "created_at": p.created_at,
+            "updated_at": p.updated_at,
+        })
     return {**result, "data": data}
+
+
+@products_router.get("/search", response_model=list)
+async def search_products(
+    q: str = Query(..., min_length=2, description="Search query (minimum 2 characters)"),
+    category: Optional[str] = Query(None, description="Filter by category (medicine, optical_product, etc.)"),
+    limit: int = Query(20, ge=1, le=100, description="Maximum number of results"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(inventory_view_roles),
+):
+    """
+    Intelligent typeahead search for products.
+    Returns simplified product suggestions for autocomplete dropdowns.
+    """
+    results = svc.search_products_for_typeahead(
+        db, 
+        current_user.hospital_id, 
+        query=q, 
+        category=category, 
+        limit=limit
+    )
+    return results
 
 
 @products_router.get("/{product_id}", response_model=ProductWithStockResponse)

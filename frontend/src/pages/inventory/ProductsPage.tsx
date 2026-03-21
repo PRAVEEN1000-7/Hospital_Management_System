@@ -8,8 +8,8 @@ import type { Product, ProductCreate, ProductUpdate } from '../../types/products
 const PRODUCTS_CATEGORIES = [
   { value: 'medicine', label: 'Medicine', icon: 'medication' },
   { value: 'optical', label: 'Optical', icon: 'eyeglasses' },
-  { value: 'surgical', label: 'Surgical', icon: 'surgery' },
-  { value: 'equipment', label: 'Equipment', icon: 'medical_services' },
+  { value: 'surgical', label: 'Surgical', icon: 'medical_information' },
+  { value: 'equipment', label: 'Equipment', icon: 'medical_equipment' },
   { value: 'laboratory', label: 'Laboratory', icon: 'biotech' },
   { value: 'disposable', label: 'Disposable', icon: 'clean_hands' },
   { value: 'other', label: 'Other', icon: 'category' },
@@ -323,10 +323,23 @@ const ProductsPage: React.FC = () => {
                       {formatCurrency(product.selling_price)}
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <div className="text-xs text-slate-600">
-                        <div>Min: <span className="font-medium">{product.min_stock_level}</span></div>
-                        <div>Reorder: <span className="font-medium">{product.reorder_level}</span></div>
-                        <div>Max: <span className="font-medium">{product.max_stock_level}</span></div>
+                      <div className="text-xs">
+                        {product.available_stock !== undefined ? (
+                          <>
+                            <div className="font-semibold text-slate-900 mb-1">
+                              Current: <span className={product.is_low_stock ? 'text-red-600' : 'text-emerald-600'}>{product.available_stock}</span>
+                            </div>
+                            <div className="text-slate-500">
+                              Min: {product.min_stock_level} | Reorder: {product.reorder_level} | Max: {product.max_stock_level}
+                            </div>
+                          </>
+                        ) : (
+                          <div className="text-slate-500">
+                            <div>Min: {product.min_stock_level}</div>
+                            <div>Reorder: {product.reorder_level}</div>
+                            <div>Max: {product.max_stock_level}</div>
+                          </div>
+                        )}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-center">

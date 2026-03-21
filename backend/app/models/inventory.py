@@ -76,7 +76,8 @@ class PurchaseOrderItem(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     purchase_order_id = Column(UUID(as_uuid=True), ForeignKey("purchase_orders.id"), nullable=False)
     item_type = Column(String(50), nullable=False)  # medicine, optical_product, or other
-    item_id = Column(UUID(as_uuid=True), nullable=True)  # Nullable for manual entries
+    item_id = Column(UUID(as_uuid=True), nullable=True)  # Nullable for manual entries (legacy: medicine_id, optical_product_id)
+    product_id = Column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=True)  # Proper FK to products table
     item_name = Column(String(200), nullable=False)  # Store item name for display
     quantity_ordered = Column(Integer, nullable=False)
     quantity_received = Column(Integer, default=0)
@@ -84,7 +85,9 @@ class PurchaseOrderItem(Base):
     total_price = Column(Numeric(12, 2), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+    # Relationships
     purchase_order = relationship("PurchaseOrder", back_populates="items")
+    product = relationship("Product", backref="purchase_order_items")
 
 
 class GoodsReceiptNote(Base):
@@ -122,7 +125,8 @@ class GRNItem(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     grn_id = Column(UUID(as_uuid=True), ForeignKey("goods_receipt_notes.id"), nullable=False)
     item_type = Column(String(50), nullable=False)
-    item_id = Column(UUID(as_uuid=True), nullable=True)  # Nullable for manual entries
+    item_id = Column(UUID(as_uuid=True), nullable=True)  # Nullable for manual entries (legacy: medicine_id, optical_product_id)
+    product_id = Column(UUID(as_uuid=True), ForeignKey("products.id"), nullable=True)  # Proper FK to products table
     item_name = Column(String(200), nullable=False)  # Store item name for display
     batch_number = Column(String(50))
     manufactured_date = Column(Date)
@@ -135,7 +139,9 @@ class GRNItem(Base):
     rejection_reason = Column(String(255))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+    # Relationships
     grn = relationship("GoodsReceiptNote", back_populates="items")
+    product = relationship("Product", backref="grn_items")
 
 
 class StockMovement(Base):

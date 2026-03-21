@@ -15,7 +15,7 @@ from datetime import date
 
 from ..database import get_db
 from ..models.user import User
-from ..dependencies import get_current_active_user
+from ..dependencies import get_current_active_user, require_any_role
 from ..services import dispensing_service as svc
 
 logger = logging.getLogger(__name__)
@@ -36,6 +36,7 @@ async def get_pending_prescriptions(
     search: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
+    _: User = Depends(require_any_role("pharmacist", "admin", "super_admin")),
 ):
     """
     Get prescriptions waiting to be dispensed.
@@ -73,6 +74,7 @@ async def get_prescription_for_dispensing(
     prescription_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
+    _: User = Depends(require_any_role("pharmacist", "admin", "super_admin")),
 ):
     """
     Get prescription details needed for dispensing.
@@ -174,6 +176,7 @@ async def dispense_prescription(
     request: DispenseRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
+    _: User = Depends(require_any_role("pharmacist", "admin", "super_admin")),
 ):
     """
     Dispense medicines from a prescription.

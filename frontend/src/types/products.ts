@@ -62,6 +62,11 @@ export interface Product {
   updated_by_name: string | null;
   created_at: string;
   updated_at: string;
+  // Stock fields (optional - populated when available)
+  total_stock?: number;
+  available_stock?: number;
+  total_value?: number;
+  is_low_stock?: boolean;
 }
 
 export interface ProductWithStock extends Product {

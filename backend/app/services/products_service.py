@@ -4,6 +4,7 @@ Business logic for product catalog and stock tracking.
 """
 import logging
 import math
+import uuid
 from datetime import date, datetime, timedelta
 from typing import Optional, List
 
@@ -285,6 +286,87 @@ def get_expiring_items(
     return items
 
 
+def search_products_for_typeahead(
+    db: Session,
+    hospital_id: uuid.UUID,
+    query: str,
+    category: Optional[str] = None,
+    limit: int = 20,
+) -> list:
+    """
+    Intelligent typeahead search for products.
+    Returns simplified product suggestions for autocomplete dropdowns.
+    
+    Searches by:
+    - Product name
+    - Generic name
+    - SKU
+    - Barcode
+    - Manufacturer
+    """
+    from ..models.products import Product
+    
+    search_term = f"%{query.strip()}%"
+    
+    # Build query
+    q = db.query(Product).filter(
+        Product.hospital_id == hospital_id,
+        Product.is_active == True,
+        Product.is_deleted == False,
+    )
+    
+    # Search across multiple fields
+    q = q.filter(
+        or_(
+            Product.product_name.ilike(search_term),
+            Product.generic_name.ilike(search_term),
+            Product.sku.ilike(search_term),
+            Product.barcode.ilike(search_term),
+            Product.manufacturer.ilike(search_term),
+        )
+    )
+    
+    # Filter by category if specified
+    if category:
+        q = q.filter(Product.category == category)
+    
+    # Order by relevance (name match first, then others)
+    q = q.order_by(
+        Product.product_name.ilike(f"{query.strip()}%").desc(),  # Starts with query first
+        Product.product_name,
+    )
+    
+    # Limit results
+    products = q.limit(limit).all()
+    
+    # Format results for typeahead
+    results = []
+    for p in products:
+        results.append({
+            "id": str(p.id),
+            "label": f"{p.product_name} ({p.generic_name or 'N/A'})",
+            "sublabel": f"{p.manufacturer or ''} | SKU: {p.sku or 'N/A'} | ₹{float(p.selling_price or 0):.2f}",
+            "metadata": {
+                "id": str(p.id),
+                "name": p.product_name,
+                "generic_name": p.generic_name,
+                "category": p.category,
+                "subcategory": p.subcategory,
+                "sku": p.sku,
+                "barcode": p.barcode,
+                "manufacturer": p.manufacturer,
+                "purchase_price": float(p.purchase_price or 0),
+                "selling_price": float(p.selling_price or 0),
+                "mrp": float(p.mrp or 0),
+                "unit_type": p.unit_type,
+                "pack_size": p.pack_size or 1,
+                "requires_prescription": p.requires_prescription,
+            }
+        })
+    
+    return results
+
+
 def get_stock_overview(
     db: Session,
     hospital_id: str,
@@ -474,71 +556,91 @@ def acknowledge_alert(db: Session, alert_id: str, user_id: str) -> Optional[Stoc
 
 def sync_stock_summary(db: Session, hospital_id: str, product_id: Optional[str] = None) -> None:
     """
-    Synchronize stock summary with actual stock movements.
+    Synchronize stock summary with actual stock movements and batches.
     Can sync all products or a specific product.
     """
     query = db.query(Product).filter(
         Product.hospital_id == hospital_id,
         Product.is_deleted == False
     )
-    
+
     if product_id:
         query = query.filter(Product.id == product_id)
-    
+
     products = query.all()
-    
+
     for product in products:
-        # Calculate stock from movements
+        # Calculate stock from movements (using product_id)
         movements = db.query(StockMovement).filter(
             StockMovement.hospital_id == hospital_id,
-            StockMovement.item_type == 'medicine',  # Assuming medicine type
-            StockMovement.item_id == product.id
+            StockMovement.product_id == product.id
         ).all()
-        
-        total_in = sum(m.quantity for m in movements if m.movement_type == 'stock_in')
-        total_out = sum(m.quantity for m in movements if m.movement_type in ['stock_out', 'sale', 'dispensing'])
-        
+
+        # If no movements by product_id, try by item_id (legacy support)
+        if not movements:
+            movements = db.query(StockMovement).filter(
+                StockMovement.hospital_id == hospital_id,
+                StockMovement.item_type == 'medicine',
+                StockMovement.item_id == product.id
+            ).all()
+
+        total_in = sum(m.quantity for m in movements if m.movement_type in ['stock_in', 'return'])
+        total_out = sum(m.quantity for m in movements if m.movement_type in ['stock_out', 'sale', 'dispensing', 'expired', 'damaged'])
+
         available_stock = total_in - total_out
-        
-        # Get batch info
+
+        # Get batch info from medicine_batches (using product_id)
         batches = db.query(MedicineBatch).filter(
-            MedicineBatch.medicine_id == product.id,
+            MedicineBatch.product_id == product.id,
             MedicineBatch.is_active == True
         ).all()
-        
+
+        # If no batches by product_id, try by medicine_id (legacy support)
+        if not batches:
+            batches = db.query(MedicineBatch).filter(
+                MedicineBatch.medicine_id == product.id,
+                MedicineBatch.is_active == True
+            ).all()
+
         total_batches = len(batches)
-        earliest_expiry = min((b.expiry_date for b in batches), default=None)
-        
-        # Calculate value
-        total_value = sum(b.quantity * b.purchase_price for b in batches if b.quantity)
-        
+        earliest_expiry = min((b.expiry_date for b in batches), default=None) if batches else None
+
+        # Calculate value from batches
+        total_value = sum(b.quantity * (b.purchase_price or 0) for b in batches if b.quantity)
+
+        # Calculate average cost price
+        avg_cost = sum(b.purchase_price or 0 for b in batches) / len(batches) if batches else 0
+
         # Update or create stock summary
         summary = db.query(StockSummary).filter(
             StockSummary.hospital_id == hospital_id,
             StockSummary.product_id == product.id
         ).first()
-        
+
         if summary:
-            summary.available_stock = available_stock
-            summary.total_stock = available_stock
+            summary.available_stock = max(0, available_stock)  # Prevent negative stock
+            summary.total_stock = max(0, total_in)
             summary.total_batches = total_batches
             summary.earliest_expiry = earliest_expiry
             summary.total_value = total_value
+            summary.avg_cost_price = avg_cost
             summary.is_low_stock = available_stock <= product.reorder_level
-            summary.is_expiring_soon = earliest_expiry and earliest_expiry <= date.today() + timedelta(days=30)
+            summary.is_expiring_soon = earliest_expiry and earliest_expiry <= date.today() + timedelta(days=90)
+            summary.updated_at = func.now()
         else:
             summary = StockSummary(
                 hospital_id=hospital_id,
                 product_id=product.id,
-                available_stock=available_stock,
-                total_stock=available_stock,
+                available_stock=max(0, available_stock),
+                total_stock=max(0, total_in),
                 total_batches=total_batches,
                 earliest_expiry=earliest_expiry,
                 total_value=total_value,
+                avg_cost_price=avg_cost,
                 is_low_stock=available_stock <= product.reorder_level,
-                is_expiring_soon=earliest_expiry and earliest_expiry <= date.today() + timedelta(days=30),
+                is_expiring_soon=earliest_expiry and earliest_expiry <= date.today() + timedelta(days=90),
             )
             db.add(summary)
-    
+
     db.commit()
-    logger.info(f"Stock summary synced for hospital {hospital_id}")
+    logger.info(f"Stock summary synced for hospital {hospital_id}, product={product_id}")

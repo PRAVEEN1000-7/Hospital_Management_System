@@ -105,6 +105,7 @@ class SupplierResponse(BaseModel):
 class PurchaseOrderItemCreate(BaseModel):
     item_type: str = Field(..., min_length=1, max_length=50)
     item_id: str
+    product_id: Optional[str] = Field(None)  # Proper FK to products table
     item_name: Optional[str] = Field(None, max_length=200)
     quantity_ordered: int = Field(..., gt=0)
     unit_price: float = Field(..., ge=0)
@@ -114,6 +115,7 @@ class PurchaseOrderItemResponse(BaseModel):
     id: str
     item_type: str
     item_id: str
+    product_id: Optional[str] = None  # Proper FK to products table
     item_name: Optional[str] = None
     quantity_ordered: int
     quantity_received: int
@@ -170,6 +172,7 @@ class PurchaseOrderResponse(BaseModel):
 class GRNItemCreate(BaseModel):
     item_type: str = Field(..., min_length=1, max_length=50)
     item_id: Optional[str] = None
+    product_id: Optional[str] = Field(None)  # Proper FK to products table
     item_name: Optional[str] = Field(None, max_length=200)
     batch_number: Optional[str] = Field(None, max_length=50)
     manufactured_date: Optional[date] = None
@@ -185,6 +188,7 @@ class GRNItemResponse(BaseModel):
     id: str
     item_type: str
     item_id: str
+    product_id: Optional[str] = None  # Proper FK to products table
     item_name: Optional[str] = None
     batch_number: Optional[str] = None
     manufactured_date: Optional[date] = None

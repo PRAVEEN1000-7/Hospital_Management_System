@@ -467,66 +467,66 @@ VALUES
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 16. MEDICINES  (sample formulary)
 -- ─────────────────────────────────────────────────────────────────────────────
-INSERT INTO medicines (id, hospital_id, name, generic_name, category, manufacturer, strength, unit_of_measure, units_per_pack, selling_price, purchase_price, tax_config_id, reorder_level)
+INSERT INTO medicines (id, hospital_id, name, generic_name, category, manufacturer, strength, unit_of_measure, units_per_pack, selling_price, purchase_price, tax_config_id, reorder_level, sku)
 VALUES
     ('50000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001',
      'Paracetamol 500mg', 'Paracetamol', 'tablet', 'PharmaCorp', '500mg', 'strip', 10,
-     5.00, 3.00, 'd0000000-0000-0000-0000-000000000005', 50),
+     5.00, 3.00, 'd0000000-0000-0000-0000-000000000005', 50, 'MED-TAB-PARACETAMOL500-001'),
 
     ('50000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000001',
      'Amoxicillin 250mg', 'Amoxicillin', 'capsule', 'MedLife', '250mg', 'strip', 10,
-     12.00, 7.50, 'd0000000-0000-0000-0000-000000000005', 30),
+     12.00, 7.50, 'd0000000-0000-0000-0000-000000000005', 30, 'MED-CAP-AMOXICILLIN250-002'),
 
     ('50000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000001',
      'Omeprazole 20mg', 'Omeprazole', 'capsule', 'GastroMed', '20mg', 'strip', 14,
-     8.00, 4.50, 'd0000000-0000-0000-0000-000000000005', 40),
+     8.00, 4.50, 'd0000000-0000-0000-0000-000000000005', 40, 'MED-CAP-OMEPRAZOLE20-003'),
 
     ('50000000-0000-0000-0000-000000000004', 'a0000000-0000-0000-0000-000000000001',
      'Atorvastatin 10mg', 'Atorvastatin', 'tablet', 'HeartPharma', '10mg', 'strip', 10,
-     15.00, 9.00, 'd0000000-0000-0000-0000-000000000005', 25),
+     15.00, 9.00, 'd0000000-0000-0000-0000-000000000005', 25, 'MED-TAB-ATORVASTATIN10-004'),
 
     ('50000000-0000-0000-0000-000000000005', 'a0000000-0000-0000-0000-000000000001',
      'Metformin 500mg', 'Metformin', 'tablet', 'DiabeCare', '500mg', 'strip', 10,
-     6.00, 3.50, 'd0000000-0000-0000-0000-000000000005', 50),
+     6.00, 3.50, 'd0000000-0000-0000-0000-000000000005', 50, 'MED-TAB-METFORMIN500-005'),
 
     ('50000000-0000-0000-0000-000000000006', 'a0000000-0000-0000-0000-000000000001',
      'Ciprofloxacin 500mg', 'Ciprofloxacin', 'tablet', 'AntiBioMed', '500mg', 'strip', 10,
-     18.00, 11.00, 'd0000000-0000-0000-0000-000000000005', 20),
+     18.00, 11.00, 'd0000000-0000-0000-0000-000000000005', 20, 'MED-TAB-CIPROFLOXACIN500-006'),
 
     ('50000000-0000-0000-0000-000000000007', 'a0000000-0000-0000-0000-000000000001',
      'Cetirizine 10mg', 'Cetirizine', 'tablet', 'AllergyFree', '10mg', 'strip', 10,
-     4.00, 2.00, 'd0000000-0000-0000-0000-000000000005', 40),
+     4.00, 2.00, 'd0000000-0000-0000-0000-000000000005', 40, 'MED-TAB-CETIRIZINE10-007'),
 
     ('50000000-0000-0000-0000-000000000008', 'a0000000-0000-0000-0000-000000000001',
      'Ibuprofen 400mg', 'Ibuprofen', 'tablet', 'PainRelief Inc', '400mg', 'strip', 10,
-     6.50, 4.00, 'd0000000-0000-0000-0000-000000000005', 40),
+     6.50, 4.00, 'd0000000-0000-0000-0000-000000000005', 40, 'MED-TAB-IBUPROFEN400-008'),
 
     ('50000000-0000-0000-0000-000000000009', 'a0000000-0000-0000-0000-000000000001',
      'Cough Syrup DX', 'Dextromethorphan', 'syrup', 'CoughCare', '100ml', 'bottle', 1,
-     8.50, 5.00, 'd0000000-0000-0000-0000-000000000005', 20),
+     8.50, 5.00, 'd0000000-0000-0000-0000-000000000005', 20, 'MED-SYR-COUGHDX-009'),
 
     ('50000000-0000-0000-0000-000000000010', 'a0000000-0000-0000-0000-000000000001',
      'Eye Drops Moxifloxacin', 'Moxifloxacin', 'drops', 'EyeCare Pharma', '5ml', 'bottle', 1,
-     12.00, 7.00, 'd0000000-0000-0000-0000-000000000005', 15);
+     12.00, 7.00, 'd0000000-0000-0000-0000-000000000005', 15, 'MED-DRO-EYEMOXI-010');
 
 -- Additional sample medicines for prescription builder autocomplete
-INSERT INTO medicines (hospital_id, name, generic_name, category, strength, manufacturer, selling_price, purchase_price, unit_of_measure, reorder_level, is_active) VALUES
+INSERT INTO medicines (hospital_id, name, generic_name, category, strength, manufacturer, selling_price, purchase_price, unit_of_measure, reorder_level, is_active, sku) VALUES
 -- Common tablets
-('a0000000-0000-0000-0000-000000000001', 'Paracetamol 650mg', 'Paracetamol', 'tablet', '650mg', 'Generic Pharma', 3.00, 2.00, 'strip', 50, true),
-('a0000000-0000-0000-0000-000000000001', 'Aspirin 75mg', 'Acetylsalicylic Acid', 'tablet', '75mg', 'Cardio Pharma', 4.50, 2.50, 'strip', 40, true),
-('a0000000-0000-0000-0000-000000000001', 'Amlodipine 5mg', 'Amlodipine Besylate', 'tablet', '5mg', 'BP Control Inc', 6.50, 4.00, 'strip', 40, true),
-('a0000000-0000-0000-0000-000000000001', 'Pantoprazole 40mg', 'Pantoprazole Sodium', 'tablet', '40mg', 'Gastro Med', 7.50, 4.50, 'strip', 45, true),
-('a0000000-0000-0000-0000-000000000001', 'Azithromycin 500mg', 'Azithromycin', 'tablet', '500mg', 'Antibiotics Plus', 15.00, 10.00, 'strip', 20, true),
-('a0000000-0000-0000-0000-000000000001', 'Vitamin D3 60000IU', 'Cholecalciferol', 'tablet', '60000IU', 'Vitamin World', 10.00, 6.00, 'strip', 25, true),
+('a0000000-0000-0000-0000-000000000001', 'Paracetamol 650mg', 'Paracetamol', 'tablet', '650mg', 'Generic Pharma', 3.00, 2.00, 'strip', 50, true, 'MED-TAB-PARACETAMOL650-011'),
+('a0000000-0000-0000-0000-000000000001', 'Aspirin 75mg', 'Acetylsalicylic Acid', 'tablet', '75mg', 'Cardio Pharma', 4.50, 2.50, 'strip', 40, true, 'MED-TAB-ASPIRIN75-012'),
+('a0000000-0000-0000-0000-000000000001', 'Amlodipine 5mg', 'Amlodipine Besylate', 'tablet', '5mg', 'BP Control Inc', 6.50, 4.00, 'strip', 40, true, 'MED-TAB-AMLODIPINE5-013'),
+('a0000000-0000-0000-0000-000000000001', 'Pantoprazole 40mg', 'Pantoprazole Sodium', 'tablet', '40mg', 'Gastro Med', 7.50, 4.50, 'strip', 45, true, 'MED-TAB-PANTOPRAZOLE40-014'),
+('a0000000-0000-0000-0000-000000000001', 'Azithromycin 500mg', 'Azithromycin', 'tablet', '500mg', 'Antibiotics Plus', 15.00, 10.00, 'strip', 20, true, 'MED-TAB-AZITHROMYCIN500-015'),
+('a0000000-0000-0000-0000-000000000001', 'Vitamin D3 60000IU', 'Cholecalciferol', 'tablet', '60000IU', 'Vitamin World', 10.00, 6.00, 'strip', 25, true, 'MED-TAB-VITAMIND3-016'),
 -- Capsules
-('a0000000-0000-0000-0000-000000000001', 'Vitamin E 400mg', 'Tocopherol', 'capsule', '400mg', 'Vitamin World', 8.50, 5.00, 'strip', 30, true),
-('a0000000-0000-0000-0000-000000000001', 'Fish Oil 1000mg', 'Omega-3 Fatty Acids', 'capsule', '1000mg', 'Supplement Co', 12.00, 7.00, 'bottle', 20, true),
+('a0000000-0000-0000-0000-000000000001', 'Vitamin E 400mg', 'Tocopherol', 'capsule', '400mg', 'Vitamin World', 8.50, 5.00, 'strip', 30, true, 'MED-CAP-VITAMINE400-017'),
+('a0000000-0000-0000-0000-000000000001', 'Fish Oil 1000mg', 'Omega-3 Fatty Acids', 'capsule', '1000mg', 'Supplement Co', 12.00, 7.00, 'bottle', 20, true, 'MED-CAP-FISHOIL1000-018'),
 -- Syrups
-('a0000000-0000-0000-0000-000000000001', 'Paracetamol Syrup', 'Paracetamol', 'syrup', '125mg/5ml', 'Pediatric Care', 45.00, 30.00, 'bottle', 15, true),
-('a0000000-0000-0000-0000-000000000001', 'Multivitamin Syrup', 'Multivitamin', 'syrup', '200ml', 'Child Health', 85.00, 60.00, 'bottle', 10, true),
+('a0000000-0000-0000-0000-000000000001', 'Paracetamol Syrup', 'Paracetamol', 'syrup', '125mg/5ml', 'Pediatric Care', 45.00, 30.00, 'bottle', 15, true, 'MED-SYR-PARACETAMOL-019'),
+('a0000000-0000-0000-0000-000000000001', 'Multivitamin Syrup', 'Multivitamin', 'syrup', '200ml', 'Child Health', 85.00, 60.00, 'bottle', 10, true, 'MED-SYR-MULTIVIT-020'),
 -- Injections
-('a0000000-0000-0000-0000-000000000001', 'Insulin Glargine', 'Insulin Glargine', 'injection', '100IU/ml', 'Diabetes Care Ltd', 450.00, 350.00, 'vial', 10, true),
-('a0000000-0000-0000-0000-000000000001', 'Ceftriaxone 1g', 'Ceftriaxone', 'injection', '1g', 'Antibiotics Plus', 85.00, 55.00, 'vial', 15, true);
+('a0000000-0000-0000-0000-000000000001', 'Insulin Glargine', 'Insulin Glargine', 'injection', '100IU/ml', 'Diabetes Care Ltd', 450.00, 350.00, 'vial', 10, true, 'MED-INJ-INSULINGL-021'),
+('a0000000-0000-0000-0000-000000000001', 'Ceftriaxone 1g', 'Ceftriaxone', 'injection', '1g', 'Antibiotics Plus', 85.00, 55.00, 'vial', 15, true, 'MED-INJ-CEFTRIAXONE1G-022');
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 17. MEDICINE BATCHES

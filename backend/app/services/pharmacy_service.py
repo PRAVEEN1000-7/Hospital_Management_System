@@ -51,13 +51,65 @@ def _normalize_medicine_payload(data: dict) -> dict:
 # ══════════════════════════════════════════════════
 
 def create_medicine(db: Session, hospital_id: uuid.UUID, data: dict, user_id: uuid.UUID) -> Medicine:
+    """
+    Create a new medicine and automatically create a corresponding Product entry.
+    This ensures all medicines are available in the central Product catalog for
+    inventory and purchase operations.
+    """
     payload = _filter_model_data(Medicine, _normalize_medicine_payload(data))
     if not payload.get("generic_name"):
         payload["generic_name"] = payload.get("name", "")
     if not payload.get("unit_of_measure"):
         payload["unit_of_measure"] = "Nos"
+    
+    # Create medicine
     med = Medicine(hospital_id=hospital_id, **payload)
     db.add(med)
+    db.flush()  # Get the medicine ID
+    
+    # Automatically create corresponding Product entry
+    try:
+        from ..models.products import Product
+        
+        # Map medicine fields to product fields
+        product_data = {
+            "hospital_id": hospital_id,
+            "product_name": payload.get("name", ""),
+            "generic_name": payload.get("generic_name", ""),
+            "brand_name": payload.get("manufacturer", ""),
+            "category": "medicine",  # All medicines are categorized as 'medicine'
+            "subcategory": payload.get("category", ""),  # tablet, capsule, syrup, etc.
+            "sku": payload.get("sku", ""),
+            "barcode": payload.get("barcode", ""),
+            "manufacturer": payload.get("manufacturer", ""),
+            "purchase_price": payload.get("purchase_price", 0),
+            "selling_price": payload.get("selling_price", 0),
+            "mrp": payload.get("selling_price", 0),  # Use selling_price as MRP
+            "unit_type": payload.get("unit_of_measure", "unit"),
+            "pack_size": payload.get("units_per_pack", 1),
+            "reorder_level": payload.get("reorder_level", 10),
+            "min_stock_level": 10,
+            "max_stock_level": payload.get("max_stock_level", 1000),
+            "storage_conditions": payload.get("storage_instructions", ""),
+            "requires_prescription": payload.get("requires_prescription", True),
+            "is_active": True,
+            "is_deleted": False,
+            "created_by": user_id,
+            "updated_by": user_id,
+        }
+        
+        product = Product(**product_data)
+        db.add(product)
+        db.flush()
+        
+        logger.info(
+            f"Created Product entry for medicine {med.name} (medicine_id={med.id}, product_id={product.id})"
+        )
+        
+    except Exception as e:
+        # Log error but don't fail medicine creation
+        logger.error(f"Failed to create Product for medicine {med.name}: {str(e)}")
+    
     db.commit()
     db.refresh(med)
     return med
@@ -122,23 +174,103 @@ def list_medicines(
 
 
 def update_medicine(db: Session, medicine_id: str | uuid.UUID, data: dict) -> Optional[Medicine]:
+    """
+    Update medicine details and automatically sync changes to the corresponding Product entry.
+    This keeps the Product catalog in sync with medicine updates.
+    """
     med = get_medicine_by_id(db, medicine_id)
     if not med:
         return None
+    
     normalized_data = _normalize_medicine_payload(data)
+    
+    # Update medicine
     for key, value in normalized_data.items():
         if hasattr(med, key) and value is not None:
             setattr(med, key, value)
+    
+    # Sync changes to Product table
+    try:
+        from ..models.products import Product
+        
+        # Find corresponding product by matching key fields
+        product = db.query(Product).filter(
+            Product.hospital_id == med.hospital_id,
+            Product.product_name == med.name,
+            Product.category == "medicine"
+        ).first()
+        
+        if product:
+            # Update product with medicine changes
+            update_fields = {
+                "generic_name": normalized_data.get("generic_name"),
+                "brand_name": normalized_data.get("manufacturer"),
+                "subcategory": normalized_data.get("category"),
+                "sku": normalized_data.get("sku"),
+                "barcode": normalized_data.get("barcode"),
+                "manufacturer": normalized_data.get("manufacturer"),
+                "purchase_price": normalized_data.get("purchase_price"),
+                "selling_price": normalized_data.get("selling_price"),
+                "mrp": normalized_data.get("selling_price"),
+                "unit_type": normalized_data.get("unit_of_measure"),
+                "pack_size": normalized_data.get("units_per_pack"),
+                "reorder_level": normalized_data.get("reorder_level"),
+                "max_stock_level": normalized_data.get("max_stock_level"),
+                "storage_conditions": normalized_data.get("storage_instructions"),
+                "requires_prescription": normalized_data.get("requires_prescription"),
+            }
+            
+            for field, value in update_fields.items():
+                if value is not None and hasattr(product, field):
+                    setattr(product, field, value)
+            
+            product.updated_by = med.hospital_id  # Will be set properly by caller context
+            
+            logger.info(
+                f"Updated Product entry for medicine {med.name} (product_id={product.id})"
+            )
+        
+    except Exception as e:
+        # Log error but don't fail medicine update
+        logger.error(f"Failed to update Product for medicine {med.name}: {str(e)}")
+    
     db.commit()
     db.refresh(med)
     return med
 
 
 def delete_medicine(db: Session, medicine_id: str | uuid.UUID) -> bool:
+    """
+    Soft delete medicine and automatically deactivate the corresponding Product entry.
+    This ensures the Product catalog reflects the medicine's inactive status.
+    """
     med = get_medicine_by_id(db, medicine_id)
     if not med:
         return False
+    
+    # Mark medicine as inactive
     med.is_active = False
+    
+    # Also deactivate corresponding Product
+    try:
+        from ..models.products import Product
+        
+        product = db.query(Product).filter(
+            Product.hospital_id == med.hospital_id,
+            Product.product_name == med.name,
+            Product.category == "medicine"
+        ).first()
+        
+        if product:
+            product.is_active = False
+            logger.info(
+                f"Deactivated Product entry for medicine {med.name} (product_id={product.id})"
+            )
+        
+    except Exception as e:
+        # Log error but don't fail medicine deletion
+        logger.error(f"Failed to deactivate Product for medicine {med.name}: {str(e)}")
+    
     db.commit()
     return True
 

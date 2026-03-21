@@ -39,6 +39,58 @@ const productsService = {
     await api.delete(`/inventory/products/${id}`);
   },
 
+  // ── Product Search (Typeahead) ────────────────────────────────────────────
+  async searchProducts(
+    query: string,
+    options?: { category?: string; limit?: number },
+  ): Promise<Array<{
+    id: string;
+    label: string;
+    sublabel?: string;
+    metadata: {
+      id: string;
+      name: string;
+      generic_name?: string;
+      category: string;
+      subcategory?: string;
+      sku?: string;
+      barcode?: string;
+      manufacturer?: string;
+      purchase_price: number;
+      selling_price: number;
+      mrp: number;
+      unit_type: string;
+      pack_size: number;
+      requires_prescription: boolean;
+    };
+  }>> {
+    const params: Record<string, string | number> = { q: query };
+    if (options?.category) params.category = options.category;
+    if (options?.limit) params.limit = options.limit;
+    const res = await api.get('/inventory/products/search', { params });
+    return res.data as Array<{
+      id: string;
+      label: string;
+      sublabel?: string;
+      metadata: {
+        id: string;
+        name: string;
+        generic_name?: string;
+        category: string;
+        subcategory?: string;
+        sku?: string;
+        barcode?: string;
+        manufacturer?: string;
+        purchase_price: number;
+        selling_price: number;
+        mrp: number;
+        unit_type: string;
+        pack_size: number;
+        requires_prescription: boolean;
+      };
+    }>;
+  },
+
   // ── Stock Overview ────────────────────────────────────────────────────────
   async getStockDashboard(): Promise<StockDashboard> {
     const res = await api.get<StockDashboard>('/inventory/stock/dashboard');

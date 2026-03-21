@@ -16,6 +16,8 @@ interface SearchableSelectProps {
   className?: string;
   onManualEntry?: (value: string) => void;
   allowManualEntry?: boolean;
+  onSearchChange?: (query: string) => void;
+  loading?: boolean;
 }
 
 /**
@@ -31,6 +33,8 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   className = '',
   onManualEntry,
   allowManualEntry = true,
+  onSearchChange,
+  loading = false,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState(value);
@@ -42,6 +46,16 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
   useEffect(() => {
     setSearchTerm(value);
   }, [value]);
+
+  // Notify parent of search term changes (for typeahead)
+  useEffect(() => {
+    if (onSearchChange) {
+      const timer = setTimeout(() => {
+        onSearchChange(searchTerm);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [searchTerm, onSearchChange]);
 
   // Filter suggestions based on search term
   const filteredSuggestions = useMemo(() => {
@@ -143,13 +157,17 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
           onFocus={handleInputFocus}
-          disabled={disabled}
-          placeholder={placeholder}
+          disabled={disabled || loading}
+          placeholder={loading ? 'Searching...' : placeholder}
           className="w-full px-2 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none pr-8"
           autoComplete="off"
         />
         <span className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 text-xs">
-          {isOpen ? '▲' : '▼'}
+          {loading ? (
+            <span className="animate-spin">⟳</span>
+          ) : (
+            isOpen ? '▲' : '▼'
+          )}
         </span>
       </div>
 

@@ -54,7 +54,7 @@ const LowStockAlertsPage: React.FC = () => {
           res = productsRes.map(p => ({
             product_id: p.product_id,
             item_id: p.product_id,
-            item_type: 'product',
+            item_type: p.category || 'medicine',  // Use actual product category (medicine, optical_product, etc.)
             item_name: p.product_name,
             product_name: p.product_name,
             generic_name: p.generic_name,
@@ -187,10 +187,18 @@ const LowStockAlertsPage: React.FC = () => {
       const selectedSuggestions = suggestions.filter(s => selectedItems.has(s.item_id));
       const items = selectedSuggestions.map(s => {
         const quantity = customQuantities.get(s.item_id) || s.suggestedQuantity;
+        // Determine the correct item_type from category
+        // Map product category to valid item_type values
+        const category = s.category || 'medicine';
+        const itemType = category === 'optical' || category === 'optical_product' 
+          ? 'optical_product' 
+          : 'medicine';  // Default to medicine for other categories
+        
         return {
-          item_type: s.item_type || 'product',
+          item_type: itemType,  // Use mapped category (medicine or optical_product)
           item_id: s.product_id || s.item_id,
-          product_id: s.product_id,  // Include product_id for products
+          product_id: s.product_id,  // Include product_id for proper FK relationship
+          item_name: s.product_name || s.item_name || 'Unknown Item',
           quantity_ordered: quantity,
           unit_price: s.purchase_price || 0,
           total_price: quantity * (s.purchase_price || 0),

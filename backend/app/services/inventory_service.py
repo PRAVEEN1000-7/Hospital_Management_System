@@ -37,13 +37,30 @@ logger = logging.getLogger(__name__)
 # ─── Helpers ────────────────────────────────────────────────────────────────
 
 def _resolve_item_name(db: Session, item_type: str, item_id: uuid.UUID) -> Optional[str]:
-    """Look up a medicine / optical product name for display."""
+    """Look up a medicine / optical product / product name for display."""
     if item_type == "medicine":
+        # First try to get from Medicine table
         med = db.query(Medicine.name).filter(Medicine.id == item_id).first()
-        return med[0] if med else None
+        if med:
+            return med[0]
+        # Fallback: try Products table (for product-based medicines)
+        product = db.query(Product.product_name).filter(Product.id == item_id).first()
+        return product[0] if product else None
+    
     if item_type == "optical_product":
+        # First try OpticalProduct table
         optical = db.query(OpticalProduct.name).filter(OpticalProduct.id == item_id).first()
-        return optical[0] if optical else None
+        if optical:
+            return optical[0]
+        # Fallback: try Products table
+        product = db.query(Product.product_name).filter(Product.id == item_id).first()
+        return product[0] if product else None
+    
+    if item_type == "product":
+        # Direct product lookup
+        product = db.query(Product.product_name).filter(Product.id == item_id).first()
+        return product[0] if product else None
+    
     return None
 
 
@@ -55,12 +72,28 @@ def _resolve_item_name_with_fallback(
     unit_price: Optional[float] = None,
 ) -> Optional[str]:
     """Resolve item name by id first, then by unique hospital price match for legacy rows."""
+    # Try direct lookup first
     by_id = _resolve_item_name(db, item_type, item_id)
     if by_id:
         return by_id
+    
+    # For product type, also try matching by name or price
+    if item_type == "product" and hospital_id:
+        # Try matching by unit_price if provided
+        if unit_price is not None:
+            by_price = db.query(Product.product_name).filter(
+                Product.hospital_id == hospital_id,
+                Product.is_active == True,
+                Product.is_deleted == False,
+                Product.purchase_price == unit_price,
+            ).limit(2).all()
+            if len(by_price) == 1:
+                return by_price[0][0]
+    
     if hospital_id is None or unit_price is None:
         return None
 
+    # Legacy medicine lookup by price
     if item_type == "medicine":
         by_purchase_price = db.query(Medicine.name).filter(
             Medicine.hospital_id == hospital_id,
@@ -78,6 +111,7 @@ def _resolve_item_name_with_fallback(
         if len(by_selling_price) == 1:
             return by_selling_price[0][0]
 
+    # Legacy optical product lookup by price
     if item_type == "optical_product":
         by_purchase_price = db.query(OpticalProduct.name).filter(
             OpticalProduct.hospital_id == hospital_id,
@@ -110,26 +144,34 @@ def _resolve_item_id(db: Session, item_type: str, item_id: str, item_name: Optio
             pass
 
     if item_type == "medicine":
-        # If we have a valid UUID, check if it exists
+        # If we have a valid UUID, check if it exists in Medicine table
         if parsed_id:
             exists = db.query(Medicine.id).filter(Medicine.id == parsed_id).first()
             if exists:
                 return parsed_id
-        # Fall back to name lookup
+            # Also check Products table (for product-based medicines)
+            product_exists = db.query(Product.id).filter(Product.id == parsed_id).first()
+            if product_exists:
+                return parsed_id
+        # Fall back to name lookup in Medicine table
         lookup_name = item_name or item_id
         if lookup_name and lookup_name.strip():
             match = db.query(Medicine.id).filter(func.lower(Medicine.name) == lookup_name.strip().lower()).first()
             if match:
                 return match[0]
-        # If UUID was provided but not found, return it anyway (might be a reference issue)
+        # If UUID was provided but not found, return it anyway
         if parsed_id:
             return parsed_id
 
     if item_type == "optical_product":
-        # If we have a valid UUID, check if it exists
+        # If we have a valid UUID, check if it exists in OpticalProduct table
         if parsed_id:
             exists = db.query(OpticalProduct.id).filter(OpticalProduct.id == parsed_id).first()
             if exists:
+                return parsed_id
+            # Also check Products table
+            product_exists = db.query(Product.id).filter(Product.id == parsed_id).first()
+            if product_exists:
                 return parsed_id
         # Fall back to name lookup
         lookup_name = item_name or item_id
@@ -141,10 +183,28 @@ def _resolve_item_id(db: Session, item_type: str, item_id: str, item_name: Optio
         if parsed_id:
             return parsed_id
 
+    if item_type == "product":
+        # Direct product lookup
+        if parsed_id:
+            exists = db.query(Product.id).filter(Product.id == parsed_id).first()
+            if exists:
+                return parsed_id
+        # Fall back to name lookup
+        lookup_name = item_name or item_id
+        if lookup_name and lookup_name.strip():
+            match = db.query(Product.id).filter(
+                func.lower(Product.product_name) == lookup_name.strip().lower()
+            ).first()
+            if match:
+                return match[0]
+        # If UUID was provided but not found, return it anyway
+        if parsed_id:
+            return parsed_id
+
     # Return the parsed_id if we have one
     if parsed_id:
         return parsed_id
-    
+
     # For other item types or when item_id is empty but item_name is provided,
     # return a placeholder UUID (the system will store it as-is for generic items)
     if item_name and item_name.strip():
@@ -153,7 +213,7 @@ def _resolve_item_id(db: Session, item_type: str, item_id: str, item_name: Optio
         import hashlib
         hash_bytes = hashlib.md5(f"{item_type}:{item_name}".encode()).digest()
         return uuid.UUID(bytes=hash_bytes)
-    
+
     raise ValueError(f"Could not resolve item_id for type {item_type}: item_id={item_id}, item_name={item_name}")
 
 
@@ -430,17 +490,35 @@ def create_purchase_order(
     for item in data.items:
         # Resolve item_id if provided, otherwise use None for manual entries
         resolved_item_id = None
+        resolved_product_id = None
+        
         if item.item_id and item.item_id.strip():
             try:
                 resolved_item_id = _resolve_item_id(db, item.item_type, item.item_id, getattr(item, "item_name", None))
+                
+                # If item_type is 'medicine' or 'optical_product', also resolve product_id
+                # This establishes the proper FK relationship to the products table
+                if item.item_type in ('medicine', 'optical_product'):
+                    from ..models.products import Product
+                    product = db.query(Product).filter(
+                        Product.id == resolved_item_id,
+                        Product.hospital_id == hospital_id,
+                        Product.is_deleted == False
+                    ).first()
+                    if product:
+                        resolved_product_id = product.id
+                        logger.debug(f"Resolved product_id {resolved_product_id} for item {item.item_name}")
+                        
             except ValueError:
                 # If resolution fails, use None (manual entry)
+                logger.warning(f"Failed to resolve item_id for {item.item_name}")
                 pass
-        
+
         po_item = PurchaseOrderItem(
             purchase_order_id=po.id,
             item_type=item.item_type,
             item_id=resolved_item_id,
+            product_id=resolved_product_id,  # Proper FK to products table
             item_name=item.item_name or "Unknown Item",
             quantity_ordered=item.quantity_ordered,
             unit_price=item.unit_price,
@@ -527,6 +605,19 @@ def _format_po_response(po: PurchaseOrder, db: Session) -> dict:
     for it in po.items:
         # Use stored item_name, fallback to resolving from database if needed
         item_name = it.item_name
+        
+        # Try to resolve from products table first (if product_id exists)
+        if not item_name and hasattr(it, 'product_id') and it.product_id:
+            try:
+                product = db.query(Product.product_name).filter(
+                    Product.id == it.product_id
+                ).first()
+                if product:
+                    item_name = product[0]
+            except Exception:
+                pass
+        
+        # Fallback to medicine/optical lookup
         if not item_name and it.item_id:
             try:
                 item_name = _resolve_item_name_with_fallback(
@@ -538,11 +629,12 @@ def _format_po_response(po: PurchaseOrder, db: Session) -> dict:
                 )
             except (ValueError, AttributeError):
                 item_name = "Unknown Item"
-        
+
         items.append({
             "id": str(it.id),
             "item_type": it.item_type,
             "item_id": str(it.item_id) if it.item_id else "",
+            "product_id": str(it.product_id) if hasattr(it, 'product_id') and it.product_id else None,
             "item_name": item_name or "Unknown Item",
             "quantity_ordered": it.quantity_ordered,
             "quantity_received": it.quantity_received or 0,
@@ -598,17 +690,34 @@ def create_grn(
         accepted = item.quantity_accepted if item.quantity_accepted is not None else item.quantity_received
         # Resolve item_id if provided, otherwise use None for manual entries
         resolved_item_id = None
+        resolved_product_id = None
+        
         if item.item_id and item.item_id.strip():
             try:
                 resolved_item_id = _resolve_item_id(db, item.item_type, item.item_id, getattr(item, "item_name", None))
+                
+                # If item_type is 'medicine' or 'optical_product', also resolve product_id
+                if item.item_type in ('medicine', 'optical_product'):
+                    from ..models.products import Product
+                    product = db.query(Product).filter(
+                        Product.id == resolved_item_id,
+                        Product.hospital_id == hospital_id,
+                        Product.is_deleted == False
+                    ).first()
+                    if product:
+                        resolved_product_id = product.id
+                        logger.debug(f"Resolved product_id {resolved_product_id} for GRN item {item.item_name}")
+                        
             except ValueError:
                 # If resolution fails, use None (manual entry)
+                logger.warning(f"Failed to resolve item_id for GRN item {item.item_name}")
                 pass
-        
+
         grn_item = GRNItem(
             grn_id=grn.id,
             item_type=item.item_type,
             item_id=resolved_item_id,
+            product_id=resolved_product_id,  # Proper FK to products table
             item_name=item.item_name or "Unknown Item",
             batch_number=item.batch_number,
             manufactured_date=item.manufactured_date,
@@ -686,6 +795,10 @@ def update_grn(
     grn = db.query(GoodsReceiptNote).filter(GoodsReceiptNote.id == grn_id).first()
     if not grn:
         return None
+    
+    # Store previous status to detect transitions
+    previous_status = grn.status
+    
     update_data = data.model_dump(exclude_unset=True)
     if "status" in update_data and update_data["status"] in ("verified", "accepted") and verifier_id:
         grn.verified_by = verifier_id
@@ -693,11 +806,14 @@ def update_grn(
         setattr(grn, k, v)
     db.commit()
     db.refresh(grn)
-    logger.info("GRN updated: %s → %s", grn.grn_number, grn.status)
+    logger.info("GRN updated: %s → %s (previous: %s)", grn.grn_number, grn.status, previous_status)
 
-    # When GRN is accepted, create stock-in movements and update PO received quantities
-    if grn.status == "accepted":
+    # When GRN transitions to "accepted", create stock-in movements and update PO received quantities
+    # Only process if transitioning FROM a non-accepted status TO accepted
+    if grn.status == "accepted" and previous_status != "accepted":
         _process_grn_acceptance(db, grn)
+    elif grn.status == "accepted" and previous_status == "accepted":
+        logger.warning("GRN %s is already accepted - skipping duplicate stock update", grn.grn_number)
 
     _notify_hospital_users(
         db,
@@ -714,7 +830,16 @@ def update_grn(
 
 
 def _process_grn_acceptance(db: Session, grn: GoodsReceiptNote):
-    """On GRN acceptance, record stock_in movements, update PO item received qty, and create medicine batches."""
+    """
+    On GRN acceptance, record stock_in movements, update PO item received qty, and update stock summary.
+    
+    This function is called when a GRN status transitions to 'accepted'.
+    It performs the following operations:
+    1. Creates stock movement records for audit trail
+    2. Updates StockSummary.available_stock for product-based items
+    3. Updates/creates MedicineBatch for legacy medicine items
+    4. Updates PO received quantities if linked to a PO
+    """
     grn_with_items = (
         db.query(GoodsReceiptNote)
         .options(joinedload(GoodsReceiptNote.items))
@@ -722,89 +847,197 @@ def _process_grn_acceptance(db: Session, grn: GoodsReceiptNote):
         .first()
     )
     if not grn_with_items:
+        logger.error("GRN %s not found with items", grn.id)
         return
 
+    items_processed = 0
+    items_skipped = 0
+    
     for item in grn_with_items.items:
-        accepted = item.quantity_accepted or item.quantity_received
+        accepted = item.quantity_accepted if item.quantity_accepted is not None else item.quantity_received
         if accepted <= 0:
+            logger.debug(f"Skipping item with zero/negative accepted quantity: {item.item_name}")
+            items_skipped += 1
             continue
 
         # Skip items without item_id (manual entries without catalog mapping)
         if not item.item_id:
-            logger.warning(f"Skipping GRN item without item_id: {item.item_name}")
+            logger.warning(f"Skipping GRN item without item_id (manual entry): {item.item_name}")
+            items_skipped += 1
             continue
 
-        # Calculate current balance
-        last_movement = (
-            db.query(StockMovement)
-            .filter(
-                StockMovement.hospital_id == grn.hospital_id,
-                StockMovement.item_type == item.item_type,
-                StockMovement.item_id == item.item_id,
-            )
-            .order_by(StockMovement.created_at.desc())
-            .first()
-        )
-        current_balance = last_movement.balance_after if last_movement else 0
-
-        movement = StockMovement(
-            hospital_id=grn.hospital_id,
-            item_type=item.item_type,
-            item_id=item.item_id,
-            movement_type="stock_in",
-            reference_type="grn",
-            reference_id=grn.id,
-            quantity=accepted,
-            balance_after=current_balance + accepted,
-            unit_cost=float(item.unit_price),
-            notes=f"GRN {grn.grn_number} accepted",
-            performed_by=grn.verified_by,
-        )
-        db.add(movement)
-
-        # Create or update MedicineBatch for pharmacy dispensing
-        if item.item_type == "medicine":
-            from ..models.pharmacy import MedicineBatch
-
-            batch = db.query(MedicineBatch).filter(
-                MedicineBatch.medicine_id == item.item_id,
-                MedicineBatch.batch_number == item.batch_number,
-            ).first()
-
-            if batch:
-                # Update existing batch
-                batch.quantity += accepted
-                batch.initial_quantity += accepted
-            else:
-                # Create new batch
-                batch = MedicineBatch(
-                    medicine_id=item.item_id,
-                    batch_number=item.batch_number or f"GRN-{grn.id.hex[:8]}",
-                    mfg_date=item.manufactured_date,
-                    expiry_date=item.expiry_date,
-                    initial_quantity=accepted,
-                    quantity=accepted,
-                    purchase_price=float(item.unit_price),
-                    selling_price=float(item.unit_price),
-                    is_active=True,
-                )
-                db.add(batch)
-
-        # Update PO item received quantity if this GRN links to a PO
-        if grn.purchase_order_id:
-            po_item = (
-                db.query(PurchaseOrderItem)
+        try:
+            # Calculate current balance from last movement
+            last_movement = (
+                db.query(StockMovement)
                 .filter(
-                    PurchaseOrderItem.purchase_order_id == grn.purchase_order_id,
-                    PurchaseOrderItem.item_id == item.item_id,
-                    PurchaseOrderItem.item_type == item.item_type,
+                    StockMovement.hospital_id == grn.hospital_id,
+                    StockMovement.item_type == item.item_type,
+                    StockMovement.item_id == item.item_id,
                 )
+                .order_by(StockMovement.created_at.desc())
                 .first()
             )
-            if po_item:
-                po_item.quantity_received = (po_item.quantity_received or 0) + accepted
+            current_balance = last_movement.balance_after if last_movement else 0
+            new_balance = current_balance + accepted
 
+            # Create stock movement record
+            movement = StockMovement(
+                hospital_id=grn.hospital_id,
+                item_type=item.item_type,
+                item_id=item.item_id,
+                movement_type="stock_in",
+                reference_type="grn",
+                reference_id=grn.id,
+                quantity=accepted,
+                balance_after=new_balance,
+                unit_cost=float(item.unit_price),
+                notes=f"GRN {grn.grn_number} accepted",
+                performed_by=grn.verified_by,
+            )
+            db.add(movement)
+
+            # Update stock_summary for product-based items
+            # Check if this item_id corresponds to a Product
+            product = db.query(Product).filter(
+                Product.id == item.item_id,
+                Product.hospital_id == grn.hospital_id,
+                Product.is_deleted == False,
+            ).first()
+
+            if product:
+                # Get or create stock_summary for this product
+                summary = db.query(StockSummary).filter(
+                    StockSummary.product_id == item.item_id,
+                    StockSummary.hospital_id == grn.hospital_id,
+                ).first()
+
+                if not summary:
+                    # Create new stock_summary
+                    logger.info(f"Creating new StockSummary for product {product.product_name}")
+                    summary = StockSummary(
+                        id=uuid.uuid4(),
+                        hospital_id=grn.hospital_id,
+                        product_id=item.item_id,
+                        total_stock=0,
+                        available_stock=0,
+                        reserved_stock=0,
+                        damaged_stock=0,
+                        expired_stock=0,
+                        total_batches=0,
+                        avg_cost_price=0,
+                        total_value=0,
+                    )
+                    db.add(summary)
+                    db.flush()  # Get the ID
+
+                # Store old values for logging
+                old_available_stock = summary.available_stock or 0
+                
+                # Update stock_summary with new stock
+                summary.total_stock = (summary.total_stock or 0) + accepted
+                summary.available_stock = old_available_stock + accepted
+
+                # Update total_value based on purchase price
+                if product.purchase_price:
+                    summary.total_value = summary.available_stock * float(product.purchase_price)
+                else:
+                    # Fallback to GRN item price if product has no purchase price
+                    summary.total_value = summary.available_stock * float(item.unit_price)
+
+                # Update avg_cost_price (weighted average if there was existing stock)
+                if old_available_stock > 0 and summary.avg_cost_price:
+                    # Weighted average: ((old_stock * old_price) + (new_stock * new_price)) / total_stock
+                    old_value = old_available_stock * float(summary.avg_cost_price)
+                    new_value = accepted * float(item.unit_price)
+                    summary.avg_cost_price = (old_value + new_value) / summary.total_stock
+                else:
+                    summary.avg_cost_price = float(item.unit_price)
+
+                # Check if low stock
+                summary.is_low_stock = summary.available_stock <= (product.reorder_level or 0)
+                
+                # Update batch count if batch_number is provided
+                if item.batch_number:
+                    summary.total_batches = (summary.total_batches or 0) + 1
+                
+                # Update earliest expiry if expiry_date is provided
+                if item.expiry_date:
+                    if not summary.earliest_expiry or item.expiry_date < summary.earliest_expiry:
+                        summary.earliest_expiry = item.expiry_date
+
+                # Update timestamps
+                summary.updated_at = func.now()
+                summary.last_movement_at = func.now()
+
+                logger.info(
+                    "Stock summary updated for product %s (%s): %d + %d = %d units | Value: %.2f",
+                    product.product_name, product.id, old_available_stock, accepted, 
+                    summary.available_stock, summary.total_value
+                )
+                items_processed += 1
+
+            # Create or update MedicineBatch for legacy medicine items (not mapped to Products)
+            if item.item_type == "medicine" and not product:
+                from ..models.pharmacy import MedicineBatch
+
+                batch = db.query(MedicineBatch).filter(
+                    MedicineBatch.medicine_id == item.item_id,
+                    MedicineBatch.batch_number == item.batch_number,
+                ).first()
+
+                if batch:
+                    # Update existing batch
+                    batch.quantity += accepted
+                    batch.initial_quantity += accepted
+                    logger.debug(f"Updated existing batch {batch.batch_number}: +{accepted} units")
+                else:
+                    # Create new batch
+                    batch = MedicineBatch(
+                        medicine_id=item.item_id,
+                        batch_number=item.batch_number or f"GRN-{grn.id.hex[:8]}",
+                        mfg_date=item.manufactured_date,
+                        expiry_date=item.expiry_date,
+                        initial_quantity=accepted,
+                        quantity=accepted,
+                        purchase_price=float(item.unit_price),
+                        selling_price=float(item.unit_price),
+                        is_active=True,
+                    )
+                    db.add(batch)
+                    logger.debug(f"Created new batch {batch.batch_number} with {accepted} units")
+
+            # Update PO item received quantity if this GRN links to a PO
+            if grn.purchase_order_id:
+                po_item = (
+                    db.query(PurchaseOrderItem)
+                    .filter(
+                        PurchaseOrderItem.purchase_order_id == grn.purchase_order_id,
+                        PurchaseOrderItem.item_id == item.item_id,
+                        PurchaseOrderItem.item_type == item.item_type,
+                    )
+                    .first()
+                )
+                if po_item:
+                    po_item.quantity_received = (po_item.quantity_received or 0) + accepted
+                    logger.debug(f"Updated PO item received quantity: +{accepted}")
+                    
+        except Exception as e:
+            logger.error(
+                f"Error processing GRN item {item.item_name} ({item.item_id}): {str(e)}",
+                exc_info=True
+            )
+            # Continue processing other items instead of failing the entire GRN
+            items_skipped += 1
+            continue
+
+    # Commit all changes (movements, stock summaries, batches, PO updates)
     db.commit()
+    
+    logger.info(
+        "GRN %s acceptance processed: %d items processed, %d items skipped",
+        grn.grn_number, items_processed, items_skipped
+    )
 
     # Update PO status if all items received
     if grn.purchase_order_id:
@@ -837,6 +1070,19 @@ def _format_grn_response(grn: GoodsReceiptNote, db: Session) -> dict:
     for it in grn.items:
         # Use stored item_name, fallback to resolving from database if needed
         item_name = it.item_name
+        
+        # Try to resolve from products table first (if product_id exists)
+        if not item_name and hasattr(it, 'product_id') and it.product_id:
+            try:
+                product = db.query(Product.product_name).filter(
+                    Product.id == it.product_id
+                ).first()
+                if product:
+                    item_name = product[0]
+            except Exception:
+                pass
+        
+        # Fallback to medicine/optical lookup
         if not item_name and it.item_id:
             try:
                 item_name = _resolve_item_name_with_fallback(
@@ -848,11 +1094,12 @@ def _format_grn_response(grn: GoodsReceiptNote, db: Session) -> dict:
                 )
             except (ValueError, AttributeError):
                 item_name = "Unknown Item"
-        
+
         items.append({
             "id": str(it.id),
             "item_type": it.item_type,
             "item_id": str(it.item_id) if it.item_id else "",
+            "product_id": str(it.product_id) if hasattr(it, 'product_id') and it.product_id else None,
             "item_name": item_name or "Unknown Item",
             "batch_number": it.batch_number,
             "manufactured_date": it.manufactured_date,
@@ -1179,10 +1426,77 @@ def approve_stock_adjustment(
         qty = adj.quantity if adj.adjustment_type == "increase" else -adj.quantity
 
         movement_batch_id = adj.batch_id
-        if adj.item_type == "medicine":
-            movement_batch_id = _apply_medicine_batch_delta(db, adj.item_id, qty, adj.batch_id)
-            balance_after = _get_medicine_batch_stock(db, adj.item_id)
+        balance_after = 0
+        
+        # Check if this is a product-based item (new system)
+        product = db.query(Product).filter(
+            Product.id == adj.item_id,
+            Product.hospital_id == adj.hospital_id,
+            Product.is_deleted == False,
+        ).first()
+        
+        if product:
+            # It's a product - use stock_summary and stock_movements (no medicine_batches)
+            # First, ensure stock_summary exists for this product
+            summary = db.query(StockSummary).filter(
+                StockSummary.product_id == adj.item_id,
+                StockSummary.hospital_id == adj.hospital_id,
+            ).first()
+            
+            if not summary:
+                # Create stock_summary if it doesn't exist
+                summary = StockSummary(
+                    id=uuid.uuid4(),
+                    hospital_id=adj.hospital_id,
+                    product_id=adj.item_id,
+                    total_stock=0,
+                    available_stock=0,
+                    reserved_stock=0,
+                    damaged_stock=0,
+                    expired_stock=0,
+                    total_batches=0,
+                    avg_cost_price=0,
+                    total_value=0,
+                )
+                db.add(summary)
+                db.flush()
+            
+            # Calculate new balance
+            current_balance = summary.available_stock or 0
+            balance_after = current_balance + qty
+            
+            # Validate we don't go negative
+            if balance_after < 0:
+                db.rollback()
+                raise ValueError(f"Insufficient stock for adjustment. Current: {current_balance}, Requested: {abs(qty)}")
+            
+            # Update stock_summary
+            if adj.adjustment_type == "increase":
+                summary.total_stock = (summary.total_stock or 0) + qty
+                summary.available_stock = balance_after
+            elif adj.adjustment_type == "decrease":
+                summary.total_stock = max(0, (summary.total_stock or 0) + qty)
+                summary.available_stock = balance_after
+            elif adj.adjustment_type == "write_off":
+                summary.damaged_stock = (summary.damaged_stock or 0) + abs(qty)
+                summary.available_stock = balance_after
+            
+            # Update total_value based on purchase price
+            if product.purchase_price:
+                summary.total_value = summary.available_stock * float(product.purchase_price)
+            
+            movement_batch_id = None  # Products don't use batches for adjustments
+            
+        elif adj.item_type == "medicine":
+            # Legacy medicine table (not product-based)
+            try:
+                movement_batch_id = _apply_medicine_batch_delta(db, adj.item_id, qty, adj.batch_id)
+                balance_after = _get_medicine_batch_stock(db, adj.item_id)
+            except ValueError as e:
+                db.rollback()
+                raise ValueError(f"Stock adjustment failed: {str(e)}")
         else:
+            # Other legacy item types
             current_balance = get_stock_level(db, adj.hospital_id, adj.item_type, adj.item_id)
             balance_after = current_balance + qty
 
@@ -1201,7 +1515,7 @@ def approve_stock_adjustment(
         )
         db.add(movement)
 
-        logger.info("Stock adjustment approved: %s (qty=%d)", adj.adjustment_number, qty)
+        logger.info("Stock adjustment approved: %s (qty=%d, balance_after=%d)", adj.adjustment_number, qty, balance_after)
 
     db.commit()
     db.refresh(adj)

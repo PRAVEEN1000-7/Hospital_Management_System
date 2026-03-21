@@ -116,6 +116,7 @@ export interface GRNItem {
   id: string;
   item_type: string;
   item_id: string;
+  product_id?: string | null;  // New: proper FK to products table
   item_name: string | null;
   batch_number: string | null;
   manufactured_date: string | null;
@@ -131,6 +132,7 @@ export interface GRNItem {
 export interface GRNItemCreate {
   item_type: string;
   item_id?: string;
+  product_id?: string;  // New: link to products table
   item_name?: string;
   batch_number?: string;
   manufactured_date?: string;

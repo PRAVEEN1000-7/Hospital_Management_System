@@ -87,7 +87,9 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 \q
 ```
 
-### 2.2 — Run Schema & Seed Scripts
+### 2.2 — Run Schema & Seed Scripts (Complete Setup with Inventory Module)
+
+> **Updated:** The database now includes the **Inventory Module** (Phase 4) with products, stock tracking, and purchase orders.
 
 The SQL files are located in the `database_hole/` folder. Run them **in order**:
 
@@ -95,8 +97,66 @@ The SQL files are located in the `database_hole/` folder. Run them **in order**:
 # Set password for non-interactive execution
 $env:PGPASSWORD = "HMS@2026"
 
-# 1. Create all tables (62 tables)
+# 1. Base schema (62 tables)
 psql -h localhost -U hms_user -d hms_db -f database_hole/01_schema.sql
+
+# 2. Base seed data (hospitals, departments, users, roles, patients, doctors)
+psql -h localhost -U hms_user -d hms_db -f database_hole/02_seed_data.sql
+
+# 3. Inventory alterations (products, stock_summary, stock_alerts, views)
+psql -h localhost -U hms_user -d hms_db -f database_hole/04_inventory_alteration.sql
+
+# 4. Inventory seed data (52 products, suppliers, POs, GRNs, stock movements)
+psql -h localhost -U hms_user -d hms_db -f database_hole/05_inventory_seeding.sql
+```
+
+> **Note:** `03_queries.sql` contains reference queries only — it does **NOT** need to be executed.
+
+### 2.3 — Verify the Setup
+
+```powershell
+# Check table count (expect 65+)
+psql -h localhost -U hms_user -d hms_db -c "SELECT COUNT(*) AS table_count FROM information_schema.tables WHERE table_schema = 'public';"
+
+# Check key data counts
+psql -h localhost -U hms_user -d hms_db -c "SELECT COUNT(*) FROM users;"          # Expected: 10
+psql -h localhost -U hms_user -d hms_db -c "SELECT COUNT(*) FROM products;"       # Expected: 52
+psql -h localhost -U hms_user -d hms_db -c "SELECT COUNT(*) FROM purchase_orders;" # Expected: 5
+```
+
+### 2.4 — What's New in Inventory Module
+
+The inventory module adds complete stock management capabilities:
+
+**New Tables:**
+- `products` — Central product catalog (52 sample products)
+- `stock_summary` — Real-time stock levels per product
+- `stock_alerts` — Low stock and expiry alerts
+- `suppliers` — Vendor management with product categories
+- `purchase_orders` — Purchase order management
+- `goods_receipt_notes` — GRN for received goods
+- `stock_movements` — Complete stock audit trail
+- `stock_adjustments` — Manual stock corrections
+- `cycle_counts` — Periodic physical counts
+
+**Sample Data:**
+- 52 products (medicines, optical, surgical, laboratory, equipment)
+- 3 suppliers with product categories
+- 5 purchase orders (various statuses)
+- 4 goods receipt notes with batch tracking
+- 12 stock movements
+- 5 stock adjustments
+- 3 cycle counts
+
+**Reporting Views:**
+- `v_purchase_orders_with_products`
+- `v_grns_with_products`
+- `v_stock_movements_with_products`
+- `v_low_stock_products`
+- `v_expiring_products`
+- `v_complete_inventory_dashboard`
+
+> For detailed database setup, see [`database_hole/README.md`](database_hole/README.md)
 
 # 2. Seed initial data (hospitals, departments, roles, users, sample patients)
 psql -h localhost -U hms_user -d hms_db -f database_hole/02_seed_data.sql

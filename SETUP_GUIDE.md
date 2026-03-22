@@ -201,8 +201,15 @@ psql -U postgres -d hms_db -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;"
 psql -U postgres -d hms_db -c "GRANT ALL ON SCHEMA public TO hms_user;"
 psql -U postgres -d hms_db -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO hms_user;"
 psql -U postgres -d hms_db -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO hms_user;"
-psql -U hms_user -d hms_db -f database_hole/01_schema.sql
-psql -U hms_user -d hms_db -f database_hole/02_seed_data.sql
+
+# Set password for non-interactive execution
+$env:PGPASSWORD = "HMS@2026"
+
+# Run all SQL files in order
+psql -h localhost -U hms_user -d hms_db -f database_hole/01_schema.sql
+psql -h localhost -U hms_user -d hms_db -f 02_seed_data.sql
+psql -h localhost -U hms_user -d hms_db -f 04_inventory_alteration.sql
+psql -h localhost -U hms_user -d hms_db -f 05_inventory_seeding.sql
 ```
 
 **Linux:**
@@ -215,9 +222,74 @@ sudo -u postgres psql -d hms_db -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;"
 sudo -u postgres psql -d hms_db -c "GRANT ALL ON SCHEMA public TO hms_user;"
 sudo -u postgres psql -d hms_db -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO hms_user;"
 sudo -u postgres psql -d hms_db -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO hms_user;"
+
+export PGPASSWORD="HMS@2026"
+
 psql -h localhost -U hms_user -d hms_db -f database_hole/01_schema.sql
-psql -h localhost -U hms_user -d hms_db -f database_hole/02_seed_data.sql
+psql -h localhost -U hms_user -d hms_db -f 02_seed_data.sql
+psql -h localhost -U hms_user -d hms_db -f 04_inventory_alteration.sql
+psql -h localhost -U hms_user -d hms_db -f 05_inventory_seeding.sql
 ```
+
+### 4.3 — Database Setup with Inventory Module (New)
+
+> **Updated:** The database now includes the Inventory Module (Phase 4) with products, stock tracking, and purchase orders.
+
+**Complete Setup Commands:**
+
+**Windows:**
+```powershell
+# 1. Create database and user
+psql -U postgres -c "CREATE USER hms_user WITH PASSWORD 'HMS@2026';"
+psql -U postgres -c "CREATE DATABASE hms_db OWNER hms_user;"
+
+# 2. Set password for non-interactive execution
+$env:PGPASSWORD = "HMS@2026"
+
+# 3. Run all SQL files in order (includes inventory module)
+psql -h localhost -U hms_user -d hms_db -f database_hole/01_schema.sql
+psql -h localhost -U hms_user -d hms_db -f 02_seed_data.sql
+psql -h localhost -U hms_user -d hms_db -f 04_inventory_alteration.sql
+psql -h localhost -U hms_user -d hms_db -f 05_inventory_seeding.sql
+
+# 4. Verify
+psql -h localhost -U hms_user -d hms_db -c "SELECT COUNT(*) FROM users;"          # Expected: 10
+psql -h localhost -U hms_user -d hms_db -c "SELECT COUNT(*) FROM products;"       # Expected: 52
+psql -h localhost -U hms_user -d hms_db -c "SELECT COUNT(*) FROM purchase_orders;" # Expected: 5
+```
+
+**Linux:**
+```bash
+# 1. Create database and user
+sudo -u postgres psql -c "CREATE USER hms_user WITH PASSWORD 'HMS@2026';"
+sudo -u postgres psql -c "CREATE DATABASE hms_db OWNER hms_user;"
+
+# 2. Set password for non-interactive execution
+export PGPASSWORD="HMS@2026"
+
+# 3. Run all SQL files in order (includes inventory module)
+psql -h localhost -U hms_user -d hms_db -f database_hole/01_schema.sql
+psql -h localhost -U hms_user -d hms_db -f 02_seed_data.sql
+psql -h localhost -U hms_user -d hms_db -f 04_inventory_alteration.sql
+psql -h localhost -U hms_user -d hms_db -f 05_inventory_seeding.sql
+
+# 4. Verify
+psql -h localhost -U hms_user -d hms_db -c "SELECT COUNT(*) FROM users;"          # Expected: 10
+psql -h localhost -U hms_user -d hms_db -c "SELECT COUNT(*) FROM products;"       # Expected: 52
+psql -h localhost -U hms_user -d hms_db -c "SELECT COUNT(*) FROM purchase_orders;" # Expected: 5
+```
+
+**What's New in Inventory Module:**
+- 52 sample products (medicines, optical, surgical, laboratory, equipment)
+- 3 suppliers with product categories
+- 5 purchase orders (draft, submitted, approved, partially_received, received)
+- 4 goods receipt notes (GRNs) with batch tracking
+- 12 stock movements (stock_in, dispensing, sale, return, expired, damaged, transfer, adjustment)
+- 5 stock adjustments (approved, pending, rejected)
+- 3 cycle counts with variance tracking
+- 8 reporting views for inventory dashboard
+
+> For detailed database setup, see [`database_hole/README.md`](database_hole/README.md)
 
 ### 4.3 — Truncate All Tables (Keep Schema)
 

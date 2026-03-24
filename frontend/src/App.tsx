@@ -234,7 +234,7 @@ const App: React.FC = () => {
                 </ProtectedRoute>
               } />
               <Route path="/pharmacy/sales" element={
-                <ProtectedRoute allowedRoles={['super_admin', 'admin', 'pharmacist', 'cashier']}>
+                <ProtectedRoute allowedRoles={['super_admin', 'admin', 'pharmacist', 'cashier', 'inventory_manager']}>
                   <SalesList />
                 </ProtectedRoute>
               } />

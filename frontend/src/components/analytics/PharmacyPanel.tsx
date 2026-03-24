@@ -58,7 +58,7 @@ const PharmacyPanel: React.FC = () => {
   const isLoading = sales.isLoading || meds.isLoading || optical.isLoading;
 
   return (
-    <PanelCard title="Pharmacy & Optical" status="development" isLoading={isLoading}>
+    <PanelCard title="Pharmacy & Optical" status="live" isLoading={isLoading}>
       <div className="grid gap-6 md:grid-cols-5">
         {/* ── Left 60%: Pharmacy ── */}
         <div className="md:col-span-3 space-y-5">

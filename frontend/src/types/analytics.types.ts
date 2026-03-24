@@ -96,9 +96,20 @@ export interface PharmacySales {
 
 export interface TopSellingMedicine {
   name: string;
+  medicine_id: string;
   quantity_sold: number;
   revenue: number;
   category: string;
+}
+
+export interface PharmacyDashboard {
+  total_medicines: number;
+  low_stock_count: number;
+  expiring_soon_count: number;
+  expired_count: number;
+  today_sales_count: number;
+  today_sales_amount: number;
+  pending_orders: number;
 }
 
 // ── Optical ──────────────────────────────────────────────────────────────
@@ -115,18 +126,30 @@ export interface OpticalSales {
 
 export interface StockStatus {
   item_name: string;
+  item_id: string;
   category: string;
   current_stock: number;
   min_stock: number;
   max_stock: number;
   status: 'ok' | 'low' | 'critical' | 'overstock';
-  last_restock_date: string;
+  last_restock_date: string | null;
 }
 
 export interface InventoryAging {
   range: string;          // "0-30 days", "31-60 days", etc.
   item_count: number;
   value: number;
+}
+
+export interface InventoryDashboard {
+  total_suppliers: number;
+  active_purchase_orders: number;
+  pending_grns: number;
+  pending_adjustments: number;
+  low_stock_items: any[];
+  expiring_items: any[];
+  low_stock_count: number;
+  expiring_count: number;
 }
 
 // ── Financial ────────────────────────────────────────────────────────────

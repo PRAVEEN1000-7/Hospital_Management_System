@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
@@ -9,6 +9,9 @@ import scheduleService from '../services/scheduleService';
 import type { PrescriptionItemCreate, Medicine, PrescriptionTemplate } from '../types/prescription';
 import type { Patient } from '../types/patient';
 import type { DoctorOption } from '../types/appointment';
+import AvailabilityCalendar from '../components/common/AvailabilityCalendar';
+import { useDoctorMonthAvailability } from '../hooks/useDoctorMonthAvailability';
+import { formatLocalDateISO, formatMonthKey } from '../utils/calendarDate';
 
 const FREQUENCY_OPTIONS = ['1-0-0', '0-1-0', '0-0-1', '1-0-1', '1-1-0', '0-1-1', '1-1-1', '1-1-1-1'];
 const DURATION_UNITS = ['days', 'weeks', 'months'];
@@ -93,6 +96,8 @@ const PrescriptionBuilder: React.FC = () => {
   const [vitalsWeight, setVitalsWeight] = useState('');
   const [vitalsSpo2, setVitalsSpo2] = useState('');
   const [followUpDate, setFollowUpDate] = useState('');
+  const [showFollowUpCalendar, setShowFollowUpCalendar] = useState(false);
+  const [followUpCalendarMonth, setFollowUpCalendarMonth] = useState<string>(formatMonthKey());
 
   // Search states
   const [patientSearch, setPatientSearch] = useState('');
@@ -120,6 +125,33 @@ const PrescriptionBuilder: React.FC = () => {
   const [referReason, setReferReason] = useState('');
   const [referSaving, setReferSaving] = useState(false);
   const [referDoctorLoad, setReferDoctorLoad] = useState<number | null>(null);
+  const [referCalendarMonth, setReferCalendarMonth] = useState<string>(formatMonthKey());
+  const today = formatLocalDateISO();
+  const currentDoctorId = useMemo(
+    () => referDoctors.find((d) => d.user_id === user?.id)?.doctor_id || null,
+    [referDoctors, user?.id],
+  );
+
+  const {
+    availabilityMap: referDateAvailability,
+    loading: referAvailabilityLoading,
+    reset: resetReferAvailability,
+  } = useDoctorMonthAvailability({
+    doctorId: referDoctorId,
+    monthKey: referCalendarMonth,
+    minDateISO: today,
+    enabled: showReferModal && !!referDoctorId,
+  });
+
+  const {
+    availabilityMap: followUpDateAvailability,
+    loading: followUpAvailabilityLoading,
+  } = useDoctorMonthAvailability({
+    doctorId: currentDoctorId,
+    monthKey: followUpCalendarMonth,
+    minDateISO: today,
+    enabled: isConsultationMode && !!currentDoctorId,
+  });
 
   // Load patient if ID passed via URL
   useEffect(() => {
@@ -201,6 +233,31 @@ const PrescriptionBuilder: React.FC = () => {
     }).catch(() => { if (!cancelled) setReferDoctorLoad(null); });
     return () => { cancelled = true; };
   }, [referDoctorId, referDate]);
+
+  const isSelectedReferralDateUnavailable = referDate ? referDateAvailability[referDate] === false : false;
+  const isSelectedFollowUpDateUnavailable = followUpDate ? followUpDateAvailability[followUpDate] === false : false;
+  const selectedReferDoctor = referDoctors.find((d) => d.doctor_id === referDoctorId);
+  const currentDoctor = referDoctors.find((d) => d.doctor_id === currentDoctorId);
+
+  const openReferModal = () => {
+    setShowReferModal(true);
+    setReferDoctorId('');
+    setReferDate('');
+    setReferReason('');
+    setReferDoctorLoad(null);
+    setReferCalendarMonth(today.slice(0, 7));
+    resetReferAvailability();
+  };
+
+  const closeReferModal = () => {
+    setShowReferModal(false);
+    setReferDoctorId('');
+    setReferDate('');
+    setReferReason('');
+    setReferDoctorLoad(null);
+    setReferCalendarMonth(today.slice(0, 7));
+    resetReferAvailability();
+  };
 
   // Patient search
   const searchPatients = useCallback(async (q: string) => {
@@ -1024,13 +1081,46 @@ const PrescriptionBuilder: React.FC = () => {
             <h3 className="font-semibold mb-4 flex items-center gap-2">
               <span className="material-symbols-outlined text-primary text-sm">event_upcoming</span> Follow-up Date
             </h3>
-            <input
-              type="date"
-              value={followUpDate}
-              onChange={e => setFollowUpDate(e.target.value)}
-              min={new Date().toISOString().split('T')[0]}
-              className="input-field max-w-xs"
-            />
+            {/* <p className="text-xs text-slate-500 mb-2">
+              Availability is based on {currentDoctor?.name ? `Dr. ${currentDoctor.name}` : 'current doctor'} slots.
+            </p> */}
+            <button
+              type="button"
+              onClick={() => setShowFollowUpCalendar((v) => !v)}
+              className="w-full max-w-xs px-4 py-2.5 border border-slate-200 rounded-xl text-sm bg-white hover:bg-slate-50 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none flex items-center justify-between"
+              title="Select follow-up date"
+            >
+              <span className={followUpDate ? 'text-slate-800' : 'text-slate-400'}>
+                {followUpDate
+                  ? new Date(followUpDate + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                  : 'Select follow-up date'}
+              </span>
+              <span className="material-symbols-outlined text-slate-500">calendar_month</span>
+            </button>
+
+            {showFollowUpCalendar && (
+              <div className="max-w-md mt-3">
+                <AvailabilityCalendar
+                  monthKey={followUpCalendarMonth}
+                  onMonthKeyChange={setFollowUpCalendarMonth}
+                  selectedDate={followUpDate}
+                  onSelectDate={(dateIso) => {
+                    setFollowUpDate(dateIso);
+                    setShowFollowUpCalendar(false);
+                  }}
+                  minDateISO={today}
+                  availabilityMap={followUpDateAvailability}
+                  loading={followUpAvailabilityLoading}
+                  unavailableHint="No slot available on selected date. Consider another date."
+                />
+              </div>
+            )}
+
+            {followUpDate && isSelectedFollowUpDateUnavailable && (
+              <p className="text-xs text-red-600 mt-2">
+                Selected follow-up date has no slot availability. Please choose another date.
+              </p>
+            )}
           </div>
 
           {/* Actions */}
@@ -1044,7 +1134,7 @@ const PrescriptionBuilder: React.FC = () => {
               </button>
               {isConsultationMode && (
                 <button
-                  onClick={() => { setShowReferModal(true); setReferDoctorId(''); setReferDate(''); setReferReason(''); }}
+                  onClick={openReferModal}
                   className="px-4 py-2 rounded-lg border border-orange-200 text-sm font-semibold text-orange-700 hover:bg-orange-50 flex items-center gap-2 transition-colors"
                 >
                   <span className="material-symbols-outlined text-sm">send</span>
@@ -1166,7 +1256,7 @@ const PrescriptionBuilder: React.FC = () => {
                   <p className="text-xs text-slate-500">{patient?.first_name} {patient?.last_name}</p>
                 </div>
               </div>
-              <button onClick={() => setShowReferModal(false)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
+              <button onClick={closeReferModal} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
@@ -1192,12 +1282,17 @@ const PrescriptionBuilder: React.FC = () => {
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
                   Appointment Date <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="date"
-                  value={referDate}
-                  onChange={(e) => setReferDate(e.target.value)}
-                  min={new Date().toISOString().split('T')[0]}
-                  className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                <p className="text-xs text-slate-500 mb-2">
+                  Availability is based on {selectedReferDoctor?.name ? `Dr. ${selectedReferDoctor.name}` : 'selected doctor'} slots.
+                </p>
+                <AvailabilityCalendar
+                  monthKey={referCalendarMonth}
+                  onMonthKeyChange={setReferCalendarMonth}
+                  selectedDate={referDate}
+                  onSelectDate={setReferDate}
+                  minDateISO={today}
+                  availabilityMap={referDateAvailability}
+                  loading={referAvailabilityLoading}
                 />
               </div>
               {referDoctorLoad !== null && referDoctorId && referDate && (
@@ -1229,7 +1324,7 @@ const PrescriptionBuilder: React.FC = () => {
             </div>
 
             <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
-              <button onClick={() => setShowReferModal(false)}
+              <button onClick={closeReferModal}
                 className="px-4 py-2.5 text-sm font-medium text-slate-500 hover:bg-slate-100 rounded-lg transition-colors">
                 Cancel
               </button>
@@ -1245,15 +1340,14 @@ const PrescriptionBuilder: React.FC = () => {
                       referral_reason: referReason || undefined,
                     });
                     showToast('success', result.message);
-                    setShowReferModal(false);
-                    setReferDoctorLoad(null);
+                    closeReferModal();
                     navigate('/appointments/queue');
                   } catch (err: any) {
                     showToast('error', err?.response?.data?.detail || 'Failed to refer patient');
                   }
                   setReferSaving(false);
                 }}
-                disabled={!referDoctorId || !referDate || referSaving}
+                disabled={!referDoctorId || !referDate || referSaving || isSelectedReferralDateUnavailable}
                 className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-orange-500 rounded-xl hover:bg-orange-600 disabled:opacity-50 shadow-sm transition-all">
                 <span className="material-symbols-outlined text-base">send</span>
                 {referSaving ? 'Referring...' : 'Confirm Referral'}

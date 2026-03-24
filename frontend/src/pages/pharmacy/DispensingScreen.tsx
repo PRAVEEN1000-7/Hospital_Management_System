@@ -693,47 +693,62 @@ const DispensingScreen: React.FC = () => {
                     }`}
                   >
                     {/* Medicine Header */}
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-semibold text-slate-900 text-lg">
-                            {item.medicine_name}
-                          </span>
-                          {item.is_dispensed && (
-                            <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full font-medium">
-                              Already Dispensed
+                    <div className="mb-3">
+                      <div className="md:grid md:grid-cols-12 md:gap-4 md:items-start">
+                        <div className="md:col-span-7 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            <span className="font-semibold text-slate-900 text-lg truncate">
+                              {item.medicine_name}
                             </span>
-                          )}
-                        </div>
-                        {item.generic_name && (
-                          <div className="text-sm text-slate-500">
-                            Generic: {item.generic_name}
+                            {item.is_dispensed && (
+                              <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full font-medium">
+                                Already Dispensed
+                              </span>
+                            )}
                           </div>
-                        )}
-                        <div className="flex items-center gap-3 text-xs text-slate-500 mt-2">
-                          <span className="flex items-center gap-1">
-                            <span className="material-symbols-outlined text-sm">medication</span>
-                            Dosage: {item.dosage}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <span className="material-symbols-outlined text-sm">schedule</span>
-                            {item.frequency}
-                          </span>
-                          {item.duration_value && (
-                            <span className="flex items-center gap-1">
-                              <span className="material-symbols-outlined text-sm">today</span>
-                              {item.duration_value} {item.duration_unit}
-                            </span>
+                          {item.generic_name && (
+                            <div className="text-sm text-slate-500 truncate">
+                              Generic: {item.generic_name}
+                            </div>
                           )}
+                          <div className="flex items-center gap-3 text-xs text-slate-500 mt-2 flex-wrap">
+                            <span className="flex items-center gap-1">
+                              <span className="material-symbols-outlined text-sm">medication</span>
+                              Dosage: {item.dosage}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <span className="material-symbols-outlined text-sm">schedule</span>
+                              {item.frequency}
+                            </span>
+                            {item.duration_value && (
+                              <span className="flex items-center gap-1">
+                                <span className="material-symbols-outlined text-sm">today</span>
+                                {item.duration_value} {item.duration_unit}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                      
-                      {/* Prescribed Quantity Badge */}
-                      <div className="text-right bg-slate-100 rounded-lg px-3 py-2">
-                        <div className="text-xs text-slate-500 uppercase font-semibold">Prescribed</div>
-                        <div className="text-xl font-bold text-slate-900">{prescribedQuantity}</div>
-                        <div className="text-xs text-slate-500">units</div>
-                        <div className="text-xs text-slate-500 mt-0.5">Remaining: {item.remainingQty}</div>
+
+                        {/* Quantity Snapshot */}
+                        <div className="md:col-span-5 mt-3 md:mt-0">
+                          <div className="grid grid-cols-3 gap-2">
+                            <div className="bg-slate-100 rounded-lg px-3 py-2 text-center">
+                              <div className="text-[10px] text-slate-500 uppercase font-semibold tracking-wide">Prescribed</div>
+                              <div className="text-xl font-bold text-slate-900 leading-tight">{prescribedQuantity}</div>
+                              <div className="text-[11px] text-slate-500">units</div>
+                            </div>
+                            <div className="bg-slate-100 rounded-lg px-3 py-2 text-center">
+                              <div className="text-[10px] text-slate-500 uppercase font-semibold tracking-wide">Dispensed</div>
+                              <div className="text-xl font-bold text-slate-900 leading-tight">{Number(item.dispensed_quantity || 0)}</div>
+                              <div className="text-[11px] text-slate-500">units</div>
+                            </div>
+                            <div className="bg-slate-100 rounded-lg px-3 py-2 text-center">
+                              <div className="text-[10px] text-slate-500 uppercase font-semibold tracking-wide">Remaining</div>
+                              <div className={`text-xl font-bold leading-tight ${item.remainingQty > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>{item.remainingQty}</div>
+                              <div className="text-[11px] text-slate-500">units</div>
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     </div>
 

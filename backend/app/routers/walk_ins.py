@@ -112,6 +112,12 @@ def _next_position(db: Session, doctor_id: uuid.UUID, queue_date: date) -> int:
     )
     return (waiting or 0) + 1
 
+def _ensure_today_queue_action(qe: "AppointmentQueue") -> None:
+    if qe.queue_date != date.today():
+        raise HTTPException(
+            status_code=400,
+            detail="Queue actions are allowed only for today's queue.",
+        )
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def register_walk_in(
@@ -443,6 +449,7 @@ async def call_patient(
 
     if qe.status != "waiting":
         raise HTTPException(status_code=400, detail="Only 'waiting' patients can be called")
+    _ensure_today_queue_action(qe)
 
     qe.status = "called"
     qe.called_at = datetime.now(timezone.utc)
@@ -483,6 +490,7 @@ async def send_to_doctor_queue(
             status_code=400,
             detail="Only 'waiting' or 'called' patients can be sent to doctor",
         )
+    _ensure_today_queue_action(qe)
 
     qe.status = "sent_to_doctor"
     db.commit()
@@ -509,6 +517,7 @@ async def start_consultation(
 
     if qe.status not in ("waiting", "called", "sent_to_doctor"):
         raise HTTPException(status_code=400, detail="Patient must be in 'waiting', 'called', or 'sent_to_doctor' status to start consultation")
+    _ensure_today_queue_action(qe)
 
     qe.status = "in_consultation"
 
@@ -541,6 +550,7 @@ async def complete_patient(
 
     if qe.status not in ("called", "in_consultation"):
         raise HTTPException(status_code=400, detail="Patient must be in 'called' or 'in_consultation' status to complete")
+    _ensure_today_queue_action(qe)
 
     qe.status = "completed"
 
@@ -570,6 +580,7 @@ async def skip_patient(
         raise HTTPException(status_code=404, detail="Queue entry not found")
 
     _require_queue_actor(db, current_user, qe)
+    _ensure_today_queue_action(qe)
 
     qe.status = "skipped"
 
@@ -1004,6 +1015,17 @@ async def refer_patient_to_doctor(
             raise HTTPException(
                 status_code=400,
                 detail="Target doctor is on leave on the selected date",
+            )
+
+        # Ensure the target doctor has at least one available slot on that date.
+        # If full (or no active schedule), referral should not be confirmed so the
+        # referring doctor can select another date.
+        slots = get_available_slots(db, to_doctor_uuid, referral_date)
+        has_available_slot = any(slot.get("available") for slot in slots) if slots else False
+        if not has_available_slot:
+            raise HTTPException(
+                status_code=400,
+                detail="No slot available for the selected doctor on this date. Please choose another date.",
             )
 
         # ── Check duplicate: patient not already in target doctor's queue for that date ──

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useDashboardSummary } from '../../hooks/useAnalyticsQueries';
+import { useDashboardSummary, usePharmacyDashboard, useInventoryDashboard } from '../../hooks/useAnalyticsQueries';
 import { useAnalyticsStore } from '../../stores/analyticsStore';
 
 // ── Currency formatter ───────────────────────────────────────────────────
@@ -75,13 +75,16 @@ const KPICard: React.FC<CardProps> = ({ icon, iconBg, label, value, change, isLo
 
 const KPIStrip: React.FC = () => {
   const filters = useAnalyticsStore((s) => s.filters);
-  const { data, isLoading } = useDashboardSummary(filters);
+  const { data: dashboardData, isLoading } = useDashboardSummary(filters);
+  const { data: pharmacyData } = usePharmacyDashboard();
+  const { data: inventoryData } = useInventoryDashboard();
 
-  const revenue = useCountUp(data?.total_revenue ?? 0);
-  const opd = useCountUp(data?.opd_patients_today ?? 0);
-  const rx = useCountUp(data?.pending_prescriptions ?? 0);
-  const stock = useCountUp(data?.low_stock_items ?? 0);
-  const dues = useCountUp(data?.outstanding_dues ?? 0);
+  // Combine data from multiple sources
+  const revenue = useCountUp(dashboardData?.total_revenue ?? 0);
+  const opd = useCountUp(dashboardData?.opd_patients_today ?? 0);
+  const rx = useCountUp(dashboardData?.pending_prescriptions ?? 0);
+  const lowStock = useCountUp(pharmacyData?.low_stock_count ?? inventoryData?.low_stock_count ?? 0);
+  const dues = useCountUp(dashboardData?.outstanding_dues ?? 0);
 
   const cards: Omit<CardProps, 'isLoading'>[] = [
     {
@@ -89,35 +92,35 @@ const KPIStrip: React.FC = () => {
       iconBg: 'bg-primary',
       label: 'Total Revenue',
       value: inr.format(revenue),
-      change: data?.revenue_change_pct ?? 0,
+      change: dashboardData?.revenue_change_pct ?? 0,
     },
     {
       icon: 'groups',
       iconBg: 'bg-emerald-500',
       label: 'OPD Patients Today',
       value: String(opd),
-      change: data?.opd_change_pct ?? 0,
+      change: dashboardData?.opd_change_pct ?? 0,
     },
     {
       icon: 'prescriptions',
       iconBg: 'bg-amber-500',
       label: 'Pending Rx',
       value: String(rx),
-      change: data?.prescriptions_change_pct ?? 0,
+      change: dashboardData?.prescriptions_change_pct ?? 0,
     },
     {
       icon: 'inventory_2',
       iconBg: 'bg-red-500',
       label: 'Low Stock Items',
-      value: String(stock),
-      change: data?.stock_change_pct ?? 0,
+      value: String(lowStock),
+      change: 0, // No change tracking yet for inventory
     },
     {
       icon: 'account_balance_wallet',
       iconBg: 'bg-violet-500',
       label: 'Outstanding Dues',
       value: inr.format(dues),
-      change: data?.dues_change_pct ?? 0,
+      change: dashboardData?.dues_change_pct ?? 0,
     },
   ];
 

@@ -9,7 +9,7 @@ from math import ceil
 from datetime import date, timedelta, datetime, timezone
 from typing import Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_, and_
+from sqlalchemy import func, or_, and_, case
 
 from ..models.prescription import Medicine
 from ..models.pharmacy import (
@@ -664,6 +664,10 @@ def list_sales(
     search: Optional[str] = None,
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
+    sale_status: Optional[str] = None,
+    patient_type: Optional[str] = None,
+    sort_by: str = "sale_date",
+    sort_order: str = "desc",
 ) -> dict:
     query = db.query(PharmacySale).filter(PharmacySale.hospital_id == hospital_id)
     if search:
@@ -675,10 +679,75 @@ def list_sales(
         query = query.filter(func.date(PharmacySale.sale_date) >= date_from)
     if date_to:
         query = query.filter(func.date(PharmacySale.sale_date) <= date_to)
+    if sale_status:
+        query = query.filter(PharmacySale.status == sale_status)
+    if patient_type == "walk_in":
+        query = query.filter(PharmacySale.patient_id.is_(None))
+    elif patient_type == "registered":
+        query = query.filter(PharmacySale.patient_id.is_not(None))
+
+    effective_sale_date = case(
+        (func.extract("year", PharmacySale.sale_date) <= 1971, PharmacySale.created_at),
+        else_=PharmacySale.sale_date,
+    )
+
+    sort_column_map = {
+        "sale_date": effective_sale_date,
+        "total_amount": PharmacySale.total_amount,
+        "invoice_number": PharmacySale.invoice_number,
+        "created_at": PharmacySale.created_at,
+    }
+    sort_column = sort_column_map.get(sort_by, PharmacySale.sale_date)
+    order_clause = sort_column.asc() if str(sort_order).lower() == "asc" else sort_column.desc()
+    tie_breaker_clause = PharmacySale.created_at.asc() if str(sort_order).lower() == "asc" else PharmacySale.created_at.desc()
 
     total = query.count()
-    # Sort by dispense/sale timestamp so UI Date column and row ordering match.
-    items = query.order_by(PharmacySale.sale_date.desc()).offset((page - 1) * limit).limit(limit).all()
+
+    # Build paginated base sales first, then enrich with live item counts.
+    base_items = query.order_by(order_clause, tie_breaker_clause).offset((page - 1) * limit).limit(limit).all()
+    sale_ids = [s.id for s in base_items]
+
+    item_count_map: dict[uuid.UUID, int] = {}
+    if sale_ids:
+        count_rows = (
+            db.query(PharmacySaleItem.sale_id, func.count(PharmacySaleItem.id))
+            .filter(PharmacySaleItem.sale_id.in_(sale_ids))
+            .group_by(PharmacySaleItem.sale_id)
+            .all()
+        )
+        item_count_map = {row[0]: int(row[1]) for row in count_rows}
+
+    items: list[dict] = []
+    for sale in base_items:
+        # Normalize bad epoch-like dates to created_at for safer UI display.
+        normalized_sale_date = sale.sale_date
+        if normalized_sale_date and normalized_sale_date.year <= 1971 and sale.created_at:
+            normalized_sale_date = sale.created_at
+
+        items.append({
+            "id": str(sale.id),
+            "hospital_id": str(sale.hospital_id),
+            "invoice_number": sale.invoice_number,
+            "sale_date": normalized_sale_date,
+            "patient_id": str(sale.patient_id) if sale.patient_id else None,
+            "patient_name": sale.patient.full_name if getattr(sale, "patient", None) else None,
+            "doctor_name": None,
+            "prescription_number": None,
+            "prescription_date": None,
+            "subtotal": sale.subtotal,
+            "discount_amount": sale.discount_amount,
+            "tax_amount": sale.tax_amount,
+            "total_amount": sale.total_amount,
+            "payment_method": getattr(sale, "payment_method", "cash"),
+            "payment_status": getattr(sale, "payment_status", "paid"),
+            "status": sale.status,
+            "notes": sale.notes,
+            "created_at": sale.created_at,
+            "updated_at": sale.updated_at,
+            "item_count": item_count_map.get(sale.id, 0),
+            "items": [],
+        })
+
     return {
         "total": total,
         "page": page,
@@ -936,3 +1005,97 @@ def get_pharmacy_dashboard(db: Session, hospital_id: uuid.UUID) -> dict:
         "today_sales_amount": today_sales[1] if today_sales else Decimal("0"),
         "pending_orders": pending_orders,
     }
+
+
+def get_pharmacy_sales_trend(
+    db: Session, hospital_id: uuid.UUID, days: int = 30
+) -> list[dict]:
+    """Get pharmacy sales trend for the last N days."""
+    from ..models.pharmacy import PharmacySale
+    
+    today = date.today()
+    start_date = today - timedelta(days=days - 1)
+    
+    # Query daily sales
+    results = db.query(
+        func.date(PharmacySale.created_at).label("sale_date"),
+        func.coalesce(func.sum(PharmacySale.total_amount), 0).label("total_sales"),
+        func.count(PharmacySale.id).label("prescriptions_count"),
+    ).filter(
+        PharmacySale.hospital_id == hospital_id,
+        func.date(PharmacySale.created_at) >= start_date,
+        func.date(PharmacySale.created_at) <= today,
+    ).group_by(
+        func.date(PharmacySale.created_at)
+    ).order_by(
+        func.date(PharmacySale.created_at)
+    ).all()
+    
+    # Build a map of date -> sales data
+    sales_map = {
+        str(r.sale_date): {
+            "date": str(r.sale_date),
+            "sales": float(r.total_sales) if r.total_sales else 0,
+            "prescriptions_filled": r.prescriptions_count or 0,
+        }
+        for r in results
+    }
+    
+    # Fill in missing dates with zero values
+    trend_data = []
+    for i in range(days):
+        current_date = start_date + timedelta(days=i)
+        date_str = str(current_date)
+        if date_str in sales_map:
+            trend_data.append(sales_map[date_str])
+        else:
+            trend_data.append({
+                "date": date_str,
+                "sales": 0,
+                "prescriptions_filled": 0,
+            })
+    
+    return trend_data
+
+
+def get_pharmacy_top_medicines(
+    db: Session, hospital_id: uuid.UUID, days: int = 30, limit: int = 10
+) -> list[dict]:
+    """Get top selling medicines by quantity and revenue."""
+    from ..models.pharmacy import PharmacySale, PharmacySaleItem
+    
+    today = date.today()
+    start_date = today - timedelta(days=days - 1)
+    
+    # Query top medicines by quantity sold
+    results = db.query(
+        Medicine.id,
+        Medicine.name,
+        Medicine.category,
+        func.sum(PharmacySaleItem.quantity).label("total_quantity"),
+        func.sum(PharmacySaleItem.total_price).label("total_revenue"),
+    ).join(
+        PharmacySaleItem, PharmacySaleItem.medicine_id == Medicine.id
+    ).join(
+        PharmacySale, PharmacySale.id == PharmacySaleItem.sale_id
+    ).filter(
+        Medicine.hospital_id == hospital_id,
+        Medicine.is_active == True,
+        func.date(PharmacySale.created_at) >= start_date,
+        func.date(PharmacySale.created_at) <= today,
+    ).group_by(
+        Medicine.id, Medicine.name, Medicine.category
+    ).order_by(
+        func.sum(PharmacySaleItem.quantity).desc()
+    ).limit(limit).all()
+    
+    return [
+        {
+            "name": r.name,
+            "medicine_id": str(r.id),
+            "quantity_sold": r.total_quantity or 0,
+            "revenue": float(r.total_revenue) if r.total_revenue else 0,
+            "category": r.category,
+        }
+        for r in results
+    ]

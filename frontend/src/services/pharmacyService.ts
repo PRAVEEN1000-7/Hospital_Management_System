@@ -149,12 +149,24 @@ export const pharmacyService = {
 
   // ═══ Sales ═══
   async getSales(
-    page = 1, limit = 20, search = '', dateFrom = '', dateTo = ''
+    page = 1,
+    limit = 20,
+    search = '',
+    dateFrom = '',
+    dateTo = '',
+    saleStatus = '',
+    patientType = '',
+    sortBy: 'sale_date' | 'total_amount' | 'invoice_number' | 'created_at' = 'sale_date',
+    sortOrder: 'asc' | 'desc' = 'desc'
   ): Promise<SaleListResponse> {
     const params: Record<string, string | number> = { page, limit };
     if (search) params.search = search;
     if (dateFrom) params.date_from = dateFrom;
     if (dateTo) params.date_to = dateTo;
+    if (saleStatus) params.sale_status = saleStatus;
+    if (patientType) params.patient_type = patientType;
+    params.sort_by = sortBy;
+    params.sort_order = sortOrder;
     const res = await api.get<SaleListResponse>('/pharmacy/sales', { params });
     return res.data;
   },

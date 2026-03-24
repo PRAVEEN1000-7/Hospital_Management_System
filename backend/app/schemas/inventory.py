@@ -377,3 +377,24 @@ class PaginatedResponse(BaseModel):
     limit: int
     total_pages: int
     data: list
+
+
+# ─── Analytics ──────────────────────────────────────────────────────────────
+
+class StockStatusAnalytics(BaseModel):
+    """Stock status for analytics dashboard."""
+    item_name: str
+    item_id: str
+    category: str
+    current_stock: int
+    min_stock: int
+    max_stock: int
+    status: str  # 'ok', 'low', 'critical', 'overstock'
+    last_restock_date: Optional[str] = None
+
+
+class InventoryAgingAnalytics(BaseModel):
+    """Inventory aging report for analytics."""
+    range: str  # "0-30 days", "31-60 days", etc.
+    item_count: int
+    value: float

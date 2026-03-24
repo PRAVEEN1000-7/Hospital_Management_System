@@ -286,6 +286,7 @@ export interface Sale {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  item_count?: number;
   items: SaleItem[];
 }
 

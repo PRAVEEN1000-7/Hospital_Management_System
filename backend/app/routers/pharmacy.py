@@ -23,6 +23,8 @@ from ..schemas.pharmacy import (
     StockAdjustmentCreate, StockAdjustmentResponse,
     # Dashboard
     PharmacyDashboard,
+    # Analytics
+    PharmacySalesAnalytics, TopSellingMedicineAnalytics,
 )
 from ..services import pharmacy_service as svc
 
@@ -43,6 +45,28 @@ async def pharmacy_dashboard(
 ):
     """Get pharmacy dashboard statistics."""
     return svc.get_pharmacy_dashboard(db, current_user.hospital_id)
+
+
+# ═══ Analytics ═══
+@router.get("/analytics/sales-trend", response_model=list[PharmacySalesAnalytics])
+async def pharmacy_sales_trend(
+    days: int = Query(30, ge=1, le=90, description="Number of days to retrieve"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Get pharmacy sales trend for the last N days."""
+    return svc.get_pharmacy_sales_trend(db, current_user.hospital_id, days)
+
+
+@router.get("/analytics/top-medicines", response_model=list[TopSellingMedicineAnalytics])
+async def pharmacy_top_medicines(
+    days: int = Query(30, ge=1, le=90, description="Number of days to analyze"),
+    limit: int = Query(10, ge=1, le=50, description="Number of top medicines to return"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Get top selling medicines by quantity and revenue."""
+    return svc.get_pharmacy_top_medicines(db, current_user.hospital_id, days, limit)
 
 
 # ═══ Medicines ═══
@@ -190,10 +214,26 @@ async def list_sales(
     search: Optional[str] = None,
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
+    sale_status: Optional[str] = Query(None, description="Filter by sale status"),
+    patient_type: Optional[str] = Query(None, description="Filter by patient type: walk_in or registered"),
+    sort_by: str = Query("sale_date", pattern="^(sale_date|total_amount|invoice_number|created_at)$"),
+    sort_order: str = Query("desc", pattern="^(asc|desc)$"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    result = svc.list_sales(db, current_user.hospital_id, page, limit, search, date_from, date_to)
+    result = svc.list_sales(
+        db,
+        current_user.hospital_id,
+        page,
+        limit,
+        search,
+        date_from,
+        date_to,
+        sale_status,
+        patient_type,
+        sort_by,
+        sort_order,
+    )
     data = [SaleResponse.model_validate(s) for s in result["data"]]
     result["data"] = data
     return result

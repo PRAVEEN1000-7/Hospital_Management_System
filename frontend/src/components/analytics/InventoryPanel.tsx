@@ -84,7 +84,7 @@ const InventoryPanel: React.FC = () => {
     : null;
 
   return (
-    <PanelCard title="Inventory Health" status="development" isLoading={isLoading}>
+    <PanelCard title="Inventory Health" status="live" isLoading={isLoading}>
       {/* Summary cards */}
       {summary && (
         <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">

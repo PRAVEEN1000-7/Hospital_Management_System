@@ -18,11 +18,13 @@ export const analyticsKeys = {
   dailyRevenue: () => [...analyticsKeys.all, 'daily-revenue'] as const,
   monthlyRevenue: () => [...analyticsKeys.all, 'monthly-revenue'] as const,
   departmentRevenue: () => [...analyticsKeys.all, 'department-revenue'] as const,
-  pharmacySales: () => [...analyticsKeys.all, 'pharmacy-sales'] as const,
-  topMedicines: () => [...analyticsKeys.all, 'top-medicines'] as const,
-  opticalSales: () => [...analyticsKeys.all, 'optical-sales'] as const,
-  stockStatus: () => [...analyticsKeys.all, 'stock-status'] as const,
+  pharmacySales: (days: number) => [...analyticsKeys.all, 'pharmacy-sales', days] as const,
+  topMedicines: (days: number, limit: number) => [...analyticsKeys.all, 'top-medicines', days, limit] as const,
+  pharmacyDashboard: () => [...analyticsKeys.all, 'pharmacy-dashboard'] as const,
+  stockStatus: (limit: number) => [...analyticsKeys.all, 'stock-status', limit] as const,
   inventoryAging: () => [...analyticsKeys.all, 'inventory-aging'] as const,
+  inventoryDashboard: () => [...analyticsKeys.all, 'inventory-dashboard'] as const,
+  opticalSales: () => [...analyticsKeys.all, 'optical-sales'] as const,
   collectionReport: () => [...analyticsKeys.all, 'collection-report'] as const,
   outstandingDues: () => [...analyticsKeys.all, 'outstanding-dues'] as const,
   taxSummary: () => [...analyticsKeys.all, 'tax-summary'] as const,
@@ -55,7 +57,69 @@ export function useDoctorWiseReport(filters: DashboardFilters) {
   });
 }
 
-// ── DEV hooks ────────────────────────────────────────────────────────────
+// ── LIVE: Pharmacy ────────────────────────────────────────────────────────
+
+export function usePharmacySales(days = 30) {
+  return useQuery({
+    queryKey: analyticsKeys.pharmacySales(days),
+    queryFn: () => reportsApi.getPharmacySales(days),
+    staleTime: STALE,
+  });
+}
+
+export function useTopMedicines(days = 30, limit = 10) {
+  return useQuery({
+    queryKey: analyticsKeys.topMedicines(days, limit),
+    queryFn: () => reportsApi.getTopMedicines(days, limit),
+    staleTime: STALE,
+  });
+}
+
+export function usePharmacyDashboard() {
+  return useQuery({
+    queryKey: analyticsKeys.pharmacyDashboard(),
+    queryFn: reportsApi.getPharmacyDashboard,
+    staleTime: STALE,
+  });
+}
+
+// ── LIVE: Inventory ──────────────────────────────────────────────────────
+
+export function useStockStatus(limit = 50) {
+  return useQuery({
+    queryKey: analyticsKeys.stockStatus(limit),
+    queryFn: () => reportsApi.getStockStatus(limit),
+    staleTime: STALE,
+  });
+}
+
+export function useInventoryAging() {
+  return useQuery({
+    queryKey: analyticsKeys.inventoryAging(),
+    queryFn: reportsApi.getInventoryAging,
+    staleTime: STALE,
+  });
+}
+
+export function useInventoryDashboard() {
+  return useQuery({
+    queryKey: analyticsKeys.inventoryDashboard(),
+    queryFn: reportsApi.getInventoryDashboard,
+    staleTime: STALE,
+  });
+}
+
+// ── DEV: Optical ─────────────────────────────────────────────────────────
+
+export function useOpticalSales() {
+  return useQuery({
+    queryKey: analyticsKeys.opticalSales(),
+    queryFn: reportsApi.getOpticalSales,
+    staleTime: STALE,
+  });
+}
+
+// ── DEV: Revenue ─────────────────────────────────────────────────────────
 
 export function useDailyRevenue() {
   return useQuery({
@@ -81,45 +145,7 @@ export function useDepartmentRevenue() {
   });
 }
 
-export function usePharmacySales() {
-  return useQuery({
-    queryKey: analyticsKeys.pharmacySales(),
-    queryFn: reportsApi.getPharmacySales,
-    staleTime: STALE,
-  });
-}
-
-export function useTopMedicines() {
-  return useQuery({
-    queryKey: analyticsKeys.topMedicines(),
-    queryFn: reportsApi.getTopMedicines,
-    staleTime: STALE,
-  });
-}
-
-export function useOpticalSales() {
-  return useQuery({
-    queryKey: analyticsKeys.opticalSales(),
-    queryFn: reportsApi.getOpticalSales,
-    staleTime: STALE,
-  });
-}
-
-export function useStockStatus() {
-  return useQuery({
-    queryKey: analyticsKeys.stockStatus(),
-    queryFn: reportsApi.getStockStatus,
-    staleTime: STALE,
-  });
-}
-
-export function useInventoryAging() {
-  return useQuery({
-    queryKey: analyticsKeys.inventoryAging(),
-    queryFn: reportsApi.getInventoryAging,
-    staleTime: STALE,
-  });
-}
+// ── DEV: Financial ───────────────────────────────────────────────────────
 
 export function useCollectionReport() {
   return useQuery({

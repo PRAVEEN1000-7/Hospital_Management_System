@@ -8,6 +8,9 @@ import type { UnassignedWalkIn } from '../services/walkInService';
 import scheduleService from '../services/scheduleService';
 import type { QueueStatus as QueueStatusType, QueueItem, DoctorOption, Appointment } from '../types/appointment';
 import AppointmentStatusBadge from '../components/appointments/AppointmentStatusBadge';
+import AvailabilityCalendar from '../components/common/AvailabilityCalendar';
+import { useDoctorMonthAvailability } from '../hooks/useDoctorMonthAvailability';
+import { formatLocalDateISO, formatMonthKey } from '../utils/calendarDate';
 import type { Patient } from '../types/patient';
 
 // ── Priority helpers ───────────────────────────────────────────────
@@ -35,13 +38,6 @@ function timeAgo(iso: string | null): string {
   return `${Math.floor(mins / 60)}h ${mins % 60}m ago`;
 }
 
-function formatLocalDateISO(input: Date = new Date()): string {
-  const year = input.getFullYear();
-  const month = String(input.getMonth() + 1).padStart(2, '0');
-  const day = String(input.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
 // ── Main Component ─────────────────────────────────────────────────
 const WalkInQueue: React.FC = () => {
   const { user } = useAuth();
@@ -61,6 +57,8 @@ const WalkInQueue: React.FC = () => {
   const [doctors, setDoctors] = useState<DoctorOption[]>([]);
   const [filterDoctor, setFilterDoctor] = useState<string>('');
   const [sendModalId, setSendModalId] = useState<string | null>(null);
+  const [sendModalQueueId, setSendModalQueueId] = useState<string | null>(null);
+  const [sendModalBookedDoctorId, setSendModalBookedDoctorId] = useState<string>('');
   const [sendModalPatientName, setSendModalPatientName] = useState<string>('');
   const [sendDoctorId, setSendDoctorId] = useState<string>('');
   const [doctorLoads, setDoctorLoads] = useState<Record<string, number>>({});
@@ -83,12 +81,14 @@ const WalkInQueue: React.FC = () => {
 
   // ── Date Picker for browsing queue by date ────────────────────
   const [selectedDate, setSelectedDate] = useState<string>(today);
+  const isSelectedDateToday = selectedDate === today;
 
   // ── Book Next Appointment Modal State ─────────────────────────
   const [bookNextItem, setBookNextItem] = useState<QueueItem | null>(null);
   const [bookNextDate, setBookNextDate] = useState<string>('');
   const [bookNextTime, setBookNextTime] = useState<string>('');
   const [bookingSaving, setBookingSaving] = useState(false);
+  const [bookCalendarMonth, setBookCalendarMonth] = useState<string>(formatMonthKey());
 
   // ── Refer to Doctor Modal State ───────────────────────────────
   const [referItem, setReferItem] = useState<QueueItem | null>(null);
@@ -98,9 +98,33 @@ const WalkInQueue: React.FC = () => {
   const [referSaving, setReferSaving] = useState(false);
   const [allDoctors, setAllDoctors] = useState<DoctorOption[]>([]);
   const [referDoctorLoad, setReferDoctorLoad] = useState<number | null>(null);
+  const [referCalendarMonth, setReferCalendarMonth] = useState<string>(formatMonthKey());
 
   // ── Reception View: Tab for New/Ongoing/Completed/Upcoming ─────────
   const [receptionTab, setReceptionTab] = useState<'new' | 'ongoing' | 'completed' | 'upcoming'>('new');
+  const tomorrow = formatLocalDateISO(new Date(Date.now() + 86400000));
+
+  const {
+    availabilityMap: bookDateAvailability,
+    loading: bookAvailabilityLoading,
+    reset: resetBookAvailability,
+  } = useDoctorMonthAvailability({
+    doctorId: bookNextItem?.doctor_id,
+    monthKey: bookCalendarMonth,
+    minDateISO: tomorrow,
+    enabled: !!bookNextItem?.doctor_id,
+  });
+
+  const {
+    availabilityMap: referDateAvailability,
+    loading: referAvailabilityLoading,
+    reset: resetReferAvailability,
+  } = useDoctorMonthAvailability({
+    doctorId: referDoctorId,
+    monthKey: referCalendarMonth,
+    minDateISO: today,
+    enabled: !!referItem && !!referDoctorId,
+  });
 
   const fetchScheduledAppts = useCallback(async () => {
     if (!isDoctor || !user?.id) return;
@@ -116,11 +140,15 @@ const WalkInQueue: React.FC = () => {
   // ── Fetch unassigned walk-ins (reception/admin only) ──────────
   const fetchUnassigned = useCallback(async () => {
     if (!canFilter) return;
+    if (!isSelectedDateToday) {
+      setUnassigned([]);
+      return;
+    }
     try {
       const data = await walkInService.getUnassigned();
       setUnassigned(data.items);
     } catch { /* silent */ }
-  }, [canFilter]);
+  }, [canFilter, isSelectedDateToday]);
 
   // ── Fetch queue ────────────────────────────────────────────────
   const fetchQueue = useCallback(async () => {
@@ -183,6 +211,10 @@ const WalkInQueue: React.FC = () => {
   // ── Queue actions ──────────────────────────────────────────────
   const handleCall = async (queueId: string) => {
     try {
+      if (!isSelectedDateToday) {
+        toast.error("Call action is allowed only for today's queue");
+        return;
+      }
       await walkInService.callPatient(queueId);
       toast.success('Patient called');
       fetchQueue();
@@ -191,6 +223,10 @@ const WalkInQueue: React.FC = () => {
 
   const handleStartConsultation = async (queueId: string) => {
     try {
+      if (!isSelectedDateToday) {
+        toast.error("Consultation can be started only for today's queue");
+        return;
+      }
       await walkInService.startConsultation(queueId);
       toast.success('Consultation started');
       fetchQueue();
@@ -209,6 +245,10 @@ const WalkInQueue: React.FC = () => {
 
   const handleComplete = async (queueId: string) => {
     try {
+      if (!isSelectedDateToday) {
+        toast.error("Complete action is allowed only for today's queue");
+        return;
+      }
       await walkInService.completePatient(queueId);
       toast.success('Consultation completed');
       fetchQueue();
@@ -217,6 +257,10 @@ const WalkInQueue: React.FC = () => {
 
   const handleSkip = async (queueId: string) => {
     try {
+      if (!isSelectedDateToday) {
+        toast.error("Skip action is allowed only for today's queue");
+        return;
+      }
       await walkInService.skipPatient(queueId);
       toast.success('Patient skipped');
       fetchQueue();
@@ -226,6 +270,10 @@ const WalkInQueue: React.FC = () => {
   // ── Book Next Appointment Handler ────────────────────────────────
   const handleBookNextAppointment = async () => {
     if (!bookNextItem || !bookNextDate || !bookNextItem.patient_id || !bookNextItem.doctor_id) return;
+    if (bookDateAvailability[bookNextDate] === false) {
+      toast.error('No slot available on selected date. Please choose another date.');
+      return;
+    }
     setBookingSaving(true);
     try {
       await appointmentService.createAppointment({
@@ -240,13 +288,27 @@ const WalkInQueue: React.FC = () => {
       });
       toast.success('Follow-up appointment booked successfully');
       fetchUpcoming();
-      setBookNextItem(null);
-      setBookNextDate('');
-      setBookNextTime('');
+      closeBookNextModal();
     } catch {
       toast.error('Failed to book appointment');
     }
     setBookingSaving(false);
+  };
+
+  const openBookNextModal = (item: QueueItem) => {
+    setBookNextItem(item);
+    setBookNextDate('');
+    setBookNextTime('');
+    setBookCalendarMonth(tomorrow.slice(0, 7));
+    resetBookAvailability();
+  };
+
+  const closeBookNextModal = () => {
+    setBookNextItem(null);
+    setBookNextDate('');
+    setBookNextTime('');
+    setBookCalendarMonth(tomorrow.slice(0, 7));
+    resetBookAvailability();
   };
 
   // ── Refer to Doctor Handler ─────────────────────────────────────
@@ -273,6 +335,26 @@ const WalkInQueue: React.FC = () => {
     setReferSaving(false);
   };
 
+  const openReferModal = (item: QueueItem) => {
+    setReferItem(item);
+    setReferDoctorId('');
+    setReferDate('');
+    setReferReason('');
+    setReferDoctorLoad(null);
+    setReferCalendarMonth(today.slice(0, 7));
+    resetReferAvailability();
+  };
+
+  const closeReferModal = () => {
+    setReferItem(null);
+    setReferDoctorId('');
+    setReferDate('');
+    setReferReason('');
+    setReferDoctorLoad(null);
+    setReferCalendarMonth(today.slice(0, 7));
+    resetReferAvailability();
+  };
+
   // ── Fetch doctor load for referral warning ─────────────────────
   useEffect(() => {
     if (!referDoctorId || !referDate) { setReferDoctorLoad(null); return; }
@@ -283,6 +365,9 @@ const WalkInQueue: React.FC = () => {
     }).catch(() => { if (!cancelled) setReferDoctorLoad(null); });
     return () => { cancelled = true; };
   }, [referDoctorId, referDate]);
+
+  const isSelectedReferralDateUnavailable = referDate ? referDateAvailability[referDate] === false : false;
+  const isSelectedFollowUpDateUnavailable = bookNextDate ? bookDateAvailability[bookNextDate] === false : false;
 
   // ── Scheduled Appointment Actions (doctor view) ────────────────
   const handleScheduledStatusChange = async (id: string, newStatus: string) => {
@@ -317,11 +402,21 @@ const WalkInQueue: React.FC = () => {
     if (!sendModalId || !sendDoctorId) return;
     setSendingInProgress(true);
     try {
-      const result = await walkInService.sendToDoctor(sendModalId, sendDoctorId);
       const docName = doctors.find(d => d.doctor_id === sendDoctorId)?.name || 'doctor';
-      const token = (result as any).queue_number;
-      toast.success(`Patient sent to ${docName}'s queue${token ? ` (Token #${token})` : ''}`);
+      const isSameAsBooked = !!sendModalQueueId && !!sendModalBookedDoctorId && sendDoctorId === sendModalBookedDoctorId;
+
+      if (isSameAsBooked && sendModalQueueId) {
+        await walkInService.sendPatientToDoctor(sendModalQueueId);
+        toast.success(`Patient sent to ${docName}'s queue`);
+      } else {
+        const result = await walkInService.sendToDoctor(sendModalId, sendDoctorId);
+        const token = (result as any).queue_number;
+        toast.success(`Patient sent to ${docName}'s queue${token ? ` (Token #${token})` : ''}`);
+      }
+
       setSendModalId(null);
+      setSendModalQueueId(null);
+      setSendModalBookedDoctorId('');
       setSendDoctorId('');
       setSendModalPatientName('');
       // Refresh doctor loads + queue + unassigned
@@ -337,6 +432,10 @@ const WalkInQueue: React.FC = () => {
   // ── Send patient already in queue to doctor's NEXT UP ──────────
   const handleSendPatientToDoctor = async (queueId: string, patientName: string) => {
     try {
+      if (!isSelectedDateToday) {
+        toast.error("Send action is allowed only for today's queue");
+        return;
+      }
       await walkInService.sendPatientToDoctor(queueId);
       toast.success(`${patientName} sent to doctor's queue`);
       fetchQueue();
@@ -443,6 +542,12 @@ const WalkInQueue: React.FC = () => {
         </div>
       </div>
 
+      {!isSelectedDateToday && (
+        <div className="mb-4 px-4 py-3 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 text-sm">
+          Viewing {new Date(selectedDate + 'T00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })} queue in read-only mode. Call/Send/Consultation actions are available only for today.
+        </div>
+      )}
+
       {/* Stats Cards */}
       {queueData && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -538,7 +643,7 @@ const WalkInQueue: React.FC = () => {
                           <p className="text-lg font-bold text-slate-900 truncate">{currentPatient.patient_name || 'Unknown'}</p>
                           <div className="flex items-center gap-3 mt-1.5 flex-wrap">
                             {currentPatient.patient_reference_number && (
-                              <span className="text-sm font-mono text-slate-600 bg-slate-100 px-2 py-0.5 rounded">MRN: {currentPatient.patient_reference_number}</span>
+                              <span className="text-sm font-mono text-slate-600 bg-slate-100 px-2 py-0.5 rounded">PRN: {currentPatient.patient_reference_number}</span>
                             )}
                             {currentPatient.patient_gender && (
                               <span className="text-sm text-slate-600 font-medium capitalize">{currentPatient.patient_gender}</span>
@@ -576,12 +681,12 @@ const WalkInQueue: React.FC = () => {
                           <span className="material-symbols-outlined text-sm">edit_note</span>
                           Consultation
                         </button>
-                        <button onClick={() => { setBookNextItem(currentPatient); setBookNextDate(''); setBookNextTime(''); }}
+                        <button onClick={() => openBookNextModal(currentPatient)}
                           className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-blue-700 bg-white border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors">
                           <span className="material-symbols-outlined text-sm">event_upcoming</span>
                           Book Follow-up
                         </button>
-                        <button onClick={() => { setReferItem(currentPatient); setReferDoctorId(''); setReferDate(''); setReferReason(''); }}
+                        <button onClick={() => openReferModal(currentPatient)}
                           className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-orange-700 bg-white border border-orange-200 rounded-lg hover:bg-orange-50 transition-colors">
                           <span className="material-symbols-outlined text-sm">send</span>
                           Refer to Doctor
@@ -613,7 +718,7 @@ const WalkInQueue: React.FC = () => {
                           <p className="text-lg font-bold text-slate-900 truncate">{calledPatient.patient_name || 'Unknown'}</p>
                           <div className="flex items-center gap-3 mt-1.5 flex-wrap">
                             {calledPatient.patient_reference_number && (
-                              <span className="text-sm font-mono text-slate-600 bg-slate-100 px-2 py-0.5 rounded">MRN: {calledPatient.patient_reference_number}</span>
+                              <span className="text-sm font-mono text-slate-600 bg-slate-100 px-2 py-0.5 rounded">PRN: {calledPatient.patient_reference_number}</span>
                             )}
                             {calledPatient.patient_gender && (
                               <span className="text-sm text-slate-600 font-medium capitalize">{calledPatient.patient_gender}</span>
@@ -675,7 +780,7 @@ const WalkInQueue: React.FC = () => {
                           <p className="font-bold text-slate-900">{nextPatient.patient_name || 'Unknown'}</p>
                           <div className="flex items-center gap-3 mt-1.5 flex-wrap">
                             {nextPatient.patient_reference_number && (
-                              <span className="text-sm font-mono text-slate-500 bg-slate-50 px-2 py-0.5 rounded">MRN: {nextPatient.patient_reference_number}</span>
+                              <span className="text-sm font-mono text-slate-500 bg-slate-50 px-2 py-0.5 rounded">PRN: {nextPatient.patient_reference_number}</span>
                             )}
                             {nextPatient.patient_gender && (
                               <span className="text-sm text-slate-500 font-medium capitalize">{nextPatient.patient_gender}</span>
@@ -750,7 +855,7 @@ const WalkInQueue: React.FC = () => {
                                   <span className="text-[10px] font-bold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded-full">Called</span>
                                 )}
                                 {item.patient_reference_number && (
-                                  <span className="text-xs font-mono text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">MRN: {item.patient_reference_number}</span>
+                                  <span className="text-xs font-mono text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">PRN: {item.patient_reference_number}</span>
                                 )}
                               </div>
                               <div className="flex items-center gap-2 mt-0.5">
@@ -761,7 +866,7 @@ const WalkInQueue: React.FC = () => {
                               </div>
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
-                              {!isCalled && (
+                              {!isCalled && isSelectedDateToday && (
                                 <button onClick={() => handleCall(item.queue_id)}
                                   className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors">
                                   <span className="material-symbols-outlined text-sm">campaign</span>
@@ -869,7 +974,7 @@ const WalkInQueue: React.FC = () => {
       </div>
 
       {/* Unassigned Walk-ins — only show in New tab */}
-      {canFilter && unassigned.length > 0 && receptionTab === 'new' && (
+      {canFilter && isSelectedDateToday && unassigned.length > 0 && receptionTab === 'new' && (
         <div className="mb-6 bg-orange-50 border border-orange-200 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-3">
             <span className="material-symbols-outlined text-orange-500">warning</span>
@@ -920,7 +1025,13 @@ const WalkInQueue: React.FC = () => {
                     )}
                     <span className="text-[10px] text-slate-400">{timeAgo(item.check_in_at)}</span>
                     <button
-                      onClick={() => { setSendModalId(item.appointment_id); setSendDoctorId(''); setSendModalPatientName(item.patient_name || 'Patient'); }}
+                      onClick={() => {
+                        setSendModalId(item.appointment_id);
+                        setSendModalQueueId(null);
+                        setSendModalBookedDoctorId('');
+                        setSendDoctorId('');
+                        setSendModalPatientName(item.patient_name || 'Patient');
+                      }}
                       className="w-8 h-8 flex items-center justify-center text-white bg-orange-500 hover:bg-orange-600 hover:scale-105 active:scale-95 rounded-lg transition-all shadow-sm"
                       title="Send to Doctor">
                       <span className="material-symbols-outlined text-lg">send</span>
@@ -976,7 +1087,7 @@ const WalkInQueue: React.FC = () => {
                           <tr className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
                             <th className="px-5 py-2">#</th>
                             <th className="px-4 py-2">Patient</th>
-                            <th className="px-4 py-2">Doctor</th>
+                            <th className="px-4 py-2">Doctor / Referral</th>
                             <th className="px-4 py-2">Type</th>
                             <th className="px-4 py-2">Priority</th>
                             <th className="px-4 py-2">Complaint</th>
@@ -1000,14 +1111,14 @@ const WalkInQueue: React.FC = () => {
                                 <td className="px-4 py-2.5">
                                   <p className="text-sm font-semibold text-slate-900">{item.patient_name || 'Unknown'}</p>
                                   <div className="flex items-center gap-2 mt-0.5">
-                                    {item.patient_reference_number && <span className="text-[10px] font-mono text-slate-400">MRN: {item.patient_reference_number}</span>}
+                                    {item.patient_reference_number && <span className="text-[10px] font-mono text-slate-400">PRN: {item.patient_reference_number}</span>}
                                     {item.patient_gender && <span className="text-[10px] text-slate-400 capitalize">{item.patient_gender}</span>}
                                     {item.patient_age != null && <span className="text-[10px] text-slate-400">{item.patient_age}y</span>}
                                   </div>
                                 </td>
                                 <td className="px-4 py-2.5">
                                   <p className="text-sm text-slate-700">{item.doctor_name || '—'}</p>
-                                  {item.referring_doctor_name && (
+                                  {item.appointment_type === 'referral' && item.referring_doctor_name && (
                                     <p className="text-[10px] text-orange-600 flex items-center gap-0.5 mt-0.5">
                                       <span className="material-symbols-outlined" style={{ fontSize: 10 }}>person</span>
                                       Ref: Dr. {item.referring_doctor_name}
@@ -1183,8 +1294,14 @@ const WalkInQueue: React.FC = () => {
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
                           {/* Send to Doctor: for reception/admin on waiting OR called items */}
-                          {canFilter && (item.status === 'waiting' || item.status === 'called') && item.doctor_id && (
-                            <button onClick={() => handleSendPatientToDoctor(item.queue_id, item.patient_name || 'Patient')}
+                          {canFilter && isSelectedDateToday && (item.status === 'waiting' || item.status === 'called') && item.doctor_id && (
+                            <button onClick={() => {
+                              setSendModalId(item.appointment_id);
+                              setSendModalQueueId(item.queue_id);
+                              setSendModalBookedDoctorId(item.doctor_id || '');
+                              setSendDoctorId(item.doctor_id || '');
+                              setSendModalPatientName(item.patient_name || 'Patient');
+                            }}
                               className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg hover:scale-105 active:scale-95 transition-all shadow-sm text-xs font-semibold ${
                                 isCalled 
                                   ? 'bg-blue-500 text-white ring-2 ring-blue-300 animate-pulse' 
@@ -1196,9 +1313,11 @@ const WalkInQueue: React.FC = () => {
                             </button>
                           )}
                           {/* Assign doctor: for unassigned items */}
-                          {canFilter && (item.status === 'waiting' || item.status === 'called') && !item.doctor_id && (
+                          {canFilter && isSelectedDateToday && (item.status === 'waiting' || item.status === 'called') && !item.doctor_id && (
                             <button onClick={() => {
                               setSendModalId(item.appointment_id);
+                              setSendModalQueueId(null);
+                              setSendModalBookedDoctorId('');
                               setSendDoctorId('');
                               setSendModalPatientName(item.patient_name || 'Patient');
                             }}
@@ -1371,7 +1490,7 @@ const WalkInQueue: React.FC = () => {
                           </div>
                           <div className="flex items-center gap-3 flex-wrap">
                             {item.patient_reference_number && (
-                              <span className="text-sm font-mono text-slate-500 bg-slate-50 px-2 py-0.5 rounded">MRN: {item.patient_reference_number}</span>
+                              <span className="text-sm font-mono text-slate-500 bg-slate-50 px-2 py-0.5 rounded">PRN: {item.patient_reference_number}</span>
                             )}
                             {item.patient_gender && (
                               <span className="text-sm text-slate-500 font-medium capitalize">{item.patient_gender}</span>
@@ -1398,7 +1517,7 @@ const WalkInQueue: React.FC = () => {
                           Patient Info
                         </button>
                         {item.status === 'completed' && (
-                          <button onClick={() => { setReferItem(item); setReferDoctorId(''); setReferDate(''); setReferReason(''); }}
+                          <button onClick={() => openReferModal(item)}
                             className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded-lg hover:bg-orange-100 transition-colors">
                             <span className="material-symbols-outlined text-sm">send</span>
                             Refer
@@ -1444,7 +1563,7 @@ const WalkInQueue: React.FC = () => {
                 type="text"
                 value={upcomingSearch}
                 onChange={(e) => setUpcomingSearch(e.target.value)}
-                placeholder="Search patient / MRN / complaint"
+                placeholder="Search patient / PRN / complaint"
                 className="input-field"
               />
             </div>
@@ -1483,53 +1602,66 @@ const WalkInQueue: React.FC = () => {
                         View Queue
                       </button>
                     </div>
-                    <div className="divide-y divide-slate-100">
-                      {group.items.map(item => {
-                        const pri = PRIORITY_CONFIG[item.priority] || PRIORITY_CONFIG.normal;
-                        const typeConfig: Record<string, { label: string; bg: string; text: string }> = {
-                          referral: { label: 'Referral', bg: 'bg-orange-100', text: 'text-orange-700' },
-                          'follow-up': { label: 'Follow-up', bg: 'bg-blue-100', text: 'text-blue-700' },
-                          'follow_up': { label: 'Follow-up', bg: 'bg-blue-100', text: 'text-blue-700' },
-                          scheduled: { label: 'Scheduled', bg: 'bg-green-100', text: 'text-green-700' },
-                          'walk-in': { label: 'Walk-in', bg: 'bg-slate-100', text: 'text-slate-600' },
-                          walk_in: { label: 'Walk-in', bg: 'bg-slate-100', text: 'text-slate-600' },
-                        };
-                        const apptType = typeConfig[item.appointment_type] || { label: item.appointment_type, bg: 'bg-slate-100', text: 'text-slate-600' };
-                        return (
-                          <div key={item.queue_id} className="flex items-center gap-3 px-5 py-3 hover:bg-slate-50/50">
-                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold shrink-0 ${
-                              item.priority === 'emergency' ? 'bg-red-100 text-red-700' :
-                              item.priority === 'urgent' ? 'bg-amber-100 text-amber-700' :
-                              'bg-slate-100 text-slate-600'
-                            }`}>
-                              {item.queue_number}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <p className="text-sm font-bold text-slate-900">{item.patient_name || 'Unknown'}</p>
-                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${apptType.bg} ${apptType.text}`}>{apptType.label}</span>
-                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${pri.bg} ${pri.text}`}>{pri.label}</span>
-                              </div>
-                              <div className="flex items-center gap-2 mt-0.5">
-                                {item.patient_reference_number && (
-                                  <span className="text-xs font-mono text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded">MRN: {item.patient_reference_number}</span>
-                                )}
-                                {item.patient_gender && <span className="text-xs text-slate-500 font-medium capitalize">{item.patient_gender}</span>}
-                                {item.patient_age != null && <span className="text-xs text-slate-500 font-medium">{item.patient_age}y</span>}
-                                {item.chief_complaint && (
-                                  <span className="text-xs text-slate-400 truncate max-w-[200px]" title={item.chief_complaint}>{item.chief_complaint}</span>
-                                )}
-                              </div>
-                              {item.referring_doctor_name && (
-                                <p className="text-[10px] text-orange-600 mt-0.5 flex items-center gap-1">
-                                  <span className="material-symbols-outlined" style={{ fontSize: 11 }}>person</span>
-                                  Referred by Dr. {item.referring_doctor_name}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
+                            <th className="px-5 py-2">#</th>
+                            <th className="px-4 py-2">Patient</th>
+                            <th className="px-4 py-2">Doctor</th>
+                            <th className="px-4 py-2">Type</th>
+                            <th className="px-4 py-2">Priority</th>
+                            <th className="px-4 py-2">Complaint</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                          {group.items.map(item => {
+                            const pri = PRIORITY_CONFIG[item.priority] || PRIORITY_CONFIG.normal;
+                            const typeConfig: Record<string, { label: string; bg: string; text: string }> = {
+                              referral: { label: 'Referral', bg: 'bg-orange-100', text: 'text-orange-700' },
+                              'follow-up': { label: 'Follow-up', bg: 'bg-blue-100', text: 'text-blue-700' },
+                              'follow_up': { label: 'Follow-up', bg: 'bg-blue-100', text: 'text-blue-700' },
+                              scheduled: { label: 'Scheduled', bg: 'bg-green-100', text: 'text-green-700' },
+                              'walk-in': { label: 'Walk-in', bg: 'bg-slate-100', text: 'text-slate-600' },
+                              walk_in: { label: 'Walk-in', bg: 'bg-slate-100', text: 'text-slate-600' },
+                            };
+                            const apptType = typeConfig[item.appointment_type] || { label: item.appointment_type, bg: 'bg-slate-100', text: 'text-slate-600' };
+                            return (
+                              <tr key={item.queue_id} className="hover:bg-slate-50/50">
+                                <td className="px-5 py-2.5 text-sm font-bold text-slate-400">{item.queue_number}</td>
+                                <td className="px-4 py-2.5">
+                                  <p className="text-sm font-semibold text-slate-900">{item.patient_name || 'Unknown'}</p>
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    {item.patient_reference_number && <span className="text-[10px] font-mono text-slate-400">PRN: {item.patient_reference_number}</span>}
+                                    {item.patient_gender && <span className="text-[10px] text-slate-400 capitalize">{item.patient_gender}</span>}
+                                    {item.patient_age != null && <span className="text-[10px] text-slate-400">{item.patient_age}y</span>}
+                                  </div>
+                                </td>
+                                <td className="px-4 py-2.5">
+                                  <p className="text-sm text-slate-700">{item.doctor_name || '—'}</p>
+                                  {item.appointment_type === 'referral' && item.referring_doctor_name && (
+                                    <p className="text-[10px] text-orange-600 flex items-center gap-0.5 mt-0.5">
+                                      <span className="material-symbols-outlined" style={{ fontSize: 10 }}>person</span>
+                                      Ref: Dr. {item.referring_doctor_name}
+                                    </p>
+                                  )}
+                                </td>
+                                <td className="px-4 py-2.5">
+                                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${apptType.bg} ${apptType.text}`}>{apptType.label}</span>
+                                </td>
+                                <td className="px-4 py-2.5">
+                                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${pri.bg} ${pri.text}`}>{pri.label}</span>
+                                </td>
+                                <td className="px-4 py-2.5">
+                                  <p className="text-xs text-slate-500 truncate max-w-[260px]" title={item.chief_complaint || ''}>
+                                    {item.chief_complaint || <span className="text-slate-300">—</span>}
+                                  </p>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
                 );
@@ -1557,7 +1689,11 @@ const WalkInQueue: React.FC = () => {
 
       {/* Send to Doctor Modal */}
       {sendModalId && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setSendModalId(null)}>
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => {
+          setSendModalId(null);
+          setSendModalQueueId(null);
+          setSendModalBookedDoctorId('');
+        }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-3 mb-5">
               <div className="w-10 h-10 bg-orange-50 rounded-xl flex items-center justify-center">
@@ -1608,7 +1744,11 @@ const WalkInQueue: React.FC = () => {
             </div>
 
             <div className="flex justify-end gap-3 mt-5 pt-4 border-t border-slate-100">
-              <button onClick={() => setSendModalId(null)} className="px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 rounded-lg">Cancel</button>
+              <button onClick={() => {
+                setSendModalId(null);
+                setSendModalQueueId(null);
+                setSendModalBookedDoctorId('');
+              }} className="px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 rounded-lg">Cancel</button>
               <button onClick={handleSendToDoctor} disabled={!sendDoctorId || sendingInProgress}
                 className="inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 disabled:opacity-50 shadow-sm">
                 <span className="material-symbols-outlined text-base">send</span>
@@ -1630,7 +1770,7 @@ const WalkInQueue: React.FC = () => {
               <div className="min-w-0 flex-1">
                 <h3 className="text-lg font-bold text-slate-900 truncate">{detailItem.patient_name || 'Unknown Patient'}</h3>
                 {detailItem.patient_reference_number && (
-                  <p className="text-xs text-slate-400 font-mono">MRN: {detailItem.patient_reference_number}</p>
+                  <p className="text-xs text-slate-400 font-mono">PRN: {detailItem.patient_reference_number}</p>
                 )}
               </div>
               <button onClick={() => setDetailItem(null)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors">
@@ -1669,6 +1809,42 @@ const WalkInQueue: React.FC = () => {
               <div className="bg-slate-50 rounded-xl p-3">
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Email</p>
                 <p className="text-sm font-semibold text-slate-800 truncate">{detailItem.patient_email || '—'}</p>
+              </div>
+            </div>
+
+            {/* Visit Snapshot */}
+            <div className="mb-5">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">
+                <span className="material-symbols-outlined text-xs align-text-bottom mr-1">event_note</span>
+                Visit Snapshot
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-3">
+                  <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider mb-1">Assigned Doctor</p>
+                  <p className="text-sm font-semibold text-indigo-900 truncate">{detailItem.doctor_name || '—'}</p>
+                </div>
+                <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-3">
+                  <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider mb-1">Queue Date</p>
+                  <p className="text-sm font-semibold text-indigo-900">
+                    {new Date(selectedDate + 'T00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  </p>
+                </div>
+                <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-3">
+                  <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider mb-1">Called At</p>
+                  <p className="text-sm font-semibold text-indigo-900">
+                    {detailItem.called_at
+                      ? new Date(detailItem.called_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+                      : '—'}
+                  </p>
+                </div>
+                <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-3">
+                  <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider mb-1">Consultation Start</p>
+                  <p className="text-sm font-semibold text-indigo-900">
+                    {detailItem.consultation_start_at
+                      ? new Date(detailItem.consultation_start_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+                      : '—'}
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -1774,31 +1950,25 @@ const WalkInQueue: React.FC = () => {
 
             {/* Footer Actions */}
             <div className="flex justify-end gap-2 mt-5 pt-4 border-t border-slate-100">
-              {canActOnQueue && detailItem.status === 'waiting' && (
+              {canActOnQueue && isSelectedDateToday && detailItem.status === 'waiting' && (
                 <button onClick={() => { handleCall(detailItem.queue_id); setDetailItem(null); }}
                   className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-blue-500 rounded-lg hover:bg-blue-600 shadow-sm transition-colors">
                   <span className="material-symbols-outlined text-base">campaign</span> Call Patient
                 </button>
               )}
-              {canFilter && (detailItem.status === 'waiting' || detailItem.status === 'called') && detailItem.doctor_id && (
+              {canFilter && isSelectedDateToday && (detailItem.status === 'waiting' || detailItem.status === 'called') && detailItem.doctor_id && (
                 <button onClick={() => { handleSendPatientToDoctor(detailItem.queue_id, detailItem.patient_name || 'Patient'); setDetailItem(null); }}
                   className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-teal-500 rounded-lg hover:bg-teal-600 shadow-sm transition-colors">
                   <span className="material-symbols-outlined text-base">send</span> Send to Doctor
                 </button>
               )}
-              {canActOnQueue && detailItem.status === 'sent_to_doctor' && (
+              {canActOnQueue && isSelectedDateToday && (detailItem.status === 'called' || detailItem.status === 'sent_to_doctor') && (
                 <button onClick={() => { handleStartConsultation(detailItem.queue_id); setDetailItem(null); }}
                   className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-purple-500 rounded-lg hover:bg-purple-600 shadow-sm transition-colors">
                   <span className="material-symbols-outlined text-base">clinical_notes</span> Start Consultation
                 </button>
               )}
-              {canActOnQueue && detailItem.status === 'called' && (
-                <button onClick={() => { handleStartConsultation(detailItem.queue_id); setDetailItem(null); }}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-purple-500 rounded-lg hover:bg-purple-600 shadow-sm transition-colors">
-                  <span className="material-symbols-outlined text-base">clinical_notes</span> Start Consultation
-                </button>
-              )}
-              {canActOnQueue && detailItem.status === 'in_consultation' && (
+              {canActOnQueue && isSelectedDateToday && detailItem.status === 'in_consultation' && (
                 <button onClick={() => {
                   const params = new URLSearchParams({
                     patient_id: detailItem.patient_id || '',
@@ -1812,13 +1982,7 @@ const WalkInQueue: React.FC = () => {
                   <span className="material-symbols-outlined text-base">edit_note</span> Open Consultation
                 </button>
               )}
-              {canActOnQueue && detailItem.status === 'in_consultation' && (
-                <button onClick={() => { setBookNextItem(detailItem); setBookNextDate(''); setBookNextTime(''); setDetailItem(null); }}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-blue-700 bg-white border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors">
-                  <span className="material-symbols-outlined text-base">event_upcoming</span> Book Follow-up
-                </button>
-              )}
-              {canActOnQueue && detailItem.status === 'in_consultation' && (
+              {canActOnQueue && isSelectedDateToday && detailItem.status === 'in_consultation' && (
                 <button onClick={() => { handleComplete(detailItem.queue_id); setDetailItem(null); }}
                   className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-emerald-500 rounded-lg hover:bg-emerald-600 shadow-sm transition-colors">
                   <span className="material-symbols-outlined text-base">task_alt</span> Mark Complete
@@ -1847,7 +2011,7 @@ const WalkInQueue: React.FC = () => {
                   <p className="text-xs text-slate-500">{bookNextItem.patient_name}</p>
                 </div>
               </div>
-              <button onClick={() => setBookNextItem(null)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
+              <button onClick={closeBookNextModal} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
@@ -1857,12 +2021,14 @@ const WalkInQueue: React.FC = () => {
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
                   Appointment Date <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="date"
-                  value={bookNextDate}
-                  onChange={(e) => setBookNextDate(e.target.value)}
-                  min={formatLocalDateISO(new Date(Date.now() + 86400000))}
-                  className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                <AvailabilityCalendar
+                  monthKey={bookCalendarMonth}
+                  onMonthKeyChange={setBookCalendarMonth}
+                  selectedDate={bookNextDate}
+                  onSelectDate={setBookNextDate}
+                  minDateISO={tomorrow}
+                  availabilityMap={bookDateAvailability}
+                  loading={bookAvailabilityLoading}
                 />
               </div>
               <div>
@@ -1879,13 +2045,13 @@ const WalkInQueue: React.FC = () => {
             </div>
 
             <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
-              <button onClick={() => setBookNextItem(null)}
+              <button onClick={closeBookNextModal}
                 className="px-4 py-2.5 text-sm font-medium text-slate-500 hover:bg-slate-100 rounded-lg transition-colors">
                 Cancel
               </button>
               <button
                 onClick={handleBookNextAppointment}
-                disabled={!bookNextDate || bookingSaving}
+                disabled={!bookNextDate || bookingSaving || isSelectedFollowUpDateUnavailable}
                 className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-primary rounded-xl hover:bg-primary/90 disabled:opacity-50 shadow-sm transition-all">
                 <span className="material-symbols-outlined text-base">check</span>
                 {bookingSaving ? 'Booking...' : 'Confirm Booking'}
@@ -1908,7 +2074,7 @@ const WalkInQueue: React.FC = () => {
                   <p className="text-xs text-slate-500">{referItem.patient_name}</p>
                 </div>
               </div>
-              <button onClick={() => setReferItem(null)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
+              <button onClick={closeReferModal} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
@@ -1936,12 +2102,14 @@ const WalkInQueue: React.FC = () => {
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
                   Appointment Date <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="date"
-                  value={referDate}
-                  onChange={(e) => setReferDate(e.target.value)}
-                  min={formatLocalDateISO()}
-                  className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                <AvailabilityCalendar
+                  monthKey={referCalendarMonth}
+                  onMonthKeyChange={setReferCalendarMonth}
+                  selectedDate={referDate}
+                  onSelectDate={setReferDate}
+                  minDateISO={today}
+                  availabilityMap={referDateAvailability}
+                  loading={referAvailabilityLoading}
                 />
               </div>
               {referDoctorLoad !== null && referDoctorId && referDate && (
@@ -1973,13 +2141,13 @@ const WalkInQueue: React.FC = () => {
             </div>
 
             <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
-              <button onClick={() => setReferItem(null)}
+              <button onClick={closeReferModal}
                 className="px-4 py-2.5 text-sm font-medium text-slate-500 hover:bg-slate-100 rounded-lg transition-colors">
                 Cancel
               </button>
               <button
                 onClick={handleReferToDoctor}
-                disabled={!referDoctorId || !referDate || referSaving}
+                disabled={!referDoctorId || !referDate || referSaving || isSelectedReferralDateUnavailable}
                 className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-orange-500 rounded-xl hover:bg-orange-600 disabled:opacity-50 shadow-sm transition-all">
                 <span className="material-symbols-outlined text-base">send</span>
                 {referSaving ? 'Referring...' : 'Confirm Referral'}

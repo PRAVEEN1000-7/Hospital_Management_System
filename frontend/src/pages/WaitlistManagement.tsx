@@ -35,10 +35,11 @@ const WaitlistManagement: React.FC = () => {
   const [sendModalEntry, setSendModalEntry] = useState<WaitlistEntry | null>(null);
   const [sendDoctorId, setSendDoctorId] = useState('');
   const [sendLoading, setSendLoading] = useState(false);
+  const today = new Date().toISOString().split('T')[0];
 
-  // Filters (doctors don't use filters — backend auto-scopes to their patients)
+  // Filters
   const [filterDoctor, setFilterDoctor] = useState('');
-  const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0]);
+  const [filterDate, setFilterDate] = useState(today);
   const [filterStatus, setFilterStatus] = useState('waiting');
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -55,16 +56,16 @@ const WaitlistManagement: React.FC = () => {
       setError('');
 
       const params: Record<string, string | number> = { page, limit };
-      // Doctors: no extra filters needed — backend auto-scopes
+      // Backend auto-scopes doctors to their own waitlist.
       if (!isDoctor && filterDoctor) params.doctor_id = filterDoctor;
-      if (!isDoctor && filterDate) params.date = filterDate;
+      if (filterDate) params.date = filterDate;
       if (!isDoctor && filterStatus) params.status = filterStatus;
 
       const [wl, st] = await Promise.all([
         waitlistService.getWaitlist(params as any),
         waitlistService.getStats({
           doctor_id: (!isDoctor && filterDoctor) ? filterDoctor : undefined,
-          date: (!isDoctor && filterDate) ? filterDate : undefined,
+          date: filterDate || undefined,
         }),
       ]);
 
@@ -207,7 +208,37 @@ const WaitlistManagement: React.FC = () => {
         </div>
       )}
 
-      {/* Filters — hidden for doctors (backend auto-scopes) */}
+      {/* Doctor Date Filter */}
+      {isDoctor && (
+        <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6">
+          <div className="flex flex-wrap gap-3 items-end justify-between">
+            <div className="min-w-[180px]">
+              <label className="block text-xs font-medium text-slate-500 mb-1">Date</label>
+              <input
+                type="date"
+                value={filterDate}
+                onChange={e => { setFilterDate(e.target.value); setPage(1); }}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              {filterDate !== today && (
+                <button
+                  onClick={() => { setFilterDate(today); setPage(1); }}
+                  className="px-3 py-2 text-xs font-semibold text-primary bg-primary/10 border border-primary/20 rounded-lg hover:bg-primary/20 transition-colors"
+                >
+                  Back to Today
+                </button>
+              )}
+              <p className="text-xs text-slate-500">
+                Showing waitlist for <span className="font-semibold text-slate-700">{new Date(filterDate + 'T00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Filters — Admin/Reception */}
       {!isDoctor && (
         <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6">
           <div className="flex flex-wrap gap-4 items-end">

@@ -19,6 +19,8 @@ from ..schemas.inventory import (
     StockMovementResponse,
     StockAdjustmentCreate, StockAdjustmentUpdate, StockAdjustmentResponse,
     CycleCountCreate, CycleCountUpdate, CycleCountResponse,
+    # Analytics
+    StockStatusAnalytics, InventoryAgingAnalytics,
 )
 from ..services import inventory_service as svc
 
@@ -70,6 +72,29 @@ async def expiring_items(
 ):
     """Items expiring within the given number of days."""
     return svc.get_expiring_items(db, current_user.hospital_id, days=days)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  ANALYTICS ENDPOINTS
+# ═══════════════════════════════════════════════════════════════════════════
+
+@router.get("/analytics/stock-status", response_model=list[StockStatusAnalytics])
+async def stock_status(
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(inventory_view_roles),
+):
+    """Get stock status for all items for analytics dashboard."""
+    return svc.get_stock_status_analytics(db, current_user.hospital_id, limit)
+
+
+@router.get("/analytics/aging", response_model=list[InventoryAgingAnalytics])
+async def inventory_aging(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(inventory_view_roles),
+):
+    """Get inventory aging report for analytics dashboard."""
+    return svc.get_inventory_aging_analytics(db, current_user.hospital_id)
 
 
 # ═════════════════════════════════════════════════════════════════════════════

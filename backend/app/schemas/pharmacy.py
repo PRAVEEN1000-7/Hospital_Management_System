@@ -429,6 +429,7 @@ class SaleResponse(BaseModel):
     notes: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None  # Made optional
+    item_count: Optional[int] = 0
     items: list[SaleItemResponse] = []
 
     @model_validator(mode="before")
@@ -498,3 +499,22 @@ class PharmacyDashboard(BaseModel):
     today_sales_count: int = 0
     today_sales_amount: Decimal = Decimal("0")
     pending_orders: int = 0
+
+
+# ══════════════════════════════════════════════════
+# Analytics
+# ══════════════════════════════════════════════════
+class PharmacySalesAnalytics(BaseModel):
+    """Daily pharmacy sales for analytics charts."""
+    date: str
+    sales: Decimal = Decimal("0")
+    prescriptions_filled: int = 0
+
+
+class TopSellingMedicineAnalytics(BaseModel):
+    """Top selling medicine for analytics."""
+    name: str
+    medicine_id: str
+    quantity_sold: int
+    revenue: Decimal = Decimal("0")
+    category: Optional[str] = None

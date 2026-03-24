@@ -1312,6 +1312,120 @@ def get_inventory_dashboard(db: Session, hospital_id: uuid.UUID) -> dict:
     }
 
 
+def get_stock_status_analytics(
+    db: Session, hospital_id: uuid.UUID, limit: int = 50
+) -> list[dict]:
+    """Get stock status for analytics dashboard."""
+    # Get all medicines with their stock levels
+    medicines = db.query(Medicine).filter(
+        Medicine.hospital_id == hospital_id,
+        Medicine.is_active == True,
+    ).limit(limit).all()
+    
+    results = []
+    for med in medicines:
+        # Calculate total stock from batches
+        total_stock = db.query(
+            func.coalesce(func.sum(MedicineBatch.quantity), 0)
+        ).join(
+            Medicine, Medicine.id == MedicineBatch.medicine_id
+        ).filter(
+            Medicine.id == med.id,
+            MedicineBatch.is_active == True,
+        ).scalar() or 0
+        
+        # Determine status
+        if total_stock == 0:
+            status = "critical"
+        elif total_stock < med.reorder_level:
+            status = "low"
+        elif med.max_stock_level and total_stock > med.max_stock_level:
+            status = "overstock"
+        else:
+            status = "ok"
+        
+        # Get last restock date from latest GRN
+        last_grn = db.query(GoodsReceiptNote.received_date).filter(
+            GoodsReceiptNote.hospital_id == hospital_id,
+            GoodsReceiptNote.status == "verified",
+        ).order_by(GoodsReceiptNote.received_date.desc()).first()
+        
+        results.append({
+            "item_name": med.name,
+            "item_id": str(med.id),
+            "category": med.category or "General",
+            "current_stock": total_stock,
+            "min_stock": med.reorder_level,
+            "max_stock": med.max_stock_level or 0,
+            "status": status,
+            "last_restock_date": str(last_grn.received_date) if last_grn and last_grn.received_date else None,
+        })
+    
+    return results
+
+
+def get_inventory_aging_analytics(
+    db: Session, hospital_id: uuid.UUID
+) -> list[dict]:
+    """Get inventory aging report based on days to expiry."""
+    today = date.today()
+    
+    # Query batches grouped by days to expiry
+    results = db.query(
+        MedicineBatch.expiry_date,
+        func.coalesce(func.sum(MedicineBatch.quantity), 0).label("total_qty"),
+        func.coalesce(func.sum(MedicineBatch.quantity * MedicineBatch.purchase_price), 0).label("total_value"),
+    ).join(
+        Medicine, Medicine.id == MedicineBatch.medicine_id
+    ).filter(
+        Medicine.hospital_id == hospital_id,
+        Medicine.is_active == True,
+        MedicineBatch.is_active == True,
+        MedicineBatch.quantity > 0,
+    ).group_by(
+        MedicineBatch.expiry_date
+    ).all()
+    
+    # Initialize aging buckets
+    aging_buckets = {
+        "0-30 days": {"item_count": 0, "value": 0},
+        "31-60 days": {"item_count": 0, "value": 0},
+        "61-90 days": {"item_count": 0, "value": 0},
+        "91-180 days": {"item_count": 0, "value": 0},
+        "181-365 days": {"item_count": 0, "value": 0},
+        "> 365 days": {"item_count": 0, "value": 0},
+    }
+    
+    for r in results:
+        if r.expiry_date:
+            days_to_expiry = (r.expiry_date - today).days
+            value = float(r.total_value) if r.total_value else 0
+            
+            if days_to_expiry <= 30:
+                aging_buckets["0-30 days"]["item_count"] += 1
+                aging_buckets["0-30 days"]["value"] += value
+            elif days_to_expiry <= 60:
+                aging_buckets["31-60 days"]["item_count"] += 1
+                aging_buckets["31-60 days"]["value"] += value
+            elif days_to_expiry <= 90:
+                aging_buckets["61-90 days"]["item_count"] += 1
+                aging_buckets["61-90 days"]["value"] += value
+            elif days_to_expiry <= 180:
+                aging_buckets["91-180 days"]["item_count"] += 1
+                aging_buckets["91-180 days"]["value"] += value
+            elif days_to_expiry <= 365:
+                aging_buckets["181-365 days"]["item_count"] += 1
+                aging_buckets["181-365 days"]["value"] += value
+            else:
+                aging_buckets["> 365 days"]["item_count"] += 1
+                aging_buckets["> 365 days"]["value"] += value
+    
+    return [
+        {"range": r, "item_count": d["item_count"], "value": d["value"]}
+        for r, d in aging_buckets.items()
+    ]
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 #  INVOICE INTEGRATION — MEDICINE LOOKUP
 # ═══════════════════════════════════════════════════════════════════════════

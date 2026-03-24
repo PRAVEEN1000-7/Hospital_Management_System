@@ -1,13 +1,14 @@
 /**
  * Reports / Analytics API service.
  *
- * LIVE endpoints   → real API calls (Patient, Appointments, OPD modules)
+ * LIVE endpoints   → real API calls (Patient, Appointments, OPD, Pharmacy, Inventory modules)
  * DEV  endpoints   → mock data with 600 ms simulated latency
  */
 import api from './api';
 import appointmentService from './appointmentService';
 import type { AppointmentStats, EnhancedAppointmentStats } from '../types/appointment';
 import type {
+  DashboardFilters,
   DashboardSummary,
   DailyRevenue,
   MonthlyRevenue,
@@ -25,7 +26,8 @@ import type {
   ExportPayload,
   SchedulePayload,
   ScheduledReport,
-  DashboardFilters,
+  PharmacyDashboard,
+  InventoryDashboard,
 } from '../types/analytics.types';
 import {
   mockDashboardSummary,
@@ -162,21 +164,94 @@ async function getDepartmentRevenue(): Promise<DepartmentRevenue[]> {
   return mockDepartmentRevenue;
 }
 
-// ── DEV: Pharmacy ────────────────────────────────────────────────────────
+// ── LIVE: Pharmacy & Optical ──────────────────────────────────────────────
 
-async function getPharmacySales(): Promise<PharmacySales[]> {
-  warn('PharmacyPanel (sales)');
-  await delay();
-  return mockPharmacySales;
+async function getPharmacySales(days = 30): Promise<PharmacySales[]> {
+  try {
+    const res = await api.get<PharmacySales[]>(`/pharmacy/analytics/sales-trend`, {
+      params: { days },
+    });
+    return res.data;
+  } catch {
+    warn('PharmacyPanel (sales fallback)');
+    return mockPharmacySales;
+  }
 }
 
-async function getTopMedicines(): Promise<TopSellingMedicine[]> {
-  warn('PharmacyPanel (top medicines)');
-  await delay();
-  return mockTopMedicines;
+async function getTopMedicines(days = 30, limit = 10): Promise<TopSellingMedicine[]> {
+  try {
+    const res = await api.get<TopSellingMedicine[]>(`/pharmacy/analytics/top-medicines`, {
+      params: { days, limit },
+    });
+    return res.data;
+  } catch {
+    warn('PharmacyPanel (top medicines fallback)');
+    return mockTopMedicines;
+  }
 }
 
-// ── DEV: Optical ─────────────────────────────────────────────────────────
+async function getPharmacyDashboard(): Promise<PharmacyDashboard> {
+  try {
+    const res = await api.get<PharmacyDashboard>('/pharmacy/dashboard');
+    return res.data;
+  } catch {
+    warn('PharmacyDashboard (fallback)');
+    return {
+      total_medicines: 0,
+      low_stock_count: 0,
+      expiring_soon_count: 0,
+      expired_count: 0,
+      today_sales_count: 0,
+      today_sales_amount: 0,
+      pending_orders: 0,
+    };
+  }
+}
+
+// ── LIVE: Inventory ──────────────────────────────────────────────────────
+
+async function getStockStatus(limit = 50): Promise<StockStatus[]> {
+  try {
+    const res = await api.get<StockStatus[]>(`/inventory/analytics/stock-status`, {
+      params: { limit },
+    });
+    return res.data;
+  } catch {
+    warn('InventoryPanel (stock fallback)');
+    return mockStockStatus;
+  }
+}
+
+async function getInventoryAging(): Promise<InventoryAging[]> {
+  try {
+    const res = await api.get<InventoryAging[]>(`/inventory/analytics/aging`);
+    return res.data;
+  } catch {
+    warn('InventoryPanel (aging fallback)');
+    return mockInventoryAging;
+  }
+}
+
+async function getInventoryDashboard(): Promise<InventoryDashboard> {
+  try {
+    const res = await api.get<InventoryDashboard>('/inventory/dashboard');
+    return res.data;
+  } catch {
+    warn('InventoryDashboard (fallback)');
+    return {
+      total_suppliers: 0,
+      active_purchase_orders: 0,
+      pending_grns: 0,
+      pending_adjustments: 0,
+      low_stock_items: [],
+      expiring_items: [],
+      low_stock_count: 0,
+      expiring_count: 0,
+    };
+  }
+}
+
+// ── DEV: Optical (still mock) ────────────────────────────────────────────
 
 async function getOpticalSales(): Promise<OpticalSales[]> {
   warn('PharmacyPanel (optical)');
@@ -184,21 +259,7 @@ async function getOpticalSales(): Promise<OpticalSales[]> {
   return mockOpticalSales;
 }
 
-// ── DEV: Inventory ───────────────────────────────────────────────────────
-
-async function getStockStatus(): Promise<StockStatus[]> {
-  warn('InventoryPanel (stock)');
-  await delay();
-  return mockStockStatus;
-}
-
-async function getInventoryAging(): Promise<InventoryAging[]> {
-  warn('InventoryPanel (aging)');
-  await delay();
-  return mockInventoryAging;
-}
-
-// ── DEV: Financial ───────────────────────────────────────────────────────
+// ── DEV: Financial (still mock) ──────────────────────────────────────────
 
 async function getCollectionReport(): Promise<CollectionReport[]> {
   warn('FinancialPanel (collections)');
@@ -262,17 +323,20 @@ const reportsApi = {
   getDashboardSummary,
   getOPDSummary,
   getDoctorWiseReport,
+  // LIVE – Pharmacy
+  getPharmacySales,
+  getTopMedicines,
+  getPharmacyDashboard,
+  // LIVE – Inventory
+  getStockStatus,
+  getInventoryAging,
+  getInventoryDashboard,
   // DEV – Revenue
   getDailyRevenue,
   getMonthlyRevenue,
   getDepartmentRevenue,
-  // DEV – Pharmacy & Optical
-  getPharmacySales,
-  getTopMedicines,
+  // DEV – Optical
   getOpticalSales,
-  // DEV – Inventory
-  getStockStatus,
-  getInventoryAging,
   // DEV – Financial
   getCollectionReport,
   getOutstandingDues,

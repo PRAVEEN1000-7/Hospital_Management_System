@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import pharmacyService from '../../services/pharmacyService';
 import type { Sale } from '../../types/pharmacy';
 import { useToast } from '../../contexts/ToastContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { format, subDays } from 'date-fns';
 
 const PAYMENT_STATUS_COLORS: Record<string, string> = {
@@ -12,6 +13,9 @@ const PAYMENT_STATUS_COLORS: Record<string, string> = {
 };
 
 type DatePreset = 'all' | 'today' | '7d' | '30d';
+type PatientTypeFilter = 'all' | 'walk_in' | 'registered';
+type SortBy = 'sale_date' | 'total_amount' | 'invoice_number' | 'created_at';
+type SortOrder = 'asc' | 'desc';
 
 const resolveDateRange = (preset: DatePreset): { dateFrom?: string; dateTo?: string } => {
   const today = new Date();
@@ -29,21 +33,57 @@ const resolveDateRange = (preset: DatePreset): { dateFrom?: string; dateTo?: str
   return {};
 };
 
+const formatSaleDateTime = (sale: Sale): string => {
+  const candidate = sale.sale_date || sale.created_at;
+  if (!candidate) return '-';
+
+  const parsed = new Date(candidate);
+  if (Number.isNaN(parsed.getTime())) {
+    return '-';
+  }
+
+  // Guard against epoch-like placeholder dates.
+  if (parsed.getUTCFullYear() <= 1971 && sale.created_at) {
+    const fallback = new Date(sale.created_at);
+    if (!Number.isNaN(fallback.getTime())) {
+      return format(fallback, 'dd MMM yyyy, hh:mm a');
+    }
+  }
+
+  return format(parsed, 'dd MMM yyyy, hh:mm a');
+};
+
 const SalesList: React.FC = () => {
   const navigate = useNavigate();
   const toast = useToast();
+  const { user } = useAuth();
   const [sales, setSales] = useState<Sale[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [search, setSearch] = useState('');
   const [datePreset, setDatePreset] = useState<DatePreset>('all');
+  const [saleStatus, setSaleStatus] = useState<string>('all');
+  const [patientType, setPatientType] = useState<PatientTypeFilter>('all');
+  const [sortBy, setSortBy] = useState<SortBy>('sale_date');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+  const canCreateSale = Boolean(user?.roles?.some((r) => ['super_admin', 'admin', 'pharmacist', 'cashier'].includes(r)));
 
   const fetchSales = useCallback(async () => {
     setLoading(true);
     try {
       const { dateFrom, dateTo } = resolveDateRange(datePreset);
-      const res = await pharmacyService.getSales(page, 20, search || '', dateFrom || '', dateTo || '');
+      const res = await pharmacyService.getSales(
+        page,
+        20,
+        search || '',
+        dateFrom || '',
+        dateTo || '',
+        saleStatus === 'all' ? '' : saleStatus,
+        patientType === 'all' ? '' : patientType,
+        sortBy,
+        sortOrder,
+      );
       setSales(res.data);
       setTotalPages(res.total_pages);
     } catch {
@@ -52,7 +92,7 @@ const SalesList: React.FC = () => {
       setLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, search, datePreset]);
+  }, [page, search, datePreset, saleStatus, patientType, sortBy, sortOrder]);
 
   useEffect(() => { fetchSales(); }, [fetchSales]);
 
@@ -60,10 +100,16 @@ const SalesList: React.FC = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-slate-900">Sales</h1>
-        <button onClick={() => navigate('/pharmacy/sales/new')}
-          className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90">
-          <span className="material-symbols-outlined text-lg">point_of_sale</span> New Sale
-        </button>
+        {canCreateSale ? (
+          <button onClick={() => navigate('/pharmacy/sales/new')}
+            className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90">
+            <span className="material-symbols-outlined text-lg">point_of_sale</span> New Sale
+          </button>
+        ) : (
+          <span className="text-xs text-slate-500 bg-slate-100 border border-slate-200 rounded-lg px-3 py-2">
+            View only access
+          </span>
+        )}
       </div>
 
       {/* Search */}
@@ -102,6 +148,78 @@ const SalesList: React.FC = () => {
         </button>
       </div>
 
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+        <div className="space-y-1">
+          <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Sale Status</label>
+          <select
+            value={saleStatus}
+            onChange={(e) => { setSaleStatus(e.target.value); setPage(1); }}
+            className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary"
+          >
+            <option value="all">All</option>
+            <option value="dispensed">Dispensed</option>
+            <option value="cancelled">Cancelled</option>
+            <option value="returned">Returned</option>
+          </select>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Patient Type</label>
+          <select
+            value={patientType}
+            onChange={(e) => { setPatientType(e.target.value as PatientTypeFilter); setPage(1); }}
+            className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary"
+          >
+            <option value="all">All</option>
+            <option value="registered">Registered</option>
+            <option value="walk_in">Walk-in</option>
+          </select>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Sort By</label>
+          <select
+            value={sortBy}
+            onChange={(e) => { setSortBy(e.target.value as SortBy); setPage(1); }}
+            className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary"
+          >
+            <option value="sale_date">Sale Date</option>
+            <option value="total_amount">Total Amount</option>
+            <option value="invoice_number">Invoice Number</option>
+            <option value="created_at">Created Time</option>
+          </select>
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Order</label>
+          <div className="flex items-center gap-2">
+            <select
+              value={sortOrder}
+              onChange={(e) => { setSortOrder(e.target.value as SortOrder); setPage(1); }}
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary"
+            >
+              <option value="desc">Descending</option>
+              <option value="asc">Ascending</option>
+            </select>
+            <button
+              type="button"
+              onClick={() => {
+                setDatePreset('all');
+                setSaleStatus('all');
+                setPatientType('all');
+                setSortBy('sale_date');
+                setSortOrder('desc');
+                setSearch('');
+                setPage(1);
+              }}
+              className="px-3 py-2 text-xs font-semibold border border-slate-200 rounded-lg hover:bg-slate-50 whitespace-nowrap"
+            >
+              Reset
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center h-40">
@@ -130,10 +248,10 @@ const SalesList: React.FC = () => {
                 <tr key={s.id} className="hover:bg-slate-50">
                   <td className="px-4 py-3 font-medium text-slate-900">{s.invoice_number}</td>
                   <td className="px-4 py-3 text-slate-600">
-                    {format(new Date(s.sale_date), 'dd MMM yyyy, hh:mm a')}
+                    {formatSaleDateTime(s)}
                   </td>
                   <td className="px-4 py-3 text-slate-600">{s.patient_name || 'Walk-in'}</td>
-                  <td className="px-4 py-3 text-slate-600">{s.items?.length || 0}</td>
+                  <td className="px-4 py-3 text-slate-600">{s.item_count ?? s.items?.length ?? 0}</td>
                   <td className="px-4 py-3 font-medium text-slate-900">₹{Number(s.total_amount || 0).toFixed(2)}</td>
                   <td className="px-4 py-3 text-slate-600 capitalize">{s.payment_method || '-'}</td>
                   <td className="px-4 py-3">

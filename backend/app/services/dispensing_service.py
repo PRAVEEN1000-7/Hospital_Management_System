@@ -617,13 +617,15 @@ def dispense_prescription(
         # Update prescription item dispensing status
         rx_item.dispensed_quantity = already_dispensed + quantity
         
-        # Cap at prescribed quantity and mark as dispensed if complete
+        # Cap at prescribed quantity and mark as dispensed if complete.
+        # Patient-requested partial closure is allowed: dispensing less than
+        # prescribed quantity can still close the line item.
         if rx_item.dispensed_quantity >= prescribed_qty:
             rx_item.is_dispensed = True
             rx_item.dispensed_quantity = prescribed_qty  # Ensure exact match
         else:
-            # Item remains open unless explicitly skipped in this request.
-            pass
+            # Close partially dispensed line as patient-requested completion.
+            rx_item.is_dispensed = True
 
         logger.info(
             f"Dispensed {quantity} of {rx_item.medicine_name} "
@@ -663,44 +665,32 @@ def dispense_prescription(
             rx_item.dispensed_quantity = prescribed_qty
             skipped_items_count += 1
 
-    # Validate strict no-partial workflow: every line must be closed by dispense or skip.
+    # Allow partial dispensing: prescription remains finalized until all lines are closed.
     all_rx_items = db.query(PrescriptionItem).filter(
         PrescriptionItem.prescription_id == prescription_id
     ).all()
-    open_items: list[str] = []
 
-    for rx_item in all_rx_items:
+    def _is_line_closed(line: PrescriptionItem) -> bool:
         prescribed_qty = calculate_prescribed_quantity(
-            rx_item.frequency,
-            rx_item.duration_value,
-            rx_item.duration_unit,
-            rx_item.quantity,
+            line.frequency,
+            line.duration_value,
+            line.duration_unit,
+            line.quantity,
         ) or 0
-        current_dispensed = rx_item.dispensed_quantity or 0
+        current_dispensed = line.dispensed_quantity or 0
 
         if prescribed_qty <= 0:
             prescribed_qty = max(current_dispensed, 1)
 
-        if not rx_item.is_dispensed and current_dispensed < prescribed_qty:
-            open_items.append(rx_item.medicine_name)
+        return bool(line.is_dispensed or current_dispensed >= prescribed_qty)
 
-    if open_items:
-        raise ValueError(
-            "Partial dispensing is not allowed. Dispense or skip all remaining items before confirming. "
-            f"Open items: {', '.join(open_items[:3])}{'...' if len(open_items) > 3 else ''}"
-        )
+    all_lines_closed = all(_is_line_closed(i) for i in all_rx_items)
     
     if processed_items_count == 0:
         # All items were skipped (out of stock, patient refused, etc.).
         # Keep prescription pending/completed and preserve the audit trail
         # on the dispensing record notes, without mutating doctor clinical notes.
-        all_already_done = all(
-            (i.is_dispensed or (i.dispensed_quantity or 0) >= (i.quantity or 0))
-            for i in db.query(PrescriptionItem).filter(
-                PrescriptionItem.prescription_id == prescription_id
-            ).all()
-        )
-        if all_already_done:
+        if all_lines_closed:
             rx.status = "dispensed"
         else:
             rx.status = "finalized"
@@ -717,8 +707,8 @@ def dispense_prescription(
             "items_dispensed": 0,
         }
 
-    # Update prescription status
-    rx.status = "dispensed"
+    # Update prescription status: keep open for pending quantities.
+    rx.status = "dispensed" if all_lines_closed else "finalized"
     
     # Update dispensing totals
     dispensing.total_amount = total_amount

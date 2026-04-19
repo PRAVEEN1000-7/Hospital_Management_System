@@ -1,13 +1,13 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { useToast } from '../../contexts/ToastContext';
 import inventoryService from '../../services/inventoryService';
 import pharmacyService from '../../services/pharmacyService';
 import productsService from '../../services/productsService';
-import SearchableSelect, { type SuggestionOption } from '../../components/common/SearchableSelect';
 import type { Supplier, PurchaseOrderCreate } from '../../types/inventory';
 import type { Medicine } from '../../types/pharmacy';
+import type { Product } from '../../types/products';
 import { VALID_PRODUCT_CATEGORIES } from '../../types/inventory';
 
 interface ItemRow {
@@ -29,6 +29,28 @@ interface PreviousItem {
   usedAt: number;
 }
 
+interface ProductSuggestion {
+  id: string;
+  label: string;
+  sublabel?: string;
+  metadata: {
+    id: string;
+    name: string;
+    generic_name?: string;
+    category: string;
+    subcategory?: string;
+    sku?: string;
+    barcode?: string;
+    manufacturer?: string;
+    purchase_price: number;
+    selling_price: number;
+    mrp: number;
+    unit_type: string;
+    pack_size: number;
+    requires_prescription: boolean;
+  };
+}
+
 const NewPurchaseOrderPage: React.FC = () => {
   const toast = useToast();
   const navigate = useNavigate();
@@ -42,23 +64,53 @@ const NewPurchaseOrderPage: React.FC = () => {
   const [items, setItems] = useState<ItemRow[]>([{ item_type: 'medicine', item_id: '', item_name: '', quantity_ordered: 0, unit_price: 0 }]);
   const [saving, setSaving] = useState(false);
   const [bulkUploading, setBulkUploading] = useState(false);
-  const [searchInputId, setSearchInputId] = useState<string | null>(null);
-  
-  // Typeahead search state
-  const [productSuggestions, setProductSuggestions] = useState<Record<string, SuggestionOption[]>>({});
-  const [searchQueries, setSearchQueries] = useState<Record<number, string>>({});
-  const [loadingSuggestions, setLoadingSuggestions] = useState<Record<number, boolean>>({});
 
+  // Typeahead state per row - simplified
+  const [searchQuery, setSearchQuery] = useState<Record<number, string>>({});
+  const [suggestions, setSuggestions] = useState<Record<number, ProductSuggestion[]>>({});
+  const [loadingSearch, setLoadingSearch] = useState<Record<number, boolean>>({});
+  const [openDropdown, setOpenDropdown] = useState<Record<number, boolean>>({});
+
+  // Refs for click-outside handling
+  const dropdownContainerRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const inputRefs = useRef<Record<number, HTMLInputElement | null>>({});
+
+  // Get selected supplier
+  const selectedSupplier = useMemo(() => suppliers.find(s => s.id === supplierId), [suppliers, supplierId]);
+
+  const availableItemTypes = useMemo(() => {
+    if (!selectedSupplier?.product_categories || selectedSupplier.product_categories.length === 0) {
+      return ['medicine', 'optical_product'];
+    }
+    const types: string[] = [];
+    if (selectedSupplier.product_categories.includes('medicine')) {
+      types.push('medicine');
+    }
+    if (selectedSupplier.product_categories.includes('optical')) {
+      types.push('optical_product');
+    }
+    selectedSupplier.product_categories.forEach(cat => {
+      if (cat !== 'medicine' && cat !== 'optical' && !types.includes(cat)) {
+        types.push(cat);
+      }
+    });
+    return types.length > 0 ? types : ['medicine', 'optical_product'];
+  }, [selectedSupplier]);
+
+  const minExpectedDate = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    return orderDate > today ? orderDate : today;
+  }, [orderDate]);
+
+  // Load initial data
   useEffect(() => {
     inventoryService.getSuppliers(1, 100, '', true).then(r => setSuppliers(r.data)).catch(() => {});
     pharmacyService.getMedicines(1, 500).then(r => setMedicines(r.data)).catch(() => {});
 
-    // Load previously ordered items from localStorage
     try {
       const stored = localStorage.getItem(PREVIOUS_ITEMS_KEY);
       if (stored) {
         const parsed = JSON.parse(stored) as PreviousItem[];
-        // Sort by most recent first and keep last 50
         const sorted = parsed.sort((a, b) => b.usedAt - a.usedAt).slice(0, 50);
         setPreviousItems(sorted);
       }
@@ -67,7 +119,74 @@ const NewPurchaseOrderPage: React.FC = () => {
     }
   }, []);
 
-  // Save previous items to localStorage when items change
+  // Search products with debounce
+  useEffect(() => {
+    const timers: Record<number, ReturnType<typeof setTimeout>> = {};
+
+    Object.entries(searchQuery).forEach(([idxStr, query]) => {
+      const idx = parseInt(idxStr, 10);
+      if (timers[idx]) {
+        clearTimeout(timers[idx]);
+      }
+
+      if (!query || query.trim().length < 2) {
+        setSuggestions(prev => ({ ...prev, [idx]: [] }));
+        return;
+      }
+
+      timers[idx] = setTimeout(async () => {
+        const item = items[idx];
+        if (!item) return;
+
+        setLoadingSearch(prev => ({ ...prev, [idx]: true }));
+        try {
+          // Use the dedicated typeahead search endpoint
+          const category = item.item_type === 'optical_product' ? 'optical' : item.item_type === 'medicine' ? 'medicine' : undefined;
+          const results = await productsService.searchProducts(query, {
+            category: category || undefined,
+            limit: 10,
+          });
+
+          // Map the search results to ProductSuggestion format
+          const mapped: ProductSuggestion[] = results.map(r => ({
+            id: r.id,
+            label: r.label,
+            sublabel: r.sublabel,
+            metadata: r.metadata,
+          }));
+
+          setSuggestions(prev => ({ ...prev, [idx]: mapped }));
+          setOpenDropdown(prev => ({ ...prev, [idx]: mapped.length > 0 }));
+        } catch (err) {
+          console.error('Search failed:', err);
+          setSuggestions(prev => ({ ...prev, [idx]: [] }));
+        } finally {
+          setLoadingSearch(prev => ({ ...prev, [idx]: false }));
+        }
+      }, 300);
+    });
+
+    return () => {
+      Object.values(timers).forEach(timer => clearTimeout(timer));
+    };
+  }, [searchQuery, items]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      Object.entries(dropdownContainerRefs.current).forEach(([idxStr, container]) => {
+        const idx = parseInt(idxStr, 10);
+        const input = inputRefs.current[idx];
+        if (container && !container.contains(e.target as Node) && input && !input.contains(e.target as Node)) {
+          setOpenDropdown(prev => ({ ...prev, [idx]: false }));
+        }
+      });
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Save previous items to localStorage
   const savePreviousItems = useCallback((newItems: ItemRow[]) => {
     try {
       const updated = newItems
@@ -79,11 +198,10 @@ const NewPurchaseOrderPage: React.FC = () => {
           lastPrice: it.unit_price,
           usedAt: Date.now(),
         }));
-      
+
       if (updated.length === 0) return;
-      
+
       setPreviousItems(prev => {
-        // Merge with existing, avoiding duplicates
         const existingIds = new Set(prev.map(p => p.id));
         const newItemsToAdd = updated.filter(it => !existingIds.has(it.id));
         const merged = [...newItemsToAdd, ...prev].sort((a, b) => b.usedAt - a.usedAt).slice(0, 50);
@@ -95,192 +213,103 @@ const NewPurchaseOrderPage: React.FC = () => {
     }
   }, []);
 
-  // Get selected supplier's product categories for item type dropdown
-  const selectedSupplier = useMemo(() => suppliers.find(s => s.id === supplierId), [suppliers, supplierId]);
-  
-  const availableItemTypes = useMemo(() => {
-    if (!selectedSupplier?.product_categories || selectedSupplier.product_categories.length === 0) {
-      // Default to medicine and optical if supplier has no categories set
-      return ['medicine', 'optical_product'];
-    }
-    // Map supplier categories to item types
-    const types: string[] = [];
-    if (selectedSupplier.product_categories.includes('medicine')) {
-      types.push('medicine');
-    }
-    if (selectedSupplier.product_categories.includes('optical')) {
-      types.push('optical_product');
-    }
-    // Add other categories as generic item types
-    selectedSupplier.product_categories.forEach(cat => {
-      if (cat !== 'medicine' && cat !== 'optical' && !types.includes(cat)) {
-        types.push(cat);
-      }
-    });
-    return types.length > 0 ? types : ['medicine', 'optical_product'];
-  }, [selectedSupplier]);
+  const addItem = () => {
+    setItems([...items, { item_type: 'medicine', item_id: '', item_name: '', quantity_ordered: 0, unit_price: 0 }]);
+  };
 
-  // Get minimum date for expected delivery (today or order date, whichever is later)
-  const minExpectedDate = useMemo(() => {
-    const today = new Date().toISOString().split('T')[0];
-    return orderDate > today ? orderDate : today;
-  }, [orderDate]);
-
-  const addItem = () => setItems([...items, { item_type: 'medicine', item_id: '', item_name: '', quantity_ordered: 0, unit_price: 0 }]);
-
-  const removeItem = (idx: number) => { if (items.length > 1) setItems(items.filter((_, i) => i !== idx)); };
+  const removeItem = (idx: number) => {
+    if (items.length > 1) {
+      setItems(items.filter((_, i) => i !== idx));
+    }
+  };
 
   const updateItem = useCallback((idx: number, field: keyof ItemRow, value: string | number) => {
-    const updated = [...items];
-    (updated[idx] as unknown as Record<string, string | number>)[field] = value;
-    setItems(updated);
-  }, [items]);
-
-  // Handle item selection from searchable dropdown
-  const handleItemSelect = useCallback((idx: number, value: string, metadata?: Record<string, unknown>) => {
-    const updated = [...items];
-    const item = updated[idx];
-
-    if (metadata && metadata.name) {
-      // Selected from suggestions - auto-fill all details
-      item.item_id = metadata.id as string || value;
-      item.item_name = metadata.name as string;
-      item.unit_price = (metadata.price as number) || (metadata.selling_price as number) || 0;
-      item.item_type = (metadata.type as string) || (metadata.category as string) || 'medicine';
-      
-      // Additional auto-fill from product metadata
-      if (metadata.purchase_price) item.unit_price = metadata.purchase_price as number;
-    } else if (value.trim()) {
-      // Manual entry or typing - user typed a custom name
-      item.item_name = value.trim();
-      item.item_id = ''; // Clear item_id for manual entries (backend will resolve by name)
-      item.unit_price = 0;
-    } else {
-      // Cleared
-      item.item_name = '';
-      item.item_id = '';
-      item.unit_price = 0;
-    }
-
-    setItems(updated);
-  }, [items]);
-
-  // Fetch product suggestions with debouncing
-  const fetchProductSuggestions = useCallback(async (itemIndex: number, query: string, itemType: string) => {
-    if (!query || query.length < 2) {
-      setProductSuggestions(prev => ({ ...prev, [`${itemIndex}-${itemType}`]: [] }));
-      return;
-    }
-
-    setLoadingSuggestions(prev => ({ ...prev, [itemIndex]: true }));
-
-    try {
-      // Map item type to product category
-      const category = itemType === 'optical_product' ? 'optical' : itemType;
-      
-      // Fetch from products service
-      const suggestions = await productsService.searchProducts(query, {
-        category: category === 'medicine' || category === 'optical' ? category : undefined,
-        limit: 20,
-      });
-
-      // Format suggestions
-      const formattedSuggestions: SuggestionOption[] = suggestions.map(s => ({
-        id: s.metadata.id,
-        label: s.label,
-        sublabel: s.sublabel,
-        metadata: s.metadata,
-      }));
-
-      setProductSuggestions(prev => ({ ...prev, [`${itemIndex}-${itemType}`]: formattedSuggestions }));
-    } catch (error) {
-      console.error('Failed to fetch product suggestions:', error);
-      setProductSuggestions(prev => ({ ...prev, [`${itemIndex}-${itemType}`]: [] }));
-    } finally {
-      setLoadingSuggestions(prev => ({ ...prev, [itemIndex]: false }));
-    }
-  }, []);
-
-  // Debounced search effect
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      Object.entries(searchQueries).forEach(([itemIdxStr, query]) => {
-        const itemIdx = parseInt(itemIdxStr);
-        const item = items[itemIdx];
-        if (item && query && query.length >= 2) {
-          fetchProductSuggestions(itemIdx, query, item.item_type);
-        }
-      });
-    }, 300); // 300ms debounce
-
-    return () => clearTimeout(timer);
-  }, [searchQueries, items, fetchProductSuggestions]);
-
-  // Handle search input change for typeahead
-  const handleSearchChange = useCallback((itemIdx: number, query: string) => {
-    setSearchQueries(prev => ({ ...prev, [itemIdx]: query }));
-  }, []);
-
-  // Get suggestions for searchable select (combines previous items, medicines, and product search)
-  const getItemSuggestions = useCallback((itemType: string, itemIndex: number): SuggestionOption[] => {
-    const suggestions: SuggestionOption[] = [];
-    const cacheKey = `${itemIndex}-${itemType}`;
-
-    // Add previous items first (most recent)
-    previousItems
-      .filter(p => p.type === itemType || (itemType === 'medicine' && p.type === 'medicine'))
-      .forEach(p => {
-        suggestions.push({
-          id: p.id,
-          label: p.name,
-          sublabel: `Last: ₹${p.lastPrice.toFixed(2)}`,
-          metadata: { id: p.id, name: p.name, price: p.lastPrice, type: p.type },
-        });
-      });
-
-    // Add medicines from catalog (only for medicine type)
-    if (itemType === 'medicine') {
-      medicines.forEach(m => {
-        if (!suggestions.some(s => s.id === m.id)) {
-          suggestions.push({
-            id: m.id,
-            label: `${m.name}${m.strength ? ` (${m.strength})` : ''}`,
-            sublabel: m.generic_name || m.manufacturer || undefined,
-            metadata: { 
-              id: m.id, 
-              name: m.name, 
-              price: m.purchase_price || m.selling_price || 0, 
-              type: 'medicine',
-              category: 'medicine',
-            },
-          });
-        }
-      });
-    }
-
-    // Add product search results (intelligent typeahead)
-    const productResults = productSuggestions[cacheKey] || [];
-    productResults.forEach(p => {
-      if (!suggestions.some(s => s.id === p.id)) {
-        suggestions.push(p);
-      }
+    setItems(prev => {
+      const updated = [...prev];
+      (updated[idx] as unknown as Record<string, string | number>)[field] = value;
+      return updated;
     });
+  }, []);
 
-    // Limit to 50 suggestions for performance
-    return suggestions.slice(0, 50);
-  }, [previousItems, medicines, productSuggestions]);
+  // Handle search input change - update query and show dropdown
+  const handleSearchChange = useCallback((idx: number, value: string) => {
+    setSearchQuery(prev => ({ ...prev, [idx]: value }));
+    // Clear selected product when typing
+    setItems(prev => {
+      const updated = [...prev];
+      if (updated[idx]) {
+        updated[idx].item_id = '';
+        updated[idx].item_name = value;
+        updated[idx].unit_price = 0;
+      }
+      return updated;
+    });
+    setOpenDropdown(prev => ({ ...prev, [idx]: true }));
+  }, []);
 
-  const handleMedicineSelect = (idx: number, medicineId: string) => {
-    const selected = medicines.find((m) => m.id === medicineId);
-    const updated = [...items];
-    updated[idx] = {
-      ...updated[idx],
-      item_type: 'medicine',
-      item_id: medicineId,
-      item_name: selected?.name || '',
-    };
-    setItems(updated);
-  };
+  // Select product from suggestions
+  const handleSelectProduct = useCallback((idx: number, product: ProductSuggestion) => {
+    // Update search query first to ensure input displays correctly
+    setSearchQuery(prev => ({ ...prev, [idx]: product.metadata.name }));
+    
+    setItems(prev => {
+      const updated = [...prev];
+      if (updated[idx]) {
+        updated[idx].item_id = product.metadata.id;
+        updated[idx].item_name = product.metadata.name;
+        // Use purchase_price as primary, fallback to selling_price or mrp
+        updated[idx].unit_price = product.metadata.purchase_price > 0
+          ? product.metadata.purchase_price
+          : (product.metadata.selling_price > 0 ? product.metadata.selling_price : product.metadata.mrp);
+
+        // Update item type based on category
+        if (product.metadata.category === 'optical') {
+          updated[idx].item_type = 'optical_product';
+        } else if (product.metadata.category === 'medicine') {
+          updated[idx].item_type = 'medicine';
+        }
+      }
+      return updated;
+    });
+    
+    setOpenDropdown(prev => ({ ...prev, [idx]: false }));
+    toast.success(`Selected: ${product.metadata.name}`);
+  }, [toast]);
+
+  // Clear product selection
+  const handleClearSelection = useCallback((idx: number) => {
+    setItems(prev => {
+      const updated = [...prev];
+      if (updated[idx]) {
+        updated[idx].item_id = '';
+        updated[idx].item_name = '';
+        updated[idx].unit_price = 0;
+      }
+      return updated;
+    });
+    setSearchQuery(prev => ({ ...prev, [idx]: '' }));
+    setOpenDropdown(prev => ({ ...prev, [idx]: false }));
+    inputRefs.current[idx]?.focus();
+  }, []);
+
+  // Keyboard navigation for dropdown
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>, idx: number) => {
+    const currentSuggestions = suggestions[idx] || [];
+    if (!openDropdown[idx] || currentSuggestions.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      // Could add highlighted index state here if needed
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      // Select first suggestion on Enter if dropdown is open
+      if (currentSuggestions.length > 0) {
+        handleSelectProduct(idx, currentSuggestions[0]);
+      }
+    } else if (e.key === 'Escape') {
+      setOpenDropdown(prev => ({ ...prev, [idx]: false }));
+    }
+  }, [suggestions, openDropdown, handleSelectProduct]);
 
   const handleDownloadTemplate = () => {
     const templateRows = [
@@ -548,7 +577,7 @@ const NewPurchaseOrderPage: React.FC = () => {
           </div>
         </div>
         <p className="text-xs text-slate-500 mb-3">
-          Start typing to search medicines. Select from suggestions to auto-fill price, or type manually for new items.
+          Start typing (2+ characters) to search products from catalog. Select from suggestions to auto-fill price and details, or enter a custom item name.
         </p>
 
         {/* Desktop Table */}
@@ -582,16 +611,80 @@ const NewPurchaseOrderPage: React.FC = () => {
                     </select>
                   </td>
                   <td className="px-3 py-2 overflow-visible">
-                    <SearchableSelect
-                      value={item.item_name}
-                      onChange={(val, meta) => handleItemSelect(idx, val, meta)}
-                      suggestions={getItemSuggestions(item.item_type, idx)}
-                      placeholder={item.item_type === 'medicine' ? 'Search medicine...' : 'Type item name...'}
-                      disabled={!supplierId}
-                      allowManualEntry={true}
-                      onSearchChange={(query) => handleSearchChange(idx, query)}
-                      loading={loadingSuggestions[idx] || false}
-                    />
+                    <div className="relative" ref={el => { dropdownContainerRefs.current[idx] = el; }}>
+                      <div className="relative">
+                        <input
+                          ref={el => { inputRefs.current[idx] = el; }}
+                          type="text"
+                          value={searchQuery[idx] ?? ''}
+                          onChange={e => handleSearchChange(idx, e.target.value)}
+                          onFocus={() => {
+                            if ((searchQuery[idx] ?? '').length >= 2 && !item.item_id) {
+                              setOpenDropdown(prev => ({ ...prev, [idx]: true }));
+                            }
+                          }}
+                          onKeyDown={e => handleKeyDown(e, idx)}
+                          className="w-full px-2 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none pr-8"
+                          placeholder={item.item_type === 'medicine' ? 'Search medicine (2+ chars)...' : 'Type item name (2+ chars)...'}
+                          disabled={!supplierId}
+                          autoComplete="off"
+                        />
+                        {/* Clear button - shows when product is selected */}
+                        {item.item_id && searchQuery[idx] && (
+                          <button
+                            onClick={() => handleClearSelection(idx)}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-slate-100 rounded transition-colors"
+                            type="button"
+                            title="Clear selection"
+                          >
+                            <span className="material-symbols-outlined text-slate-400 text-sm">close</span>
+                          </button>
+                        )}
+                        {loadingSearch[idx] && !item.item_id && (
+                          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-primary text-xs animate-spin">⟳</span>
+                        )}
+                      </div>
+
+                      {/* Dropdown Results */}
+                      {openDropdown[idx] && (
+                        <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+                          {(suggestions[idx] || []).length > 0 ? (
+                            (suggestions[idx] || []).map(product => (
+                              <button
+                                key={product.metadata.id}
+                                onClick={() => handleSelectProduct(idx, product)}
+                                className="w-full px-3 py-2 text-left hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0"
+                                type="button"
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-semibold text-slate-900 truncate">{product.metadata.name}</p>
+                                    {product.metadata.generic_name && (
+                                      <p className="text-xs text-slate-500 truncate">{product.metadata.generic_name}</p>
+                                    )}
+                                    {product.sublabel && (
+                                      <p className="text-xs text-slate-400 truncate mt-0.5">{product.sublabel}</p>
+                                    )}
+                                  </div>
+                                  <div className="text-right flex-shrink-0">
+                                    <p className="text-sm font-semibold text-emerald-600">₹{product.metadata.purchase_price > 0 ? product.metadata.purchase_price.toFixed(2) : product.metadata.selling_price.toFixed(2)}</p>
+                                    <p className="text-xs text-slate-500 capitalize">{product.metadata.category}</p>
+                                  </div>
+                                </div>
+                              </button>
+                            ))
+                          ) : (
+                            !loadingSearch[idx] && (searchQuery[idx] ?? '').length >= 2 && (
+                              <div className="px-3 py-4 text-center text-sm text-slate-500">
+                                <span className="material-symbols-outlined text-2xl mx-auto mb-1 text-slate-300">search</span>
+                                <p>No products found for "{searchQuery[idx]}"</p>
+                                <p className="text-xs text-slate-400 mt-1">Try a different search term or enter a custom item name</p>
+                              </div>
+                            )
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </td>
                   <td className="px-3 py-2">
                     <input
@@ -657,14 +750,80 @@ const NewPurchaseOrderPage: React.FC = () => {
                 </div>
                 <div className="col-span-2">
                   <label className="text-xs text-slate-400">Item Name</label>
-                  <SearchableSelect
-                    value={item.item_name}
-                    onChange={(val, meta) => handleItemSelect(idx, val, meta)}
-                    suggestions={getItemSuggestions(item.item_type)}
-                    placeholder={item.item_type === 'medicine' ? 'Search medicine...' : 'Type item name...'}
-                    disabled={!supplierId}
-                    allowManualEntry={true}
-                  />
+                  <div className="relative mt-1" ref={el => { dropdownContainerRefs.current[idx] = el; }}>
+                    <div className="relative">
+                      <input
+                        ref={el => { inputRefs.current[idx] = el; }}
+                        type="text"
+                        value={searchQuery[idx] ?? ''}
+                        onChange={e => handleSearchChange(idx, e.target.value)}
+                        onFocus={() => {
+                          if ((searchQuery[idx] ?? '').length >= 2 && !item.item_id) {
+                            setOpenDropdown(prev => ({ ...prev, [idx]: true }));
+                          }
+                        }}
+                        onKeyDown={e => handleKeyDown(e, idx)}
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none pr-8"
+                        placeholder={item.item_type === 'medicine' ? 'Search medicine (2+ chars)...' : 'Type item name (2+ chars)...'}
+                        disabled={!supplierId}
+                        autoComplete="off"
+                      />
+                      {/* Clear button - shows when product is selected */}
+                      {item.item_id && searchQuery[idx] && (
+                        <button
+                          onClick={() => handleClearSelection(idx)}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-slate-100 rounded transition-colors"
+                          type="button"
+                          title="Clear selection"
+                        >
+                          <span className="material-symbols-outlined text-slate-400 text-sm">close</span>
+                        </button>
+                      )}
+                      {loadingSearch[idx] && !item.item_id && (
+                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-primary text-xs animate-spin">⟳</span>
+                      )}
+                    </div>
+
+                    {/* Dropdown Results */}
+                    {openDropdown[idx] && (
+                      <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+                        {(suggestions[idx] || []).length > 0 ? (
+                          (suggestions[idx] || []).map(product => (
+                            <button
+                              key={product.metadata.id}
+                              onClick={() => handleSelectProduct(idx, product)}
+                              className="w-full px-3 py-2 text-left hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0"
+                              type="button"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-semibold text-slate-900 truncate">{product.metadata.name}</p>
+                                  {product.metadata.generic_name && (
+                                    <p className="text-xs text-slate-500 truncate">{product.metadata.generic_name}</p>
+                                  )}
+                                  {product.sublabel && (
+                                    <p className="text-xs text-slate-400 truncate mt-0.5">{product.sublabel}</p>
+                                  )}
+                                </div>
+                                <div className="text-right flex-shrink-0">
+                                  <p className="text-sm font-semibold text-emerald-600">₹{product.metadata.purchase_price > 0 ? product.metadata.purchase_price.toFixed(2) : product.metadata.selling_price.toFixed(2)}</p>
+                                  <p className="text-xs text-slate-500 capitalize">{product.metadata.category}</p>
+                                </div>
+                              </div>
+                            </button>
+                          ))
+                        ) : (
+                          !loadingSearch[idx] && (searchQuery[idx] ?? '').length >= 2 && (
+                            <div className="px-3 py-4 text-center text-sm text-slate-500">
+                              <span className="material-symbols-outlined text-2xl mx-auto mb-1 text-slate-300">search</span>
+                              <p>No products found for "{searchQuery[idx]}"</p>
+                              <p className="text-xs text-slate-400 mt-1">Try a different search term or enter a custom item name</p>
+                            </div>
+                          )
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <label className="text-xs text-slate-400">Quantity</label>

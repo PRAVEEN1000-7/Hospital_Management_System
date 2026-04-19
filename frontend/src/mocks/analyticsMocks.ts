@@ -91,14 +91,14 @@ export const mockPharmacySales: PharmacySales[] = Array.from({ length: 30 }, (_,
 // ── Top Selling Medicines ────────────────────────────────────────────────
 
 export const mockTopMedicines: TopSellingMedicine[] = [
-  { name: 'Paracetamol 500mg',   quantity_sold: 1250, revenue: 18750,  category: 'Analgesic' },
-  { name: 'Amoxicillin 250mg',   quantity_sold: 890,  revenue: 31150,  category: 'Antibiotic' },
-  { name: 'Omeprazole 20mg',     quantity_sold: 720,  revenue: 21600,  category: 'Antacid' },
-  { name: 'Cetirizine 10mg',     quantity_sold: 650,  revenue: 9750,   category: 'Antihistamine' },
-  { name: 'Metformin 500mg',     quantity_sold: 580,  revenue: 14500,  category: 'Antidiabetic' },
-  { name: 'Atorvastatin 10mg',   quantity_sold: 510,  revenue: 17850,  category: 'Statin' },
-  { name: 'Azithromycin 500mg',  quantity_sold: 430,  revenue: 25800,  category: 'Antibiotic' },
-  { name: 'Pantoprazole 40mg',   quantity_sold: 380,  revenue: 15200,  category: 'Antacid' },
+  { medicine_id: 'med-paracetamol-500',  name: 'Paracetamol 500mg',  quantity_sold: 1250, revenue: 18750, category: 'Analgesic' },
+  { medicine_id: 'med-amoxicillin-250',  name: 'Amoxicillin 250mg',  quantity_sold: 890,  revenue: 31150, category: 'Antibiotic' },
+  { medicine_id: 'med-omeprazole-20',    name: 'Omeprazole 20mg',    quantity_sold: 720,  revenue: 21600, category: 'Antacid' },
+  { medicine_id: 'med-cetirizine-10',    name: 'Cetirizine 10mg',    quantity_sold: 650,  revenue: 9750,  category: 'Antihistamine' },
+  { medicine_id: 'med-metformin-500',    name: 'Metformin 500mg',    quantity_sold: 580,  revenue: 14500, category: 'Antidiabetic' },
+  { medicine_id: 'med-atorvastatin-10',  name: 'Atorvastatin 10mg',  quantity_sold: 510,  revenue: 17850, category: 'Statin' },
+  { medicine_id: 'med-azithromycin-500', name: 'Azithromycin 500mg', quantity_sold: 430,  revenue: 25800, category: 'Antibiotic' },
+  { medicine_id: 'med-pantoprazole-40',  name: 'Pantoprazole 40mg',  quantity_sold: 380,  revenue: 15200, category: 'Antacid' },
 ];
 
 // ── Optical Sales (30 days) ──────────────────────────────────────────────
@@ -120,14 +120,14 @@ export const mockOpticalSales: OpticalSales[] = Array.from({ length: 30 }, (_, i
 // ── Stock Status ─────────────────────────────────────────────────────────
 
 export const mockStockStatus: StockStatus[] = [
-  { item_name: 'Paracetamol 500mg',    category: 'Medicine',  current_stock: 5200, min_stock: 1000, max_stock: 10000, status: 'ok',       last_restock_date: '2025-01-10' },
-  { item_name: 'Surgical Gloves (L)',   category: 'Consumable', current_stock: 250,  min_stock: 500,  max_stock: 5000,  status: 'low',      last_restock_date: '2025-01-05' },
-  { item_name: 'Amoxicillin 250mg',     category: 'Medicine',  current_stock: 80,   min_stock: 200,  max_stock: 3000,  status: 'critical', last_restock_date: '2024-12-20' },
-  { item_name: 'Saline 500ml',          category: 'IV Fluid',  current_stock: 1800, min_stock: 500,  max_stock: 3000,  status: 'ok',       last_restock_date: '2025-01-12' },
-  { item_name: 'Syringe 5ml',           category: 'Consumable', current_stock: 120,  min_stock: 300,  max_stock: 5000,  status: 'low',      last_restock_date: '2025-01-02' },
-  { item_name: 'Bandage Roll',          category: 'Consumable', current_stock: 4500, min_stock: 500,  max_stock: 4000,  status: 'overstock', last_restock_date: '2025-01-08' },
-  { item_name: 'Omeprazole 20mg',       category: 'Medicine',  current_stock: 3200, min_stock: 800,  max_stock: 6000,  status: 'ok',       last_restock_date: '2025-01-11' },
-  { item_name: 'Face Masks N95',        category: 'PPE',       current_stock: 50,   min_stock: 200,  max_stock: 2000,  status: 'critical', last_restock_date: '2024-12-15' },
+  { item_id: 'item-paracetamol-500',   item_name: 'Paracetamol 500mg',   category: 'Medicine',   current_stock: 5200, min_stock: 1000, max_stock: 10000, status: 'ok',        last_restock_date: '2025-01-10' },
+  { item_id: 'item-gloves-l',          item_name: 'Surgical Gloves (L)', category: 'Consumable', current_stock: 250,  min_stock: 500,  max_stock: 5000,  status: 'low',       last_restock_date: '2025-01-05' },
+  { item_id: 'item-amoxicillin-250',   item_name: 'Amoxicillin 250mg',   category: 'Medicine',   current_stock: 80,   min_stock: 200,  max_stock: 3000,  status: 'critical',  last_restock_date: '2024-12-20' },
+  { item_id: 'item-saline-500ml',      item_name: 'Saline 500ml',        category: 'IV Fluid',   current_stock: 1800, min_stock: 500,  max_stock: 3000,  status: 'ok',        last_restock_date: '2025-01-12' },
+  { item_id: 'item-syringe-5ml',       item_name: 'Syringe 5ml',         category: 'Consumable', current_stock: 120,  min_stock: 300,  max_stock: 5000,  status: 'low',       last_restock_date: '2025-01-02' },
+  { item_id: 'item-bandage-roll',      item_name: 'Bandage Roll',        category: 'Consumable', current_stock: 4500, min_stock: 500,  max_stock: 4000,  status: 'overstock', last_restock_date: '2025-01-08' },
+  { item_id: 'item-omeprazole-20',     item_name: 'Omeprazole 20mg',     category: 'Medicine',   current_stock: 3200, min_stock: 800,  max_stock: 6000,  status: 'ok',        last_restock_date: '2025-01-11' },
+  { item_id: 'item-face-mask-n95',     item_name: 'Face Masks N95',      category: 'PPE',        current_stock: 50,   min_stock: 200,  max_stock: 2000,  status: 'critical',  last_restock_date: '2024-12-15' },
 ];
 
 // ── Inventory Aging ──────────────────────────────────────────────────────

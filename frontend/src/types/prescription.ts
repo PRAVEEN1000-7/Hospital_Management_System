@@ -1,6 +1,6 @@
 // —— Prescription Types ——————————————————————————————————————————
 
-export type PrescriptionStatus = 'draft' | 'finalized' | 'dispensed';
+export type PrescriptionStatus = 'draft' | 'finalized' | 'partially_dispensed' | 'dispensed';
 export type DurationUnit = 'days' | 'weeks' | 'months';
 export type MedicineRoute = 'oral' | 'topical' | 'injection' | 'inhalation' | 'sublingual' | 'rectal' | 'nasal' | 'ophthalmic' | 'otic';
 export type MedicineCategory = 'tablet' | 'capsule' | 'syrup' | 'injection' | 'cream' | 'drops' | 'ointment' | 'inhaler' | 'powder' | 'suspension';

@@ -11,7 +11,7 @@ import type {
 export interface PendingPrescription {
   id: string;
   prescription_number: string;
-  status: 'finalized' | 'dispensed';
+  status: 'finalized' | 'partially_dispensed' | 'dispensed';
   patient_name: string;
   patient_reference_number?: string;
   patient_age?: number;

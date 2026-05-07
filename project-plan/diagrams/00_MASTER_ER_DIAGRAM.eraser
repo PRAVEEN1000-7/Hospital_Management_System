@@ -1,0 +1,1158 @@
+// =============================================================================
+// HMS — MASTER ENTITY-RELATIONSHIP DIAGRAM
+// =============================================================================
+// All 40+ tables across 14 sections
+// Eraser.io Entity-Relationship DSL
+// =============================================================================
+
+// =============================================================================
+// SECTION 1: HOSPITAL & CONFIGURATION
+// =============================================================================
+
+hospitals [icon: home, color: blue] {
+  id uuid pk
+  name varchar
+  code varchar unique
+  logo_url varchar
+  address_line_1 varchar
+  city varchar
+  state_province varchar
+  postal_code varchar
+  country varchar
+  phone varchar
+  email varchar
+  timezone varchar
+  default_currency varchar
+  tax_id varchar
+  registration_number varchar
+  is_active boolean
+}
+
+departments [icon: layers, color: blue] {
+  id uuid pk
+  hospital_id uuid fk
+  name varchar
+  code varchar
+  description text
+  head_doctor_id uuid fk
+  is_active boolean
+  display_order integer
+}
+
+hospital_settings [icon: settings, color: blue] {
+  id uuid pk
+  hospital_id uuid fk "unique"
+  hospital_code char(2)
+  patient_id_start_number integer
+  patient_id_sequence integer
+  staff_id_start_number integer
+  staff_id_sequence integer
+  invoice_prefix varchar
+  invoice_sequence integer
+  prescription_prefix varchar
+  prescription_sequence integer
+  appointment_slot_duration_minutes integer
+  max_daily_appointments_per_doctor integer
+  allow_walk_in boolean
+  enable_sms_notifications boolean
+  enable_email_notifications boolean
+  branding_primary_color varchar
+}
+
+tax_configurations [icon: percent, color: blue] {
+  id uuid pk
+  hospital_id uuid fk
+  name varchar
+  code varchar
+  rate_percentage decimal
+  applies_to varchar
+  is_compound boolean
+  is_active boolean
+  effective_from date
+  effective_to date
+}
+
+// =============================================================================
+// SECTION 2: USERS & RBAC
+// =============================================================================
+
+users [icon: user, color: green] {
+  id uuid pk
+  hospital_id uuid fk
+  reference_number varchar(12) unique
+  email varchar
+  username varchar
+  password_hash varchar
+  first_name varchar
+  last_name varchar
+  phone varchar
+  avatar_url varchar
+  preferred_locale varchar
+  is_active boolean
+  is_mfa_enabled boolean
+  last_login_at timestamptz
+  must_change_password boolean
+  created_by uuid fk
+}
+
+roles [icon: shield, color: green] {
+  id uuid pk
+  hospital_id uuid fk
+  name varchar
+  display_name varchar
+  description text
+  is_system boolean
+  is_active boolean
+}
+
+permissions [icon: key, color: green] {
+  id uuid pk
+  module varchar
+  action varchar
+  resource varchar
+  description varchar
+}
+
+user_roles [icon: link, color: green] {
+  id uuid pk
+  user_id uuid fk
+  role_id uuid fk
+  assigned_at timestamptz
+  assigned_by uuid fk
+}
+
+role_permissions [icon: link, color: green] {
+  id uuid pk
+  role_id uuid fk
+  permission_id uuid fk
+}
+
+refresh_tokens [icon: lock, color: green] {
+  id uuid pk
+  user_id uuid fk
+  token_hash varchar unique
+  device_info varchar
+  ip_address varchar
+  expires_at timestamptz
+  revoked_at timestamptz
+}
+
+// =============================================================================
+// SECTION 3: PATIENTS
+// =============================================================================
+
+patients [icon: heart, color: red] {
+  id uuid pk
+  hospital_id uuid fk
+  patient_reference_number varchar(12)
+  first_name varchar
+  last_name varchar
+  date_of_birth date
+  gender varchar
+  blood_group varchar
+  phone_country_code varchar
+  phone_number varchar
+  email varchar
+  national_id_type varchar
+  national_id_number varchar
+  photo_url varchar
+  emergency_contact_name varchar
+  emergency_contact_phone varchar
+  known_allergies text
+  chronic_conditions text
+  preferred_language varchar
+  is_active boolean
+  created_by uuid fk
+}
+
+patient_consents [icon: check-circle, color: red] {
+  id uuid pk
+  patient_id uuid fk
+  consent_type varchar
+  consent_text text
+  is_accepted boolean
+  signature_url varchar
+  consented_at timestamptz
+}
+
+patient_documents [icon: file, color: red] {
+  id uuid pk
+  patient_id uuid fk
+  document_type varchar
+  title varchar
+  file_url varchar
+  file_type varchar
+  file_size_bytes integer
+  uploaded_by uuid fk
+}
+
+// =============================================================================
+// SECTION 4: DOCTORS
+// =============================================================================
+
+doctors [icon: stethoscope, color: purple] {
+  id uuid pk
+  user_id uuid fk "unique"
+  hospital_id uuid fk
+  department_id uuid fk
+  employee_id varchar
+  specialization varchar
+  qualification varchar
+  registration_number varchar
+  experience_years integer
+  doctor_sequence integer
+  consultation_fee decimal
+  follow_up_fee decimal
+  is_available boolean
+  is_active boolean
+  created_by uuid fk
+}
+
+doctor_schedules [icon: calendar, color: purple] {
+  id uuid pk
+  doctor_id uuid fk
+  day_of_week integer
+  shift_name varchar
+  start_time time
+  end_time time
+  break_start_time time
+  break_end_time time
+  slot_duration_minutes integer
+  max_patients integer
+  is_active boolean
+  effective_from date
+  effective_to date
+}
+
+doctor_leaves [icon: calendar-x, color: purple] {
+  id uuid pk
+  doctor_id uuid fk
+  leave_date date
+  leave_type varchar
+  reason varchar
+  approved_by uuid fk
+  status varchar
+}
+
+doctor_fees [icon: tag, color: purple] {
+  id uuid pk
+  doctor_id uuid fk
+  fee_type varchar
+  service_name varchar
+  amount decimal
+  currency varchar
+  effective_from date
+  effective_to date
+  is_active boolean
+}
+
+// =============================================================================
+// SECTION 5: APPOINTMENTS
+// =============================================================================
+
+appointments [icon: clock, color: orange] {
+  id uuid pk
+  hospital_id uuid fk
+  appointment_number varchar unique
+  patient_id uuid fk
+  doctor_id uuid fk
+  department_id uuid fk
+  appointment_date date
+  start_time time
+  end_time time
+  appointment_type varchar
+  visit_type varchar
+  priority varchar
+  status varchar
+  current_doctor_sequence integer
+  parent_appointment_id uuid fk
+  chief_complaint text
+  check_in_at timestamptz
+  consultation_start_at timestamptz
+  consultation_end_at timestamptz
+  consultation_fee decimal
+  created_by uuid fk
+}
+
+appointment_status_log [icon: list, color: orange] {
+  id uuid pk
+  appointment_id uuid fk
+  from_status varchar
+  to_status varchar
+  changed_by uuid fk
+  notes text
+}
+
+appointment_queue [icon: users, color: orange] {
+  id uuid pk
+  appointment_id uuid fk
+  doctor_id uuid fk
+  queue_date date
+  queue_number integer
+  position integer
+  status varchar
+  called_at timestamptz
+}
+
+// =============================================================================
+// SECTION 6: PRESCRIPTIONS
+// =============================================================================
+
+prescriptions [icon: file-text, color: teal] {
+  id uuid pk
+  hospital_id uuid fk
+  prescription_number varchar unique
+  appointment_id uuid fk
+  patient_id uuid fk
+  doctor_id uuid fk
+  diagnosis text
+  clinical_notes text
+  advice text
+  version integer
+  status varchar
+  is_finalized boolean
+  finalized_at timestamptz
+  valid_until date
+  created_by uuid fk
+}
+
+prescription_items [icon: pill, color: teal] {
+  id uuid pk
+  prescription_id uuid fk
+  medicine_id uuid fk
+  medicine_name varchar
+  generic_name varchar
+  dosage varchar
+  frequency varchar
+  duration_value integer
+  duration_unit varchar
+  route varchar
+  instructions text
+  quantity integer
+  allow_substitution boolean
+  is_dispensed boolean
+  dispensed_quantity integer
+  display_order integer
+}
+
+prescription_templates [icon: copy, color: teal] {
+  id uuid pk
+  doctor_id uuid fk
+  name varchar
+  diagnosis varchar
+  items jsonb
+  advice text
+  is_active boolean
+  usage_count integer
+}
+
+prescription_versions [icon: git-branch, color: teal] {
+  id uuid pk
+  prescription_id uuid fk
+  version integer
+  snapshot jsonb
+  changed_by uuid fk
+  change_reason text
+}
+
+lab_orders [icon: activity, color: teal] {
+  id uuid pk
+  prescription_id uuid fk
+  patient_id uuid fk
+  doctor_id uuid fk
+  test_name varchar
+  test_code varchar
+  instructions text
+  urgency varchar
+  status varchar
+}
+
+// =============================================================================
+// SECTION 7: PHARMACY / MEDICINES
+// =============================================================================
+
+medicines [icon: package, color: cyan] {
+  id uuid pk
+  hospital_id uuid fk
+  name varchar
+  generic_name varchar
+  category varchar
+  manufacturer varchar
+  composition text
+  strength varchar
+  unit_of_measure varchar
+  units_per_pack integer
+  hsn_code varchar
+  sku varchar
+  barcode varchar
+  requires_prescription boolean
+  is_controlled boolean
+  selling_price decimal
+  purchase_price decimal
+  tax_config_id uuid fk
+  reorder_level integer
+  is_active boolean
+}
+
+medicine_batches [icon: box, color: cyan] {
+  id uuid pk
+  medicine_id uuid fk
+  batch_number varchar
+  grn_id uuid fk
+  manufactured_date date
+  expiry_date date
+  purchase_price decimal
+  selling_price decimal
+  initial_quantity integer
+  current_quantity integer
+  is_expired boolean
+  is_active boolean
+}
+
+pharmacy_dispensing [icon: shopping-cart, color: cyan] {
+  id uuid pk
+  hospital_id uuid fk
+  dispensing_number varchar unique
+  prescription_id uuid fk
+  patient_id uuid fk
+  sale_type varchar
+  invoice_id uuid fk
+  status varchar
+  total_amount decimal
+  discount_amount decimal
+  tax_amount decimal
+  net_amount decimal
+  dispensed_by uuid fk
+  dispensed_at timestamptz
+}
+
+pharmacy_dispensing_items [icon: list, color: cyan] {
+  id uuid pk
+  dispensing_id uuid fk
+  prescription_item_id uuid fk
+  medicine_id uuid fk
+  medicine_batch_id uuid fk
+  quantity integer
+  unit_price decimal
+  discount_percent decimal
+  tax_amount decimal
+  total_price decimal
+  substituted boolean
+  original_medicine_name varchar
+}
+
+pharmacy_returns [icon: rotate-ccw, color: cyan] {
+  id uuid pk
+  hospital_id uuid fk
+  return_number varchar unique
+  dispensing_id uuid fk
+  patient_id uuid fk
+  reason varchar
+  total_refund decimal
+  status varchar
+  approved_by uuid fk
+  restock boolean
+}
+
+pharmacy_return_items [icon: x-circle, color: cyan] {
+  id uuid pk
+  return_id uuid fk
+  dispensing_item_id uuid fk
+  medicine_id uuid fk
+  batch_id uuid fk
+  quantity integer
+  refund_amount decimal
+  restocked boolean
+}
+
+// =============================================================================
+// SECTION 8: OPTICAL STORE
+// =============================================================================
+
+optical_products [icon: eye, color: indigo] {
+  id uuid pk
+  hospital_id uuid fk
+  name varchar
+  category varchar
+  brand varchar
+  model_number varchar
+  color varchar
+  material varchar
+  sku varchar
+  barcode varchar
+  selling_price decimal
+  purchase_price decimal
+  tax_config_id uuid fk
+  current_stock integer
+  reorder_level integer
+  lens_type varchar
+  lens_index varchar
+  lens_coating varchar
+  is_active boolean
+}
+
+optical_prescriptions [icon: eye, color: indigo] {
+  id uuid pk
+  hospital_id uuid fk
+  prescription_number varchar unique
+  patient_id uuid fk
+  doctor_id uuid fk
+  appointment_id uuid fk
+  right_sph decimal
+  right_cyl decimal
+  right_axis integer
+  right_add decimal
+  left_sph decimal
+  left_cyl decimal
+  left_axis integer
+  left_add decimal
+  pd_distance decimal
+  pd_near decimal
+  is_finalized boolean
+  valid_until date
+}
+
+optical_orders [icon: shopping-bag, color: indigo] {
+  id uuid pk
+  hospital_id uuid fk
+  order_number varchar unique
+  patient_id uuid fk
+  optical_prescription_id uuid fk
+  invoice_id uuid fk
+  order_type varchar
+  status varchar
+  frame_product_id uuid fk
+  right_lens_product_id uuid fk
+  left_lens_product_id uuid fk
+  fitting_measurements jsonb
+  total_amount decimal
+  discount_amount decimal
+  tax_amount decimal
+  net_amount decimal
+  estimated_delivery_date date
+}
+
+optical_order_items [icon: list, color: indigo] {
+  id uuid pk
+  order_id uuid fk
+  product_id uuid fk
+  quantity integer
+  unit_price decimal
+  discount_percent decimal
+  tax_amount decimal
+  total_price decimal
+}
+
+optical_repairs [icon: tool, color: indigo] {
+  id uuid pk
+  hospital_id uuid fk
+  repair_number varchar unique
+  patient_id uuid fk
+  item_description varchar
+  issue_description text
+  status varchar
+  estimated_cost decimal
+  actual_cost decimal
+  invoice_id uuid fk
+  estimated_completion date
+  completed_at timestamptz
+}
+
+// =============================================================================
+// SECTION 9: BILLING & PAYMENTS
+// =============================================================================
+
+invoices [icon: file-text, color: yellow] {
+  id uuid pk
+  hospital_id uuid fk
+  invoice_number varchar unique
+  patient_id uuid fk
+  appointment_id uuid fk
+  invoice_type varchar
+  invoice_date date
+  due_date date
+  subtotal decimal
+  discount_amount decimal
+  tax_amount decimal
+  total_amount decimal
+  paid_amount decimal
+  balance_amount decimal
+  currency varchar
+  status varchar
+  insurance_claim_id uuid fk
+  created_by uuid fk
+}
+
+invoice_items [icon: list, color: yellow] {
+  id uuid pk
+  invoice_id uuid fk
+  item_type varchar
+  reference_id uuid
+  description varchar
+  quantity decimal
+  unit_price decimal
+  discount_percent decimal
+  discount_amount decimal
+  tax_config_id uuid fk
+  tax_rate decimal
+  tax_amount decimal
+  total_price decimal
+  display_order integer
+}
+
+payments [icon: credit-card, color: yellow] {
+  id uuid pk
+  hospital_id uuid fk
+  payment_number varchar unique
+  invoice_id uuid fk
+  patient_id uuid fk
+  amount decimal
+  currency varchar
+  payment_mode varchar
+  payment_reference varchar
+  payment_date date
+  status varchar
+  received_by uuid fk
+}
+
+refunds [icon: rotate-ccw, color: yellow] {
+  id uuid pk
+  hospital_id uuid fk
+  refund_number varchar unique
+  invoice_id uuid fk
+  payment_id uuid fk
+  patient_id uuid fk
+  amount decimal
+  reason_code varchar
+  reason_detail text
+  status varchar
+  refund_mode varchar
+  requested_by uuid fk
+  approved_by uuid fk
+  processed_at timestamptz
+}
+
+credit_notes [icon: file-minus, color: yellow] {
+  id uuid pk
+  hospital_id uuid fk
+  credit_note_number varchar unique
+  invoice_id uuid fk
+  patient_id uuid fk
+  amount decimal
+  reason text
+  status varchar
+  applied_to_invoice_id uuid fk
+  valid_until date
+  created_by uuid fk
+}
+
+daily_settlements [icon: check-square, color: yellow] {
+  id uuid pk
+  hospital_id uuid fk
+  settlement_date date
+  cashier_user_id uuid fk
+  total_cash decimal
+  total_card decimal
+  total_online decimal
+  total_other decimal
+  total_collected decimal
+  total_refunds decimal
+  net_amount decimal
+  status varchar
+  verified_by uuid fk
+}
+
+// =============================================================================
+// SECTION 10: INSURANCE
+// =============================================================================
+
+insurance_providers [icon: shield, color: pink] {
+  id uuid pk
+  hospital_id uuid fk
+  name varchar
+  code varchar
+  contact_person varchar
+  phone varchar
+  email varchar
+  address text
+  is_active boolean
+}
+
+insurance_policies [icon: file-text, color: pink] {
+  id uuid pk
+  patient_id uuid fk
+  provider_id uuid fk
+  policy_number varchar
+  group_number varchar
+  member_id varchar
+  plan_name varchar
+  coverage_type varchar
+  coverage_amount decimal
+  deductible decimal
+  copay_percent decimal
+  effective_from date
+  effective_to date
+  is_primary boolean
+  status varchar
+}
+
+insurance_claims [icon: clipboard, color: pink] {
+  id uuid pk
+  hospital_id uuid fk
+  claim_number varchar unique
+  patient_id uuid fk
+  policy_id uuid fk
+  invoice_id uuid fk
+  claim_amount decimal
+  approved_amount decimal
+  status varchar
+  submission_date date
+  response_date date
+  rejection_reason text
+  created_by uuid fk
+}
+
+pre_authorizations [icon: check, color: pink] {
+  id uuid pk
+  patient_id uuid fk
+  policy_id uuid fk
+  service_description text
+  estimated_cost decimal
+  status varchar
+  auth_number varchar
+  approved_amount decimal
+  valid_from date
+  valid_to date
+}
+
+// =============================================================================
+// SECTION 11: INVENTORY
+// =============================================================================
+
+suppliers [icon: truck, color: brown] {
+  id uuid pk
+  hospital_id uuid fk
+  name varchar
+  code varchar
+  contact_person varchar
+  phone varchar
+  email varchar
+  address text
+  tax_id varchar
+  payment_terms varchar
+  lead_time_days integer
+  rating decimal
+  is_active boolean
+}
+
+purchase_orders [icon: clipboard, color: brown] {
+  id uuid pk
+  hospital_id uuid fk
+  po_number varchar unique
+  supplier_id uuid fk
+  order_date date
+  expected_delivery_date date
+  status varchar
+  total_amount decimal
+  tax_amount decimal
+  approved_by uuid fk
+  created_by uuid fk
+}
+
+purchase_order_items [icon: list, color: brown] {
+  id uuid pk
+  purchase_order_id uuid fk
+  item_type varchar
+  item_id uuid
+  quantity_ordered integer
+  quantity_received integer
+  unit_price decimal
+  total_price decimal
+}
+
+goods_receipt_notes [icon: inbox, color: brown] {
+  id uuid pk
+  hospital_id uuid fk
+  grn_number varchar unique
+  purchase_order_id uuid fk
+  supplier_id uuid fk
+  receipt_date date
+  invoice_number varchar
+  total_amount decimal
+  status varchar
+  verified_by uuid fk
+  created_by uuid fk
+}
+
+grn_items [icon: list, color: brown] {
+  id uuid pk
+  grn_id uuid fk
+  item_type varchar
+  item_id uuid
+  batch_number varchar
+  manufactured_date date
+  expiry_date date
+  quantity_received integer
+  quantity_accepted integer
+  quantity_rejected integer
+  unit_price decimal
+  total_price decimal
+  rejection_reason varchar
+}
+
+stock_movements [icon: trending-up, color: brown] {
+  id uuid pk
+  hospital_id uuid fk
+  item_type varchar
+  item_id uuid
+  batch_id uuid
+  movement_type varchar
+  reference_type varchar
+  reference_id uuid
+  quantity integer
+  balance_after integer
+  unit_cost decimal
+  performed_by uuid fk
+}
+
+stock_adjustments [icon: sliders, color: brown] {
+  id uuid pk
+  hospital_id uuid fk
+  adjustment_number varchar unique
+  item_type varchar
+  item_id uuid
+  batch_id uuid
+  adjustment_type varchar
+  quantity integer
+  reason varchar
+  approved_by uuid fk
+  status varchar
+  created_by uuid fk
+}
+
+cycle_counts [icon: refresh-cw, color: brown] {
+  id uuid pk
+  hospital_id uuid fk
+  count_number varchar unique
+  count_date date
+  status varchar
+  counted_by uuid fk
+  verified_by uuid fk
+}
+
+cycle_count_items [icon: list, color: brown] {
+  id uuid pk
+  cycle_count_id uuid fk
+  item_type varchar
+  item_id uuid
+  batch_id uuid
+  system_quantity integer
+  counted_quantity integer
+  variance integer
+  variance_reason varchar
+}
+
+// =============================================================================
+// SECTION 12: NOTIFICATIONS
+// =============================================================================
+
+notifications [icon: bell, color: gray] {
+  id uuid pk
+  hospital_id uuid fk
+  user_id uuid fk
+  title varchar
+  message text
+  type varchar
+  priority varchar
+  reference_type varchar
+  reference_id uuid
+  is_read boolean
+  read_at timestamptz
+}
+
+notification_templates [icon: mail, color: gray] {
+  id uuid pk
+  hospital_id uuid fk
+  code varchar
+  channel varchar
+  locale varchar
+  subject varchar
+  body_template text
+  is_active boolean
+}
+
+notification_queue [icon: send, color: gray] {
+  id uuid pk
+  hospital_id uuid fk
+  channel varchar
+  recipient varchar
+  subject varchar
+  body text
+  status varchar
+  attempts integer
+  last_attempt_at timestamptz
+  error_message text
+  scheduled_at timestamptz
+  sent_at timestamptz
+}
+
+// =============================================================================
+// SECTION 13: AUDIT LOG
+// =============================================================================
+
+audit_logs [icon: eye, color: gray] {
+  id uuid pk
+  hospital_id uuid fk
+  user_id uuid fk
+  action varchar
+  entity_type varchar
+  entity_id uuid
+  entity_name varchar
+  old_values jsonb
+  new_values jsonb
+  ip_address varchar
+  user_agent varchar
+  request_path varchar
+  created_at timestamptz
+}
+
+// =============================================================================
+// SECTION 14: ID CARD SYSTEM
+// =============================================================================
+
+id_sequences [icon: hash, color: emerald] {
+  id uuid pk
+  hospital_id uuid fk
+  hospital_code char(2)
+  entity_type varchar
+  role_gender_code char(1)
+  year_code char(2)
+  month_code char(1)
+  last_sequence integer
+}
+
+id_cards [icon: credit-card, color: emerald] {
+  id uuid pk
+  hospital_id uuid fk
+  holder_type varchar
+  holder_id uuid
+  reference_number varchar(12)
+  photo_url varchar
+  card_data_snapshot jsonb
+  front_design_url varchar
+  back_design_url varchar
+  issued_at timestamptz
+  issued_by uuid fk
+  revoked_at timestamptz
+  version integer
+}
+
+password_emails [icon: mail, color: emerald] {
+  id uuid pk
+  user_id uuid fk
+  sent_by uuid fk
+  sent_to_email varchar
+  sent_at timestamptz
+  is_temp_password boolean
+}
+
+// =============================================================================
+// RELATIONSHIPS — Hospital & Configuration
+// =============================================================================
+
+hospitals.id < departments.hospital_id
+hospitals.id < hospital_settings.hospital_id
+hospitals.id < tax_configurations.hospital_id
+
+// =============================================================================
+// RELATIONSHIPS — Users & RBAC
+// =============================================================================
+
+hospitals.id < users.hospital_id
+hospitals.id < roles.hospital_id
+users.id < user_roles.user_id
+roles.id < user_roles.role_id
+roles.id < role_permissions.role_id
+permissions.id < role_permissions.permission_id
+users.id < refresh_tokens.user_id
+
+// =============================================================================
+// RELATIONSHIPS — Patients
+// =============================================================================
+
+hospitals.id < patients.hospital_id
+patients.id < patient_consents.patient_id
+patients.id < patient_documents.patient_id
+
+// =============================================================================
+// RELATIONSHIPS — Doctors
+// =============================================================================
+
+users.id - doctors.user_id
+hospitals.id < doctors.hospital_id
+departments.id < doctors.department_id
+doctors.id < doctor_schedules.doctor_id
+doctors.id < doctor_leaves.doctor_id
+doctors.id < doctor_fees.doctor_id
+
+// Department head (self-referencing via doctors)
+doctors.id < departments.head_doctor_id
+
+// =============================================================================
+// RELATIONSHIPS — Appointments
+// =============================================================================
+
+hospitals.id < appointments.hospital_id
+patients.id < appointments.patient_id
+doctors.id < appointments.doctor_id
+departments.id < appointments.department_id
+appointments.id < appointments.parent_appointment_id
+appointments.id < appointment_status_log.appointment_id
+appointments.id < appointment_queue.appointment_id
+doctors.id < appointment_queue.doctor_id
+
+// =============================================================================
+// RELATIONSHIPS — Prescriptions
+// =============================================================================
+
+hospitals.id < prescriptions.hospital_id
+appointments.id < prescriptions.appointment_id
+patients.id < prescriptions.patient_id
+doctors.id < prescriptions.doctor_id
+prescriptions.id < prescription_items.prescription_id
+medicines.id < prescription_items.medicine_id
+doctors.id < prescription_templates.doctor_id
+prescriptions.id < prescription_versions.prescription_id
+prescriptions.id < lab_orders.prescription_id
+patients.id < lab_orders.patient_id
+doctors.id < lab_orders.doctor_id
+
+// =============================================================================
+// RELATIONSHIPS — Pharmacy
+// =============================================================================
+
+hospitals.id < medicines.hospital_id
+tax_configurations.id < medicines.tax_config_id
+medicines.id < medicine_batches.medicine_id
+goods_receipt_notes.id < medicine_batches.grn_id
+hospitals.id < pharmacy_dispensing.hospital_id
+prescriptions.id < pharmacy_dispensing.prescription_id
+patients.id < pharmacy_dispensing.patient_id
+invoices.id < pharmacy_dispensing.invoice_id
+users.id < pharmacy_dispensing.dispensed_by
+pharmacy_dispensing.id < pharmacy_dispensing_items.dispensing_id
+prescription_items.id < pharmacy_dispensing_items.prescription_item_id
+medicines.id < pharmacy_dispensing_items.medicine_id
+medicine_batches.id < pharmacy_dispensing_items.medicine_batch_id
+hospitals.id < pharmacy_returns.hospital_id
+pharmacy_dispensing.id < pharmacy_returns.dispensing_id
+patients.id < pharmacy_returns.patient_id
+pharmacy_returns.id < pharmacy_return_items.return_id
+pharmacy_dispensing_items.id < pharmacy_return_items.dispensing_item_id
+medicines.id < pharmacy_return_items.medicine_id
+medicine_batches.id < pharmacy_return_items.batch_id
+
+// =============================================================================
+// RELATIONSHIPS — Optical
+// =============================================================================
+
+hospitals.id < optical_products.hospital_id
+tax_configurations.id < optical_products.tax_config_id
+hospitals.id < optical_prescriptions.hospital_id
+patients.id < optical_prescriptions.patient_id
+doctors.id < optical_prescriptions.doctor_id
+appointments.id < optical_prescriptions.appointment_id
+hospitals.id < optical_orders.hospital_id
+patients.id < optical_orders.patient_id
+optical_prescriptions.id < optical_orders.optical_prescription_id
+invoices.id < optical_orders.invoice_id
+optical_products.id < optical_orders.frame_product_id
+optical_products.id < optical_orders.right_lens_product_id
+optical_products.id < optical_orders.left_lens_product_id
+optical_orders.id < optical_order_items.order_id
+optical_products.id < optical_order_items.product_id
+hospitals.id < optical_repairs.hospital_id
+patients.id < optical_repairs.patient_id
+invoices.id < optical_repairs.invoice_id
+
+// =============================================================================
+// RELATIONSHIPS — Billing & Payments
+// =============================================================================
+
+hospitals.id < invoices.hospital_id
+patients.id < invoices.patient_id
+appointments.id < invoices.appointment_id
+insurance_claims.id < invoices.insurance_claim_id
+invoices.id < invoice_items.invoice_id
+tax_configurations.id < invoice_items.tax_config_id
+hospitals.id < payments.hospital_id
+invoices.id < payments.invoice_id
+patients.id < payments.patient_id
+users.id < payments.received_by
+hospitals.id < refunds.hospital_id
+invoices.id < refunds.invoice_id
+payments.id < refunds.payment_id
+patients.id < refunds.patient_id
+hospitals.id < credit_notes.hospital_id
+invoices.id < credit_notes.invoice_id
+patients.id < credit_notes.patient_id
+invoices.id < credit_notes.applied_to_invoice_id
+hospitals.id < daily_settlements.hospital_id
+users.id < daily_settlements.cashier_user_id
+
+// =============================================================================
+// RELATIONSHIPS — Insurance
+// =============================================================================
+
+hospitals.id < insurance_providers.hospital_id
+patients.id < insurance_policies.patient_id
+insurance_providers.id < insurance_policies.provider_id
+hospitals.id < insurance_claims.hospital_id
+patients.id < insurance_claims.patient_id
+insurance_policies.id < insurance_claims.policy_id
+invoices.id < insurance_claims.invoice_id
+patients.id < pre_authorizations.patient_id
+insurance_policies.id < pre_authorizations.policy_id
+
+// =============================================================================
+// RELATIONSHIPS — Inventory
+// =============================================================================
+
+hospitals.id < suppliers.hospital_id
+hospitals.id < purchase_orders.hospital_id
+suppliers.id < purchase_orders.supplier_id
+purchase_orders.id < purchase_order_items.purchase_order_id
+hospitals.id < goods_receipt_notes.hospital_id
+purchase_orders.id < goods_receipt_notes.purchase_order_id
+suppliers.id < goods_receipt_notes.supplier_id
+goods_receipt_notes.id < grn_items.grn_id
+hospitals.id < stock_movements.hospital_id
+hospitals.id < stock_adjustments.hospital_id
+hospitals.id < cycle_counts.hospital_id
+cycle_counts.id < cycle_count_items.cycle_count_id
+
+// =============================================================================
+// RELATIONSHIPS — Notifications
+// =============================================================================
+
+hospitals.id < notifications.hospital_id
+users.id < notifications.user_id
+hospitals.id < notification_templates.hospital_id
+hospitals.id < notification_queue.hospital_id
+
+// =============================================================================
+// RELATIONSHIPS — Audit
+// =============================================================================
+
+hospitals.id < audit_logs.hospital_id
+users.id < audit_logs.user_id
+
+// =============================================================================
+// RELATIONSHIPS — ID Card System
+// =============================================================================
+
+hospitals.id < id_sequences.hospital_id
+hospitals.id < id_cards.hospital_id
+users.id < id_cards.issued_by
+users.id < password_emails.user_id
+users.id < password_emails.sent_by

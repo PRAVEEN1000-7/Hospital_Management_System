@@ -1,0 +1,25 @@
+mecandria erp -> audio log
+		gstri report
+	           invoice to gst (all details)
+		export invoice ->(phase 2)
+		point of sales (phase 2)
+
+
+
+hms		may 20 (multi tended)
+		
+
+		master table to control all the customer (access for the customer based module access)  				tropperr(software)
+		
+		get feature api (concept)
+		
+		include the ims (general into hms)
+
+		subscription based -> research works (also the period end and the new one start- the data should come for the paused place)
+		multi tended log status store in log (with ip to security reason)
+
+		
+	
+		
+		
+

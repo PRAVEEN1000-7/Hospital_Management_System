@@ -1,0 +1,522 @@
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import patientService from '../services/patientService';
+import { useAuth } from '../contexts/AuthContext';
+import type { Patient } from '../types/patient';
+import { format } from 'date-fns';
+
+const PatientList: React.FC = () => {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState(() => searchParams.get('search') || '');
+  const [searchInput, setSearchInput] = useState(() => searchParams.get('search') || '');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [sortBy, setSortBy] = useState('created_at');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [genderFilter, setGenderFilter] = useState('');
+  const [bloodGroupFilter, setBloodGroupFilter] = useState('');
+  const [cityFilter, setCityFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const limit = 10;
+  const searchTimeoutRef = useRef<number | null>(null);
+  const role = user?.roles?.[0] || '';
+  const canRegister = ['super_admin', 'admin', 'receptionist'].includes(role);
+  const canDelete = ['super_admin', 'admin'].includes(role);
+
+  const fetchPatients = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await patientService.getPatients(
+        page, limit, search,
+        { gender: genderFilter, blood_group: bloodGroupFilter, city: cityFilter, status: statusFilter },
+        sortBy,
+        sortOrder,
+      );
+      setPatients(response.data);
+      setTotalPages(response.total_pages);
+      setTotal(response.total);
+    } catch (err) {
+      // Silent fail - patients list will remain empty
+    } finally {
+      setLoading(false);
+    }
+  }, [page, search, sortBy, sortOrder, genderFilter, bloodGroupFilter, cityFilter, statusFilter]);
+
+  useEffect(() => {
+    fetchPatients();
+  }, [fetchPatients]);
+
+  // Dynamic search with debounce
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    
+    searchTimeoutRef.current = setTimeout(() => {
+      setSearch(searchInput);
+      setPage(1);
+      // Sync URL params
+      if (searchInput) {
+        setSearchParams({ search: searchInput }, { replace: true });
+      } else {
+        setSearchParams({}, { replace: true });
+      }
+    }, 500);
+    
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [searchInput, setSearchParams]);
+
+  // Sync from URL when navigating from header search
+  useEffect(() => {
+    const urlSearch = searchParams.get('search') || '';
+    if (urlSearch !== searchInput) {
+      setSearchInput(urlSearch);
+      setSearch(urlSearch);
+      setPage(1);
+    }
+  }, [searchParams]);
+
+  const handleDelete = async () => {
+    if (!deleteConfirm) return;
+    setIsDeleting(true);
+    try {
+      await patientService.deletePatient(deleteConfirm.id);
+      fetchPatients();
+    } catch (err) {
+      // Silent fail - deletion error will not show
+    } finally {
+      setIsDeleting(false);
+      setDeleteConfirm(null);
+    }
+  };
+
+  const getInitials = (p: Patient) => {
+    return `${p.first_name?.[0] || ''}${p.last_name?.[0] || ''}`.toUpperCase();
+  };
+
+  const startRecord = (page - 1) * limit + 1;
+  const endRecord = Math.min(page * limit, total);
+
+  // Generate visible page numbers
+  const getPageNumbers = () => {
+    const pages: (number | '...')[] = [];
+    if (totalPages <= 5) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (page > 3) pages.push('...');
+      for (let i = Math.max(2, page - 1); i <= Math.min(totalPages - 1, page + 1); i++) pages.push(i);
+      if (page < totalPages - 2) pages.push('...');
+      pages.push(totalPages);
+    }
+    return pages;
+  };
+
+  return (
+    <div>
+      {/* Header */}
+      <header className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Patient Directory</h1>
+          <p className="text-slate-500 text-sm">Manage and track all patient records in one place.</p>
+        </div>
+        {canRegister && (
+          <button
+            onClick={() => navigate('/register')}
+            className="bg-primary hover:bg-primary/90 text-white px-5 py-2.5 rounded-lg font-semibold flex items-center justify-center gap-2 transition-all shadow-md active:scale-95"
+          >
+            <span className="material-icons text-lg">person_add</span>
+            <span>Register New Patient</span>
+          </button>
+        )}
+      </header>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+        <div className="bg-white p-4 rounded-xl border border-slate-200">
+          <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">Total Patients</p>
+          <div className="flex items-end gap-2">
+            <span className="text-2xl font-bold">{total.toLocaleString()}</span>
+          </div>
+        </div>
+        <div className="bg-white p-4 rounded-xl border border-slate-200">
+          <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">Current Page</p>
+          <div className="flex items-end gap-2">
+            <span className="text-2xl font-bold">{patients.length}</span>
+            <span className="text-slate-400 text-xs pb-1">records</span>
+          </div>
+        </div>
+        <div className="bg-white p-4 rounded-xl border border-slate-200">
+          <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">Total Pages</p>
+          <div className="flex items-end gap-2">
+            <span className="text-2xl font-bold">{totalPages}</span>
+          </div>
+        </div>
+        <div className="bg-white p-4 rounded-xl border border-slate-200">
+          <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">Active Filters</p>
+          <div className="flex items-end gap-2">
+            <span className="text-2xl font-bold">
+              {[genderFilter, bloodGroupFilter, cityFilter, statusFilter, search].filter(Boolean).length || '—'}
+            </span>
+            {[genderFilter, bloodGroupFilter, cityFilter, statusFilter, search].filter(Boolean).length > 0 && (
+              <span className="text-slate-400 text-xs pb-1">applied</span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Search & Filter Toolbar */}
+      <div className="bg-white rounded-xl border border-slate-200 mb-6 p-4">
+        {/* Search Row */}
+        <div className="mb-4">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
+            <div className="lg:col-span-5 relative">
+              <span className="material-icons absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">search</span>
+              <input
+                type="text"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-background-light border-none rounded-lg focus:ring-2 focus:ring-primary/40 text-sm"
+                placeholder="Search by name, ID, or phone..."
+              />
+              {searchInput && (
+                <button
+                  onClick={() => { setSearch(''); setSearchInput(''); setPage(1); setSearchParams({}, { replace: true }); }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  <span className="material-icons text-lg">close</span>
+                </button>
+              )}
+            </div>
+            <div className="lg:col-span-4">
+              <select
+                value={sortBy}
+                onChange={(e) => { setSortBy(e.target.value); setPage(1); }}
+                className="w-full px-3 py-2 bg-background-light border-none rounded-lg focus:ring-2 focus:ring-primary/40 text-sm font-medium text-slate-700"
+              >
+                <option value="created_at">Registration Date</option>
+                <option value="updated_at">Last Updated</option>
+                <option value="first_name">Name</option>
+                <option value="patient_reference_number">PRN</option>
+              </select>
+            </div>
+            <div className="lg:col-span-3">
+              <select
+                value={sortOrder}
+                onChange={(e) => setSortOrder(e.target.value as 'asc' | 'desc')}
+                className="w-full px-3 py-2 bg-background-light border-none rounded-lg focus:ring-2 focus:ring-primary/40 text-sm font-medium text-slate-700"
+              >
+                {sortBy === 'first_name' || sortBy === 'patient_reference_number'
+                  ? (<>
+                      <option value="asc">A → Z</option>
+                      <option value="desc">Z → A</option>
+                    </>)
+                  : (<>
+                      <option value="desc">↓ Newest First</option>
+                      <option value="asc">↑ Oldest First</option>
+                    </>)
+                }
+              </select>
+            </div>
+          </div>
+        </div>
+        
+        {/* Filter Row */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 pt-3 border-t border-slate-100">
+          <div>
+            <select
+              value={genderFilter}
+              onChange={(e) => { setGenderFilter(e.target.value); setPage(1); }}
+              className="w-full px-3 py-2 bg-background-light border-none rounded-lg focus:ring-2 focus:ring-primary/40 text-sm"
+            >
+              <option value="">All Genders</option>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div>
+            <select
+              value={bloodGroupFilter}
+              onChange={(e) => { setBloodGroupFilter(e.target.value); setPage(1); }}
+              className="w-full px-3 py-2 bg-background-light border-none rounded-lg focus:ring-2 focus:ring-primary/40 text-sm"
+            >
+              <option value="">All Blood Groups</option>
+              <option value="A+">A+</option>
+              <option value="A-">A-</option>
+              <option value="A1B+">A1B+</option>
+              <option value="B+">B+</option>
+              <option value="B-">B-</option>
+              <option value="AB+">AB+</option>
+              <option value="AB-">AB-</option>
+              <option value="O+">O+</option>
+              <option value="O-">O-</option>
+            </select>
+          </div>
+          <div>
+            <input
+              type="text"
+              value={cityFilter}
+              onChange={(e) => { setCityFilter(e.target.value); setPage(1); }}
+              placeholder="Filter by City"
+              className="w-full px-3 py-2 bg-background-light border-none rounded-lg focus:ring-2 focus:ring-primary/40 text-sm"
+            />
+          </div>
+          <div>
+            <select
+              value={statusFilter}
+              onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+              className="w-full px-3 py-2 bg-background-light border-none rounded-lg focus:ring-2 focus:ring-primary/40 text-sm"
+            >
+              <option value="">All Status</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+          </div>
+        </div>
+        
+        {/* Active Filters Display */}
+        {(genderFilter || bloodGroupFilter || cityFilter || statusFilter) && (
+          <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-slate-100">
+            <span className="text-xs font-semibold text-slate-500">Active Filters:</span>
+            {genderFilter && (
+              <button
+                onClick={() => setGenderFilter('')}
+                className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium hover:bg-blue-200"
+              >
+                Gender: {genderFilter}
+                <span className="material-icons text-sm">close</span>
+              </button>
+            )}
+            {bloodGroupFilter && (
+              <button
+                onClick={() => setBloodGroupFilter('')}
+                className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-medium hover:bg-red-200"
+              >
+                Blood: {bloodGroupFilter}
+                <span className="material-icons text-sm">close</span>
+              </button>
+            )}
+            {cityFilter && (
+              <button
+                onClick={() => setCityFilter('')}
+                className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-medium hover:bg-green-200"
+              >
+                City: {cityFilter}
+                <span className="material-icons text-sm">close</span>
+              </button>
+            )}
+            {statusFilter && (
+              <button
+                onClick={() => setStatusFilter('')}
+                className="inline-flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-medium hover:bg-purple-200"
+              >
+                Status: {statusFilter}
+                <span className="material-icons text-sm">close</span>
+              </button>
+            )}
+            <button
+              onClick={() => {
+                setGenderFilter('');
+                setBloodGroupFilter('');
+                setCityFilter('');
+                setStatusFilter('');
+              }}
+              className="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 text-slate-600 rounded text-xs font-semibold hover:bg-slate-200 transition-colors"
+            >
+              <span className="material-icons text-sm">filter_alt_off</span>
+              Clear All
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Table */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        {loading ? (
+          <div className="flex items-center justify-center py-20">
+            <div className="w-6 h-6 border-4 border-slate-200 border-t-primary rounded-full animate-spin" />
+          </div>
+        ) : patients.length === 0 ? (
+          <div className="text-center py-20 text-slate-500">
+            <span className="material-icons text-4xl text-slate-300 mb-3">person_search</span>
+            <p className="text-lg font-medium">No patients found</p>
+            <p className="text-sm mt-1">Try adjusting your search or add a new patient.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto custom-scrollbar">
+            <table className="w-full min-w-[640px] text-left border-collapse">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  <th className="px-4 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">PRN</th>
+                  <th className="px-4 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Name</th>
+                  <th className="px-4 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Gender</th>
+                  <th className="px-4 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider hidden sm:table-cell">Blood</th>
+                  <th className="px-4 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider hidden lg:table-cell">
+                    {sortBy === 'updated_at' ? 'Last Updated' : 'Registered'}
+                  </th>
+                  <th className="px-4 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider w-24">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {patients.map((patient) => (
+                  <tr key={patient.id} className="hover:bg-slate-50 transition-colors group">
+                    <td className="px-4 py-4">
+                      <span className="text-sm font-semibold font-mono text-slate-400">{patient.patient_reference_number}</span>
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm uppercase flex-shrink-0">
+                          {getInitials(patient)}
+                        </div>
+                        <div className="min-w-0">
+                          <p
+                            className="text-sm font-bold text-primary hover:underline cursor-pointer truncate"
+                            onClick={() => navigate(`/patients/${patient.id}`)}
+                          >
+                          {patient.first_name} {patient.last_name}
+                          </p>
+                          <p className="text-xs text-slate-500 truncate">{patient.email || `${patient.phone_country_code} ${patient.phone_number}`}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-4">
+                      <span className="text-sm">{patient.gender}</span>
+                    </td>
+                    <td className="px-4 py-4 hidden sm:table-cell">
+                      {patient.blood_group ? (
+                        <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-red-100 text-red-700 uppercase tracking-wide">
+                          {patient.blood_group}
+                        </span>
+                      ) : (
+                        <span className="text-sm text-slate-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-4 hidden lg:table-cell">
+                      {sortBy === 'updated_at' ? (
+                        <span className="text-sm">{format(new Date(patient.updated_at), 'MMM dd, yyyy, hh:mm a')}</span>
+                      ) : (
+                        <span className="text-sm">{format(new Date(patient.created_at), 'MMM dd, yyyy, hh:mm a')}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => navigate(`/patients/${patient.id}`)}
+                          className="p-1.5 hover:bg-primary/10 rounded-lg text-slate-400 hover:text-primary transition-colors"
+                          title="View"
+                        >
+                          <span className="material-icons text-base">visibility</span>
+                        </button>
+                        {canDelete && (
+                          <button
+                            onClick={() => setDeleteConfirm({ id: patient.id, name: `${patient.first_name} ${patient.last_name}` })}
+                            className="p-1.5 hover:bg-red-50 rounded-lg text-slate-400 hover:text-red-600 transition-colors"
+                            title="Delete"
+                          >
+                            <span className="material-icons text-base">delete</span>
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="px-6 py-4 flex flex-col md:flex-row items-center justify-between border-t border-slate-200 gap-4">
+            <p className="text-sm text-slate-500">
+              Showing <span className="font-bold text-slate-900">{startRecord}</span> to{' '}
+              <span className="font-bold text-slate-900">{endRecord}</span> of{' '}
+              <span className="font-bold text-slate-900">{total.toLocaleString()}</span> results
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="p-2 border border-slate-200 rounded-lg text-slate-400 hover:bg-slate-50 transition-colors disabled:opacity-50"
+              >
+                <span className="material-icons text-lg">chevron_left</span>
+              </button>
+              {getPageNumbers().map((pg, i) =>
+                pg === '...' ? (
+                  <span key={`dots-${i}`} className="px-2 text-slate-400">...</span>
+                ) : (
+                  <button
+                    key={pg}
+                    onClick={() => setPage(pg as number)}
+                    className={`w-10 h-10 rounded-lg text-sm font-bold transition-colors ${
+                      page === pg
+                        ? 'bg-primary text-white'
+                        : 'border border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    {pg}
+                  </button>
+                )
+              )}
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                className="p-2 border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
+              >
+                <span className="material-icons text-lg">chevron_right</span>
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="delete-dialog-title">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => !isDeleting && setDeleteConfirm(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex flex-col items-center text-center">
+              <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center mb-4">
+                <span className="material-symbols-outlined text-red-500 text-3xl">delete</span>
+              </div>
+              <h3 id="delete-dialog-title" className="text-lg font-bold text-slate-900 mb-1">Delete Patient</h3>
+              <p className="text-sm text-slate-500 mb-6">
+                Are you sure you want to delete <span className="font-semibold text-slate-700">{deleteConfirm.name}</span>?
+              </p>
+              <div className="flex gap-3 w-full">
+                <button
+                  onClick={() => setDeleteConfirm(null)}
+                  disabled={isDeleting}
+                  className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDelete}
+                  disabled={isDeleting}
+                  className="flex-1 px-4 py-2.5 rounded-lg bg-red-600 text-sm font-semibold text-white hover:bg-red-700 transition-colors active:scale-[0.98] disabled:opacity-60"
+                >
+                  {isDeleting ? 'Deleting...' : 'Delete'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default PatientList;

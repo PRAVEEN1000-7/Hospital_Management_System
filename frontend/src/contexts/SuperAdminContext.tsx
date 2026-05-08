@@ -25,7 +25,8 @@ export const SuperAdminProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [isLoading, setIsLoading] = useState(true);
 
   const checkAuth = useCallback(async (): Promise<boolean> => {
-    const token = localStorage.getItem('superadmin_token');
+    const token = localStorage.getItem('access_token');
+    
     if (!token) {
       setIsLoading(false);
       return false;
@@ -36,7 +37,6 @@ export const SuperAdminProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       setAdmin(response.data);
       return true;
     } catch (error) {
-      localStorage.removeItem('superadmin_token');
       return false;
     } finally {
       setIsLoading(false);
@@ -44,15 +44,17 @@ export const SuperAdminProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, []);
 
   const login = async (username: string, password: string) => {
+    // This is no longer used by the UI as we use the main login
+    // but keeping the logic consistent just in case
     const response = await superAdminApi.login({ username, password });
     const { access_token, user } = response.data;
     
-    localStorage.setItem('superadmin_token', access_token);
+    localStorage.setItem('access_token', access_token);
     setAdmin(user);
   };
 
   const logout = () => {
-    localStorage.removeItem('superadmin_token');
+    localStorage.removeItem('access_token');
     setAdmin(null);
   };
 

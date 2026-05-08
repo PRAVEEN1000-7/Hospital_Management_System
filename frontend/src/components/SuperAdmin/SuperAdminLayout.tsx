@@ -24,7 +24,7 @@ const SuperAdminLayout: React.FC = () => {
 
   const handleLogout = () => {
     logout();
-    navigate('/superadmin/login');
+    navigate('/login');
   };
 
   const navigation = [

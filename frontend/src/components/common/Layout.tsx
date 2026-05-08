@@ -16,7 +16,7 @@ import {
 } from '../../utils/notificationUtils';
 
 const Layout: React.FC = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, isModuleEnabled } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -48,6 +48,9 @@ const Layout: React.FC = () => {
   const [inventoryOpen, setInventoryOpen] = useState(
     () => location.pathname.startsWith('/inventory')
   );
+  const [opticalOpen, setOpticalOpen] = useState(
+    () => location.pathname.startsWith('/optical')
+  );
 
   const role = user?.roles?.[0];
   const [billingOpen, setBillingOpen] = useState(
@@ -66,7 +69,16 @@ const Layout: React.FC = () => {
     return effectiveRoles.some(r => allowedSet.has(r));
   };
   const hasPendingPrescriptionAccess = hasRole('pharmacist', 'admin', 'super_admin', 'inventory_manager');
-  const canAccessPatients = hasRole('super_admin', 'admin', 'receptionist', 'nurse', 'pharmacist', 'doctor');
+  
+  // Module gating checks
+  const canAccessPatients = hasRole('super_admin', 'admin', 'receptionist', 'nurse', 'pharmacist', 'doctor') && isModuleEnabled('patients');
+  const canAccessPharmacy = hasRole('pharmacist', 'admin', 'super_admin', 'inventory_manager', 'cashier') && isModuleEnabled('pharmacy');
+  const canAccessInventory = hasRole('super_admin', 'admin', 'inventory_manager', 'pharmacist') && isModuleEnabled('inventory');
+  const canAccessBilling = hasRole('super_admin', 'admin', 'cashier', 'pharmacist', 'doctor') && isModuleEnabled('billing');
+  const canAccessAppointments = isModuleEnabled('appointments');
+  const canAccessPrescriptions = isModuleEnabled('prescriptions');
+  const canAccessAnalytics = (hasRole('super_admin', 'admin')) && isModuleEnabled('analytics');
+  const canAccessOptical = isModuleEnabled('optical');
 
   useEffect(() => {
     hospitalService.getHospitalDetails()
@@ -116,6 +128,9 @@ const Layout: React.FC = () => {
     }
     if (location.pathname.startsWith('/inventory')) {
       setInventoryOpen(true);
+    }
+    if (location.pathname.startsWith('/optical')) {
+      setOpticalOpen(true);
     }
     if (location.pathname.startsWith('/billing')) {
       setBillingOpen(true);
@@ -289,82 +304,78 @@ const Layout: React.FC = () => {
   if (canAccessPatients) {
     mainNavItems.push({ to: '/patients', label: 'Patient Directory', icon: 'group' });
   }
-  if (hasRole('super_admin', 'admin', 'receptionist')) {
+  if (hasRole('super_admin', 'admin', 'receptionist') && isModuleEnabled('patients')) {
     mainNavItems.push({ to: '/register', label: 'Register Patient', icon: 'person_add' });
   }
   if (hasRole('super_admin', 'admin')) {
     mainNavItems.push({ to: '/staff', label: 'Staff Directory', icon: 'badge' });
   }
   // Analytics - admin only
-  if (role === 'super_admin' || role === 'admin') {
+  if (canAccessAnalytics) {
     mainNavItems.push({ to: '/analytics', label: 'Analytics', icon: 'monitoring' });
   }
 
   // ── Appointment navigation ── fully role-driven
   const appointmentItems: { to: string; label: string; icon: string }[] = [];
 
-  if (hasRole('super_admin', 'admin')) {
-    appointmentItems.push(
-      { to: '/appointments/walk-in', label: 'Walk-in Registration', icon: 'directions_walk' },
-      { to: '/appointments/queue', label: 'Walk-in Queue', icon: 'queue' },
-      { to: '/appointments/doctor-schedule', label: 'Doctor Schedule', icon: 'calendar_month' },
-      { to: '/appointments/manage', label: 'Manage Appointments', icon: 'event_note' },
-      { to: '/appointments/waitlist', label: 'Waitlist', icon: 'playlist_add' },
-      { to: '/appointments/reports', label: 'Reports', icon: 'analytics' },
-      { to: '/appointments/settings', label: 'Settings', icon: 'tune' },
-    );
-  } else if (hasRole('doctor')) {
-    appointmentItems.push(
-      { to: '/appointments/queue', label: 'Today Patients', icon: 'queue' },
-      { to: '/appointments/doctor-schedule', label: 'Manage My Schedule', icon: 'edit_calendar' },
-      { to: '/appointments/waitlist', label: 'Waitlist', icon: 'playlist_add' },
-    );
-  } else if (hasRole('nurse')) {
-    appointmentItems.push(
-      { to: '/appointments/queue', label: 'Walk-in Queue', icon: 'queue' },
-      { to: '/appointments/manage', label: 'Appointments', icon: 'event_note' },
-    );
-  } else if (isFlatNav && hasRole('receptionist')) {
-    appointmentItems.push(
-      { to: '/appointments/walk-in', label: 'Walk-in Registration', icon: 'directions_walk' },
-      { to: '/appointments/queue', label: 'Walk-in Queue', icon: 'queue' },
-      { to: '/appointments/manage', label: 'Manage Appointments', icon: 'event_note' },
-      { to: '/appointments/waitlist', label: 'Waitlist', icon: 'playlist_add' },
-      { to: '/appointments/reports', label: 'Reports', icon: 'analytics' },
-    );
-  } else if (hasRole('report_viewer')) {
-    appointmentItems.push(
-      { to: '/appointments/reports', label: 'Appointment Reports', icon: 'analytics' },
-      { to: '/appointments/walk-in', label: 'Walk-in Registration', icon: 'directions_walk' },
-      { to: '/appointments/queue', label: 'Walk-in Queue', icon: 'queue' },
-      { to: '/appointments/manage', label: 'Manage Appointments', icon: 'event_note' },
-      { to: '/appointments/waitlist', label: 'Waitlist', icon: 'playlist_add' },
-    );
+  if (canAccessAppointments) {
+    if (hasRole('super_admin', 'admin')) {
+      appointmentItems.push(
+        { to: '/appointments/walk-in', label: 'Walk-in Registration', icon: 'directions_walk' },
+        { to: '/appointments/queue', label: 'Walk-in Queue', icon: 'queue' },
+        { to: '/appointments/doctor-schedule', label: 'Doctor Schedule', icon: 'calendar_month' },
+        { to: '/appointments/manage', label: 'Manage Appointments', icon: 'event_note' },
+        { to: '/appointments/waitlist', label: 'Waitlist', icon: 'playlist_add' },
+        { to: '/appointments/reports', label: 'Reports', icon: 'analytics' },
+        { to: '/appointments/settings', label: 'Settings', icon: 'tune' },
+      );
+    } else if (hasRole('doctor')) {
+      appointmentItems.push(
+        { to: '/appointments/queue', label: 'Today Patients', icon: 'queue' },
+        { to: '/appointments/doctor-schedule', label: 'Manage My Schedule', icon: 'edit_calendar' },
+        { to: '/appointments/waitlist', label: 'Waitlist', icon: 'playlist_add' },
+      );
+    } else if (hasRole('nurse')) {
+      appointmentItems.push(
+        { to: '/appointments/queue', label: 'Walk-in Queue', icon: 'queue' },
+        { to: '/appointments/manage', label: 'Appointments', icon: 'event_note' },
+      );
+    } else if (isFlatNav && hasRole('receptionist')) {
+      appointmentItems.push(
+        { to: '/appointments/walk-in', label: 'Walk-in Registration', icon: 'directions_walk' },
+        { to: '/appointments/queue', label: 'Walk-in Queue', icon: 'queue' },
+        { to: '/appointments/manage', label: 'Manage Appointments', icon: 'event_note' },
+        { to: '/appointments/waitlist', label: 'Waitlist', icon: 'playlist_add' },
+        { to: '/appointments/reports', label: 'Reports', icon: 'analytics' },
+      );
+    }
   }
 
   // ── Prescription navigation ── FLAT (no dropdown)
   const prescriptionItems: { to: string; label: string; icon: string }[] = [];
 
-  if (hasRole('super_admin', 'admin')) {
-    prescriptionItems.push(
-      { to: '/prescriptions', label: 'All Prescription', icon: 'list_alt' },
-      { to: '/prescriptions/new', label: 'New Prescription', icon: 'note_add' },
-    );
-  } else if (hasRole('doctor')) {
-    prescriptionItems.push(
-      { to: '/prescriptions', label: 'All Prescription', icon: 'list_alt' },
-      { to: '/prescriptions/new', label: 'New Prescription', icon: 'note_add' },
-    );
-  } else if (hasRole('nurse', 'pharmacist')) {
-    prescriptionItems.push(
-      { to: '/prescriptions', label: 'All Prescription', icon: 'prescriptions' },
-    );
+  if (canAccessPrescriptions) {
+    if (hasRole('super_admin', 'admin')) {
+      prescriptionItems.push(
+        { to: '/prescriptions', label: 'All Prescription', icon: 'list_alt' },
+        { to: '/prescriptions/new', label: 'New Prescription', icon: 'note_add' },
+      );
+    } else if (hasRole('doctor')) {
+      prescriptionItems.push(
+        { to: '/prescriptions', label: 'All Prescription', icon: 'list_alt' },
+        { to: '/prescriptions/new', label: 'New Prescription', icon: 'note_add' },
+      );
+    } else if (hasRole('nurse', 'pharmacist')) {
+      prescriptionItems.push(
+        { to: '/prescriptions', label: 'All Prescription', icon: 'prescriptions' },
+      );
+    }
   }
 
   // ── Pharmacy navigation ── FLAT (no dropdown), simplified for pharmacists
   const pharmacyItems: { to: string; label: string; icon: string; badge?: number }[] = [];
 
-  if (hasRole('super_admin', 'admin', 'pharmacist', 'inventory_manager')) {
+  if (canAccessPharmacy) {
     if (hasRole('pharmacist') && !hasRole('super_admin', 'admin', 'inventory_manager')) {
       // Simplified pharmacy menu for pharmacists - essential items only
       pharmacyItems.push(
@@ -376,6 +387,10 @@ const Layout: React.FC = () => {
           badge: pendingPrescriptionCount > 0 ? pendingPrescriptionCount : undefined,
         },
         { to: '/pharmacy/sales', label: 'Sales', icon: 'point_of_sale' }
+      );
+    } else if (hasRole('cashier')) {
+      pharmacyItems.push(
+        { to: '/pharmacy/sales', label: 'Sales', icon: 'point_of_sale' },
       );
     } else {
       // Full pharmacy menu for admin/super_admin/inventory_manager
@@ -393,64 +408,73 @@ const Layout: React.FC = () => {
       );
     }
   }
-  if (hasRole('cashier')) {
-    pharmacyItems.push(
-      { to: '/pharmacy/sales', label: 'Sales', icon: 'point_of_sale' },
+
+  // ── Optical navigation ──
+  const opticalItems: { to: string; label: string; icon: string }[] = [];
+  if (canAccessOptical) {
+    opticalItems.push(
+      { to: '/optical/inventory', label: 'Optical Inventory', icon: 'glasses' },
+      { to: '/optical/sales', label: 'Optical Sales', icon: 'shopping_cart' },
+      { to: '/optical/reports', label: 'Optical Reports', icon: 'analytics' },
     );
   }
 
   // ── Inventory navigation ── role-driven
   const inventoryItems: { to: string; label: string; icon: string }[] = [];
 
-  if (hasRole('super_admin', 'admin', 'inventory_manager')) {
-    inventoryItems.push(
-      { to: '/inventory', label: 'Dashboard', icon: 'space_dashboard' },
-      { to: '/inventory/low-stock', label: 'Low Stock', icon: 'warning' },
-      { to: '/inventory/suppliers', label: 'Suppliers', icon: 'local_shipping' },
-      { to: '/inventory/purchase-orders', label: 'Purchase Orders', icon: 'receipt_long' },
-      { to: '/inventory/grns', label: 'Goods Receipt', icon: 'inventory' },
-      { to: '/inventory/stock-movements', label: 'Stock Movements', icon: 'swap_vert' },
-      { to: '/inventory/adjustments', label: 'Adjustments', icon: 'tune' },
-      { to: '/inventory/cycle-counts', label: 'Cycle Counts', icon: 'inventory_2' },
-    );
-  } else if (hasRole('pharmacist')) {
-    inventoryItems.push(
-      { to: '/inventory', label: 'Dashboard', icon: 'space_dashboard' },
-      { to: '/inventory/low-stock', label: 'Low Stock', icon: 'warning' },
-      { to: '/inventory/suppliers', label: 'Suppliers', icon: 'local_shipping' },
-      { to: '/inventory/purchase-orders', label: 'Purchase Orders', icon: 'receipt_long' },
-      { to: '/inventory/grns', label: 'Goods Receipt', icon: 'inventory' },
-      { to: '/inventory/stock-movements', label: 'Stock Movements', icon: 'swap_vert' },
-    );
+  if (canAccessInventory) {
+    if (hasRole('super_admin', 'admin', 'inventory_manager')) {
+      inventoryItems.push(
+        { to: '/inventory', label: 'Dashboard', icon: 'space_dashboard' },
+        { to: '/inventory/low-stock', label: 'Low Stock', icon: 'warning' },
+        { to: '/inventory/suppliers', label: 'Suppliers', icon: 'local_shipping' },
+        { to: '/inventory/purchase-orders', label: 'Purchase Orders', icon: 'receipt_long' },
+        { to: '/inventory/grns', label: 'Goods Receipt', icon: 'inventory' },
+        { to: '/inventory/stock-movements', label: 'Stock Movements', icon: 'swap_vert' },
+        { to: '/inventory/adjustments', label: 'Adjustments', icon: 'tune' },
+        { to: '/inventory/cycle-counts', label: 'Cycle Counts', icon: 'inventory_2' },
+      );
+    } else if (hasRole('pharmacist')) {
+      inventoryItems.push(
+        { to: '/inventory', label: 'Dashboard', icon: 'space_dashboard' },
+        { to: '/inventory/low-stock', label: 'Low Stock', icon: 'warning' },
+        { to: '/inventory/suppliers', label: 'Suppliers', icon: 'local_shipping' },
+        { to: '/inventory/purchase-orders', label: 'Purchase Orders', icon: 'receipt_long' },
+        { to: '/inventory/grns', label: 'Goods Receipt', icon: 'inventory' },
+        { to: '/inventory/stock-movements', label: 'Stock Movements', icon: 'swap_vert' },
+      );
+    }
   }
 
   // ── System navigation ── admin / super_admin only
   const systemNavItems: { to: string; label: string; icon: string }[] = [];
   if (hasRole('super_admin')) {
     systemNavItems.push(
+      { to: '/multitenant', label: 'Multi-Tenant Control', icon: 'hub' },
       { to: '/hospital-setup', label: 'Hospital Setup', icon: 'local_hospital' },
       { to: '/user-management', label: 'User Management', icon: 'admin_panel_settings' },
     );
   } else if (hasRole('admin')) {
     systemNavItems.push(
+      { to: '/subscription', label: 'Subscription', icon: 'credit_card' },
       { to: '/user-management', label: 'User Management', icon: 'admin_panel_settings' },
     );
   }
 
   // ── Billing navigation ── admin, cashier, pharmacist, doctor (view only)
   const billingItems: { to: string; label: string; icon: string; stub?: boolean }[] = [];
-  if (['super_admin', 'admin', 'cashier', 'pharmacist', 'doctor'].includes(role || '')) {
+  if (canAccessBilling) {
     billingItems.push({ to: '/billing/invoices', label: 'Invoices', icon: 'receipt_long' });
     billingItems.push({ to: '/billing/payments', label: 'Payments', icon: 'payments' });
-  }
-  if (['super_admin', 'admin', 'cashier', 'pharmacist'].includes(role || '')) {
-    billingItems.push({ to: '/billing/refunds', label: 'Refunds', icon: 'currency_exchange' });
-    billingItems.push({ to: '/billing/settlements', label: 'Daily Settlements', icon: 'account_balance_wallet' });
-  }
-  if (['super_admin', 'admin'].includes(role || '')) {
-    billingItems.push({ to: '/billing/insurance-claims', label: 'Insurance Claims', icon: 'health_and_safety', stub: true });
-    billingItems.push({ to: '/billing/credit-notes', label: 'Credit Notes', icon: 'credit_score', stub: true });
-    billingItems.push({ to: '/billing/insurance-providers', label: 'Insurance Providers', icon: 'domain', stub: true });
+    if (['super_admin', 'admin', 'cashier', 'pharmacist'].includes(role || '')) {
+      billingItems.push({ to: '/billing/refunds', label: 'Refunds', icon: 'currency_exchange' });
+      billingItems.push({ to: '/billing/settlements', label: 'Daily Settlements', icon: 'account_balance_wallet' });
+    }
+    if (['super_admin', 'admin'].includes(role || '')) {
+      billingItems.push({ to: '/billing/insurance-claims', label: 'Insurance Claims', icon: 'health_and_safety', stub: true });
+      billingItems.push({ to: '/billing/credit-notes', label: 'Credit Notes', icon: 'credit_score', stub: true });
+      billingItems.push({ to: '/billing/insurance-providers', label: 'Insurance Providers', icon: 'domain', stub: true });
+    }
   }
 
   const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path + '/');
@@ -481,7 +505,12 @@ const Layout: React.FC = () => {
           <div className="w-8 h-8 bg-primary rounded flex items-center justify-center text-white mr-3 shrink-0">
             <span className="material-icons text-xl">health_and_safety</span>
           </div>
-          <span className="font-bold text-lg tracking-tight text-slate-900 truncate">{hospitalName}</span>
+          <div className="min-w-0">
+            <span className="font-bold text-sm tracking-tight text-slate-900 truncate block leading-none">{hospitalName}</span>
+            {user?.hospital_code && (
+              <span className="text-[10px] font-bold text-primary uppercase mt-1 block">Code: {user.hospital_code}</span>
+            )}
+          </div>
         </div>
 
         {/* Navigation */}
@@ -638,6 +667,50 @@ const Layout: React.FC = () => {
                         {item.badge > 99 ? '99+' : item.badge}
                       </span>
                     )}
+                  </NavLink>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ══ OPTICAL STORE — collapsible ══ */}
+          {opticalItems.length > 0 && (
+            <div className="mt-4">
+              <div className="px-6 mb-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Optical Store</span>
+              </div>
+              <button
+                onClick={() => setOpticalOpen(!opticalOpen)}
+                aria-expanded={opticalOpen}
+                aria-controls="optical-menu"
+                className={`w-full flex items-center justify-between px-6 py-2.5 text-sm font-medium transition-all ${
+                  location.pathname.startsWith('/optical')
+                    ? 'text-primary bg-primary/5'
+                    : 'text-slate-500 hover:text-primary hover:bg-slate-50'
+                }`}
+              >
+                <div className="flex items-center">
+                  <span className="material-symbols-outlined mr-3 text-[20px]">glasses</span>
+                  Optical Store
+                </div>
+                <span className={`material-symbols-outlined text-[18px] transition-transform duration-200 ${opticalOpen ? 'rotate-180' : ''}`}>
+                  expand_more
+                </span>
+              </button>
+              <div id="optical-menu" className={`overflow-hidden transition-all duration-200 ${opticalOpen ? 'max-h-[700px] opacity-100' : 'max-h-0 opacity-0'}`}>
+                {opticalItems.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    onClick={() => setSidebarOpen(false)}
+                    className={`flex items-center pl-10 pr-6 py-2.5 text-[13px] font-medium transition-all ${
+                      isExactActive(item.to)
+                        ? 'sidebar-item-active'
+                        : 'text-slate-400 hover:text-primary hover:bg-slate-50'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined mr-3 text-[18px]">{item.icon}</span>
+                    {item.label}
                   </NavLink>
                 ))}
               </div>
@@ -833,6 +906,9 @@ const Layout: React.FC = () => {
               inventoryItems.find(i => isActive(i.to))?.label ||
               (isActive('/inventory') ? 'Inventory' : '') ||
               systemNavItems.find(i => isActive(i.to))?.label ||
+              (isActive('/superadmin/hospitals') ? 'Hospitals' : '') ||
+              (isActive('/superadmin/plans') ? 'Subscription Plans' : '') ||
+              (isActive('/superadmin') ? 'Super Admin' : '') ||
               (isActive('/profile') ? 'My Profile' : 'HMS')}
             </h1>
           </div>

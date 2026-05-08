@@ -169,17 +169,7 @@ const Login: React.FC = () => {
             </button>
           </form>
 
-          <div className="mt-6 pt-6 border-t border-slate-100">
-            <div className="text-center">
-              <Link 
-                to="/superadmin/login" 
-                className="inline-flex items-center gap-2 text-sm text-slate-600 hover:text-primary transition-colors"
-              >
-                <span className="material-icons text-base">admin_panel_settings</span>
-                <span>Super Admin Login</span>
-              </Link>
-            </div>
-          </div>
+
 
           <div className="mt-8 pt-8 border-t border-slate-100 flex items-center justify-center gap-2 text-slate-400">
             <span className="material-icons text-sm">shield</span>

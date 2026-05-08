@@ -14,6 +14,7 @@ export interface User {
   permissions: string[];
   hospital_id?: string;
   hospital_name?: string;
+  hospital_code?: string;
   reference_number?: string;
   avatar_url?: string | null;
 }

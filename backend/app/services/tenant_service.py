@@ -128,13 +128,19 @@ class TenantService:
             code = generate_tenant_code()
         
         # Create tenant
+        tenant_data = kwargs.copy()
+        trial_days = tenant_data.pop('trial_days', 14)
+        
         tenant = Tenant(
             name=name,
             slug=slug,
             code=code,
             email=email,
-            status='pending',
-            **kwargs
+            status='active',  # Set directly to active
+            is_verified=True, # Auto-verify
+            verified_at=datetime.utcnow(),
+            onboarding_completed=True,
+            **tenant_data
         )
         db.add(tenant)
         db.flush()  # Get ID without committing
@@ -145,7 +151,6 @@ class TenantService:
             raise ValueError(f"Plan {plan_id} not found")
         
         # Create subscription
-        trial_days = kwargs.get('trial_days', 14)
         subscription = TenantSubscription(
             tenant_id=tenant.id,
             plan_id=plan_id,

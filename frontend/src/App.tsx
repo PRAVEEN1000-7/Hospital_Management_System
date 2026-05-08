@@ -9,7 +9,6 @@ import Layout from './components/common/Layout';
 import Login from './pages/Login';
 
 // Super Admin imports
-import SuperAdminLogin from './pages/SuperAdminLogin';
 import SuperAdminLayout from './components/SuperAdmin/SuperAdminLayout';
 import SuperAdminDashboard from './pages/SuperAdminDashboard';
 import SuperAdminHospitals from './pages/SuperAdminHospitals';
@@ -26,6 +25,7 @@ import UserManagement from './pages/UserManagement';
 import StaffDirectory from './pages/StaffDirectory';
 import Profile from './pages/Profile';
 import HospitalSetup from './pages/HospitalSetup';
+import Subscription from './pages/Subscription';
 
 // Appointment pages
 import AppointmentBooking from './pages/AppointmentBooking';
@@ -97,42 +97,30 @@ const App: React.FC = () => {
           <Routes>
             {/* Public */}
             <Route path="/login" element={<Login />} />
-            <Route
-              path="/superadmin/login"
-              element={(
-                <SuperAdminProvider>
-                  <SuperAdminLogin />
-                </SuperAdminProvider>
-              )}
-            />
 
-            {/* Super Admin */}
-            <Route
-              path="/superadmin"
-              element={(
-                <SuperAdminProvider>
-                  <SuperAdminLayout />
-                </SuperAdminProvider>
-              )}
-            >
-              <Route index element={<SuperAdminDashboard />} />
-              <Route path="hospitals" element={<SuperAdminHospitals />} />
-              <Route path="hospitals/new" element={<SuperAdminCreateHospital />} />
-              <Route path="hospitals/:id" element={<SuperAdminHospitalDetail />} />
-              <Route path="plans" element={<SuperAdminPlans />} />
-              <Route path="*" element={<Navigate to="/superadmin" replace />} />
-            </Route>
+            {/* Super Admin Unified Routes are now inside Protected block */}
 
             {/* Protected */}
             <Route
               element={
                 <ProtectedRoute>
-                  <Layout />
+                  <SuperAdminProvider>
+                    <Layout />
+                  </SuperAdminProvider>
                 </ProtectedRoute>
               }
             >
               {/* ── General ── */}
               <Route path="/dashboard" element={<Dashboard />} />
+              
+              {/* ── Super Admin Unified Routes ── */}
+              <Route path="/superadmin">
+                <Route index element={<SuperAdminDashboard />} />
+                <Route path="hospitals" element={<SuperAdminHospitals />} />
+                <Route path="hospitals/new" element={<SuperAdminCreateHospital />} />
+                <Route path="hospitals/:id" element={<SuperAdminHospitalDetail />} />
+                <Route path="plans" element={<SuperAdminPlans />} />
+              </Route>
               <Route path="/patients" element={
                 <ProtectedRoute allowedRoles={['super_admin', 'admin', 'receptionist', 'nurse', 'pharmacist', 'doctor']}>
                   <PatientList />
@@ -149,6 +137,11 @@ const App: React.FC = () => {
                 </ProtectedRoute>
               } />
               <Route path="/profile" element={<Profile />} />
+              <Route path="/subscription" element={
+                <ProtectedRoute allowedRoles={['super_admin', 'admin']}>
+                  <Subscription />
+                </ProtectedRoute>
+              } />
 
               {/* ── Admin / Super-admin only ── */}
               <Route path="/register" element={

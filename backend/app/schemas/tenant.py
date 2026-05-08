@@ -461,21 +461,18 @@ class DashboardStatsResponse(BaseModel):
 
 
 class TenantOnboardingRequest(BaseModel):
-    """Request to onboard a new tenant"""
+    """Simplified schema for hospital onboarding"""
     name: str = Field(..., min_length=1, max_length=255)
     email: str = Field(..., min_length=1, max_length=255)
-    phone: Optional[str] = Field(None, max_length=20)
-    address_line_1: Optional[str] = Field(None, max_length=255)
-    city: Optional[str] = Field(None, max_length=100)
-    state_province: Optional[str] = Field(None, max_length=100)
-    country: str = Field(default="USA", max_length=3)
-    
     plan_id: uuid.UUID
-    trial_days: int = Field(default=14, ge=0, le=90)
-    
     admin_email: str
     admin_first_name: str
     admin_last_name: str
+    # Optional fields with defaults
+    phone: Optional[str] = Field(None, max_length=20)
+    trial_days: int = Field(default=14, ge=0)
+    city: Optional[str] = Field(None, max_length=100)
+    country: str = Field(default="USA", max_length=3)
     
     model_config = ConfigDict(from_attributes=True)
 

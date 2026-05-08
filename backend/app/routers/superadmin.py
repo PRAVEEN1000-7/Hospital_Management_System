@@ -133,9 +133,7 @@ def create_tenant(
             'last_name': request.admin_last_name
         },
         phone=request.phone,
-        address_line_1=request.address_line_1,
         city=request.city,
-        state_province=request.state_province,
         country=request.country,
         trial_days=request.trial_days
     )

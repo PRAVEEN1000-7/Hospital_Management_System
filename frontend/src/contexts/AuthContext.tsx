@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import type { User, AuthState, LoginCredentials } from '../types/auth';
 import authService from '../services/authService';
+import { hospitalService } from '../services/hospitalService';
 
 interface AuthContextType extends AuthState {
   login: (credentials: LoginCredentials) => Promise<void>;
@@ -10,6 +11,10 @@ interface AuthContextType extends AuthState {
   hasPermission: (permission: string) => boolean;
   /** Check if the current user has any of the given roles. */
   hasRole: (...roles: string[]) => boolean;
+  /** List of modules enabled for the current tenant. */
+  enabledModules: string[];
+  /** Check if a module is enabled for the current tenant. */
+  isModuleEnabled: (moduleCode: string) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -21,6 +26,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     isAuthenticated: authService.isAuthenticated(),
     isLoading: false,
   });
+  const [enabledModules, setEnabledModules] = useState<string[]>([]);
+
+  const fetchModules = useCallback(async () => {
+    if (state.isAuthenticated && !state.user?.roles.includes('super_admin')) {
+      const modules = await hospitalService.getEnabledModules();
+      setEnabledModules(modules);
+    } else if (state.user?.roles.includes('super_admin')) {
+      // Super admins see all modules
+      setEnabledModules([
+        'patients', 'appointments', 'prescriptions', 'pharmacy', 
+        'optical', 'billing', 'inventory', 'analytics'
+      ]);
+    }
+  }, [state.isAuthenticated, state.user]);
+
+  useEffect(() => {
+    fetchModules();
+  }, [fetchModules]);
 
   const login = useCallback(async (credentials: LoginCredentials) => {
     setState(prev => ({ ...prev, isLoading: true }));
@@ -46,6 +69,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isAuthenticated: false,
       isLoading: false,
     });
+    setEnabledModules([]);
   }, []);
 
   // Patch the in-memory user and keep localStorage in sync (e.g. after photo upload)
@@ -77,6 +101,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [state.user],
   );
 
+  const isModuleEnabled = useCallback(
+    (moduleCode: string): boolean => {
+      if (state.user?.roles.includes('super_admin')) return true;
+      return enabledModules.includes(moduleCode);
+    },
+    [state.user, enabledModules],
+  );
+
   // Sync when another tab clears localStorage (e.g. 401 interceptor)
   useEffect(() => {
     const handleStorage = () => {
@@ -88,6 +120,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           isAuthenticated: false,
           isLoading: false,
         });
+        setEnabledModules([]);
       }
     };
     window.addEventListener('storage', handleStorage);
@@ -95,7 +128,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [state.isAuthenticated]);
 
   return (
-    <AuthContext.Provider value={{ ...state, login, logout, updateUser, hasPermission, hasRole }}>
+    <AuthContext.Provider value={{ ...state, login, logout, updateUser, hasPermission, hasRole, enabledModules, isModuleEnabled }}>
       {children}
     </AuthContext.Provider>
   );

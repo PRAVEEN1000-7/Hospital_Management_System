@@ -49,6 +49,13 @@ class Settings(BaseSettings):
     SMTP_FROM_EMAIL: str = "noreply@hospital.com"
     SMTP_FROM_NAME: str = "Hospital Management System"
 
+    # Rate Limiting (per tenant)
+    RATE_LIMIT_ENABLED: bool = True
+    RATE_LIMIT_REQUESTS_PER_MINUTE: int = 100  # Per tenant
+    RATE_LIMIT_REQUESTS_PER_HOUR: int = 5000  # Per tenant
+    RATE_LIMIT_LOGIN_ATTEMPTS: int = 5  # Per 5 minutes
+    RATE_LIMIT_API_BURST: int = 50  # Per 30 seconds for burst protection
+
     # Hospital Details (used for ID cards, reports, emails)
     HOSPITAL_NAME: str = "City General Hospital"
     HOSPITAL_ADDRESS: str = "123 Medical Center Road"

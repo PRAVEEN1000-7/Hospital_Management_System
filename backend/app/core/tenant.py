@@ -88,7 +88,7 @@ async def get_current_tenant(
         token = auth_header.replace('Bearer ', '')
         try:
             payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-            tenant_id = payload.get('tenant_id')
+            tenant_id = payload.get('tenant_id') or payload.get('hospital_id')
             if tenant_id:
                 tenant = db.query(Tenant).filter(
                     Tenant.id == uuid.UUID(tenant_id),
@@ -155,13 +155,15 @@ async def get_current_superadmin(
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         
-        # Check if this is a super admin token
-        user_type = payload.get('user_type')
-        if user_type != 'superadmin':
-            return None
-        
         user_id = payload.get('user_id')
         if not user_id:
+            return None
+            
+        # Check roles in payload first (faster)
+        roles = payload.get('roles', [])
+        is_superadmin = payload.get('user_type') == 'superadmin' or 'super_admin' in roles
+        
+        if not is_superadmin:
             return None
         
         # Use SuperAdminService to validate user has super_admin role
@@ -229,8 +231,6 @@ class TenantMiddleware:
             '/api/docs',
             '/api/redoc',
             '/api/openapi.json',
-            '/api/v1/superadmin/login',
-            '/api/v1/superadmin/refresh',
         ]
         
         if any(path.startswith(skip) for skip in skip_paths):

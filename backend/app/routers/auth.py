@@ -6,7 +6,7 @@ Spec: POST /auth/login, POST /auth/logout, POST /auth/refresh,
 import logging
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -18,8 +18,11 @@ from ..schemas.auth import (
     ForgotPasswordRequest,
 )
 from ..models.user import User
+from ..models.tenant import Tenant
 from ..services.auth_service import authenticate_user
 from ..core.security import create_access_token, get_password_hash, verify_password
+from ..core.tenant_security import TenantValidator
+from ..core.audit_logger import AuditLogger, get_client_ip
 from ..dependencies import get_current_active_user
 from ..config import settings
 
@@ -41,25 +44,39 @@ def _build_user_response(user: User) -> UserResponse:
         permissions=user.permissions,
         hospital_id=str(user.hospital_id),
         hospital_name=hospital_name,
+        hospital_code=user.hospital.code if user.hospital else None,
         reference_number=user.reference_number,
         avatar_url=user.avatar_url,
     )
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(credentials: LoginRequest, db: Session = Depends(get_db)):
+async def login(
+    credentials: LoginRequest,
+    db: Session = Depends(get_db),
+    request: Request = None
+):
     """
     Authenticate user and return access token.
-    JWT payload includes: user_id, hospital_id, roles, permissions.
+    JWT payload includes: user_id, hospital_id, tenant_id, roles, permissions.
     """
     try:
-        # DEBUG: Log incoming credentials (remove in production!)
-        logger.info(f"LOGIN ATTEMPT: username='{credentials.username}', password_length={len(credentials.password)}")
+        ip_address = get_client_ip(request) if request else None
+        logger.info(f"LOGIN ATTEMPT: username='{credentials.username}' from {ip_address}")
 
         user, reason = authenticate_user(db, credentials.username, credentials.password)
 
         if not user:
             logger.warning(f"LOGIN FAILED: username='{credentials.username}' - {reason}")
+            
+            # Log failed login attempt
+            AuditLogger.log_login(
+                username=credentials.username,
+                success=False,
+                ip_address=ip_address,
+                error=reason
+            )
+            
             error_messages = {
                 "invalid_username": "Invalid username",
                 "invalid_password": "Invalid password",
@@ -72,8 +89,15 @@ async def login(credentials: LoginRequest, db: Session = Depends(get_db)):
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        permissions = user.permissions  # module:action:resource strings
+        # ✅ Validate tenant status before issuing token
+        tenant = TenantValidator.get_tenant_for_user(user, db)
+        if not tenant or tenant.status != "active":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Tenant is suspended or inactive",
+            )
 
+        permissions = user.permissions
         access_token = create_access_token(
             data={
                 "user_id": str(user.id),
@@ -81,8 +105,17 @@ async def login(credentials: LoginRequest, db: Session = Depends(get_db)):
                 "roles": user.roles,
                 "permissions": permissions,
                 "hospital_id": str(user.hospital_id),
+                "tenant_id": str(tenant.id),
             },
             expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
+        )
+
+        # Log successful login
+        AuditLogger.log_login(
+            username=user.username,
+            success=True,
+            tenant=tenant,
+            ip_address=ip_address
         )
 
         return TokenResponse(
@@ -103,8 +136,13 @@ async def login(credentials: LoginRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/logout")
-async def logout(current_user: User = Depends(get_current_active_user)):
+async def logout(
+    current_user: User = Depends(get_current_active_user),
+    request: Request = None
+):
     """Logout user — client must discard the access token."""
+    ip_address = get_client_ip(request) if request else None
+    logger.info(f"LOGOUT: user={current_user.username} from {ip_address}")
     return {"success": True, "message": "Successfully logged out"}
 
 
@@ -112,25 +150,61 @@ async def logout(current_user: User = Depends(get_current_active_user)):
 async def refresh_token(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
+    request: Request = None
 ):
-    """Re-issue an access token using the current (still-valid) token."""
-    permissions = current_user.permissions
-    access_token = create_access_token(
-        data={
-            "user_id": str(current_user.id),
-            "username": current_user.username,
-            "roles": current_user.roles,
-            "permissions": permissions,
-            "hospital_id": str(current_user.hospital_id),
-        },
-        expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
-    )
-    return {
-        "success": True,
-        "access_token": access_token,
-        "token_type": "bearer",
-        "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-    }
+    """
+    Re-issue an access token using the current (still-valid) token.
+    
+    ✅ Validates:
+    - User still exists and is active
+    - Hospital is active
+    - Tenant is active (not suspended)
+    - Subscription is valid
+    """
+    try:
+        ip_address = get_client_ip(request) if request else None
+        
+        # ✅ CRITICAL FIX: Re-validate tenant is still active
+        tenant = TenantValidator.get_tenant_for_user(current_user, db)
+        if not tenant or tenant.status != "active":
+            logger.warning(
+                f"TOKEN REFRESH DENIED: Tenant not active. "
+                f"user={current_user.id}, tenant_status={tenant.status if tenant else 'not_found'}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Tenant is suspended or inactive. Access denied.",
+            )
+        
+        permissions = current_user.permissions
+        access_token = create_access_token(
+            data={
+                "user_id": str(current_user.id),
+                "username": current_user.username,
+                "roles": current_user.roles,
+                "permissions": permissions,
+                "hospital_id": str(current_user.hospital_id),
+                "tenant_id": str(tenant.id),
+            },
+            expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
+        )
+        
+        logger.info(f"TOKEN REFRESH: user={current_user.username} from {ip_address}")
+        
+        return {
+            "success": True,
+            "access_token": access_token,
+            "token_type": "bearer",
+            "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Token refresh error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not refresh token",
+        )
 
 
 @router.get("/me", response_model=UserResponse)

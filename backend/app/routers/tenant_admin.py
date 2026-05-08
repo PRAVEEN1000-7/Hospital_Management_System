@@ -97,13 +97,7 @@ def get_subscription_details(
         "current_period_start": subscription.current_period_start,
         "current_period_end": subscription.current_period_end,
         "cancel_at_period_end": subscription.cancel_at_period_end,
-        "features": subscription.get_effective_feature,
-        "limits": {
-            "users": subscription.get_effective_limit("users"),
-            "patients": subscription.get_effective_limit("patients"),
-            "appointments": subscription.get_effective_limit("appointments"),
-            "storage": subscription.get_effective_limit("storage")
-        }
+        "features": {**subscription.effective_features, **subscription.effective_limits}
     }
 
 

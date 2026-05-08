@@ -190,6 +190,29 @@ class TenantSubscription(Base):
             return False
         return datetime.now() < self.trial_ends_at
     
+    @property
+    def effective_features(self) -> Dict[str, Any]:
+        """Get all features considering plan defaults and custom overrides"""
+        features = {}
+        if self.plan and self.plan.features_enabled:
+            features.update(self.plan.features_enabled)
+        if self.custom_features:
+            features.update(self.custom_features)
+        return features
+
+    @property
+    def effective_limits(self) -> Dict[str, Any]:
+        """Get all limits considering plan defaults and custom overrides"""
+        limits = {
+            "max_users": self.plan.max_users if self.plan else None,
+            "max_patients": self.plan.max_patients if self.plan else None,
+            "max_storage_gb": self.plan.max_storage_gb if self.plan else None,
+            "max_appointments_monthly": self.plan.max_appointments_monthly if self.plan else None
+        }
+        if self.custom_limits:
+            limits.update(self.custom_limits)
+        return limits
+
     def get_effective_feature(self, feature_name: str, default: bool = False) -> bool:
         """Get feature value considering custom overrides"""
         # Check custom features first

@@ -26,8 +26,13 @@ GRANT ALL ON SCHEMA public TO hms_user;
 
 ```bash
 psql -U hms_user -d hms_db -f database_hole/01_schema.sql
+psql -U hms_user -d hms_db -f database_hole/05_multi_tenant_schema.sql
+psql -U hms_user -d hms_db -f database_hole/06_fix_multi_tenant.sql
+psql -U hms_user -d hms_db -f database_hole/07_security_schema_fixes.sql
 psql -U hms_user -d hms_db -f database_hole/02_seed_data.sql
 ```
+
+If you already have partial schema changes, re-running 07_security_schema_fixes.sql is safe (idempotent).
 
 ### Optional: Enforce OPD On-Spot Payment
 

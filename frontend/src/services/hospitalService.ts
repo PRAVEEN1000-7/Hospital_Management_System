@@ -98,8 +98,10 @@ export const hospitalService = {
   async updateLogo(file: File): Promise<HospitalDetails> {
     const formData = new FormData();
     formData.append('logo', file);
-    const response = await api.put<HospitalDetails>('/hospital/logo', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+    const response = await api.post<HospitalDetails>('/hospital/logo', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
     });
     return response.data;
   },
@@ -117,6 +119,16 @@ export const hospitalService = {
     const response = await api.put<HospitalSettings>('/hospital-settings', settings);
     return response.data;
   },
+
+  async getEnabledModules(): Promise<string[]> {
+    try {
+      const response = await api.get<{ code: string; is_enabled: boolean }[]>('/tenant/modules');
+      return response.data.filter(m => m.is_enabled).map(m => m.code);
+    } catch (error) {
+      console.error('Failed to fetch modules:', error);
+      return [];
+    }
+  }
 };
 
 export default hospitalService;

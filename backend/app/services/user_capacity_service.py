@@ -11,10 +11,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, func
 
 from ..models.user import User
-from ..models.hospital import Hospital
+from ..models import Hospital
 from ..models.tenant import Tenant, TenantSubscription
 from ..models.patient import Patient
-from ..core.tenant_security import UsageTracker
+from ..core.tenant_security import UsageTracker, TenantValidator
 
 logger = logging.getLogger(__name__)
 
@@ -67,9 +67,11 @@ class UserService:
     @staticmethod
     def get_tenant_user_count(tenant_id: uuid.UUID, db: Session) -> int:
         """Get total active users for a tenant"""
+        # Find hospitals linked to tenant by matching code
+        tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
         hospital_ids = db.query(Hospital.id).filter(
-            Hospital.tenant_id == tenant_id
-        ).all()
+            Hospital.code == tenant.code
+        ).all() if tenant else []
         
         user_count = db.query(User).filter(
             User.hospital_id.in_([h[0] for h in hospital_ids]),
@@ -82,9 +84,11 @@ class UserService:
     @staticmethod
     def get_tenant_patient_count(tenant_id: uuid.UUID, db: Session) -> int:
         """Get total active patients for a tenant"""
+        # Find hospitals linked to tenant by matching code
+        tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
         hospital_ids = db.query(Hospital.id).filter(
-            Hospital.tenant_id == tenant_id
-        ).all()
+            Hospital.code == tenant.code
+        ).all() if tenant else []
         
         patient_count = db.query(Patient).filter(
             Patient.hospital_id.in_([h[0] for h in hospital_ids]),
@@ -99,9 +103,7 @@ class UserService:
         Get subscription usage stats for current user's tenant.
         Used for UI to show usage bars, warnings, etc.
         """
-        tenant = db.query(Tenant).join(Hospital).filter(
-            Hospital.id == current_user.hospital_id
-        ).first()
+        tenant = TenantValidator.get_tenant_for_user(current_user, db)
         
         if not tenant:
             return {}

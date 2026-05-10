@@ -30,10 +30,10 @@ class TenantBase(BaseModel):
 
 class TenantCreate(TenantBase):
     """Schema for creating a new tenant"""
-    plan_id: Optional[uuid.UUID] = None
     admin_email: str
     admin_first_name: str
     admin_last_name: str
+    admin_password: str = Field(..., min_length=8)
     
 
 class TenantUpdate(BaseModel):
@@ -464,10 +464,10 @@ class TenantOnboardingRequest(BaseModel):
     """Simplified schema for hospital onboarding"""
     name: str = Field(..., min_length=1, max_length=255)
     email: str = Field(..., min_length=1, max_length=255)
-    plan_id: uuid.UUID
     admin_email: str
     admin_first_name: str
     admin_last_name: str
+    admin_password: str = Field(..., min_length=8)
     # Optional fields with defaults
     phone: Optional[str] = Field(None, max_length=20)
     trial_days: int = Field(default=14, ge=0)
@@ -481,5 +481,14 @@ class ImpersonateRequest(BaseModel):
     """Request to impersonate a tenant admin"""
     tenant_id: uuid.UUID
     reason: str = Field(..., min_length=10)
+    
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AssignPlanRequest(BaseModel):
+    """Schema for assigning a plan to a hospital"""
+    hospital_code: str = Field(..., description="The unique 2-character hospital code")
+    plan_id: uuid.UUID
+    modules: Optional[Dict[str, bool]] = Field(None, description="Optional explicit module toggles")
     
     model_config = ConfigDict(from_attributes=True)

@@ -22,7 +22,7 @@ from ..core.rate_limiter import RateLimiter, get_rate_limiter
 from ..services.user_capacity_service import UserService, UserCapacityValidator
 from ..models.user import User
 from ..models.tenant import Tenant, TenantSubscription
-from ..models.hospital import Hospital
+from ..models import Hospital
 from ..models.patient import Patient
 
 

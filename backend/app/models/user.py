@@ -20,6 +20,7 @@ class Hospital(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(200), nullable=False)
     code = Column(String(20), unique=True, nullable=False)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("saas_core.tenants.id"))
     logo_url = Column(String(500))
     address_line_1 = Column(String(255))
     address_line_2 = Column(String(255))

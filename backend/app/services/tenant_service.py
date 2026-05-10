@@ -14,7 +14,9 @@ from ..models.tenant import (
     Tenant, SubscriptionPlan, TenantSubscription, Module,
     TenantModule, UsageTracking, AuditLog
 )
+from ..models.user import Hospital, User, Role, UserRole
 from ..core.tenant import TenantContext, generate_tenant_slug, generate_tenant_code
+from ..services.patient_id_service import generate_staff_id
 from ..utils.security import get_password_hash
 
 logger = logging.getLogger(__name__)
@@ -87,14 +89,18 @@ class TenantService:
         offset = (page - 1) * limit
         tenants = query.order_by(Tenant.created_at.desc()).offset(offset).limit(limit).all()
         
-        # Enrich with subscription info
+        # Enrich with subscription info without failing the whole request if a
+        # single tenant has incomplete data or a broken relationship.
         for tenant in tenants:
-            sub = tenant.active_subscription
-            if sub:
-                tenant.subscription_status = sub.status
-                tenant.plan_name = sub.plan.name if sub.plan else None
-                tenant.plan_code = sub.plan.code if sub.plan else None
-                tenant.current_period_end = sub.current_period_end
+            try:
+                sub = tenant.active_subscription
+                if sub:
+                    tenant.subscription_status = sub.status
+                    tenant.plan_name = sub.plan.name if sub.plan else None
+                    tenant.plan_code = sub.plan.code if sub.plan else None
+                    tenant.current_period_end = sub.current_period_end
+            except Exception as exc:
+                logger.warning("Skipping subscription enrichment for tenant %s: %s", getattr(tenant, "id", None), exc)
         
         return {
             "total": total,
@@ -109,7 +115,6 @@ class TenantService:
         db: Session,
         name: str,
         email: str,
-        plan_id: uuid.UUID,
         admin_user_data: Dict[str, str],
         **kwargs
     ) -> Tenant:
@@ -136,49 +141,144 @@ class TenantService:
             slug=slug,
             code=code,
             email=email,
-            status='active',  # Set directly to active
+            status='pending',
             is_verified=True, # Auto-verify
             verified_at=datetime.utcnow(),
-            onboarding_completed=True,
+            onboarding_completed=False,
+            onboarding_step='plan',
             **tenant_data
         )
         db.add(tenant)
         db.flush()  # Get ID without committing
         
-        # Get plan
+        # 1. Create Hospital Record linked by code
+        hospital = Hospital(
+            name=name,
+            code=code,
+            tenant_id=tenant.id,
+            email=email,
+            phone=tenant_data.get('phone'),
+            city=tenant_data.get('city'),
+            country=tenant_data.get('country', 'USA'),
+            is_active=True
+        )
+        db.add(hospital)
+        db.flush()
+        
+        # 2. Create Hospital Admin User
+        admin_password = admin_user_data.get('password')
+        if not admin_password:
+            raise ValueError("Admin password is required")
+
+        reference_number = generate_staff_id(db, hospital.id, 'admin')
+            
+        admin_user = User(
+            hospital_id=hospital.id,
+            email=admin_user_data.get('email'),
+            username=f"{admin_user_data.get('email').split('@')[0]}_{code.lower()}",  # unique username using code
+            password_hash=get_password_hash(admin_password),
+            first_name=admin_user_data.get('first_name'),
+            last_name=admin_user_data.get('last_name'),
+            reference_number=reference_number,
+            is_active=True
+        )
+        db.add(admin_user)
+        db.flush()
+        
+        # 3. Assign Role to Admin User
+        role = db.query(Role).filter(Role.name == "admin").first()
+        if not role:
+            # Create system admin role if it doesn't exist
+            role = Role(name="admin", display_name="Administrator", is_system=True)
+            db.add(role)
+            db.flush()
+            
+        user_role = UserRole(user_id=admin_user.id, role_id=role.id)
+        db.add(user_role)
+        
+        # 4. Link back to Tenant
+        tenant.admin_user_id = admin_user.id
+        
+        # Log audit
+        audit = AuditLog(
+            tenant_id=tenant.id,
+            action='tenant_created_pending_plan',
+            entity_type='Tenant',
+            entity_id=tenant.id,
+            entity_name=name,
+            new_values={'trial_days': trial_days, 'status': 'pending'}
+        )
+        db.add(audit)
+        
+        db.commit()
+        logger.info(f"Created tenant {tenant.id} (pending plan)")
+        
+        return tenant
+    
+    @staticmethod
+    def assign_plan_to_tenant(
+        db: Session,
+        hospital_code: str,
+        plan_id: uuid.UUID,
+        modules: Optional[Dict[str, bool]],
+        admin_id: uuid.UUID
+    ) -> TenantSubscription:
+        """Assign a subscription plan to a tenant based on hospital code"""
+        tenant = db.query(Tenant).filter(Tenant.code == hospital_code).first()
+        if not tenant:
+            raise ValueError(f"No hospital found with code {hospital_code}")
+            
         plan = db.query(SubscriptionPlan).filter(SubscriptionPlan.id == plan_id).first()
         if not plan:
             raise ValueError(f"Plan {plan_id} not found")
+            
+        # Check if already has a subscription
+        existing_sub = db.query(TenantSubscription).filter(
+            TenantSubscription.tenant_id == tenant.id,
+            TenantSubscription.status.in_(['trialing', 'active', 'past_due'])
+        ).first()
         
+        if existing_sub:
+            raise ValueError("Hospital already has an active subscription. Use change-plan instead.")
+            
         # Create subscription
         subscription = TenantSubscription(
             tenant_id=tenant.id,
             plan_id=plan_id,
             status='trialing',
-            trial_ends_at=datetime.utcnow() + timedelta(days=trial_days),
+            trial_ends_at=datetime.utcnow() + timedelta(days=14),  # Default 14 days trial
             current_period_start=datetime.utcnow(),
             current_period_end=datetime.utcnow() + timedelta(days=30)
         )
         db.add(subscription)
         
-        # Enable modules based on plan
+        # Enable modules based on plan defaults (includes core modules)
         TenantService._enable_modules_for_plan(db, tenant.id, plan)
+        
+        # Apply specific module overrides if provided
+        if modules:
+            TenantService.configure_modules(db, tenant.id, modules, admin_id)
+            
+        # Update tenant status
+        tenant.status = 'active'
+        tenant.updated_at = datetime.utcnow()
         
         # Log audit
         audit = AuditLog(
             tenant_id=tenant.id,
-            action='tenant_created',
+            action='plan_assigned',
             entity_type='Tenant',
             entity_id=tenant.id,
-            entity_name=name,
-            new_values={'plan': plan.code, 'trial_days': trial_days}
+            entity_name=tenant.name,
+            new_values={'plan_id': str(plan_id), 'status': 'active'}
         )
         db.add(audit)
         
         db.commit()
-        logger.info(f"Created tenant {tenant.id} with plan {plan.code}")
+        db.refresh(subscription)
         
-        return tenant
+        logger.info(f"Assigned plan {plan.code} to tenant {tenant.id} (Code: {hospital_code})")
+        return subscription
     
     @staticmethod
     def _enable_modules_for_plan(db: Session, tenant_id: uuid.UUID, plan: SubscriptionPlan):
@@ -325,6 +425,10 @@ class TenantService:
             ).first()
             
             if not tenant_module:
+                # Force core modules to be enabled
+                if module.is_core and not is_enabled:
+                    is_enabled = True
+                    
                 tenant_module = TenantModule(
                     tenant_id=tenant_id,
                     module_id=module.id,
@@ -334,6 +438,10 @@ class TenantService:
                 )
                 db.add(tenant_module)
             else:
+                # Prevent disabling core modules
+                if module.is_core and not is_enabled:
+                    is_enabled = True
+                    
                 tenant_module.is_enabled = is_enabled
                 if is_enabled and not tenant_module.enabled_at:
                     tenant_module.enabled_at = datetime.utcnow()

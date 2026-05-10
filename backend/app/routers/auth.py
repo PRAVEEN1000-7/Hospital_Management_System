@@ -33,7 +33,9 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 def _build_user_response(user: User) -> UserResponse:
     """Build the UserResponse including roles and permissions."""
-    hospital_name = user.hospital.name if user.hospital else None
+    is_super_admin = 'super_admin' in (user.roles or [])
+    hospital_name = user.hospital.name if user.hospital and not is_super_admin else None
+    
     return UserResponse(
         id=str(user.id),
         username=user.username,
@@ -42,9 +44,9 @@ def _build_user_response(user: User) -> UserResponse:
         last_name=user.last_name,
         roles=user.roles,
         permissions=user.permissions,
-        hospital_id=str(user.hospital_id),
+        hospital_id=str(user.hospital_id) if user.hospital_id and not is_super_admin else None,
         hospital_name=hospital_name,
-        hospital_code=user.hospital.code if user.hospital else None,
+        hospital_code=user.hospital.code if user.hospital and not is_super_admin else None,
         reference_number=user.reference_number,
         avatar_url=user.avatar_url,
     )
@@ -90,12 +92,19 @@ async def login(
             )
 
         # ✅ Validate tenant status before issuing token
-        tenant = TenantValidator.get_tenant_for_user(user, db)
-        if not tenant or tenant.status != "active":
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Tenant is suspended or inactive",
-            )
+        # Super admins are platform-level — skip tenant validation
+        is_super_admin = 'super_admin' in (user.roles or [])
+        tenant = None
+        tenant_id_str = None
+
+        if not is_super_admin:
+            tenant = TenantValidator.get_tenant_for_user(user, db)
+            if not tenant or tenant.status != "active":
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Tenant is suspended or inactive",
+                )
+            tenant_id_str = str(tenant.id)
 
         permissions = user.permissions
         access_token = create_access_token(
@@ -105,7 +114,7 @@ async def login(
                 "roles": user.roles,
                 "permissions": permissions,
                 "hospital_id": str(user.hospital_id),
-                "tenant_id": str(tenant.id),
+                "tenant_id": tenant_id_str,
             },
             expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
         )
@@ -165,16 +174,23 @@ async def refresh_token(
         ip_address = get_client_ip(request) if request else None
         
         # ✅ CRITICAL FIX: Re-validate tenant is still active
-        tenant = TenantValidator.get_tenant_for_user(current_user, db)
-        if not tenant or tenant.status != "active":
-            logger.warning(
-                f"TOKEN REFRESH DENIED: Tenant not active. "
-                f"user={current_user.id}, tenant_status={tenant.status if tenant else 'not_found'}"
-            )
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Tenant is suspended or inactive. Access denied.",
-            )
+        # Super admins are platform-level — skip tenant validation
+        is_super_admin = 'super_admin' in (current_user.roles or [])
+        tenant = None
+        tenant_id_str = None
+
+        if not is_super_admin:
+            tenant = TenantValidator.get_tenant_for_user(current_user, db)
+            if not tenant or tenant.status != "active":
+                logger.warning(
+                    f"TOKEN REFRESH DENIED: Tenant not active. "
+                    f"user={current_user.id}, tenant_status={tenant.status if tenant else 'not_found'}"
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Tenant is suspended or inactive. Access denied.",
+                )
+            tenant_id_str = str(tenant.id)
         
         permissions = current_user.permissions
         access_token = create_access_token(
@@ -184,7 +200,7 @@ async def refresh_token(
                 "roles": current_user.roles,
                 "permissions": permissions,
                 "hospital_id": str(current_user.hospital_id),
-                "tenant_id": str(tenant.id),
+                "tenant_id": tenant_id_str,
             },
             expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
         )

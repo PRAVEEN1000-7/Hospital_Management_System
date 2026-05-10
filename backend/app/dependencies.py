@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, joinedload
 from .database import get_db
 from .utils.security import decode_access_token
 from .models.user import User, UserRole
-from .models.hospital import Hospital
+from .models import Hospital
 from .core.tenant_security import TenantValidator, SubscriptionValidator, TenantScopeValidator
 from .core.audit_logger import AuditLogger, AuditAction, AuditSeverity, get_client_ip
 
@@ -103,6 +103,27 @@ async def get_current_user(
             detail="Account is inactive",
         )
     
+    # ✅ CRITICAL FIX: Validate tenant status (via TenantValidator)
+    is_super_admin = 'super_admin' in (user.roles or [])
+    tenant = None
+
+    if not is_super_admin:
+        try:
+            tenant = TenantValidator.get_tenant_for_user(user, db)
+            if not tenant:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Tenant not found for this hospital",
+                )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error validating tenant for user {user.id}: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Could not verify tenant status",
+            )
+    
     # ✅ CRITICAL FIX: RE-VALIDATE hospital_id from JWT against DB
     if hospital_uuid and user.hospital_id != hospital_uuid:
         logger.critical(
@@ -116,7 +137,7 @@ async def get_current_user(
                 attempted_user_id=user.id,
                 attempted_resource="user",
                 attempted_resource_id=user.id,
-                actual_tenant_id=user.hospital.tenant_id if user.hospital else None,
+                actual_tenant_id=tenant.id if tenant else None,
                 claimed_tenant_id=uuid.UUID("00000000-0000-0000-0000-000000000000"),
                 ip_address=get_client_ip(request)
             )
@@ -127,30 +148,10 @@ async def get_current_user(
         )
     
     # Validate hospital is active
-    if not user.hospital or not user.hospital.is_active:
+    if not is_super_admin and (not user.hospital or not user.hospital.is_active):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Hospital is inactive",
-        )
-    
-    # ✅ CRITICAL FIX: Validate tenant is active (via hospital relationship)
-    try:
-        from .models.tenant import Tenant
-        tenant = db.query(Tenant).filter(
-            Tenant.id == user.hospital.tenant_id,
-            Tenant.status == 'active'
-        ).first()
-        
-        if not tenant:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Tenant is inactive or suspended",
-            )
-    except Exception as e:
-        logger.error(f"Error validating tenant for user {user.id}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Could not verify tenant status",
         )
     
     # Store tenant info on user object for use in route handlers

@@ -72,6 +72,9 @@ export const superAdminApi = {
   
   updatePlan: (id: string, data: any) => api.put(`/superadmin/plans/${id}`, data),
 
+  assignPlan: (data: { hospital_code: string; plan_id: string; modules?: Record<string, boolean> }) => 
+    api.post('/superadmin/plans/assign', data),
+
   // Subscriptions
   getTenantSubscription: (tenantId: string) =>
     api.get(`/superadmin/tenants/${tenantId}/subscription`),

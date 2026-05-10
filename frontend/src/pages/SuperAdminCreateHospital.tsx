@@ -23,52 +23,28 @@ interface Plan {
 interface FormData {
   name: string;
   email: string;
-  plan_id: string;
   admin_email: string;
   admin_first_name: string;
   admin_last_name: string;
+  admin_password: string;
   phone: string;
-  trial_days: number;
 }
 
 const SuperAdminCreateHospital: React.FC = () => {
   const navigate = useNavigate();
   const toast = useToast();
-  const [plans, setPlans] = useState<Plan[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   const [formData, setFormData] = useState<FormData>({
     name: '',
     email: '',
-    plan_id: '',
     admin_email: '',
     admin_first_name: '',
     admin_last_name: '',
+    admin_password: '',
     phone: '',
-    trial_days: 14,
   });
-
-  useEffect(() => {
-    loadPlans();
-  }, []);
-
-  const loadPlans = async () => {
-    setIsLoading(true);
-    try {
-      const response = await superAdminApi.getPlans(false);
-      const activePlans = response.data.filter((p: any) => p.is_active);
-      setPlans(activePlans);
-      if (activePlans.length > 0) {
-        setFormData(prev => ({ ...prev, plan_id: activePlans[0].id }));
-      }
-    } catch (error) {
-      console.error('Failed to load plans:', error);
-      toast.error('Failed to load subscription plans');
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -117,9 +93,9 @@ const SuperAdminCreateHospital: React.FC = () => {
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Left Column: Form Details */}
-        <div className="lg:col-span-2 space-y-8">
+        <div className="space-y-8">
           {/* Section 1: Hospital Details */}
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
             <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2">
@@ -206,61 +182,29 @@ const SuperAdminCreateHospital: React.FC = () => {
                   />
                 </div>
               </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Right Column: Subscription & Submit */}
-        <div className="space-y-8">
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-            <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2">
-              <CreditCard className="w-4 h-4" />
-              Subscription Plan
-            </h2>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                {plans.map((plan) => (
-                  <label
-                    key={plan.id}
-                    className={`flex items-center justify-between p-4 border rounded-xl cursor-pointer transition-all ${
-                      formData.plan_id === plan.id
-                        ? 'border-primary bg-primary/5 ring-1 ring-primary'
-                        : 'border-slate-100 hover:border-slate-200'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="radio"
-                        name="plan"
-                        className="w-4 h-4 text-primary focus:ring-primary border-slate-300"
-                        checked={formData.plan_id === plan.id}
-                        onChange={() => updateField('plan_id', plan.id)}
-                      />
-                      <div>
-                        <p className="text-sm font-bold text-slate-900">{plan.name}</p>
-                        <p className="text-xs text-slate-500">${plan.base_price}/mo</p>
-                      </div>
-                    </div>
-                  </label>
-                ))}
-              </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Trial Period (Days)</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Admin Password *</label>
                 <input
-                  type="number"
-                  min="0"
+                  type="password"
+                  required
+                  minLength={8}
+                  placeholder="Minimum 8 characters"
                   className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                  value={formData.trial_days}
-                  onChange={(e) => updateField('trial_days', parseInt(e.target.value))}
+                  value={formData.admin_password}
+                  onChange={(e) => updateField('admin_password', e.target.value)}
                 />
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Right Column: Submit */}
+        <div className="space-y-8">
 
           <div className="bg-slate-900 rounded-xl p-6 text-white space-y-4">
             <h3 className="font-bold">Ready to Launch?</h3>
             <p className="text-xs text-slate-400 leading-relaxed">
-              This will immediately create the hospital instance, generate a unique hospital code, and activate the selected subscription plan.
+              This will create the hospital instance and generate a unique hospital code. The hospital will be in a pending state until you assign a subscription plan.
             </p>
             <button
               type="submit"

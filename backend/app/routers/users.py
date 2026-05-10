@@ -63,6 +63,29 @@ async def create_new_user(
                 detail="Email already exists",
             )
 
+        # Validate that the role's required modules are enabled for the tenant
+        role_obj = db.query(Role).filter(Role.name == user_data.role).first()
+        if role_obj:
+            required_modules = set()
+            for rp in role_obj.role_permissions:
+                if rp.permission and rp.permission.module:
+                    required_modules.add(rp.permission.module)
+            
+            if required_modules:
+                from ..core.tenant_security import TenantValidator
+                tenant = TenantValidator.get_tenant_for_user(current_user, db)
+                if tenant:
+                    from ..services.tenant_service import TenantService
+                    tenant_modules = TenantService.get_tenant_modules(db, tenant.id)
+                    enabled_module_codes = {tm['code'] for tm in tenant_modules if tm['is_enabled']}
+                    
+                    missing = required_modules - enabled_module_codes
+                    if missing:
+                        raise HTTPException(
+                            status_code=status.HTTP_403_FORBIDDEN,
+                            detail=f"Role '{user_data.role}' requires modules that are not enabled for your subscription: {', '.join(missing)}"
+                        )
+
         user = create_user(
             db,
             username=user_data.username,

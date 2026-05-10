@@ -17,7 +17,7 @@ from ..schemas.tenant import (
     SubscriptionPlanResponse, SubscriptionPlanCreate, SubscriptionPlanUpdate,
     ModuleResponse, ModuleConfigurationRequest, TenantModuleResponse,
     TenantOnboardingRequest, TenantSubscriptionResponse,
-    UsageQuotaResponse
+    UsageQuotaResponse, AssignPlanRequest
 )
 from ..services.superadmin_service import SuperAdminService
 from ..services.tenant_service import TenantService
@@ -126,11 +126,11 @@ def create_tenant(
         db=db,
         name=request.name,
         email=request.email,
-        plan_id=request.plan_id,
         admin_user_data={
             'email': request.admin_email,
             'first_name': request.admin_first_name,
-            'last_name': request.admin_last_name
+            'last_name': request.admin_last_name,
+            'password': request.admin_password
         },
         phone=request.phone,
         city=request.city,
@@ -297,6 +297,23 @@ def create_plan(
         sort_order=request.sort_order
     )
     return plan
+
+
+@router.post("/plans/assign", response_model=TenantSubscriptionResponse)
+def assign_plan_to_hospital(
+    request: AssignPlanRequest,
+    admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db)
+):
+    """Assign a subscription plan and modules to a hospital using its code"""
+    subscription = TenantService.assign_plan_to_tenant(
+        db=db,
+        hospital_code=request.hospital_code,
+        plan_id=request.plan_id,
+        modules=request.modules,
+        admin_id=admin.id
+    )
+    return subscription
 
 
 @router.put("/plans/{plan_id}", response_model=SubscriptionPlanResponse)

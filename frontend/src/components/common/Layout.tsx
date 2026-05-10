@@ -413,7 +413,7 @@ const Layout: React.FC = () => {
   const opticalItems: { to: string; label: string; icon: string }[] = [];
   if (canAccessOptical) {
     opticalItems.push(
-      { to: '/optical/inventory', label: 'Optical Inventory', icon: 'glasses' },
+      { to: '/optical/inventory', label: 'Optical Inventory', icon: 'visibility' },
       { to: '/optical/sales', label: 'Optical Sales', icon: 'shopping_cart' },
       { to: '/optical/reports', label: 'Optical Reports', icon: 'analytics' },
     );
@@ -586,13 +586,13 @@ const Layout: React.FC = () => {
                     key={item.to}
                     to={item.to}
                     onClick={() => setSidebarOpen(false)}
-                    className={`flex items-center pl-10 pr-6 py-2.5 text-[13px] font-medium transition-all ${
+                    className={`flex items-center whitespace-nowrap pl-10 pr-6 py-2.5 text-[13px] font-medium transition-all ${
                       isExactActive(item.to)
                         ? 'sidebar-item-active'
                         : 'text-slate-400 hover:text-primary hover:bg-slate-50'
                     }`}
                   >
-                    <span className="material-symbols-outlined mr-3 text-[18px]">{item.icon}</span>
+                    <span className="material-symbols-outlined mr-3 flex-shrink-0 text-[18px]">{item.icon}</span>
                     {item.label}
                   </NavLink>
                 ))}
@@ -690,7 +690,6 @@ const Layout: React.FC = () => {
                 }`}
               >
                 <div className="flex items-center">
-                  <span className="material-symbols-outlined mr-3 text-[20px]">glasses</span>
                   Optical Store
                 </div>
                 <span className={`material-symbols-outlined text-[18px] transition-transform duration-200 ${opticalOpen ? 'rotate-180' : ''}`}>

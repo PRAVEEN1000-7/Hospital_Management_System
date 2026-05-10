@@ -73,8 +73,10 @@ class Tenant(Base):
     @property
     def active_subscription(self) -> Optional["TenantSubscription"]:
         """Get the currently active subscription"""
+        subscription_model = self.subscriptions.property.mapper.class_
+
         return self.subscriptions.filter(
-            TenantSubscription.status.in_(["trialing", "active", "past_due"])
+            subscription_model.status.in_(["trialing", "active", "past_due"])
         ).first()
     
     @property

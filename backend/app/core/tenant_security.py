@@ -14,7 +14,7 @@ from sqlalchemy import and_
 from ..database import get_db
 from ..models.user import User
 from ..models.tenant import Tenant, TenantSubscription, TenantModule
-from ..models.hospital import Hospital
+from ..models import Hospital
 from ..config import settings
 
 logger = logging.getLogger(__name__)
@@ -81,10 +81,9 @@ class TenantValidator:
                 detail="Hospital is inactive or not found"
             )
         
-        # Get tenant (via hospital) and verify it's active
-        from ..models.tenant import Tenant
+        # Get tenant (via hospital code match) and verify it's active
         tenant = db.query(Tenant).filter(
-            Tenant.id == hospital.tenant_id,
+            Tenant.code == hospital.code,
             Tenant.status == 'active'
         ).first()
         
@@ -108,8 +107,15 @@ class TenantValidator:
         return current_user, hospital, tenant
     
     @staticmethod
-    def get_tenant_for_user(user: User, db: Session) -> Tenant:
-        """Get tenant for a user (via hospital relationship)"""
+    def get_tenant_for_user(user: User, db: Session) -> Optional[Tenant]:
+        """
+        Get tenant for a user (via hospital → tenant code match).
+        Returns None for super_admin users (they are platform-level).
+        """
+        # Super admins are platform-level — they don't belong to a tenant
+        if hasattr(user, 'roles') and 'super_admin' in (user.roles or []):
+            return None
+        
         hospital = db.query(Hospital).filter(
             Hospital.id == user.hospital_id,
             Hospital.is_active == True
@@ -121,8 +127,9 @@ class TenantValidator:
                 detail="Hospital not found or inactive"
             )
         
+        # Link hospitals → tenants via matching code
         tenant = db.query(Tenant).filter(
-            Tenant.id == hospital.tenant_id,
+            Tenant.code == hospital.code,
             Tenant.status == 'active'
         ).first()
         
@@ -139,8 +146,11 @@ class SubscriptionValidator:
     """Validates subscription and module access"""
     
     @staticmethod
-    def get_active_subscription(tenant: Tenant, db: Session) -> Optional[TenantSubscription]:
+    def get_active_subscription(tenant: Optional[Tenant], db: Session) -> Optional[TenantSubscription]:
         """Get tenant's active subscription"""
+        if not tenant:
+            return None
+            
         subscription = db.query(TenantSubscription).filter(
             TenantSubscription.tenant_id == tenant.id,
             TenantSubscription.status.in_(["trialing", "active", "past_due"]),
@@ -190,6 +200,10 @@ class SubscriptionValidator:
                 )
             
             tenant = TenantValidator.get_tenant_for_user(current_user, db)
+            
+            # Super admins have access to all modules
+            if not tenant:
+                return True
             
             if not SubscriptionValidator.is_module_enabled(tenant, module_name, db):
                 raise HTTPException(
@@ -324,9 +338,11 @@ class UsageTracker:
             return 0, 0
         
         # Count active users in tenant's hospitals
+        # Find hospitals linked to tenant by matching code
+        tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
         hospital_ids = db.query(Hospital.id).filter(
-            Hospital.tenant_id == tenant_id
-        ).all()
+            Hospital.code == tenant.code
+        ).all() if tenant else []
         
         current_count = db.query(User).filter(
             User.hospital_id.in_([h[0] for h in hospital_ids]),
@@ -355,9 +371,11 @@ class UsageTracker:
         if not tenant:
             return 0, 0
         
+        # Find hospitals linked to tenant by matching code
+        tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
         hospital_ids = db.query(Hospital.id).filter(
-            Hospital.tenant_id == tenant_id
-        ).all()
+            Hospital.code == tenant.code
+        ).all() if tenant else []
         
         current_count = db.query(Patient).filter(
             Patient.hospital_id.in_([h[0] for h in hospital_ids]),

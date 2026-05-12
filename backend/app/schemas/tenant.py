@@ -473,6 +473,7 @@ class TenantOnboardingRequest(BaseModel):
     trial_days: int = Field(default=14, ge=0)
     city: Optional[str] = Field(None, max_length=100)
     country: str = Field(default="USA", max_length=3)
+    plan_id: Optional[uuid.UUID] = None
     
     model_config = ConfigDict(from_attributes=True)
 

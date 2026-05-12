@@ -116,6 +116,8 @@ class TenantService:
         name: str,
         email: str,
         admin_user_data: Dict[str, str],
+        plan_id: Optional[uuid.UUID] = None,
+        created_by_admin_id: Optional[uuid.UUID] = None,
         **kwargs
     ) -> Tenant:
         """Create a new tenant with initial setup"""
@@ -209,6 +211,16 @@ class TenantService:
             new_values={'trial_days': trial_days, 'status': 'pending'}
         )
         db.add(audit)
+
+        if plan_id:
+            TenantService.assign_plan_to_tenant(
+                db=db,
+                hospital_code=code,
+                plan_id=plan_id,
+                modules=None,
+                admin_id=created_by_admin_id or admin_user.id,
+            )
+
         
         db.commit()
         logger.info(f"Created tenant {tenant.id} (pending plan)")

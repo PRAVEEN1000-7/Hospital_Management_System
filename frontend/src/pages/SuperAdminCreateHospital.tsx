@@ -18,6 +18,7 @@ interface Plan {
   name: string;
   description: string;
   base_price: number;
+  is_active?: boolean;
 }
 
 interface FormData {
@@ -35,6 +36,9 @@ const SuperAdminCreateHospital: React.FC = () => {
   const toast = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [selectedPlanId, setSelectedPlanId] = useState('');
+  const [loadingPlans, setLoadingPlans] = useState(false);
   
   const [formData, setFormData] = useState<FormData>({
     name: '',
@@ -46,13 +50,37 @@ const SuperAdminCreateHospital: React.FC = () => {
     phone: '',
   });
 
+  useEffect(() => {
+    const loadPlans = async () => {
+      setLoadingPlans(true);
+      try {
+        const res = await superAdminApi.getPlans(false);
+        const activePlans = (res.data || []).filter((plan: Plan) => plan.is_active !== false);
+        setPlans(activePlans);
+        if (activePlans.length > 0) {
+          setSelectedPlanId(activePlans[0].id);
+        }
+      } catch (error) {
+        console.error('Failed to load plans:', error);
+        toast.error('Failed to load subscription plans');
+      } finally {
+        setLoadingPlans(false);
+      }
+    };
+
+    loadPlans();
+  }, [toast]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
 
     try {
-      await superAdminApi.createTenant(formData);
-      toast.success('Hospital created successfully');
+      await superAdminApi.createTenant({
+        ...formData,
+        plan_id: selectedPlanId || undefined,
+      });
+      toast.success(selectedPlanId ? 'Hospital created and plan assigned successfully' : 'Hospital created successfully');
       navigate('/superadmin/hospitals');
     } catch (err: any) {
       const detail = err.response?.data?.detail || 'Failed to create hospital';
@@ -204,8 +232,36 @@ const SuperAdminCreateHospital: React.FC = () => {
           <div className="bg-slate-900 rounded-xl p-6 text-white space-y-4">
             <h3 className="font-bold">Ready to Launch?</h3>
             <p className="text-xs text-slate-400 leading-relaxed">
-              This will create the hospital instance and generate a unique hospital code. The hospital will be in a pending state until you assign a subscription plan.
+              This will create the hospital instance and generate a unique hospital code. You can optionally assign a subscription plan right away.
             </p>
+
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold uppercase tracking-widest text-slate-400">
+                Optional Subscription Plan
+              </label>
+              {loadingPlans ? (
+                <div className="text-sm text-slate-400">Loading plans...</div>
+              ) : plans.length > 0 ? (
+                <select
+                  value={selectedPlanId}
+                  onChange={(e) => setSelectedPlanId(e.target.value)}
+                  className="w-full px-4 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white focus:ring-2 focus:ring-primary outline-none"
+                >
+                  <option value="">No plan yet</option>
+                  {plans.map((plan) => (
+                    <option key={plan.id} value={plan.id}>
+                      {plan.name} ({plan.code}) - ${plan.base_price}/mo
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <div className="text-sm text-slate-400">No active plans available</div>
+              )}
+              <p className="text-[11px] text-slate-500">
+                If selected, the backend will assign the plan automatically after the hospital is created.
+              </p>
+            </div>
+
             <button
               type="submit"
               disabled={isSubmitting}

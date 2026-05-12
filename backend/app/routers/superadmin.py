@@ -135,7 +135,9 @@ def create_tenant(
         phone=request.phone,
         city=request.city,
         country=request.country,
-        trial_days=request.trial_days
+        trial_days=request.trial_days,
+        plan_id=request.plan_id,
+        created_by_admin_id=admin.id,
     )
     
     return tenant

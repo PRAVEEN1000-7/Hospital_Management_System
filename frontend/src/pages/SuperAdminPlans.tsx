@@ -1,16 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import {
+  Building2,
+  Search,
   Package,
   Plus,
   Edit,
-  Check,
-  DollarSign,
   Users,
   AlertCircle,
   X,
   Save,
-  ChevronLeft,
 } from 'lucide-react';
 import { superAdminApi } from '../services/superAdminApi';
 import { useToast } from '../contexts/ToastContext';
@@ -41,17 +39,45 @@ interface Plan {
   sort_order: number;
 }
 
+interface HospitalOption {
+  id: string;
+  name: string;
+  code: string;
+  status: string;
+  subscription_status?: string;
+  plan_code?: string;
+}
+
 const SuperAdminPlans: React.FC = () => {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [modules, setModules] = useState<Module[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [assignPlan, setAssignPlan] = useState<Plan | null>(null);
+  const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+  const [hospitals, setHospitals] = useState<HospitalOption[]>([]);
+  const [hospitalSearch, setHospitalSearch] = useState('');
+  const [selectedHospitalCode, setSelectedHospitalCode] = useState('');
+  const [isLoadingHospitals, setIsLoadingHospitals] = useState(false);
+  const [isAssigning, setIsAssigning] = useState(false);
   const toast = useToast();
 
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (!isAssignModalOpen || !assignPlan) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      void loadHospitals(hospitalSearch);
+    }, 250);
+
+    return () => window.clearTimeout(timer);
+  }, [isAssignModalOpen, assignPlan, hospitalSearch]);
 
   const loadData = async () => {
     setIsLoading(true);
@@ -67,6 +93,33 @@ const SuperAdminPlans: React.FC = () => {
       toast.error('Failed to load plans or modules');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const loadHospitals = async (search = '') => {
+    setIsLoadingHospitals(true);
+    try {
+      const hospitalsRes = await superAdminApi.getTenants({
+        page: 1,
+        limit: 50,
+        search: search || undefined,
+      });
+
+      const hospitalData = (hospitalsRes.data.data || []).filter((hospital: HospitalOption) => {
+        const subscriptionStatus = hospital.subscription_status?.toLowerCase();
+        return !subscriptionStatus || !['trialing', 'active', 'past_due'].includes(subscriptionStatus);
+      });
+
+      setHospitals(hospitalData);
+
+      if (!hospitalData.some((hospital: HospitalOption) => hospital.code === selectedHospitalCode)) {
+        setSelectedHospitalCode(hospitalData[0]?.code || '');
+      }
+    } catch (error) {
+      console.error('Failed to load hospitals:', error);
+      toast.error('Failed to load hospitals');
+    } finally {
+      setIsLoadingHospitals(false);
     }
   };
 
@@ -101,6 +154,45 @@ const SuperAdminPlans: React.FC = () => {
       toast.error('Failed to save plan details');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleOpenAssignModal = (plan: Plan) => {
+    setAssignPlan(plan);
+    setSelectedHospitalCode('');
+    setHospitalSearch('');
+    setHospitals([]);
+    setIsAssignModalOpen(true);
+  };
+
+  const handleCloseAssignModal = () => {
+    setIsAssignModalOpen(false);
+    setAssignPlan(null);
+    setHospitals([]);
+    setHospitalSearch('');
+    setSelectedHospitalCode('');
+  };
+
+  const handleAssignPlan = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!assignPlan || !selectedHospitalCode) {
+      return;
+    }
+
+    setIsAssigning(true);
+    try {
+      await superAdminApi.assignPlan({
+        hospital_code: selectedHospitalCode,
+        plan_id: assignPlan.id,
+      });
+      toast.success(`Assigned ${assignPlan.name} to the selected hospital`);
+      handleCloseAssignModal();
+    } catch (error: any) {
+      console.error('Failed to assign plan:', error);
+      toast.error(error.response?.data?.detail || 'Failed to assign plan to hospital');
+    } finally {
+      setIsAssigning(false);
     }
   };
 
@@ -158,7 +250,7 @@ const SuperAdminPlans: React.FC = () => {
             Subscription Plans
           </h1>
           <p className="text-slate-500 mt-1">
-            Manage pricing tiers, feature limits, and module availability
+            Manage pricing tiers, feature limits, module availability, and assign plans to a created hospital
           </p>
         </div>
         <button
@@ -456,6 +548,15 @@ const SuperAdminPlans: React.FC = () => {
                   Edit Plan
                 </button>
                 <button
+                  onClick={() => handleOpenAssignModal(plan)}
+                  disabled={!plan.is_active}
+                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-bold transition-colors bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title={plan.is_active ? 'Assign this plan to a hospital' : 'Activate this plan before assigning'}
+                >
+                  <Building2 className="w-3.5 h-3.5" />
+                  Assign Hospital
+                </button>
+                <button
                   onClick={() => handleTogglePlan(plan)}
                   className={`flex-1 px-3 py-2 rounded-lg text-xs font-bold transition-colors ${
                     plan.is_active
@@ -491,6 +592,94 @@ const SuperAdminPlans: React.FC = () => {
           </div>
         ))}
       </div>
+
+      {/* Assign Plan to Hospital Modal */}
+      {isAssignModalOpen && assignPlan && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/60">
+              <div>
+                <h2 className="text-xl font-bold text-slate-900">Assign Plan to Hospital</h2>
+                <p className="text-sm text-slate-500 mt-1">Select the hospital that should receive this plan.</p>
+              </div>
+              <button onClick={handleCloseAssignModal} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+                <X className="w-5 h-5 text-slate-400" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAssignPlan} className="p-6 space-y-6">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-11 h-11 rounded-lg bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">
+                    <Package className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-500 uppercase tracking-widest">Selected Plan</p>
+                    <h3 className="text-lg font-bold text-slate-900">{assignPlan.name}</h3>
+                    <p className="text-sm text-slate-600 mt-1">{assignPlan.code} • ${assignPlan.base_price}/{assignPlan.billing_cycle}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <label className="block text-sm font-medium text-slate-700">Search Hospital</label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    value={hospitalSearch}
+                    onChange={(e) => setHospitalSearch(e.target.value)}
+                    placeholder="Type a hospital name or code"
+                    className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                  />
+                </div>
+                <p className="text-xs text-slate-500">Search by hospital name or code. Created hospitals with pending plan status will appear here.</p>
+              </div>
+
+              <div className="space-y-3">
+                <label className="block text-sm font-medium text-slate-700">Choose Hospital</label>
+                <select
+                  value={selectedHospitalCode}
+                  onChange={(e) => setSelectedHospitalCode(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none bg-white"
+                  disabled={isLoadingHospitals}
+                >
+                  <option value="">Select a hospital</option>
+                  {hospitals.map((hospital) => (
+                    <option key={hospital.id} value={hospital.code}>
+                      {hospital.name} ({hospital.code})
+                    </option>
+                  ))}
+                </select>
+                <div className="text-xs text-slate-500">
+                  {isLoadingHospitals
+                    ? 'Loading hospitals...'
+                    : hospitals.length === 0
+                      ? 'No assignable hospitals matched your search. Created hospitals without a plan will appear here.'
+                      : `${hospitals.length} assignable hospital${hospitals.length === 1 ? '' : 's'} available.`}
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={handleCloseAssignModal}
+                  className="flex-1 px-4 py-2 border border-slate-200 text-slate-700 rounded-lg font-medium hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isAssigning || !selectedHospitalCode}
+                  className="flex-1 bg-primary text-white px-4 py-2 rounded-lg font-medium hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {isAssigning ? 'Assigning...' : 'Assign Plan'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

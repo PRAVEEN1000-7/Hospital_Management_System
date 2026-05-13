@@ -175,6 +175,15 @@ const SuperAdminHospitals: React.FC = () => {
     );
   };
 
+  const canAssignPlan = (tenant: Tenant) => {
+    const subscriptionStatus = (tenant.subscription_status || '').toLowerCase();
+    if (subscriptionStatus && ['trialing', 'active', 'past_due'].includes(subscriptionStatus)) {
+      return false;
+    }
+
+    return ['pending', 'pending_plan'].includes((tenant.status || '').toLowerCase()) || !subscriptionStatus;
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -302,7 +311,7 @@ const SuperAdminHospitals: React.FC = () => {
                           >
                             <Edit className="w-4 h-4" />
                           </Link>
-                          {tenant.status === 'pending_plan' ? (
+                          {canAssignPlan(tenant) ? (
                             <button
                               onClick={() => handleOpenAssignModal(tenant)}
                               className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg flex items-center gap-1 text-xs font-medium"

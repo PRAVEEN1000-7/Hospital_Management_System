@@ -143,7 +143,7 @@ class TenantService:
             slug=slug,
             code=code,
             email=email,
-            status='pending',
+            status='pending_plan',
             is_verified=True, # Auto-verify
             verified_at=datetime.utcnow(),
             onboarding_completed=False,
@@ -208,7 +208,7 @@ class TenantService:
             entity_type='Tenant',
             entity_id=tenant.id,
             entity_name=name,
-            new_values={'trial_days': trial_days, 'status': 'pending'}
+            new_values={'trial_days': trial_days, 'status': 'pending_plan'}
         )
         db.add(audit)
 
@@ -223,7 +223,7 @@ class TenantService:
 
         
         db.commit()
-        logger.info(f"Created tenant {tenant.id} (pending plan)")
+        logger.info(f"Created tenant {tenant.id} (pending_plan)")
         
         return tenant
     

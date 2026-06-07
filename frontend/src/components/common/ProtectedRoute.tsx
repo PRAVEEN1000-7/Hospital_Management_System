@@ -16,6 +16,10 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles 
     return <Navigate to="/login" replace />;
   }
 
+  if (user?.roles?.includes('super_admin')) {
+    return <>{children}</>;
+  }
+
   if (allowedRoles && user && !user.roles?.some(r => allowedRoles.includes(r))) {
     return <Navigate to="/dashboard" replace />;
   }

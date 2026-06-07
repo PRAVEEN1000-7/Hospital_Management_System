@@ -31,6 +31,7 @@ class TenantBase(BaseModel):
 class TenantCreate(TenantBase):
     """Schema for creating a new tenant"""
     admin_email: str
+    admin_username: Optional[str] = Field(default=None, max_length=50)
     admin_first_name: str
     admin_last_name: str
     admin_password: str = Field(..., min_length=8)
@@ -157,9 +158,9 @@ class TenantModuleUpdate(BaseModel):
 class TenantModuleResponse(TenantModuleBase):
     id: uuid.UUID
     enabled_at: Optional[datetime]
-    enabled_by: Optional[uuid.UUID]
-    created_at: datetime
-    updated_at: datetime
+    enabled_by: Optional[uuid.UUID] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     
     # Module info
     module_code: Optional[str] = None
@@ -465,6 +466,7 @@ class TenantOnboardingRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     email: str = Field(..., min_length=1, max_length=255)
     admin_email: str
+    admin_username: Optional[str] = Field(default=None, min_length=3, max_length=50)
     admin_first_name: str
     admin_last_name: str
     admin_password: str = Field(..., min_length=8)

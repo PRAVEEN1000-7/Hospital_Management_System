@@ -7,6 +7,7 @@ import hospitalService from '../../services/hospitalService';
 import userService from '../../services/userService';
 import pharmacyService from '../../services/pharmacyService';
 import notificationsService, { type AppNotification } from '../../services/notificationsService';
+import SuperAdminLayout from '../SuperAdmin/SuperAdminLayout';
 import {
   getNotificationTarget,
   getNotificationIcon,
@@ -290,6 +291,10 @@ const Layout: React.FC = () => {
     if (notificationsOpen) document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [notificationsOpen]);
+
+  if (user?.roles?.includes('super_admin')) {
+    return <SuperAdminLayout />;
+  }
 
   const isRegisterPatientPage = location.pathname.startsWith('/register');
   const globalSearchContext = getGlobalSearchContext();

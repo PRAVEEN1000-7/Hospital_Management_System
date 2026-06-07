@@ -128,6 +128,7 @@ def create_tenant(
         email=request.email,
         admin_user_data={
             'email': request.admin_email,
+            'username': request.admin_username,
             'first_name': request.admin_first_name,
             'last_name': request.admin_last_name,
             'password': request.admin_password

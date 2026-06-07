@@ -143,7 +143,7 @@ class TenantService:
             slug=slug,
             code=code,
             email=email,
-            status='pending_plan',
+            status='pending',
             is_verified=True, # Auto-verify
             verified_at=datetime.utcnow(),
             onboarding_completed=False,
@@ -172,12 +172,19 @@ class TenantService:
         if not admin_password:
             raise ValueError("Admin password is required")
 
+        requested_username = (admin_user_data.get('username') or '').strip().lower()
+        if not requested_username:
+            requested_username = f"{admin_user_data.get('email').split('@')[0]}_{code.lower()}"
+
+        if db.query(User).filter(User.username == requested_username).first():
+            raise ValueError(f"Username '{requested_username}' already exists")
+
         reference_number = generate_staff_id(db, hospital.id, 'admin')
             
         admin_user = User(
             hospital_id=hospital.id,
             email=admin_user_data.get('email'),
-            username=f"{admin_user_data.get('email').split('@')[0]}_{code.lower()}",  # unique username using code
+            username=requested_username,
             password_hash=get_password_hash(admin_password),
             first_name=admin_user_data.get('first_name'),
             last_name=admin_user_data.get('last_name'),
@@ -204,11 +211,11 @@ class TenantService:
         # Log audit
         audit = AuditLog(
             tenant_id=tenant.id,
-            action='tenant_created_pending_plan',
+            action='tenant_created_pending',
             entity_type='Tenant',
             entity_id=tenant.id,
             entity_name=name,
-            new_values={'trial_days': trial_days, 'status': 'pending_plan'}
+            new_values={'trial_days': trial_days, 'status': 'pending'}
         )
         db.add(audit)
 
@@ -223,7 +230,7 @@ class TenantService:
 
         
         db.commit()
-        logger.info(f"Created tenant {tenant.id} (pending_plan)")
+        logger.info(f"Created tenant {tenant.id} (pending)")
         
         return tenant
     
@@ -401,6 +408,7 @@ class TenantService:
         for tm in tenant_modules:
             result.append({
                 'id': tm.id,
+                'tenant_id': tm.tenant_id,
                 'module_id': tm.module_id,
                 'code': tm.module.code,
                 'name': tm.module.name,
@@ -410,8 +418,11 @@ class TenantService:
                 'is_core': tm.module.is_core,
                 'icon': tm.module.icon,
                 'enabled_at': tm.enabled_at,
+                'enabled_by': tm.enabled_by,
                 'feature_config': tm.feature_config,
-                'required_modules': tm.module.required_modules
+                'required_modules': tm.module.required_modules,
+                'created_at': tm.created_at,
+                'updated_at': tm.updated_at,
             })
         
         return result

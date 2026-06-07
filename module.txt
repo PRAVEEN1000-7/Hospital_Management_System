@@ -1,0 +1,14 @@
+- Patients (patient records)
+- Doctors (profiles, schedules)
+- Appointments (booking, waitlist, walk-ins)
+- Prescriptions (templates, medicines linkage)
+- Pharmacy (medicine catalog, dispensing, sales)
+- Inventory (suppliers, PO, GRN, stock movements, adjustments, cycle counts)
+- Billing (invoices, payments, refunds, settlements, tax configs)
+- Optical (if used)
+
+these are the main components of my applications.
+
+
+
+based on this....

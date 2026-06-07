@@ -14,6 +14,7 @@ import SuperAdminDashboard from './pages/SuperAdminDashboard';
 import SuperAdminHospitals from './pages/SuperAdminHospitals';
 import SuperAdminCreateHospital from './pages/SuperAdminCreateHospital';
 import SuperAdminHospitalDetail from './pages/SuperAdminHospitalDetail';
+import SuperAdminHospitalEdit from './pages/SuperAdminHospitalEdit';
 import SuperAdminPlans from './pages/SuperAdminPlans';
 import MultiTenantControl from './pages/MultiTenantControl';
 import Dashboard from './pages/Dashboard';
@@ -119,6 +120,7 @@ const App: React.FC = () => {
                 <Route path="hospitals" element={<SuperAdminHospitals />} />
                 <Route path="hospitals/new" element={<SuperAdminCreateHospital />} />
                 <Route path="hospitals/:id" element={<SuperAdminHospitalDetail />} />
+                <Route path="hospitals/:id/edit" element={<SuperAdminHospitalEdit />} />
                 <Route path="plans" element={<SuperAdminPlans />} />
               </Route>
               <Route path="/patients" element={

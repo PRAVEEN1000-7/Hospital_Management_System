@@ -79,6 +79,21 @@ const SuperAdminPlans: React.FC = () => {
     return () => window.clearTimeout(timer);
   }, [isAssignModalOpen, assignPlan, hospitalSearch]);
 
+  useEffect(() => {
+    if (!isAssignModalOpen) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        handleCloseAssignModal();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isAssignModalOpen]);
+
   const loadData = async () => {
     setIsLoading(true);
     try {
@@ -163,6 +178,9 @@ const SuperAdminPlans: React.FC = () => {
     setHospitalSearch('');
     setHospitals([]);
     setIsAssignModalOpen(true);
+    setTimeout(() => {
+      void loadHospitals('');
+    }, 0);
   };
 
   const handleCloseAssignModal = () => {
@@ -595,87 +613,173 @@ const SuperAdminPlans: React.FC = () => {
 
       {/* Assign Plan to Hospital Modal */}
       {isAssignModalOpen && assignPlan && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/60">
-              <div>
-                <h2 className="text-xl font-bold text-slate-900">Assign Plan to Hospital</h2>
-                <p className="text-sm text-slate-500 mt-1">Select the hospital that should receive this plan.</p>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4"
+          onClick={handleCloseAssignModal}
+          role="presentation"
+        >
+          <div
+            className="w-full max-w-5xl overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-black/5"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="assign-plan-title"
+          >
+            <div className="flex items-start justify-between border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-6 py-5">
+              <div className="min-w-0">
+                <p className="text-xs font-bold uppercase tracking-[0.28em] text-primary">Plan Assignment</p>
+                <h2 id="assign-plan-title" className="mt-1 text-2xl font-black tracking-tight text-slate-900">
+                  Assign this plan to a hospital
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Pick one hospital, confirm the plan, and close the modal with Esc or the backdrop.
+                </p>
               </div>
-              <button onClick={handleCloseAssignModal} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
-                <X className="w-5 h-5 text-slate-400" />
+              <button
+                onClick={handleCloseAssignModal}
+                className="rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                aria-label="Close assign plan modal"
+              >
+                <X className="h-5 w-5" />
               </button>
             </div>
 
-            <form onSubmit={handleAssignPlan} className="p-6 space-y-6">
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <div className="flex items-start gap-3">
-                  <div className="w-11 h-11 rounded-lg bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">
-                    <Package className="w-5 h-5" />
+            <form onSubmit={handleAssignPlan} className="grid max-h-[80vh] grid-cols-1 overflow-hidden lg:grid-cols-[1.1fr_1.4fr]">
+              <aside className="border-b border-slate-100 bg-slate-50/70 p-6 lg:border-b-0 lg:border-r">
+                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <div className="flex items-start gap-4">
+                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                      <Package className="h-6 w-6" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold uppercase tracking-[0.24em] text-slate-400">Selected Plan</p>
+                      <h3 className="mt-1 text-xl font-bold text-slate-900">{assignPlan.name}</h3>
+                      <p className="mt-1 text-sm text-slate-600">
+                        {assignPlan.code} • ${assignPlan.base_price}/{assignPlan.billing_cycle}
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                          {assignPlan.is_active ? 'Active plan' : 'Inactive plan'}
+                        </span>
+                        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                          {assignPlan.is_public ? 'Public' : 'Internal'}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-slate-500 uppercase tracking-widest">Selected Plan</p>
-                    <h3 className="text-lg font-bold text-slate-900">{assignPlan.name}</h3>
-                    <p className="text-sm text-slate-600 mt-1">{assignPlan.code} • ${assignPlan.base_price}/{assignPlan.billing_cycle}</p>
+
+                  <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
+                    <div className="rounded-xl bg-slate-50 p-3">
+                      <div className="text-xs font-bold uppercase tracking-widest text-slate-400">Users</div>
+                      <div className="mt-1 font-semibold text-slate-900">{formatLimit(assignPlan.max_users)}</div>
+                    </div>
+                    <div className="rounded-xl bg-slate-50 p-3">
+                      <div className="text-xs font-bold uppercase tracking-widest text-slate-400">Patients</div>
+                      <div className="mt-1 font-semibold text-slate-900">{formatLimit(assignPlan.max_patients)}</div>
+                    </div>
+                    <div className="rounded-xl bg-slate-50 p-3">
+                      <div className="text-xs font-bold uppercase tracking-widest text-slate-400">Appointments</div>
+                      <div className="mt-1 font-semibold text-slate-900">{formatLimit(assignPlan.max_appointments_monthly)}</div>
+                    </div>
+                    <div className="rounded-xl bg-slate-50 p-3">
+                      <div className="text-xs font-bold uppercase tracking-widest text-slate-400">Storage</div>
+                      <div className="mt-1 font-semibold text-slate-900">{formatLimit(assignPlan.max_storage_gb)} GB</div>
+                    </div>
                   </div>
                 </div>
-              </div>
+              </aside>
 
-              <div className="space-y-3">
-                <label className="block text-sm font-medium text-slate-700">Search Hospital</label>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <input
-                    type="text"
-                    value={hospitalSearch}
-                    onChange={(e) => setHospitalSearch(e.target.value)}
-                    placeholder="Type a hospital name or code"
-                    className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                  />
+              <section className="flex min-h-0 flex-col p-6">
+                <div className="space-y-4">
+                  <label className="block text-sm font-semibold text-slate-700">Search hospital</label>
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      value={hospitalSearch}
+                      onChange={(e) => setHospitalSearch(e.target.value)}
+                      placeholder="Type a hospital name or code"
+                      className="w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 py-3 outline-none transition focus:border-primary focus:ring-4 focus:ring-primary/10"
+                      autoFocus
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-slate-500">
+                    <span>Only hospitals without an active subscription are shown.</span>
+                    <span>{hospitals.length} available</span>
+                  </div>
                 </div>
-                <p className="text-xs text-slate-500">Search by hospital name or code. Created hospitals with pending plan status will appear here.</p>
-              </div>
 
-              <div className="space-y-3">
-                <label className="block text-sm font-medium text-slate-700">Choose Hospital</label>
-                <select
-                  value={selectedHospitalCode}
-                  onChange={(e) => setSelectedHospitalCode(e.target.value)}
-                  className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none bg-white"
-                  disabled={isLoadingHospitals}
-                >
-                  <option value="">Select a hospital</option>
-                  {hospitals.map((hospital) => (
-                    <option key={hospital.id} value={hospital.code}>
-                      {hospital.name} ({hospital.code})
-                    </option>
-                  ))}
-                </select>
-                <div className="text-xs text-slate-500">
-                  {isLoadingHospitals
-                    ? 'Loading hospitals...'
-                    : hospitals.length === 0
-                      ? 'No assignable hospitals matched your search. Created hospitals without a plan will appear here.'
-                      : `${hospitals.length} assignable hospital${hospitals.length === 1 ? '' : 's'} available.`}
+                <div className="mt-5 min-h-0 flex-1 overflow-y-auto pr-1">
+                  {isLoadingHospitals ? (
+                    <div className="flex h-56 items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-slate-500">
+                      Loading hospitals...
+                    </div>
+                  ) : hospitals.length === 0 ? (
+                    <div className="flex h-56 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 text-center">
+                      <Users className="h-8 w-8 text-slate-300" />
+                      <p className="mt-3 text-sm font-semibold text-slate-700">No assignable hospitals found</p>
+                      <p className="mt-1 text-xs leading-5 text-slate-500">
+                        Try a different search term, or create a new hospital and assign a plan later.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid gap-3">
+                      {hospitals.map((hospital) => {
+                        const selected = hospital.code === selectedHospitalCode;
+                        return (
+                          <button
+                            key={hospital.id}
+                            type="button"
+                            onClick={() => setSelectedHospitalCode(hospital.code)}
+                            className={`w-full rounded-2xl border p-4 text-left transition-all ${
+                              selected
+                                ? 'border-primary bg-primary/5 ring-4 ring-primary/10'
+                                : 'border-slate-200 bg-white hover:border-primary/40 hover:bg-slate-50'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="min-w-0">
+                                <h4 className="truncate text-sm font-bold text-slate-900">
+                                  {hospital.name}
+                                </h4>
+                                <p className="mt-1 text-xs text-slate-500">Code: {hospital.code}</p>
+                              </div>
+                              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-slate-600">
+                                {hospital.status}
+                              </span>
+                            </div>
+                            <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
+                              <span>{hospital.subscription_status || 'No active subscription'}</span>
+                              <span className={selected ? 'font-semibold text-primary' : ''}>
+                                {selected ? 'Selected' : 'Select'}
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-              </div>
 
-              <div className="flex gap-3 pt-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={handleCloseAssignModal}
-                  className="flex-1 px-4 py-2 border border-slate-200 text-slate-700 rounded-lg font-medium hover:bg-slate-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isAssigning || !selectedHospitalCode}
-                  className="flex-1 bg-primary text-white px-4 py-2 rounded-lg font-medium hover:bg-primary/90 disabled:opacity-50"
-                >
-                  {isAssigning ? 'Assigning...' : 'Assign Plan'}
-                </button>
-              </div>
+                <div className="mt-6 border-t border-slate-100 pt-4">
+                  <div className="flex flex-col gap-3 sm:flex-row">
+                    <button
+                      type="button"
+                      onClick={handleCloseAssignModal}
+                      className="rounded-xl border border-slate-200 px-5 py-3 font-semibold text-slate-700 transition hover:bg-slate-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isAssigning || !selectedHospitalCode}
+                      className="inline-flex items-center justify-center rounded-xl bg-primary px-5 py-3 font-semibold text-white transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {isAssigning ? 'Assigning...' : `Assign ${assignPlan.name}`}
+                    </button>
+                  </div>
+                </div>
+              </section>
             </form>
           </div>
         </div>

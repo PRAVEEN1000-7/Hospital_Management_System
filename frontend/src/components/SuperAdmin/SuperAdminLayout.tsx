@@ -12,6 +12,7 @@ import {
   X,
   Shield,
   ChevronDown,
+  Layers3,
 } from 'lucide-react';
 import { useSuperAdmin } from '../../contexts/SuperAdminContext';
 
@@ -28,11 +29,10 @@ const SuperAdminLayout: React.FC = () => {
   };
 
   const navigation = [
-    { name: 'Dashboard', href: '/superadmin', icon: LayoutDashboard },
+    { name: 'Control Center', href: '/multitenant', icon: Layers3 },
+    { name: 'Overview', href: '/superadmin', icon: LayoutDashboard },
     { name: 'Hospitals', href: '/superadmin/hospitals', icon: Building2 },
     { name: 'Subscription Plans', href: '/superadmin/plans', icon: Package },
-    { name: 'System Settings', href: '/superadmin/settings', icon: Settings },
-    { name: 'Audit Logs', href: '/superadmin/audit', icon: FileText },
   ];
 
   const isActive = (path: string) => {
@@ -57,7 +57,7 @@ const SuperAdminLayout: React.FC = () => {
               </button>
               <div className="ml-4 flex items-center gap-2">
                 <Shield className="w-8 h-8 text-blue-600" />
-                <span className="text-xl font-bold text-gray-900">HMS Platform</span>
+                <span className="text-xl font-bold text-gray-900">HMS Control Center</span>
                 <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs font-medium rounded-full">
                   Super Admin
                 </span>

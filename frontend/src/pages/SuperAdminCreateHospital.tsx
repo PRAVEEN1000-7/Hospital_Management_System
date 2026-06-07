@@ -13,6 +13,7 @@ interface FormData {
   name: string;
   email: string;
   admin_email: string;
+  admin_username: string;
   admin_first_name: string;
   admin_last_name: string;
   admin_password: string;
@@ -28,6 +29,7 @@ const SuperAdminCreateHospital: React.FC = () => {
     name: '',
     email: '',
     admin_email: '',
+    admin_username: '',
     admin_first_name: '',
     admin_last_name: '',
     admin_password: '',
@@ -53,6 +55,14 @@ const SuperAdminCreateHospital: React.FC = () => {
 
   const updateField = (field: keyof FormData, value: string | number) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const suggestUsername = () => {
+    const base = formData.admin_email.trim().split('@')[0] || formData.name.trim().split(' ').join('').toLowerCase();
+    if (!base) return;
+    if (!formData.admin_username.trim()) {
+      updateField('admin_username', `${base}_${Date.now().toString().slice(-4)}`.toLowerCase());
+    }
   };
 
   return (
@@ -139,6 +149,29 @@ const SuperAdminCreateHospital: React.FC = () => {
                   value={formData.admin_email}
                   onChange={(e) => updateField('admin_email', e.target.value)}
                 />
+              </div>
+              <div>
+                <div className="flex items-center justify-between gap-3 mb-1">
+                  <label className="block text-sm font-medium text-slate-700">Admin Username *</label>
+                  <button
+                    type="button"
+                    onClick={suggestUsername}
+                    className="text-xs font-semibold text-primary hover:text-primary/80"
+                  >
+                    Suggest username
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  required
+                  minLength={3}
+                  maxLength={50}
+                  placeholder="e.g. admin_hms01"
+                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                  value={formData.admin_username}
+                  onChange={(e) => updateField('admin_username', e.target.value.toLowerCase().replace(/\s+/g, '_'))}
+                />
+                <p className="mt-1 text-xs text-slate-500">This is the login username for the primary hospital admin.</p>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>

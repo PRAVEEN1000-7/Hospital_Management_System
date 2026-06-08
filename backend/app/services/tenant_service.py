@@ -15,6 +15,7 @@ from ..models.tenant import (
     TenantModule, UsageTracking, AuditLog
 )
 from ..models.user import Hospital, User, Role, UserRole
+from ..models.patient import Patient
 from ..core.tenant import TenantContext, generate_tenant_slug, generate_tenant_code
 from ..services.patient_id_service import generate_staff_id
 from ..utils.security import get_password_hash
@@ -160,8 +161,14 @@ class TenantService:
             tenant_id=tenant.id,
             email=email,
             phone=tenant_data.get('phone'),
+            registration_number=tenant_data.get('registration_number'),
+            address_line_1=tenant_data.get('address_line_1'),
+            address_line_2=tenant_data.get('address_line_2'),
             city=tenant_data.get('city'),
+            state_province=tenant_data.get('state_province'),
+            postal_code=tenant_data.get('postal_code'),
             country=tenant_data.get('country', 'USA'),
+            timezone=tenant_data.get('timezone', 'UTC'),
             is_active=True
         )
         db.add(hospital)
@@ -301,26 +308,32 @@ class TenantService:
     
     @staticmethod
     def _enable_modules_for_plan(db: Session, tenant_id: uuid.UUID, plan: SubscriptionPlan):
-        """Enable modules based on plan configuration"""
-        # Get all modules
+        """Enable modules based on plan configuration (upsert — safe to call multiple times)."""
         all_modules = db.query(Module).filter(Module.is_active == True).all()
-        
-        # Get plan-included module IDs
         included_ids = set(plan.modules_included or [])
-        
+
         for module in all_modules:
-            # Core modules are always enabled
             is_enabled = module.is_core or module.id in included_ids
-            
-            tenant_module = TenantModule(
-                tenant_id=tenant_id,
-                module_id=module.id,
-                is_enabled=is_enabled,
-                enabled_at=datetime.utcnow() if is_enabled else None
-            )
-            db.add(tenant_module)
-            
-            # Resolve dependencies
+
+            existing = db.query(TenantModule).filter(
+                TenantModule.tenant_id == tenant_id,
+                TenantModule.module_id == module.id,
+            ).first()
+
+            if existing:
+                # Only upgrade — never force-disable a module that was manually enabled
+                if is_enabled and not existing.is_enabled:
+                    existing.is_enabled = True
+                    existing.enabled_at = datetime.utcnow()
+            else:
+                tenant_module = TenantModule(
+                    tenant_id=tenant_id,
+                    module_id=module.id,
+                    is_enabled=is_enabled,
+                    enabled_at=datetime.utcnow() if is_enabled else None,
+                )
+                db.add(tenant_module)
+
             if is_enabled:
                 TenantService._resolve_module_dependencies(db, tenant_id, module)
     
@@ -534,10 +547,21 @@ class TenantService:
             plan_dist[code] = count
         
         # Recent signups (last 30 days)
+        thirty_days_ago = datetime.utcnow() - timedelta(days=30)
         recent = db.query(Tenant).filter(
-            Tenant.created_at >= datetime.utcnow() - timedelta(days=30)
+            Tenant.created_at >= thirty_days_ago
         ).count()
-        
+
+        # Churn: subscriptions cancelled in the last 30 days
+        recent_churn = db.query(TenantSubscription).filter(
+            TenantSubscription.status == 'canceled',
+            TenantSubscription.cancelled_at >= thirty_days_ago
+        ).count()
+
+        # Platform-wide totals
+        total_users = db.query(User).count()
+        total_patients = db.query(Patient).count()
+
         return {
             'total_tenants': total,
             'active_tenants': active,
@@ -547,5 +571,8 @@ class TenantService:
             'pending_tenants': pending,
             'mrr': float(mrr),
             'plan_distribution': plan_dist,
-            'recent_signups': recent
+            'recent_signups': recent,
+            'recent_churn': recent_churn,
+            'total_users': total_users,
+            'total_patients': total_patients,
         }

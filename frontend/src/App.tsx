@@ -16,6 +16,7 @@ import SuperAdminCreateHospital from './pages/SuperAdminCreateHospital';
 import SuperAdminHospitalDetail from './pages/SuperAdminHospitalDetail';
 import SuperAdminHospitalEdit from './pages/SuperAdminHospitalEdit';
 import SuperAdminPlans from './pages/SuperAdminPlans';
+import SuperAdminProfile from './pages/SuperAdminProfile';
 import MultiTenantControl from './pages/MultiTenantControl';
 import Dashboard from './pages/Dashboard';
 import Register from './pages/Register';
@@ -122,6 +123,7 @@ const App: React.FC = () => {
                 <Route path="hospitals/:id" element={<SuperAdminHospitalDetail />} />
                 <Route path="hospitals/:id/edit" element={<SuperAdminHospitalEdit />} />
                 <Route path="plans" element={<SuperAdminPlans />} />
+                <Route path="profile" element={<SuperAdminProfile />} />
               </Route>
               <Route path="/patients" element={
                 <ProtectedRoute allowedRoles={['super_admin', 'admin', 'receptionist', 'nurse', 'pharmacist', 'doctor']}>

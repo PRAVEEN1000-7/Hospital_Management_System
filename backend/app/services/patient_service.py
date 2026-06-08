@@ -64,8 +64,20 @@ def get_patient_by_id(db: Session, patient_id: str | uuid.UUID) -> Optional[Pati
     return db.query(Patient).filter(Patient.id == patient_id, Patient.is_deleted == False).first()
 
 
-def get_patient_by_mobile(db: Session, phone_number: str) -> Optional[Patient]:
-    return db.query(Patient).filter(Patient.phone_number == phone_number, Patient.is_deleted == False).first()
+def get_patient_by_mobile(db: Session, phone_number: str, hospital_id=None) -> Optional[Patient]:
+    """Find a patient by phone within a specific hospital (multi-tenant safe).
+
+    hospital_id must always be provided in multi-tenant mode so the uniqueness
+    check is scoped per-hospital. Omitting it would falsely block registrations
+    across different hospitals that share the same phone number.
+    """
+    q = db.query(Patient).filter(
+        Patient.phone_number == phone_number,
+        Patient.is_deleted == False,
+    )
+    if hospital_id is not None:
+        q = q.filter(Patient.hospital_id == hospital_id)
+    return q.first()
 
 
 def get_patient_by_email(db: Session, email: str) -> Optional[Patient]:

@@ -47,12 +47,15 @@ async def create_new_patient(
 ):
     """Create a new patient with auto-generated PRN"""
     try:
-        # Check if phone number already exists
-        existing_patient = get_patient_by_mobile(db, patient.phone_number)
+        # Check phone uniqueness within this hospital only (multi-tenant: same
+        # phone is valid across different hospitals)
+        existing_patient = get_patient_by_mobile(
+            db, patient.phone_number, hospital_id=current_user.hospital_id
+        )
         if existing_patient:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="A patient with this phone number already exists",
+                detail="A patient with this phone number already exists in this hospital",
             )
 
         db_patient = create_patient(
@@ -143,13 +146,15 @@ async def update_existing_patient(
                 detail="Patient not found",
             )
 
-        # Check phone number uniqueness (if changed)
+        # Check phone uniqueness within this hospital only
         if patient_data.phone_number != db_patient.phone_number:
-            existing = get_patient_by_mobile(db, patient_data.phone_number)
+            existing = get_patient_by_mobile(
+                db, patient_data.phone_number, hospital_id=current_user.hospital_id
+            )
             if existing and str(existing.id) != patient_id:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Phone number already exists",
+                    detail="Phone number already exists in this hospital",
                 )
 
         updated = update_patient(db, patient_id, patient_data, current_user.id)

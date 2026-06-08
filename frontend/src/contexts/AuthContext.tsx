@@ -35,15 +35,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } else if (state.user?.roles.includes('super_admin')) {
       // Super admins see all modules
       setEnabledModules([
-        'patients', 'appointments', 'prescriptions', 'pharmacy', 
-        'optical', 'billing', 'inventory', 'analytics'
+        'patients', 'appointments', 'prescriptions', 'pharmacy',
+        'optical', 'billing', 'inventory', 'analytics',
       ]);
     }
   }, [state.isAuthenticated, state.user]);
 
+  // Run once whenever auth state changes (login / logout)
   useEffect(() => {
     fetchModules();
   }, [fetchModules]);
+
+  // Re-fetch when the hospital admin switches back to this tab so any
+  // module changes made by a SuperAdmin in another tab take effect immediately.
+  useEffect(() => {
+    if (!state.isAuthenticated || state.user?.roles.includes('super_admin')) return;
+    const handleFocus = () => fetchModules();
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [state.isAuthenticated, state.user, fetchModules]);
 
   const login = useCallback(async (credentials: LoginCredentials) => {
     setState(prev => ({ ...prev, isLoading: true }));

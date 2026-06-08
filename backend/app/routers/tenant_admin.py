@@ -13,7 +13,6 @@ from ..models.tenant import Tenant
 from ..schemas.tenant import (
     TenantResponse, TenantUpdate,
     UsageQuotaResponse,
-    TenantModuleResponse
 )
 from ..services.tenant_service import TenantService
 from ..services.subscription_service import SubscriptionService
@@ -59,15 +58,18 @@ def update_tenant_profile(
     return updated
 
 
-@router.get("/modules", response_model=List[TenantModuleResponse])
+@router.get("/modules")
 def get_available_modules(
     tenant: Tenant = Depends(require_tenant),
     db: Session = Depends(get_db)
 ):
-    """Get modules available to this tenant (read-only for tenant admin)"""
+    """Get enabled modules for this tenant.
+
+    Returns raw dicts from get_tenant_modules so the 'code' field is preserved.
+    Using a typed response_model (TenantModuleResponse) would silently rename
+    'code' -> 'module_code' and null it out, breaking the frontend module check.
+    """
     modules = TenantService.get_tenant_modules(db, tenant.id)
-    
-    # Filter to only enabled modules for tenant view
     return [m for m in modules if m.get('is_enabled')]
 
 

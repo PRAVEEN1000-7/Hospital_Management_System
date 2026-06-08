@@ -463,20 +463,29 @@ class DashboardStatsResponse(BaseModel):
 
 class TenantOnboardingRequest(BaseModel):
     """Simplified schema for hospital onboarding"""
+    # Hospital identity
     name: str = Field(..., min_length=1, max_length=255)
     email: str = Field(..., min_length=1, max_length=255)
+    phone: Optional[str] = Field(None, max_length=20)
+    registration_number: Optional[str] = Field(None, max_length=100)
+    # Location
+    address_line_1: Optional[str] = Field(None, max_length=255)
+    address_line_2: Optional[str] = Field(None, max_length=255)
+    city: Optional[str] = Field(None, max_length=100)
+    state_province: Optional[str] = Field(None, max_length=100)
+    postal_code: Optional[str] = Field(None, max_length=20)
+    country: str = Field(default="USA", max_length=3)
+    timezone: str = Field(default="UTC", max_length=50)
+    # Admin account
     admin_email: str
     admin_username: Optional[str] = Field(default=None, min_length=3, max_length=50)
     admin_first_name: str
     admin_last_name: str
     admin_password: str = Field(..., min_length=8)
-    # Optional fields with defaults
-    phone: Optional[str] = Field(None, max_length=20)
-    trial_days: int = Field(default=14, ge=0)
-    city: Optional[str] = Field(None, max_length=100)
-    country: str = Field(default="USA", max_length=3)
+    # Subscription
     plan_id: Optional[uuid.UUID] = None
-    
+    trial_days: int = Field(default=14, ge=0)
+
     model_config = ConfigDict(from_attributes=True)
 
 

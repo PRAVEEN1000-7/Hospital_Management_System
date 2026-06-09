@@ -12,8 +12,6 @@ interface FormData {
   city: string;
   state_province: string;
   country: string;
-  primary_color: string;
-  secondary_color: string;
   status: string;
 }
 
@@ -31,8 +29,6 @@ const SuperAdminHospitalEdit: React.FC = () => {
     city: '',
     state_province: '',
     country: 'USA',
-    primary_color: '#1E40AF',
-    secondary_color: '#3B82F6',
     status: 'pending',
   });
 
@@ -51,8 +47,6 @@ const SuperAdminHospitalEdit: React.FC = () => {
           city: tenant.city || '',
           state_province: tenant.state_province || '',
           country: tenant.country || 'USA',
-          primary_color: tenant.primary_color || '#1E40AF',
-          secondary_color: tenant.secondary_color || '#3B82F6',
           status: tenant.status || 'pending',
         });
       } catch (error) {
@@ -171,27 +165,7 @@ const SuperAdminHospitalEdit: React.FC = () => {
         </div>
 
         <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
-          <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest">Platform Styling</h2>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Primary Color</label>
-              <input
-                type="color"
-                className="h-12 w-full rounded-lg border border-slate-200 p-1"
-                value={formData.primary_color}
-                onChange={(e) => updateField('primary_color', e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Secondary Color</label>
-              <input
-                type="color"
-                className="h-12 w-full rounded-lg border border-slate-200 p-1"
-                value={formData.secondary_color}
-                onChange={(e) => updateField('secondary_color', e.target.value)}
-              />
-            </div>
-          </div>
+          <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest">Status & Actions</h2>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
             <select

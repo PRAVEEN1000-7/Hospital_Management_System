@@ -19,16 +19,19 @@ def ensure_upload_directory():
         os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
-def get_hospital_details(db: Session) -> Optional[Hospital]:
-    return db.query(Hospital).first()
+def get_hospital_details(db: Session, hospital_id=None) -> Optional[Hospital]:
+    q = db.query(Hospital)
+    if hospital_id is not None:
+        q = q.filter(Hospital.id == hospital_id)
+    return q.first()
 
 
 # Alias used by routers
 get_hospital = get_hospital_details
 
 
-def is_hospital_configured(db: Session) -> bool:
-    hospital = get_hospital_details(db)
+def is_hospital_configured(db: Session, hospital_id=None) -> bool:
+    hospital = get_hospital_details(db, hospital_id=hospital_id)
     return hospital is not None and hospital.is_active
 
 
@@ -48,8 +51,11 @@ def create_hospital(db: Session, hospital_data: HospitalCreate, user_id: str = N
     return db_hospital
 
 
-def update_hospital(db: Session, hospital_data: HospitalUpdate, user_id: str = None) -> Optional[Hospital]:
-    db_hospital = db.query(Hospital).first()
+def update_hospital(db: Session, hospital_data: HospitalUpdate, hospital_id=None, user_id: str = None) -> Optional[Hospital]:
+    q = db.query(Hospital)
+    if hospital_id is not None:
+        q = q.filter(Hospital.id == hospital_id)
+    db_hospital = q.first()
     if not db_hospital:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -63,8 +69,11 @@ def update_hospital(db: Session, hospital_data: HospitalUpdate, user_id: str = N
     return db_hospital
 
 
-def update_logo_url(db: Session, logo_url: str) -> dict:
-    db_hospital = db.query(Hospital).first()
+def update_logo_url(db: Session, logo_url: str, hospital_id=None) -> dict:
+    q = db.query(Hospital)
+    if hospital_id is not None:
+        q = q.filter(Hospital.id == hospital_id)
+    db_hospital = q.first()
     if not db_hospital:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Hospital not found")
     db_hospital.logo_url = logo_url
@@ -73,8 +82,11 @@ def update_logo_url(db: Session, logo_url: str) -> dict:
     return {"logo_url": logo_url, "message": "Logo updated successfully"}
 
 
-def delete_logo(db: Session) -> dict:
-    db_hospital = db.query(Hospital).first()
+def delete_logo(db: Session, hospital_id=None) -> dict:
+    q = db.query(Hospital)
+    if hospital_id is not None:
+        q = q.filter(Hospital.id == hospital_id)
+    db_hospital = q.first()
     if not db_hospital:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Hospital not found")
     if not db_hospital.logo_url:

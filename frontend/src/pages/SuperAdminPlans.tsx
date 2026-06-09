@@ -18,6 +18,7 @@ interface Module {
   code: string;
   name: string;
   category: string;
+  is_core: boolean;
 }
 
 interface Plan {
@@ -214,6 +215,11 @@ const SuperAdminPlans: React.FC = () => {
     }
   };
 
+  const coreModuleIds = modules.filter((m) => m.is_core).map((m) => m.id);
+
+  const withCoreModules = (included: string[]) =>
+    Array.from(new Set([...coreModuleIds, ...included]));
+
   const handleCreateNew = () => {
     const newPlan: Plan = {
       id: '',
@@ -228,7 +234,7 @@ const SuperAdminPlans: React.FC = () => {
       max_storage_gb: 5,
       max_appointments_monthly: 500,
       features_enabled: {},
-      modules_included: [],
+      modules_included: coreModuleIds,
       is_public: true,
       is_active: true,
       sort_order: plans.length + 1,
@@ -434,29 +440,46 @@ const SuperAdminPlans: React.FC = () => {
               <div className="space-y-4">
                 <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest">Included Modules</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {modules.map((module) => (
-                    <label key={module.id} className={`flex items-start gap-3 p-4 border rounded-xl cursor-pointer transition-all ${
-                      editingPlan.modules_included.includes(module.id) 
-                        ? 'border-primary bg-primary/5 ring-1 ring-primary' 
-                        : 'border-slate-100 hover:border-slate-200'
-                    }`}>
-                      <input
-                        type="checkbox"
-                        className="w-4 h-4 mt-0.5 rounded text-primary focus:ring-primary border-slate-300"
-                        checked={editingPlan.modules_included.includes(module.id)}
-                        onChange={(e) => {
-                          const newModules = e.target.checked
-                            ? [...editingPlan.modules_included, module.id]
-                            : editingPlan.modules_included.filter(m => m !== module.id);
-                          setEditingPlan({ ...editingPlan, modules_included: newModules });
-                        }}
-                      />
-                      <div>
-                        <p className="text-sm font-bold text-slate-900 capitalize">{module.name.replace(/_/g, ' ')}</p>
-                        <p className="text-xs text-slate-500 uppercase">{module.category}</p>
-                      </div>
-                    </label>
-                  ))}
+                  {[...modules].sort((a, b) => Number(b.is_core) - Number(a.is_core)).map((module) => {
+                    const isCore = module.is_core;
+                    const isChecked = editingPlan.modules_included.includes(module.id);
+                    return (
+                      <label
+                        key={module.id}
+                        className={`flex items-start gap-3 p-4 border rounded-xl transition-all ${
+                          isCore
+                            ? 'border-primary/30 bg-primary/5 cursor-not-allowed'
+                            : isChecked
+                            ? 'border-primary bg-primary/5 ring-1 ring-primary cursor-pointer'
+                            : 'border-slate-100 hover:border-slate-200 cursor-pointer'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          className="w-4 h-4 mt-0.5 rounded text-primary focus:ring-primary border-slate-300"
+                          checked={isChecked}
+                          disabled={isCore}
+                          onChange={(e) => {
+                            const newModules = e.target.checked
+                              ? withCoreModules([...editingPlan.modules_included, module.id])
+                              : editingPlan.modules_included.filter((m) => m !== module.id);
+                            setEditingPlan({ ...editingPlan, modules_included: newModules });
+                          }}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-bold text-slate-900 capitalize">{module.name.replace(/_/g, ' ')}</p>
+                            {isCore && (
+                              <span className="shrink-0 px-1.5 py-0.5 bg-primary/10 text-primary text-[10px] font-bold rounded uppercase tracking-wide">
+                                Core
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-500 uppercase">{module.category}</p>
+                        </div>
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
             </form>
@@ -559,7 +582,7 @@ const SuperAdminPlans: React.FC = () => {
               {/* Actions */}
               <div className="flex items-center gap-3 pt-4 border-t border-slate-100">
                 <button
-                  onClick={() => setEditingPlan(plan)}
+                  onClick={() => setEditingPlan({ ...plan, modules_included: withCoreModules(plan.modules_included) })}
                   className="flex-1 flex items-center justify-center gap-2 px-3 py-2 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
                 >
                   <Edit className="w-3.5 h-3.5" />

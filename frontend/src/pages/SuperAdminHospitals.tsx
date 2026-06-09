@@ -4,17 +4,15 @@ import {
   Building2,
   Plus,
   Search,
-  Filter,
-  MoreVertical,
   Edit,
   Power,
-  Trash2,
   Eye,
   CheckCircle,
   XCircle,
   AlertCircle,
   Clock,
   Package,
+  X,
 } from 'lucide-react';
 import { superAdminApi } from '../services/superAdminApi';
 import { useToast } from '../contexts/ToastContext';
@@ -92,7 +90,7 @@ const SuperAdminHospitals: React.FC = () => {
     setIsAssignModalOpen(true);
   };
 
-  const handleAssignSubmit = async (e: React.FormEvent) => {
+  const handleAssignSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!selectedTenant || !selectedPlanId) return;
 
@@ -114,21 +112,23 @@ const SuperAdminHospitals: React.FC = () => {
 
   const handleSuspend = async (id: string, name: string) => {
     if (!confirm(`Are you sure you want to suspend ${name}?`)) return;
-    
+
     try {
       await superAdminApi.suspendTenant(id, 'Administrative suspension');
+      toast.success(`${name} has been suspended`);
       loadTenants();
-    } catch (error) {
-      console.error('Failed to suspend tenant:', error);
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || 'Failed to suspend hospital');
     }
   };
 
-  const handleActivate = async (id: string) => {
+  const handleActivate = async (id: string, name: string) => {
     try {
       await superAdminApi.activateTenant(id);
+      toast.success(`${name} has been activated`);
       loadTenants();
-    } catch (error) {
-      console.error('Failed to activate tenant:', error);
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || 'Failed to activate hospital');
     }
   };
 
@@ -330,7 +330,7 @@ const SuperAdminHospitals: React.FC = () => {
                             </button>
                           ) : (
                             <button
-                              onClick={() => handleActivate(tenant.id)}
+                              onClick={() => handleActivate(tenant.id, tenant.name)}
                               className="p-2 text-green-600 hover:bg-green-50 rounded-lg"
                               title="Activate"
                             >
@@ -383,7 +383,7 @@ const SuperAdminHospitals: React.FC = () => {
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
               <h2 className="text-xl font-bold text-slate-900">Assign Plan</h2>
               <button onClick={() => setIsAssignModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
-                <AlertCircle className="w-5 h-5 text-slate-400" />
+                <X className="w-5 h-5 text-slate-400" />
               </button>
             </div>
             <form onSubmit={handleAssignSubmit} className="p-6 space-y-6">

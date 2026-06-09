@@ -192,17 +192,24 @@ def create_prescription(
     return rx
 
 
-def get_prescription(db: Session, prescription_id: str | uuid.UUID) -> Optional[Prescription]:
+def get_prescription(
+    db: Session,
+    prescription_id: str | uuid.UUID,
+    hospital_id=None,
+) -> Optional[Prescription]:
     """Get prescription by ID."""
     if isinstance(prescription_id, str):
         try:
             prescription_id = uuid.UUID(prescription_id)
         except ValueError:
             return None
-    return db.query(Prescription).filter(
+    q = db.query(Prescription).filter(
         Prescription.id == prescription_id,
         Prescription.is_deleted == False,
-    ).first()
+    )
+    if hospital_id is not None:
+        q = q.filter(Prescription.hospital_id == hospital_id)
+    return q.first()
 
 
 def get_prescription_by_number(db: Session, rx_number: str) -> Optional[Prescription]:

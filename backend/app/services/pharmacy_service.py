@@ -63,13 +63,20 @@ def create_medicine(db: Session, hospital_id: uuid.UUID, data: dict, user_id: uu
     return med
 
 
-def get_medicine_by_id(db: Session, medicine_id: str | uuid.UUID) -> Optional[Medicine]:
+def get_medicine_by_id(
+    db: Session,
+    medicine_id: str | uuid.UUID,
+    hospital_id: Optional[uuid.UUID] = None,
+) -> Optional[Medicine]:
     if isinstance(medicine_id, str):
         try:
             medicine_id = uuid.UUID(medicine_id)
         except ValueError:
             return None
-    return db.query(Medicine).filter(Medicine.id == medicine_id).first()
+    q = db.query(Medicine).filter(Medicine.id == medicine_id)
+    if hospital_id is not None:
+        q = q.filter(Medicine.hospital_id == hospital_id)
+    return q.first()
 
 
 def list_medicines(

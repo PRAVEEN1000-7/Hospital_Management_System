@@ -139,17 +139,24 @@ def create_appointment(
 
 # ── Read ───────────────────────────────────────────────────────────────────
 
-def get_appointment(db: Session, appointment_id: str | uuid.UUID) -> Optional[Appointment]:
+def get_appointment(
+    db: Session,
+    appointment_id: str | uuid.UUID,
+    hospital_id: Optional[uuid.UUID] = None,
+) -> Optional[Appointment]:
     """Get appointment by ID."""
     if isinstance(appointment_id, str):
         try:
             appointment_id = uuid.UUID(appointment_id)
         except ValueError:
             return None
-    return db.query(Appointment).filter(
+    q = db.query(Appointment).filter(
         Appointment.id == appointment_id,
-        Appointment.is_deleted == False
-    ).first()
+        Appointment.is_deleted == False,
+    )
+    if hospital_id is not None:
+        q = q.filter(Appointment.hospital_id == hospital_id)
+    return q.first()
 
 
 def get_appointment_by_number(db: Session, appt_number: str) -> Optional[Appointment]:

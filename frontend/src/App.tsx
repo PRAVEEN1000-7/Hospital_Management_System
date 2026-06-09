@@ -1,6 +1,6 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider } from './contexts/AuthContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { SuperAdminProvider } from './contexts/SuperAdminContext';
 import ToastContainer from './components/common/ToastContainer';
@@ -90,6 +90,11 @@ import CycleCountDetailPage from './pages/inventory/CycleCountDetailPage';
 // Analytics
 import AnalyticsDashboard from './pages/analytics/AnalyticsDashboard';
 
+const DefaultRedirect: React.FC = () => {
+  const { user } = useAuth();
+  return <Navigate to={user?.roles?.includes('super_admin') ? '/superadmin' : '/dashboard'} replace />;
+};
+
 const App: React.FC = () => {
   return (
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
@@ -100,22 +105,16 @@ const App: React.FC = () => {
             {/* Public */}
             <Route path="/login" element={<Login />} />
 
-            {/* Super Admin Unified Routes are now inside Protected block */}
-
-            {/* Protected */}
+            {/* Super Admin routes — separate layout */}
             <Route
               element={
-                <ProtectedRoute>
+                <ProtectedRoute allowedRoles={['super_admin']}>
                   <SuperAdminProvider>
-                    <Layout />
+                    <SuperAdminLayout />
                   </SuperAdminProvider>
                 </ProtectedRoute>
               }
             >
-              {/* ── General ── */}
-              <Route path="/dashboard" element={<Dashboard />} />
-              
-              {/* ── Super Admin Unified Routes ── */}
               <Route path="/superadmin">
                 <Route index element={<SuperAdminDashboard />} />
                 <Route path="hospitals" element={<SuperAdminHospitals />} />
@@ -125,6 +124,19 @@ const App: React.FC = () => {
                 <Route path="plans" element={<SuperAdminPlans />} />
                 <Route path="profile" element={<SuperAdminProfile />} />
               </Route>
+              <Route path="/multitenant" element={<MultiTenantControl />} />
+            </Route>
+
+            {/* Regular protected routes */}
+            <Route
+              element={
+                <ProtectedRoute>
+                  <Layout />
+                </ProtectedRoute>
+              }
+            >
+              {/* ── General ── */}
+              <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/patients" element={
                 <ProtectedRoute allowedRoles={['super_admin', 'admin', 'receptionist', 'nurse', 'pharmacist', 'doctor']}>
                   <PatientList />
@@ -418,14 +430,12 @@ const App: React.FC = () => {
                 </ProtectedRoute>
               } />
 
-              {/* ── Multi-Tenant Control ── */}
-              <Route path="/multitenant" element={<MultiTenantControl />} />
             </Route>
 
             {/* Redirects */}
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/" element={<DefaultRedirect />} />
             <Route path="/change-password" element={<Navigate to="/profile" replace />} />
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            <Route path="*" element={<DefaultRedirect />} />
           </Routes>
         </ToastProvider>
       </AuthProvider>

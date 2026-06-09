@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { superAdminApi } from '../services/superAdminApi';
 
 interface SuperAdmin {
@@ -57,6 +57,10 @@ export const SuperAdminProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     localStorage.removeItem('access_token');
     setAdmin(null);
   };
+
+  useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
 
   return (
     <SuperAdminContext.Provider

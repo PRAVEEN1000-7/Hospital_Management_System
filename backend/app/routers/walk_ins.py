@@ -143,7 +143,10 @@ async def register_walk_in(
                 status_code=400,
                 detail=f"Invalid patient_id format: {data.patient_id!r}",
             )
-        patient = db.query(Patient).filter(Patient.id == patient_id).first()
+        patient = db.query(Patient).filter(
+            Patient.id == patient_id,
+            Patient.hospital_id == current_user.hospital_id,
+        ).first()
         if not patient:
             raise HTTPException(status_code=404, detail="Patient not found")
 

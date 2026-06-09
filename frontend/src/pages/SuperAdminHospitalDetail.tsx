@@ -515,9 +515,14 @@ const SuperAdminHospitalDetail: React.FC = () => {
       <div className="flex justify-end gap-3">
         {tenant.status === 'active' ? (
           <button
-            onClick={() => {
-              if (confirm('Are you sure you want to suspend this hospital?')) {
-                superAdminApi.suspendTenant(id!, 'Administrative action').then(loadData);
+            onClick={async () => {
+              if (!confirm('Are you sure you want to suspend this hospital?')) return;
+              try {
+                await superAdminApi.suspendTenant(id!, 'Administrative action');
+                toast.success(`${tenant.name} has been suspended`);
+                loadData();
+              } catch (err: any) {
+                toast.error(err?.response?.data?.detail || 'Failed to suspend hospital');
               }
             }}
             className="px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 text-sm font-medium transition-colors"
@@ -526,7 +531,15 @@ const SuperAdminHospitalDetail: React.FC = () => {
           </button>
         ) : (
           <button
-            onClick={() => superAdminApi.activateTenant(id!).then(loadData)}
+            onClick={async () => {
+              try {
+                await superAdminApi.activateTenant(id!);
+                toast.success(`${tenant.name} has been activated`);
+                loadData();
+              } catch (err: any) {
+                toast.error(err?.response?.data?.detail || 'Failed to activate hospital');
+              }
+            }}
             className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium transition-colors"
           >
             Activate Hospital

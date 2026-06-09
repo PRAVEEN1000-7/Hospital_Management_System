@@ -112,6 +112,7 @@ async def list_all_appointments(
 ):
     total, pg, lim, tp, rows = list_appointments(
         db, page, limit,
+        hospital_id=current_user.hospital_id,
         doctor_id=doctor_id, patient_id=patient_id,
         status=status_filter, appointment_type=appointment_type,
         date_from=date_from, date_to=date_to, search=search,
@@ -167,7 +168,7 @@ async def get_appointment_detail(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    appt = get_appointment(db, appointment_id)
+    appt = get_appointment(db, appointment_id, hospital_id=current_user.hospital_id)
     if not appt:
         raise HTTPException(status_code=404, detail="Appointment not found")
     return enrich_appointment(db, appt)

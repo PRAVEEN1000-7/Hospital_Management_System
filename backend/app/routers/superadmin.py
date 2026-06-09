@@ -4,7 +4,7 @@ Super Admin API routes for platform management.
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -191,7 +191,7 @@ def update_tenant(
 @router.post("/tenants/{tenant_id}/suspend")
 def suspend_tenant(
     tenant_id: uuid.UUID,
-    reason: str,
+    reason: str = Body(..., embed=True),
     admin: User = Depends(require_superadmin),
     db: Session = Depends(get_db)
 ):
@@ -201,7 +201,7 @@ def suspend_tenant(
     )
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
-    
+
     return {"message": "Tenant suspended", "reason": reason}
 
 
@@ -363,8 +363,8 @@ def get_tenant_subscription(
 @router.post("/tenants/{tenant_id}/change-plan")
 def change_tenant_plan(
     tenant_id: uuid.UUID,
-    new_plan_id: uuid.UUID,
-    immediate: bool = False,
+    new_plan_id: uuid.UUID = Body(..., embed=True),
+    immediate: bool = Body(False, embed=True),
     admin: User = Depends(require_superadmin),
     db: Session = Depends(get_db)
 ):
@@ -382,8 +382,8 @@ def change_tenant_plan(
 @router.post("/tenants/{tenant_id}/cancel")
 def cancel_subscription(
     tenant_id: uuid.UUID,
-    reason: str,
-    at_period_end: bool = True,
+    reason: str = Body(..., embed=True),
+    at_period_end: bool = Body(True, embed=True),
     admin: User = Depends(require_superadmin),
     db: Session = Depends(get_db)
 ):
@@ -401,7 +401,7 @@ def cancel_subscription(
 @router.post("/tenants/{tenant_id}/reactivate")
 def reactivate_subscription(
     tenant_id: uuid.UUID,
-    new_plan_id: Optional[uuid.UUID] = None,
+    new_plan_id: Optional[uuid.UUID] = Body(None, embed=True),
     admin: User = Depends(require_superadmin),
     db: Session = Depends(get_db)
 ):

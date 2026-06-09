@@ -1,15 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Building2,
   ChevronLeft,
   Shield,
   MapPin,
-  CreditCard,
   Eye,
   EyeOff,
   CheckCircle2,
-  Clock,
 } from 'lucide-react';
 import { superAdminApi } from '../services/superAdminApi';
 import { useToast } from '../contexts/ToastContext';
@@ -34,20 +32,6 @@ interface OnboardingFormData {
   admin_first_name: string;
   admin_last_name: string;
   admin_password: string;
-  // Subscription
-  plan_id: string;
-  trial_days: number;
-}
-
-interface Plan {
-  id: string;
-  name: string;
-  code: string;
-  base_price: string;
-  currency: string;
-  billing_cycle: string;
-  max_users: number | null;
-  max_patients: number | null;
 }
 
 const COUNTRIES = [
@@ -116,7 +100,6 @@ const SuperAdminCreateHospital: React.FC = () => {
   const toast = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [plans, setPlans] = useState<Plan[]>([]);
 
   const [formData, setFormData] = useState<OnboardingFormData>({
     name: '',
@@ -135,15 +118,7 @@ const SuperAdminCreateHospital: React.FC = () => {
     admin_first_name: '',
     admin_last_name: '',
     admin_password: '',
-    plan_id: '',
-    trial_days: 14,
   });
-
-  useEffect(() => {
-    superAdminApi.getPlans().then((res) => {
-      setPlans(res.data?.data ?? res.data ?? []);
-    }).catch(() => {});
-  }, []);
 
   const updateField = (field: keyof OnboardingFormData, value: string | number) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -162,8 +137,6 @@ const SuperAdminCreateHospital: React.FC = () => {
     setIsSubmitting(true);
     try {
       const payload: Record<string, unknown> = { ...formData };
-      if (!payload.plan_id) delete payload.plan_id;
-      // Strip empty optional strings so backend doesn't store blank values
       ['registration_number', 'address_line_1', 'address_line_2', 'city',
        'state_province', 'postal_code', 'phone', 'admin_username'].forEach((k) => {
         if (payload[k] === '') payload[k] = null;
@@ -177,8 +150,6 @@ const SuperAdminCreateHospital: React.FC = () => {
       setIsSubmitting(false);
     }
   };
-
-  const selectedPlan = plans.find((p) => p.id === formData.plan_id);
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -464,97 +435,6 @@ const SuperAdminCreateHospital: React.FC = () => {
 
         {/* ── Right Sidebar ── */}
         <div className="space-y-6">
-          {/* Subscription Plan */}
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-            <SectionHeader
-              icon={<CreditCard className="w-4 h-4" />}
-              title="Subscription Plan"
-            />
-
-            {plans.length === 0 ? (
-              <p className="text-xs text-slate-400 mb-4">No plans available. You can assign one later.</p>
-            ) : (
-              <div className="space-y-2 mb-4">
-                {/* Assign Later option */}
-                <label
-                  className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                    formData.plan_id === ''
-                      ? 'border-primary bg-primary/5'
-                      : 'border-slate-200 hover:border-slate-300'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="plan"
-                    value=""
-                    checked={formData.plan_id === ''}
-                    onChange={() => updateField('plan_id', '')}
-                    className="mt-0.5 accent-primary"
-                  />
-                  <div>
-                    <p className="text-sm font-semibold text-slate-700">Assign Later</p>
-                    <p className="text-xs text-slate-400">Hospital is created in pending state.</p>
-                  </div>
-                </label>
-
-                {plans.map((plan) => (
-                  <label
-                    key={plan.id}
-                    className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                      formData.plan_id === plan.id
-                        ? 'border-primary bg-primary/5'
-                        : 'border-slate-200 hover:border-slate-300'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="plan"
-                      value={plan.id}
-                      checked={formData.plan_id === plan.id}
-                      onChange={() => updateField('plan_id', plan.id)}
-                      className="mt-0.5 accent-primary"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-baseline justify-between gap-1">
-                        <p className="text-sm font-semibold text-slate-700 truncate">{plan.name}</p>
-                        <span className="text-xs font-bold text-slate-900 shrink-0">
-                          {parseFloat(plan.base_price) === 0
-                            ? 'Free'
-                            : `$${parseFloat(plan.base_price).toFixed(0)}/${plan.billing_cycle === 'monthly' ? 'mo' : 'yr'}`}
-                        </span>
-                      </div>
-                      {(plan.max_users || plan.max_patients) && (
-                        <p className="text-xs text-slate-400 mt-0.5">
-                          {plan.max_users ? `Up to ${plan.max_users} users` : ''}
-                          {plan.max_users && plan.max_patients ? ' · ' : ''}
-                          {plan.max_patients ? `${plan.max_patients} patients` : ''}
-                        </p>
-                      )}
-                    </div>
-                  </label>
-                ))}
-              </div>
-            )}
-
-            {formData.plan_id && (
-              <div>
-                <label className={labelClass}>
-                  <Clock className="w-3.5 h-3.5 inline mr-1" />
-                  Trial Period (days)
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  max={365}
-                  className={inputClass}
-                  value={formData.trial_days}
-                  onChange={(e) => updateField('trial_days', parseInt(e.target.value) || 0)}
-                />
-                <p className="mt-1 text-xs text-slate-400">0 = no trial, activate immediately.</p>
-              </div>
-            )}
-          </div>
-
           {/* Summary & Submit */}
           <div className="bg-slate-900 rounded-xl p-6 text-white space-y-4 sticky top-6">
             <h3 className="font-bold text-base">Ready to Launch?</h3>
@@ -572,18 +452,10 @@ const SuperAdminCreateHospital: React.FC = () => {
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                 Generates unique hospital code automatically
               </li>
-              {selectedPlan ? (
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  Activates <span className="font-semibold text-white ml-0.5">{selectedPlan.name}</span> plan
-                  {formData.trial_days > 0 ? ` (${formData.trial_days}-day trial)` : ''}
-                </li>
-              ) : (
-                <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                  <span className="text-slate-500">No plan — assign subscription later</span>
-                </li>
-              )}
+              <li className="flex items-center gap-2">
+                <CheckCircle2 className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                <span className="text-slate-500">Subscription plan can be assigned after creation</span>
+              </li>
             </ul>
 
             <button

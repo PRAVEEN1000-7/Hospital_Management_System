@@ -97,7 +97,7 @@ async def get_medicine(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    med = svc.get_medicine_by_id(db, medicine_id)
+    med = svc.get_medicine_by_id(db, medicine_id, hospital_id=current_user.hospital_id)
     if not med:
         raise HTTPException(status_code=404, detail="Medicine not found")
     return MedicineResponse.model_validate(med)

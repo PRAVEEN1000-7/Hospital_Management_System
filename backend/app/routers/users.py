@@ -147,7 +147,7 @@ async def get_users(
 ):
     """List all users (Admin or Super Admin)"""
     try:
-        result = list_users(db, page, limit, search, role, is_active)
+        result = list_users(db, page, limit, search, role, is_active, hospital_id=current_user.hospital_id)
         return UserListResponse(
             total=result["total"],
             page=result["page"],
@@ -185,7 +185,7 @@ async def get_user(
     current_user: User = Depends(require_admin_or_super_admin),
 ):
     """Get user by ID (Admin or Super Admin)"""
-    user = get_user_by_id(db, user_id)
+    user = get_user_by_id(db, user_id, hospital_id=current_user.hospital_id)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -203,7 +203,7 @@ async def update_existing_user(
 ):
     """Update user (Admin or Super Admin)"""
     try:
-        target_user = get_user_by_id(db, user_id)
+        target_user = get_user_by_id(db, user_id, hospital_id=current_user.hospital_id)
         if not target_user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -292,7 +292,7 @@ async def update_existing_user(
         logger.info("User updated: %s by %s (doctor_fields=%s)", target_user.username, current_user.username, list(doctor_fields.keys()) if doctor_fields else "none")
 
         # Re-fetch with all relationships to ensure fresh data in response
-        fresh_user = get_user_by_id(db, user_id)
+        fresh_user = get_user_by_id(db, user_id, hospital_id=current_user.hospital_id)
         return UserResponse.model_validate(fresh_user)
     except HTTPException:
         raise
@@ -319,7 +319,7 @@ async def delete_existing_user(
                 detail="Cannot delete your own account",
             )
 
-        target_user = get_user_by_id(db, user_id)
+        target_user = get_user_by_id(db, user_id, hospital_id=current_user.hospital_id)
         if not target_user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -410,7 +410,7 @@ async def reset_user_password(
 ):
     """Reset user password (Admin or Super Admin)"""
     try:
-        target_user = get_user_by_id(db, user_id)
+        target_user = get_user_by_id(db, user_id, hospital_id=current_user.hospital_id)
         if not target_user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

@@ -13,7 +13,7 @@ type ChangePasswordData = {
 };
 
 const SuperAdminProfile: React.FC = () => {
-  const { admin } = useSuperAdmin();
+  const { admin, isLoading } = useSuperAdmin();
   const toast = useToast();
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [showCurrent, setShowCurrent] = useState(false);
@@ -64,6 +64,16 @@ const SuperAdminProfile: React.FC = () => {
       toast.error(err?.response?.data?.detail || 'Failed to change password');
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="max-w-3xl mx-auto space-y-6 animate-pulse">
+        <div className="h-36 bg-slate-200 rounded-2xl" />
+        <div className="h-48 bg-slate-100 rounded-2xl" />
+        <div className="h-32 bg-slate-100 rounded-2xl" />
+      </div>
+    );
+  }
 
   if (!admin) return null;
 

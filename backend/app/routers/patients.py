@@ -86,7 +86,7 @@ async def get_patient(
     current_user: User = Depends(patient_read_role_guard),
 ):
     """Get patient by ID"""
-    patient = get_patient_by_id(db, patient_id)
+    patient = get_patient_by_id(db, patient_id, hospital_id=current_user.hospital_id)
     if not patient:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

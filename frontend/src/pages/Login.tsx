@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { loginSchema, type LoginFormData } from '../utils/validation';
 import { useToast } from '../contexts/ToastContext';
 import feLogger from '../services/loggerService';
+import authService from '../services/authService';
 
 const Login: React.FC = () => {
   const { login } = useAuth();
@@ -28,7 +29,12 @@ const Login: React.FC = () => {
     try {
       await login(data);
       feLogger.info('login', `Login successful for user: ${data.username}`);
-      navigate('/dashboard');
+      const storedUser = authService.getStoredUser();
+      if (storedUser?.roles?.includes('super_admin')) {
+        navigate('/superadmin');
+      } else {
+        navigate('/dashboard');
+      }
     } catch (err: unknown) {
       const axiosError = err as { response?: { data?: { detail?: string } } };
       const message = axiosError.response?.data?.detail || 'Login failed. Please try again.';

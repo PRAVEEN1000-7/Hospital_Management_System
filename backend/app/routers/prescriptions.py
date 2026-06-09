@@ -165,7 +165,7 @@ async def get_prescription_detail(
     current_user: User = Depends(get_current_active_user),
 ):
     """Get full prescription detail including items."""
-    rx = get_prescription(db, prescription_id)
+    rx = get_prescription(db, prescription_id, hospital_id=current_user.hospital_id)
     if not rx:
         raise HTTPException(status_code=404, detail="Prescription not found")
     return enrich_prescription(db, rx)
@@ -370,7 +370,7 @@ async def get_prescription_pdf(
 
     t = get_labels(lang)
 
-    rx = get_prescription(db, prescription_id)
+    rx = get_prescription(db, prescription_id, hospital_id=current_user.hospital_id)
     if not rx:
         raise HTTPException(status_code=404, detail="Prescription not found")
 

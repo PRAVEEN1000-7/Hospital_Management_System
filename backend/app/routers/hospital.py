@@ -47,7 +47,7 @@ async def get_hospital_full(
 ):
     """Get complete hospital details with all fields (admin/super_admin only)"""
     try:
-        hospital = hospital_service.get_hospital(db)
+        hospital = hospital_service.get_hospital(db, hospital_id=current_user.hospital_id)
         if not hospital:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -94,7 +94,7 @@ async def update_hospital(
 ):
     """Update hospital details (admin/super_admin only)"""
     try:
-        db_hospital = hospital_service.update_hospital(db, hospital, current_user.id)
+        db_hospital = hospital_service.update_hospital(db, hospital, hospital_id=current_user.hospital_id, user_id=current_user.id)
         if not db_hospital:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -121,7 +121,7 @@ async def update_logo(
 ):
     """Update hospital logo URL (admin/super_admin only)"""
     try:
-        result = hospital_service.update_logo_url(db, data.logo_url)
+        result = hospital_service.update_logo_url(db, data.logo_url, hospital_id=current_user.hospital_id)
         logger.info(f"Hospital logo updated by user {current_user.username}")
         return result
     except HTTPException:
@@ -153,7 +153,7 @@ async def delete_hospital_logo(
 ):
     """Delete hospital logo (admin/super_admin only)"""
     try:
-        result = hospital_service.delete_logo(db)
+        result = hospital_service.delete_logo(db, hospital_id=current_user.hospital_id)
         logger.info(f"Hospital logo deleted by user {current_user.username}")
         return result
     except HTTPException:

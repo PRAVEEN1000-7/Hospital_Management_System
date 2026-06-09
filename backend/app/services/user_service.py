@@ -37,6 +37,7 @@ def list_users(
     search: Optional[str] = None,
     role: Optional[str] = None,
     is_active: Optional[bool] = None,
+    hospital_id: Optional[uuid.UUID] = None,
 ):
     """List users with pagination, search, and server-side filters"""
     query = (
@@ -48,6 +49,9 @@ def list_users(
         )
         .filter(User.is_deleted == False)
     )
+
+    if hospital_id is not None:
+        query = query.filter(User.hospital_id == hospital_id)
 
     if search:
         search_term = search.strip()
@@ -88,14 +92,18 @@ def list_users(
     }
 
 
-def get_user_by_id(db: Session, user_id: str | uuid.UUID) -> Optional[User]:
+def get_user_by_id(
+    db: Session,
+    user_id: str | uuid.UUID,
+    hospital_id: Optional[uuid.UUID] = None,
+) -> Optional[User]:
     """Get user by UUID"""
     if isinstance(user_id, str):
         try:
             user_id = uuid.UUID(user_id)
         except ValueError:
             return None
-    return (
+    q = (
         db.query(User)
         .options(
             joinedload(User.user_roles).joinedload(UserRole.role),
@@ -103,8 +111,10 @@ def get_user_by_id(db: Session, user_id: str | uuid.UUID) -> Optional[User]:
             joinedload(User.doctor_profile),
         )
         .filter(User.id == user_id, User.is_deleted == False)
-        .first()
     )
+    if hospital_id is not None:
+        q = q.filter(User.hospital_id == hospital_id)
+    return q.first()
 
 
 def create_user(

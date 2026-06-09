@@ -55,13 +55,20 @@ def create_patient(
     return db_patient
 
 
-def get_patient_by_id(db: Session, patient_id: str | uuid.UUID) -> Optional[Patient]:
+def get_patient_by_id(
+    db: Session,
+    patient_id: str | uuid.UUID,
+    hospital_id: Optional[uuid.UUID] = None,
+) -> Optional[Patient]:
     if isinstance(patient_id, str):
         try:
             patient_id = uuid.UUID(patient_id)
         except ValueError:
             return None
-    return db.query(Patient).filter(Patient.id == patient_id, Patient.is_deleted == False).first()
+    q = db.query(Patient).filter(Patient.id == patient_id, Patient.is_deleted == False)
+    if hospital_id is not None:
+        q = q.filter(Patient.hospital_id == hospital_id)
+    return q.first()
 
 
 def get_patient_by_mobile(db: Session, phone_number: str, hospital_id=None) -> Optional[Patient]:

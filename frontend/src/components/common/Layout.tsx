@@ -70,15 +70,16 @@ const Layout: React.FC = () => {
   };
   const hasPendingPrescriptionAccess = hasRole('pharmacist', 'admin', 'super_admin', 'inventory_manager');
   
-  // Module gating checks
-  const canAccessPatients = hasRole('super_admin', 'admin', 'receptionist', 'nurse', 'pharmacist', 'doctor') && isModuleEnabled('patients');
-  const canAccessPharmacy = hasRole('pharmacist', 'admin', 'super_admin', 'inventory_manager', 'cashier') && isModuleEnabled('pharmacy');
-  const canAccessInventory = hasRole('super_admin', 'admin', 'inventory_manager', 'pharmacist') && isModuleEnabled('inventory');
-  const canAccessBilling = hasRole('super_admin', 'admin', 'cashier', 'pharmacist', 'doctor') && isModuleEnabled('billing');
-  const canAccessAppointments = isModuleEnabled('appointments');
-  const canAccessPrescriptions = isModuleEnabled('prescriptions');
-  const canAccessAnalytics = (hasRole('super_admin', 'admin')) && isModuleEnabled('analytics');
-  const canAccessOptical = isModuleEnabled('optical');
+  // Module + role gating — every section requires BOTH the right role AND enabled module
+  const canAccessPatients      = hasRole('super_admin', 'admin', 'receptionist', 'nurse', 'pharmacist', 'doctor') && isModuleEnabled('patients');
+  const canAccessAppointments  = hasRole('super_admin', 'admin', 'receptionist', 'doctor', 'nurse') && isModuleEnabled('appointments');
+  const canAccessPrescriptions = hasRole('super_admin', 'admin', 'doctor', 'nurse', 'pharmacist') && isModuleEnabled('prescriptions');
+  const canAccessPharmacy      = hasRole('pharmacist', 'admin', 'super_admin', 'inventory_manager', 'cashier') && isModuleEnabled('pharmacy');
+  const canAccessInventory     = hasRole('super_admin', 'admin', 'inventory_manager', 'pharmacist') && isModuleEnabled('inventory');
+  // Receptionist can view invoices/payments at front desk; doctor can view their patient billing
+  const canAccessBilling       = hasRole('super_admin', 'admin', 'cashier', 'pharmacist', 'doctor', 'receptionist') && isModuleEnabled('billing');
+  const canAccessAnalytics     = hasRole('super_admin', 'admin') && isModuleEnabled('analytics');
+  const canAccessOptical       = hasRole('super_admin', 'admin', 'doctor') && isModuleEnabled('optical');
 
   useEffect(() => {
     hospitalService.getHospitalDetails()
@@ -346,7 +347,6 @@ const Layout: React.FC = () => {
         { to: '/appointments/queue', label: 'Walk-in Queue', icon: 'queue' },
         { to: '/appointments/manage', label: 'Manage Appointments', icon: 'event_note' },
         { to: '/appointments/waitlist', label: 'Waitlist', icon: 'playlist_add' },
-        { to: '/appointments/reports', label: 'Reports', icon: 'analytics' },
       );
     }
   }
@@ -461,16 +461,19 @@ const Layout: React.FC = () => {
     );
   }
 
-  // ── Billing navigation ── admin, cashier, pharmacist, doctor (view only)
+  // ── Billing navigation ── role-scoped
+  // receptionist/doctor: view invoices + payments only
+  // cashier/pharmacist: + refunds + settlements
+  // admin/super_admin: full access including admin-only items
   const billingItems: { to: string; label: string; icon: string; stub?: boolean }[] = [];
   if (canAccessBilling) {
     billingItems.push({ to: '/billing/invoices', label: 'Invoices', icon: 'receipt_long' });
     billingItems.push({ to: '/billing/payments', label: 'Payments', icon: 'payments' });
-    if (['super_admin', 'admin', 'cashier', 'pharmacist'].includes(role || '')) {
+    if (hasRole('super_admin', 'admin', 'cashier', 'pharmacist')) {
       billingItems.push({ to: '/billing/refunds', label: 'Refunds', icon: 'currency_exchange' });
       billingItems.push({ to: '/billing/settlements', label: 'Daily Settlements', icon: 'account_balance_wallet' });
     }
-    if (['super_admin', 'admin'].includes(role || '')) {
+    if (hasRole('super_admin', 'admin')) {
       billingItems.push({ to: '/billing/insurance-claims', label: 'Insurance Claims', icon: 'health_and_safety', stub: true });
       billingItems.push({ to: '/billing/credit-notes', label: 'Credit Notes', icon: 'credit_score', stub: true });
       billingItems.push({ to: '/billing/insurance-providers', label: 'Insurance Providers', icon: 'domain', stub: true });

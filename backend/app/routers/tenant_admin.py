@@ -68,9 +68,31 @@ def get_available_modules(
     Returns raw dicts from get_tenant_modules so the 'code' field is preserved.
     Using a typed response_model (TenantModuleResponse) would silently rename
     'code' -> 'module_code' and null it out, breaking the frontend module check.
+
+    CORE modules are always included as enabled even if no TenantModule record
+    exists yet (e.g. tenant created before plan assignment).
     """
+    from ..models.tenant import Module as ModuleModel
+
     modules = TenantService.get_tenant_modules(db, tenant.id)
-    return [m for m in modules if m.get('is_enabled')]
+    enabled = [m for m in modules if m.get('is_enabled')]
+
+    # Ensure all active CORE modules appear regardless of TenantModule records
+    enabled_codes = {m['code'] for m in enabled}
+    core_modules = db.query(ModuleModel).filter(
+        ModuleModel.is_core == True,
+        ModuleModel.is_active == True
+    ).all()
+    for cm in core_modules:
+        if cm.code not in enabled_codes:
+            enabled.append({
+                'code': cm.code,
+                'name': cm.name,
+                'is_enabled': True,
+                'is_core': True,
+            })
+
+    return enabled
 
 
 @router.get("/subscription", response_model=dict)

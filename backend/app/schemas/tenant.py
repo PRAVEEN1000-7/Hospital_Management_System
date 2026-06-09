@@ -63,6 +63,7 @@ class TenantResponse(TenantBase):
     id: uuid.UUID
     slug: str
     code: str
+    registration_number: Optional[str] = None
     logo_url: Optional[str]
     primary_color: str
     secondary_color: str

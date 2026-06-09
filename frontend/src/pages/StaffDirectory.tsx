@@ -9,6 +9,7 @@ import doctorService from '../services/doctorService';
 import type { UserData, UserCreateData, UserUpdateData } from '../types/user';
 import { ROLE_TEXT_COLORS, ROLE_LABELS, COUNTRIES } from '../utils/constants';
 import { useToast } from '../contexts/ToastContext';
+import { useAuth } from '../contexts/AuthContext';
 import feLogger from '../services/loggerService';
 
 // ────────────────────────────────────────
@@ -99,10 +100,34 @@ type CreateFormData = z.infer<typeof staffCreateSchema>;
 type EditFormData = z.infer<typeof staffEditSchema>;
 type ResetFormData = z.infer<typeof resetPasswordSchema>;
 
-const ROLES = [
+/** All roles that exist in the system */
+const ALL_ROLES = [
   'super_admin', 'admin', 'doctor', 'nurse', 'receptionist',
   'pharmacist', 'cashier', 'inventory_manager', 'staff',
-];
+] as const;
+
+/**
+ * Maps a role to the optional (non-CORE) modules it requires.
+ * CORE modules (patients, doctors, appointments, auth, hospital_profile) are
+ * always enabled, so roles that only need CORE functionality have no entry.
+ * Module codes match the DB seed: 'pharmacy', 'billing', 'inventory', 'prescriptions'.
+ */
+const ROLE_MODULE_REQUIREMENTS: Partial<Record<string, string[]>> = {
+  pharmacist:        ['pharmacy'],
+  cashier:           ['billing'],
+  inventory_manager: ['inventory'],
+  // doctor, nurse, receptionist, admin, staff — rely on CORE modules only, always available
+};
+
+/** Returns the subset of roles whose required modules are enabled. */
+function useAvailableRoles(): string[] {
+  const { isModuleEnabled } = useAuth();
+  return ALL_ROLES.filter(role => {
+    const required = ROLE_MODULE_REQUIREMENTS[role];
+    if (!required) return true;  // admin, super_admin, staff — always available
+    return required.some(mod => isModuleEnabled(mod));
+  });
+}
 
 /** Returns CSS class for error state on input/select */
 const inputErr = (err: any) => err ? 'input-field-error' : '';
@@ -133,6 +158,7 @@ const getDepartment = (role: string, specialization?: string | null): string => 
 // ────────────────────────────────────────
 const StaffDirectory: React.FC = () => {
   const toast = useToast();
+  const availableRoles = useAvailableRoles();
   const [searchParams, setSearchParams] = useSearchParams();
   const [users, setUsers] = useState<UserData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -381,7 +407,7 @@ const StaffDirectory: React.FC = () => {
           <div className="flex flex-wrap items-center gap-3">
             <select value={roleFilter} onChange={e => { setRoleFilter(e.target.value); setPage(1); }} className="px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary text-sm font-medium text-slate-700">
               <option value="">All Roles</option>
-              {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>)}
+              {availableRoles.map(r => <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>)}
             </select>
             <select value={departmentFilter} onChange={e => { setDepartmentFilter(e.target.value); setPage(1); }} className="px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/30 focus:border-primary text-sm font-medium text-slate-700">
               <option value="">All Departments</option>
@@ -678,6 +704,7 @@ const blockNonAlpha = (e: React.KeyboardEvent<HTMLInputElement>) => {
 // ────────────────────────────────────────
 const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => void; onError: (msg: string) => void }> = ({ onClose, onSuccess, onError }) => {
   const toast = useToast();
+  const availableRoles = useAvailableRoles();
   const [showPassword, setShowPassword] = useState(false);
   const [photoPreview, setPhotoPreview] = useState<string>('');
   const [photoFile, setPhotoFile] = useState<File | null>(null);
@@ -915,7 +942,7 @@ const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => void; o
           <Field label="System Role (Job Function) *" error={errors.role?.message}>
             <select {...register('role')} className={`input-field ${inputErr(errors.role)}`}>
               <option value="">Select role</option>
-              {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>)}
+              {availableRoles.map(r => <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>)}
             </select>
           </Field>
           {selectedRole === 'doctor' && (
@@ -1011,6 +1038,7 @@ const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => void; o
 // ────────────────────────────────────────
 const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onSuccess: () => void; onError: (msg: string) => void }> = ({ user, onClose, onSuccess, onError }) => {
   const toast = useToast();
+  const availableRoles = useAvailableRoles();
   const [photoPreview, setPhotoPreview] = useState<string>(user.avatar_url ? userService.getPhotoUrl(user.avatar_url) || '' : '');
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoError, setPhotoError] = useState('');
@@ -1139,7 +1167,7 @@ const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onSuccess:
           <div className="grid grid-cols-2 gap-4">
             <Field label="System Role (Job Function)" error={errors.role?.message}>
               <select {...register('role')} className={`input-field ${inputErr(errors.role)}`}>
-                {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>)}
+                {availableRoles.map(r => <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>)}
               </select>
             </Field>
             <Field label="Reference #">

@@ -13,6 +13,15 @@ import {
   Save,
   RotateCcw,
   Info,
+  MapPin,
+  Phone,
+  Mail,
+  Clock,
+  Shield,
+  Palette,
+  Hash,
+  Calendar,
+  FileText,
 } from 'lucide-react';
 import { superAdminApi } from '../services/superAdminApi';
 import { useToast } from '../contexts/ToastContext';
@@ -23,20 +32,47 @@ interface Tenant {
   slug: string;
   code: string;
   email: string;
-  phone: string;
-  address_line_1: string;
-  city: string;
-  state_province: string;
+  phone?: string;
+  address_line_1?: string;
+  address_line_2?: string;
+  city?: string;
+  state_province?: string;
+  postal_code?: string;
   country: string;
+  timezone: string;
+  default_currency: string;
   status: string;
   logo_url?: string;
   primary_color: string;
   secondary_color: string;
+  registration_number?: string;
+  is_verified: boolean;
+  verified_at?: string;
+  onboarding_completed: boolean;
+  onboarding_step: string;
+  admin_user_id?: string;
   created_at: string;
   updated_at: string;
-  subscription_status: string;
-  plan_name: string;
-  plan_code: string;
+  // Subscription-computed fields
+  subscription_status?: string;
+  plan_name?: string;
+  plan_code?: string;
+  current_period_end?: string;
+  display_status?: string;
+}
+
+interface Subscription {
+  id: string;
+  status: string;
+  trial_ends_at?: string;
+  current_period_start: string;
+  current_period_end: string;
+  cancel_at_period_end: boolean;
+  cancelled_at?: string;
+  cancellation_reason?: string;
+  billing_email?: string;
+  plan_name?: string;
+  plan_code?: string;
 }
 
 interface Module {
@@ -60,18 +96,39 @@ interface Usage {
   period: string;
 }
 
-// Category display config
 const CATEGORY_META: Record<string, { label: string; color: string }> = {
-  clinical:    { label: 'Clinical',    color: 'bg-emerald-100 text-emerald-700' },
-  pharmacy:    { label: 'Pharmacy',    color: 'bg-purple-100 text-purple-700' },
-  billing:     { label: 'Billing',     color: 'bg-amber-100 text-amber-700' },
-  analytics:   { label: 'Analytics',  color: 'bg-sky-100 text-sky-700' },
-  operations:  { label: 'Operations', color: 'bg-slate-100 text-slate-700' },
-  optical:     { label: 'Optical',     color: 'bg-rose-100 text-rose-700' },
+  clinical:   { label: 'Clinical',    color: 'bg-emerald-100 text-emerald-700' },
+  pharmacy:   { label: 'Pharmacy',    color: 'bg-purple-100 text-purple-700' },
+  billing:    { label: 'Billing',     color: 'bg-amber-100 text-amber-700' },
+  analytics:  { label: 'Analytics',  color: 'bg-sky-100 text-sky-700' },
+  operations: { label: 'Operations', color: 'bg-slate-100 text-slate-700' },
+  optical:    { label: 'Optical',     color: 'bg-rose-100 text-rose-700' },
 };
 
 const categoryOf = (cat: string) =>
   CATEGORY_META[cat?.toLowerCase()] ?? { label: cat, color: 'bg-slate-100 text-slate-600' };
+
+const fmt = (dateStr?: string | null) =>
+  dateStr ? new Date(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
+
+const InfoRow: React.FC<{ label: string; value?: string | null; mono?: boolean }> = ({ label, value, mono }) => (
+  <div className="flex justify-between py-2.5 border-b border-slate-100 last:border-0">
+    <span className="text-sm text-slate-500">{label}</span>
+    <span className={`text-sm font-medium text-slate-900 text-right max-w-[60%] ${mono ? 'font-mono text-xs bg-slate-100 px-2 py-0.5 rounded' : ''}`}>
+      {value || '—'}
+    </span>
+  </div>
+);
+
+const SectionCard: React.FC<{ title: string; icon: React.ReactNode; children: React.ReactNode }> = ({ title, icon, children }) => (
+  <div className="border border-slate-200 rounded-xl p-5">
+    <div className="flex items-center gap-2 mb-4">
+      <div className="text-slate-400">{icon}</div>
+      <h3 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">{title}</h3>
+    </div>
+    {children}
+  </div>
+);
 
 const SuperAdminHospitalDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -79,18 +136,17 @@ const SuperAdminHospitalDetail: React.FC = () => {
   const toast = useToast();
 
   const [tenant, setTenant] = useState<Tenant | null>(null);
+  const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [modules, setModules] = useState<Module[]>([]);
   const [usage, setUsage] = useState<Usage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'modules' | 'usage'>('overview');
 
-  // Pending module changes: { moduleCode: newEnabledState }
   const [pendingChanges, setPendingChanges] = useState<Record<string, boolean>>({});
   const [isSaving, setIsSaving] = useState(false);
 
   const hasPendingChanges = Object.keys(pendingChanges).length > 0;
 
-  // Merge server state with pending local changes for display
   const localModules = modules.map((m) => ({
     ...m,
     is_enabled: m.code in pendingChanges ? pendingChanges[m.code] : m.is_enabled,
@@ -102,6 +158,7 @@ const SuperAdminHospitalDetail: React.FC = () => {
   }, [id]);
 
   const loadData = useCallback(async () => {
+    setIsLoading(true);
     try {
       const [tenantRes, modulesRes, usageRes] = await Promise.all([
         superAdminApi.getTenant(id!),
@@ -111,6 +168,14 @@ const SuperAdminHospitalDetail: React.FC = () => {
       setTenant(tenantRes.data);
       setModules(modulesRes.data);
       setUsage(usageRes.data);
+
+      // Fetch subscription separately — not all tenants have one
+      try {
+        const subRes = await superAdminApi.getTenantSubscription(id!);
+        setSubscription(subRes.data);
+      } catch {
+        setSubscription(null);
+      }
     } catch {
       toast.error('Failed to load hospital data');
     } finally {
@@ -118,55 +183,52 @@ const SuperAdminHospitalDetail: React.FC = () => {
     }
   }, [id]);
 
-  // Toggle only updates local pending state — no API call yet
   const handleToggleModule = (moduleCode: string, enabled: boolean) => {
     setPendingChanges((prev) => ({ ...prev, [moduleCode]: enabled }));
   };
 
-  const handleDiscardChanges = () => {
-    setPendingChanges({});
-  };
+  const handleDiscardChanges = () => setPendingChanges({});
 
   const handleSaveModules = async () => {
     setIsSaving(true);
     try {
-      // Build full config: pending changes override server state
       const fullConfig: Record<string, boolean> = {};
       modules.forEach((m) => {
         fullConfig[m.code] = m.code in pendingChanges ? pendingChanges[m.code] : m.is_enabled;
       });
-
       await superAdminApi.configureModules(id!, fullConfig);
       toast.success('Module configuration saved. Changes will reflect in the hospital portal immediately.');
       setPendingChanges({});
       await loadData();
     } catch (err: any) {
-      const detail = err.response?.data?.detail || 'Failed to save module configuration';
-      toast.error(detail);
+      toast.error(err.response?.data?.detail || 'Failed to save module configuration');
     } finally {
       setIsSaving(false);
     }
   };
 
+  const effectiveStatus = tenant?.subscription_status || tenant?.status || '';
+
   const getStatusBadge = (status: string) => {
     const styles: Record<string, string> = {
-      active:   'bg-green-100 text-green-800',
-      trialing: 'bg-blue-100 text-blue-800',
-      past_due: 'bg-yellow-100 text-yellow-800',
-      suspended:'bg-red-100 text-red-800',
+      active:    'bg-green-100 text-green-800',
+      trialing:  'bg-blue-100 text-blue-800',
+      past_due:  'bg-yellow-100 text-yellow-800',
+      suspended: 'bg-red-100 text-red-800',
+      pending:   'bg-gray-100 text-gray-700',
+      cancelled: 'bg-red-100 text-red-700',
     };
+    const isOk = ['active', 'trialing'].includes(status);
     return (
-      <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${styles[status] || 'bg-gray-100'}`}>
-        {status === 'active' ? <CheckCircle className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
-        {status.toUpperCase()}
+      <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${styles[status] || 'bg-gray-100 text-gray-600'}`}>
+        {isOk ? <CheckCircle className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+        {status.replace('_', ' ').toUpperCase()}
       </span>
     );
   };
 
   const getUsageBar = (percentage: number) => {
-    let color = 'bg-green-500';
-    if (percentage > 75) color = 'bg-yellow-500';
-    if (percentage > 90) color = 'bg-red-500';
+    const color = percentage > 90 ? 'bg-red-500' : percentage > 75 ? 'bg-yellow-500' : 'bg-green-500';
     return (
       <div className="w-full bg-gray-200 rounded-full h-2">
         <div className={`h-2 rounded-full ${color}`} style={{ width: `${Math.min(percentage, 100)}%` }} />
@@ -191,6 +253,13 @@ const SuperAdminHospitalDetail: React.FC = () => {
     );
   }
 
+  const fullAddress = [
+    tenant.address_line_1,
+    tenant.address_line_2,
+    [tenant.city, tenant.state_province, tenant.postal_code].filter(Boolean).join(', '),
+    tenant.country,
+  ].filter(Boolean).join('\n');
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -205,27 +274,34 @@ const SuperAdminHospitalDetail: React.FC = () => {
 
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-4">
-            <div className="w-16 h-16 bg-primary/10 rounded-xl flex items-center justify-center">
+            <div className="w-16 h-16 bg-primary/10 rounded-xl flex items-center justify-center overflow-hidden">
               {tenant.logo_url ? (
-                <img src={tenant.logo_url} alt={tenant.name} className="w-12 h-12 object-contain" />
+                <img src={tenant.logo_url} alt={tenant.name} className="w-full h-full object-contain" />
               ) : (
                 <Building2 className="w-8 h-8 text-primary" />
               )}
             </div>
             <div>
               <h1 className="text-2xl font-bold text-slate-900">{tenant.name}</h1>
-              <div className="flex items-center gap-3 mt-1">
+              <div className="flex items-center gap-3 mt-1 flex-wrap">
                 <span className="text-slate-500 text-sm">{tenant.slug}</span>
                 <span className="text-slate-300">•</span>
                 <span className="font-mono text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded">{tenant.code}</span>
+                {tenant.registration_number && (
+                  <>
+                    <span className="text-slate-300">•</span>
+                    <span className="text-slate-500 text-sm">Reg: {tenant.registration_number}</span>
+                  </>
+                )}
               </div>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {getStatusBadge(tenant.subscription_status || tenant.status)}
+            {getStatusBadge(effectiveStatus)}
             <Link
               to={`/superadmin/hospitals/${id}/edit`}
               className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg transition-colors"
+              title="Edit hospital"
             >
               <Edit className="w-5 h-5" />
             </Link>
@@ -237,8 +313,8 @@ const SuperAdminHospitalDetail: React.FC = () => {
       <div className="border-b border-slate-200">
         <nav className="flex gap-8">
           {[
-            { id: 'overview', label: 'Overview', icon: Activity },
-            { id: 'modules',  label: 'Modules',  icon: Package,  badge: hasPendingChanges ? Object.keys(pendingChanges).length : 0 },
+            { id: 'overview', label: 'Overview',      icon: Activity },
+            { id: 'modules',  label: 'Modules',       icon: Package,   badge: hasPendingChanges ? Object.keys(pendingChanges).length : 0 },
             { id: 'usage',    label: 'Usage & Limits', icon: CreditCard },
           ].map(({ id: tabId, label, icon: Icon, badge }) => (
             <button
@@ -262,54 +338,125 @@ const SuperAdminHospitalDetail: React.FC = () => {
         </nav>
       </div>
 
-      {/* Content */}
+      {/* Tab Content */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
 
-        {/* Overview Tab */}
+        {/* ── Overview ── */}
         {activeTab === 'overview' && (
-          <div className="space-y-6">
-            <div className="grid grid-cols-2 gap-6">
-              <div>
-                <h3 className="text-sm font-medium text-slate-500 mb-2">Contact Information</h3>
-                <div className="space-y-1">
-                  <p className="text-slate-900">{tenant.email}</p>
-                  <p className="text-slate-600 text-sm">{tenant.phone || '—'}</p>
-                </div>
-              </div>
-              <div>
-                <h3 className="text-sm font-medium text-slate-500 mb-2">Address</h3>
-                <div className="space-y-1">
-                  <p className="text-slate-900">{tenant.address_line_1 || 'No address on file'}</p>
-                  <p className="text-slate-600 text-sm">
-                    {[tenant.city, tenant.state_province, tenant.country].filter(Boolean).join(', ')}
-                  </p>
-                </div>
-              </div>
-            </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
-            <div className="border-t pt-6">
-              <h3 className="text-sm font-medium text-slate-500 mb-4">Subscription</h3>
-              <div className="grid grid-cols-4 gap-4">
-                {[
-                  { label: 'Current Plan', value: tenant.plan_code || 'Free' },
-                  { label: 'Status', value: tenant.subscription_status || 'N/A' },
-                  { label: 'Created', value: new Date(tenant.created_at).toLocaleDateString() },
-                  { label: 'Last Updated', value: new Date(tenant.updated_at).toLocaleDateString() },
-                ].map(({ label, value }) => (
-                  <div key={label} className="bg-slate-50 rounded-lg p-4">
-                    <p className="text-xs text-slate-500">{label}</p>
-                    <p className="text-sm font-semibold text-slate-900 capitalize mt-0.5">{value}</p>
+            {/* Contact */}
+            <SectionCard title="Contact Information" icon={<Mail className="w-4 h-4" />}>
+              <InfoRow label="Email" value={tenant.email} />
+              <InfoRow label="Phone" value={tenant.phone} />
+              <InfoRow label="Registration No." value={tenant.registration_number} />
+            </SectionCard>
+
+            {/* Address */}
+            <SectionCard title="Address & Location" icon={<MapPin className="w-4 h-4" />}>
+              <InfoRow label="Address Line 1" value={tenant.address_line_1} />
+              {tenant.address_line_2 && <InfoRow label="Address Line 2" value={tenant.address_line_2} />}
+              <InfoRow label="City" value={tenant.city} />
+              <InfoRow label="State / Province" value={tenant.state_province} />
+              <InfoRow label="Postal Code" value={tenant.postal_code} />
+              <InfoRow label="Country" value={tenant.country} />
+              <InfoRow label="Timezone" value={tenant.timezone} />
+            </SectionCard>
+
+            {/* Subscription */}
+            <SectionCard title="Subscription" icon={<CreditCard className="w-4 h-4" />}>
+              <InfoRow label="Plan" value={tenant.plan_name || tenant.plan_code || 'No plan assigned'} />
+              <InfoRow label="Plan Code" value={tenant.plan_code} mono />
+              <InfoRow label="Status" value={subscription?.status?.replace('_', ' ') || tenant.subscription_status || '—'} />
+              {subscription?.billing_email && <InfoRow label="Billing Email" value={subscription.billing_email} />}
+              {subscription?.trial_ends_at && <InfoRow label="Trial Ends" value={fmt(subscription.trial_ends_at)} />}
+              <InfoRow label="Period Start" value={fmt(subscription?.current_period_start)} />
+              <InfoRow label="Period End" value={fmt(subscription?.current_period_end || tenant.current_period_end)} />
+              {subscription?.cancel_at_period_end && (
+                <div className="mt-2 px-3 py-2 bg-yellow-50 border border-yellow-200 rounded-lg text-xs text-yellow-700 font-medium">
+                  Cancellation scheduled at period end
+                  {subscription.cancellation_reason && ` — ${subscription.cancellation_reason}`}
+                </div>
+              )}
+              {!subscription && !tenant.plan_code && (
+                <p className="text-sm text-slate-400 italic py-2">No active subscription</p>
+              )}
+            </SectionCard>
+
+            {/* System Info */}
+            <SectionCard title="System Information" icon={<Shield className="w-4 h-4" />}>
+              <InfoRow label="Tenant ID" value={tenant.id} mono />
+              <InfoRow label="Slug" value={tenant.slug} mono />
+              <InfoRow label="Status" value={tenant.status} />
+              <InfoRow label="Verified" value={tenant.is_verified ? `Yes — ${fmt(tenant.verified_at)}` : 'No'} />
+              <InfoRow label="Onboarding" value={tenant.onboarding_completed ? 'Completed' : `In progress (${tenant.onboarding_step})`} />
+              <InfoRow label="Currency" value={tenant.default_currency} />
+              <InfoRow label="Created" value={fmt(tenant.created_at)} />
+              <InfoRow label="Last Updated" value={fmt(tenant.updated_at)} />
+            </SectionCard>
+
+            {/* Branding */}
+            <SectionCard title="Branding" icon={<Palette className="w-4 h-4" />}>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between py-2.5 border-b border-slate-100">
+                  <span className="text-sm text-slate-500">Primary Color</span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full border border-slate-200 shadow-sm" style={{ background: tenant.primary_color }} />
+                    <span className="font-mono text-xs text-slate-700">{tenant.primary_color}</span>
                   </div>
-                ))}
+                </div>
+                <div className="flex items-center justify-between py-2.5 border-b border-slate-100">
+                  <span className="text-sm text-slate-500">Secondary Color</span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full border border-slate-200 shadow-sm" style={{ background: tenant.secondary_color }} />
+                    <span className="font-mono text-xs text-slate-700">{tenant.secondary_color}</span>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between py-2.5">
+                  <span className="text-sm text-slate-500">Logo</span>
+                  {tenant.logo_url ? (
+                    <a href={tenant.logo_url} target="_blank" rel="noreferrer" className="text-sm text-primary hover:underline">
+                      View Logo
+                    </a>
+                  ) : (
+                    <span className="text-sm text-slate-400 italic">No logo uploaded</span>
+                  )}
+                </div>
               </div>
-            </div>
+            </SectionCard>
+
+            {/* Module summary */}
+            <SectionCard title="Module Summary" icon={<Package className="w-4 h-4" />}>
+              {modules.length === 0 ? (
+                <p className="text-sm text-slate-400 italic py-2">No modules configured</p>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex justify-between py-2.5 border-b border-slate-100">
+                    <span className="text-sm text-slate-500">Total Modules</span>
+                    <span className="text-sm font-medium text-slate-900">{modules.length}</span>
+                  </div>
+                  <div className="flex justify-between py-2.5 border-b border-slate-100">
+                    <span className="text-sm text-slate-500">Enabled</span>
+                    <span className="text-sm font-medium text-green-700">
+                      {modules.filter((m) => m.is_enabled).length}
+                    </span>
+                  </div>
+                  <div className="flex justify-between py-2.5">
+                    <span className="text-sm text-slate-500">Disabled</span>
+                    <span className="text-sm font-medium text-slate-500">
+                      {modules.filter((m) => !m.is_enabled).length}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </SectionCard>
+
           </div>
         )}
 
-        {/* Modules Tab */}
+        {/* ── Modules ── */}
         {activeTab === 'modules' && (
           <div className="space-y-5">
-            {/* Header row */}
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-base font-semibold text-slate-900">Module Configuration</h3>
@@ -318,7 +465,6 @@ const SuperAdminHospitalDetail: React.FC = () => {
                 </p>
               </div>
 
-              {/* Save / Discard — only visible when there are pending changes */}
               {hasPendingChanges && (
                 <div className="flex items-center gap-3">
                   <span className="text-sm text-amber-600 font-medium">
@@ -349,7 +495,6 @@ const SuperAdminHospitalDetail: React.FC = () => {
               )}
             </div>
 
-            {/* Info banner */}
             <div className="flex items-start gap-2 bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-600">
               <Info className="w-4 h-4 mt-0.5 shrink-0 text-slate-400" />
               <span>
@@ -358,89 +503,91 @@ const SuperAdminHospitalDetail: React.FC = () => {
               </span>
             </div>
 
-            {/* Module grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {localModules.map((module) => {
-                const cat = categoryOf(module.category);
-                return (
-                  <div
-                    key={module.id}
-                    className={`relative border rounded-xl p-4 transition-all ${
-                      module.is_core
-                        ? 'border-primary/25 bg-primary/5'
-                        : module.isDirty
-                        ? 'border-amber-300 bg-amber-50/50 shadow-sm'
-                        : module.is_enabled
-                        ? 'border-slate-200 bg-white'
-                        : 'border-slate-200 bg-slate-50/60'
-                    }`}
-                  >
-                    {/* Dirty indicator */}
-                    {module.isDirty && (
-                      <span className="absolute top-3 right-14 text-[10px] font-bold uppercase tracking-wide text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded">
-                        Unsaved
-                      </span>
-                    )}
+            {modules.length === 0 ? (
+              <div className="text-center py-12 text-slate-400">
+                <Package className="w-10 h-10 mx-auto mb-3 opacity-40" />
+                <p className="text-sm">No modules found. Assign a plan to this hospital first.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {localModules.map((module) => {
+                  const cat = categoryOf(module.category);
+                  return (
+                    <div
+                      key={module.id}
+                      className={`relative border rounded-xl p-4 transition-all ${
+                        module.is_core
+                          ? 'border-primary/25 bg-primary/5'
+                          : module.isDirty
+                          ? 'border-amber-300 bg-amber-50/50 shadow-sm'
+                          : module.is_enabled
+                          ? 'border-slate-200 bg-white'
+                          : 'border-slate-200 bg-slate-50/60'
+                      }`}
+                    >
+                      {module.isDirty && (
+                        <span className="absolute top-3 right-14 text-[10px] font-bold uppercase tracking-wide text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded">
+                          Unsaved
+                        </span>
+                      )}
 
-                    <div className="flex items-start justify-between gap-3">
-                      {/* Module info */}
-                      <div className="flex items-start gap-3 min-w-0">
-                        <div className={`p-2 rounded-lg shrink-0 ${module.is_enabled ? 'bg-primary/10' : 'bg-slate-100'}`}>
-                          <Package className={`w-5 h-5 ${module.is_enabled ? 'text-primary' : 'text-slate-400'}`} />
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h4 className="font-semibold text-slate-900 text-sm">{module.name}</h4>
-                            {module.is_core && (
-                              <span className="text-[10px] font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded uppercase tracking-wide">
-                                Core
-                              </span>
-                            )}
-                            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded uppercase tracking-wide ${cat.color}`}>
-                              {cat.label}
-                            </span>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-3 min-w-0">
+                          <div className={`p-2 rounded-lg shrink-0 ${module.is_enabled ? 'bg-primary/10' : 'bg-slate-100'}`}>
+                            <Package className={`w-5 h-5 ${module.is_enabled ? 'text-primary' : 'text-slate-400'}`} />
                           </div>
-                          <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{module.description}</p>
-                          {module.required_modules?.length > 0 && (
-                            <p className="text-[11px] text-slate-400 mt-1">
-                              Requires:{' '}
-                              <span className="font-medium text-slate-500">
-                                {module.required_modules.join(', ')}
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className="font-semibold text-slate-900 text-sm">{module.name}</h4>
+                              {module.is_core && (
+                                <span className="text-[10px] font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded uppercase tracking-wide">
+                                  Core
+                                </span>
+                              )}
+                              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded uppercase tracking-wide ${cat.color}`}>
+                                {cat.label}
                               </span>
-                            </p>
-                          )}
+                            </div>
+                            <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{module.description}</p>
+                            {module.required_modules?.length > 0 && (
+                              <p className="text-[11px] text-slate-400 mt-1">
+                                Requires:{' '}
+                                <span className="font-medium text-slate-500">
+                                  {module.required_modules.join(', ')}
+                                </span>
+                              </p>
+                            )}
+                          </div>
                         </div>
+
+                        <label className={`relative inline-flex items-center shrink-0 ${module.is_core ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+                          <input
+                            type="checkbox"
+                            checked={module.is_enabled}
+                            onChange={(e) => handleToggleModule(module.code, e.target.checked)}
+                            disabled={module.is_core}
+                            className="sr-only peer"
+                          />
+                          <div
+                            className={`w-11 h-6 rounded-full transition-colors ${
+                              module.is_core
+                                ? 'bg-primary/40 cursor-not-allowed'
+                                : `bg-slate-200 peer-checked:bg-primary
+                                   peer-focus:ring-2 peer-focus:ring-primary/30
+                                   after:content-[''] after:absolute after:top-[2px] after:left-[2px]
+                                   after:bg-white after:border after:border-slate-300 after:rounded-full
+                                   after:h-5 after:w-5 after:transition-all
+                                   peer-checked:after:translate-x-full peer-checked:after:border-white`
+                            }`}
+                          />
+                        </label>
                       </div>
-
-                      {/* Toggle */}
-                      <label className={`relative inline-flex items-center shrink-0 ${module.is_core ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
-                        <input
-                          type="checkbox"
-                          checked={module.is_enabled}
-                          onChange={(e) => handleToggleModule(module.code, e.target.checked)}
-                          disabled={module.is_core}
-                          className="sr-only peer"
-                        />
-                        <div
-                          className={`w-11 h-6 rounded-full transition-colors ${
-                            module.is_core
-                              ? 'bg-primary/40 cursor-not-allowed'
-                              : `bg-slate-200 peer-checked:bg-primary
-                                 peer-focus:ring-2 peer-focus:ring-primary/30
-                                 after:content-[''] after:absolute after:top-[2px] after:left-[2px]
-                                 after:bg-white after:border after:border-slate-300 after:rounded-full
-                                 after:h-5 after:w-5 after:transition-all
-                                 peer-checked:after:translate-x-full peer-checked:after:border-white`
-                          }`}
-                        />
-                      </label>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
 
-            {/* Sticky save bar — appears at the bottom when dirty */}
             {hasPendingChanges && (
               <div className="sticky bottom-0 left-0 right-0 -mx-6 -mb-6 px-6 py-4 bg-white border-t border-amber-200 flex items-center justify-between rounded-b-xl shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
                 <p className="text-sm text-amber-700 font-medium">
@@ -475,38 +622,41 @@ const SuperAdminHospitalDetail: React.FC = () => {
           </div>
         )}
 
-        {/* Usage Tab */}
+        {/* ── Usage ── */}
         {activeTab === 'usage' && (
           <div className="space-y-6">
             <h3 className="text-base font-semibold text-slate-900">Usage & Limits</h3>
-            <div className="space-y-4">
-              {usage.map((item) => (
-                <div key={item.resource_type} className="border border-slate-200 rounded-xl p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <h4 className="font-medium text-slate-900 capitalize">{item.resource_type}</h4>
-                      <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded">{item.period}</span>
+            {usage.length === 0 ? (
+              <p className="text-slate-500 text-center py-8">No usage data available</p>
+            ) : (
+              <div className="space-y-4">
+                {usage.map((item) => (
+                  <div key={item.resource_type} className="border border-slate-200 rounded-xl p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-medium text-slate-900 capitalize">
+                          {item.resource_type.replace(/_/g, ' ')}
+                        </h4>
+                        <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded">{item.period}</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-sm font-semibold text-slate-900">{item.current_usage.toLocaleString()}</span>
+                        <span className="text-slate-400 mx-1">/</span>
+                        <span className="text-sm text-slate-500">{item.max_limit?.toLocaleString() ?? '∞'}</span>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <span className="text-sm font-semibold text-slate-900">{item.current_usage.toLocaleString()}</span>
-                      <span className="text-slate-400 mx-1">/</span>
-                      <span className="text-sm text-slate-500">{item.max_limit?.toLocaleString() ?? '∞'}</span>
-                    </div>
+                    {getUsageBar(item.percentage_used)}
+                    <p className={`text-xs mt-2 font-medium ${
+                      item.percentage_used > 90 ? 'text-red-600' :
+                      item.percentage_used > 75 ? 'text-yellow-600' :
+                      'text-green-600'
+                    }`}>
+                      {item.percentage_used.toFixed(1)}% used
+                    </p>
                   </div>
-                  {getUsageBar(item.percentage_used)}
-                  <p className={`text-xs mt-2 font-medium ${
-                    item.percentage_used > 90 ? 'text-red-600' :
-                    item.percentage_used > 75 ? 'text-yellow-600' :
-                    'text-green-600'
-                  }`}>
-                    {item.percentage_used.toFixed(1)}% used
-                  </p>
-                </div>
-              ))}
-              {usage.length === 0 && (
-                <p className="text-slate-500 text-center py-8">No usage data available</p>
-              )}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -516,7 +666,7 @@ const SuperAdminHospitalDetail: React.FC = () => {
         {tenant.status === 'active' ? (
           <button
             onClick={async () => {
-              if (!confirm('Are you sure you want to suspend this hospital?')) return;
+              if (!confirm(`Are you sure you want to suspend ${tenant.name}?`)) return;
               try {
                 await superAdminApi.suspendTenant(id!, 'Administrative action');
                 toast.success(`${tenant.name} has been suspended`);

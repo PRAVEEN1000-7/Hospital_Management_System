@@ -160,14 +160,25 @@ def get_tenant(
     tenant = TenantService.get_by_id(db, tenant_id)
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
-    
+
+    # Enrich with subscription info
+    try:
+        sub = tenant.active_subscription
+        if sub:
+            tenant.subscription_status = sub.status
+            tenant.plan_name = sub.plan.name if sub.plan else None
+            tenant.plan_code = sub.plan.code if sub.plan else None
+            tenant.current_period_end = sub.current_period_end
+    except Exception:
+        pass
+
     # Enrich with modules
     modules = TenantService.get_tenant_modules(db, tenant_id)
-    
+
     # Build response
     response = TenantDetailResponse.model_validate(tenant)
     response.modules = [TenantModuleResponse.model_validate(m) for m in modules]
-    
+
     return response
 
 

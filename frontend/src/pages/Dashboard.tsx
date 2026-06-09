@@ -14,23 +14,36 @@ import type { DoctorProfile } from '../types/doctor';
 /* ────────────────────────────── helpers ────────────────────────────── */
 
 interface StatCard { label: string; value: string; icon: string; iconColor: string }
-interface QuickAction { icon: string; iconColor: string; label: string; desc: string; to: string }
-interface QuickLink { icon: string; iconColor: string; label: string; to: string }
+interface QuickAction { icon: string; iconColor: string; label: string; desc: string; to: string; module?: string }
+interface QuickLink { icon: string; iconColor: string; label: string; to: string; module?: string }
+
+/** Returns true if the route path belongs to an enabled module (or has no module gate). */
+function isRouteEnabled(to: string, isModuleEnabled: (mod: string) => boolean): boolean {
+  if (to.startsWith('/appointments')) return isModuleEnabled('appointments');
+  if (to.startsWith('/prescriptions')) return isModuleEnabled('prescriptions');
+  if (to.startsWith('/pharmacy'))      return isModuleEnabled('pharmacy');
+  if (to.startsWith('/inventory'))     return isModuleEnabled('inventory');
+  if (to.startsWith('/billing'))       return isModuleEnabled('billing');
+  if (to.startsWith('/analytics'))     return isModuleEnabled('analytics');
+  if (to.startsWith('/patients') || to.startsWith('/register')) return isModuleEnabled('patients');
+  return true; // profile, dashboard, staff, system pages — always available
+}
 
 const ACTION_BTN = 'p-4 rounded-xl border border-slate-200 hover:border-primary hover:bg-blue-50 transition-all group cursor-pointer text-left active:scale-[0.98]';
 const LINK_BTN = 'w-full flex items-center gap-3 text-left hover:bg-slate-800 rounded-lg p-2 transition-colors';
 
 /* ────────────────── role → dashboard title map ─────────────────── */
 const dashboardTitles: Record<string, string> = {
-  super_admin: 'Admin Dashboard Overview',
-  admin: 'Admin Dashboard Overview',
-  doctor: 'Doctor Dashboard',
-  receptionist: 'Reception Dashboard',
-  pharmacist: 'Pharmacy & Billing Dashboard',
-  cashier: 'Billing Dashboard',
-  optical_staff: 'Optical Dashboard',
+  super_admin:       'Admin Dashboard Overview',
+  admin:             'Admin Dashboard Overview',
+  doctor:            'Doctor Dashboard',
+  nurse:             'Nursing Dashboard',
+  receptionist:      'Reception Dashboard',
+  pharmacist:        'Pharmacy & Billing Dashboard',
+  cashier:           'Billing Dashboard',
+  optical_staff:     'Optical Dashboard',
   inventory_manager: 'Inventory Dashboard',
-  report_viewer: 'Reports Dashboard',
+  report_viewer:     'Reports Dashboard',
 };
 
 /* ────────────────── role → quick actions ─────────────────── */
@@ -49,7 +62,15 @@ function getQuickActions(role: string, isSuperAdmin: boolean): QuickAction[] {
     case 'doctor':
       return [
         { icon: 'queue', iconColor: 'text-amber-500', label: 'My Queue', desc: 'View your patient queue', to: '/appointments/queue' },
-        { icon: 'note_add', iconColor: 'text-blue-500', label: 'New Prescription', desc: 'Create a prescription', to: '/prescriptions/new' },
+        { icon: 'note_add', iconColor: 'text-blue-500', label: 'New Prescription', desc: 'Create a prescription', to: '/prescriptions/new', module: 'prescriptions' },
+        { icon: 'edit_calendar', iconColor: 'text-emerald-500', label: 'My Schedule', desc: 'Manage your appointment schedule', to: '/appointments/doctor-schedule' },
+        { icon: 'person', iconColor: 'text-purple-500', label: 'My Profile', desc: 'Update your information', to: '/profile' },
+      ];
+    case 'nurse':
+      return [
+        { icon: 'queue', iconColor: 'text-amber-500', label: 'Walk-in Queue', desc: 'View current patient queue', to: '/appointments/queue' },
+        { icon: 'event_note', iconColor: 'text-emerald-500', label: 'Appointments', desc: 'View & manage appointments', to: '/appointments/manage' },
+        { icon: 'group', iconColor: 'text-blue-500', label: 'Patient Directory', desc: 'Browse patient records', to: '/patients' },
         { icon: 'person', iconColor: 'text-purple-500', label: 'My Profile', desc: 'Update your information', to: '/profile' },
       ];
     case 'receptionist':
@@ -68,6 +89,9 @@ function getQuickActions(role: string, isSuperAdmin: boolean): QuickAction[] {
       ];
     case 'cashier':
       return [
+        { icon: 'receipt_long', iconColor: 'text-blue-500', label: 'Invoices', desc: 'View and create invoices', to: '/billing/invoices' },
+        { icon: 'payments', iconColor: 'text-emerald-500', label: 'Payments', desc: 'Record & view payments', to: '/billing/payments' },
+        { icon: 'currency_exchange', iconColor: 'text-amber-500', label: 'Refunds', desc: 'Process refunds', to: '/billing/refunds' },
         { icon: 'person', iconColor: 'text-purple-500', label: 'My Profile', desc: 'Update your information', to: '/profile' },
       ];
     case 'optical_staff':
@@ -104,8 +128,15 @@ function getQuickLinks(role: string): QuickLink[] {
     case 'doctor':
       return [
         { icon: 'queue', iconColor: 'text-amber-400', label: 'Walk-in Queue', to: '/appointments/queue' },
-        { icon: 'list_alt', iconColor: 'text-blue-400', label: 'All Prescription', to: '/prescriptions' },
+        { icon: 'list_alt', iconColor: 'text-blue-400', label: 'All Prescriptions', to: '/prescriptions' },
+        { icon: 'edit_calendar', iconColor: 'text-emerald-400', label: 'My Schedule', to: '/appointments/doctor-schedule' },
         { icon: 'person', iconColor: 'text-purple-400', label: 'My Profile', to: '/profile' },
+      ];
+    case 'nurse':
+      return [
+        { icon: 'queue', iconColor: 'text-amber-400', label: 'Walk-in Queue', to: '/appointments/queue' },
+        { icon: 'group', iconColor: 'text-blue-400', label: 'Patients', to: '/patients' },
+        { icon: 'event_note', iconColor: 'text-emerald-400', label: 'Appointments', to: '/appointments/manage' },
       ];
     case 'receptionist':
       return [
@@ -122,7 +153,9 @@ function getQuickLinks(role: string): QuickLink[] {
       ];
     case 'cashier':
       return [
-        { icon: 'person', iconColor: 'text-purple-400', label: 'My Profile', to: '/profile' },
+        { icon: 'receipt_long', iconColor: 'text-blue-400', label: 'Invoices', to: '/billing/invoices' },
+        { icon: 'payments', iconColor: 'text-emerald-400', label: 'Payments', to: '/billing/payments' },
+        { icon: 'currency_exchange', iconColor: 'text-amber-400', label: 'Refunds', to: '/billing/refunds' },
       ];
     default:
       return [
@@ -134,7 +167,7 @@ function getQuickLinks(role: string): QuickLink[] {
 /* ════════════════════════════ Component ════════════════════════════ */
 
 const Dashboard: React.FC = () => {
-  const { user } = useAuth();
+  const { user, isModuleEnabled } = useAuth();
   const navigate = useNavigate();
   const toast = useToast();
   const [totalPatients, setTotalPatients] = useState<number>(0);
@@ -149,10 +182,12 @@ const Dashboard: React.FC = () => {
 
   const role = user?.roles?.[0] || '';
   const isDoctor = role === 'doctor';
+  const isNurse = role === 'nurse';
   const isAdmin = role === 'admin' || role === 'super_admin';
   const isReceptionist = role === 'receptionist';
   const isPharmacist = role === 'pharmacist';
-  const canAccessPatients = role === 'super_admin' || role === 'admin' || role === 'receptionist' || role === 'nurse' || role === 'pharmacist' || role === 'doctor';
+  const roleCanReadPatients = ['super_admin', 'admin', 'receptionist', 'nurse', 'pharmacist', 'doctor'].includes(role);
+  const canAccessPatients = roleCanReadPatients && isModuleEnabled('patients');
 
   // Redirect pharmacists to pharmacy dashboard
   useEffect(() => {
@@ -191,6 +226,16 @@ const Dashboard: React.FC = () => {
         try { const wlStats = await waitlistService.getStats(); setWaitlistWaiting(wlStats.total_waiting || 0); } catch { /* silent */ }
       }
 
+      // Nurse: queue counts
+      if (isNurse) {
+        try {
+          const queueData = await walkInService.getQueueStatus();
+          setQueueWaiting(queueData.total_waiting || 0);
+          setQueueInProgress(queueData.total_in_progress || 0);
+          setQueueCompleted(queueData.total_completed || 0);
+        } catch { /* silent */ }
+      }
+
       // Receptionist: queue + waitlist counts
       if (isReceptionist) {
         try {
@@ -222,7 +267,7 @@ const Dashboard: React.FC = () => {
     };
 
     fetchDashboardData();
-  }, [isDoctor, isReceptionist, isAdmin, canAccessPatients]);
+  }, [isDoctor, isNurse, isReceptionist, isAdmin, canAccessPatients]);
 
   /* ── stat cards per role ── */
   const getStatCards = (): StatCard[] => {
@@ -233,6 +278,13 @@ const Dashboard: React.FC = () => {
           { label: 'In Consultation', value: queueInProgress.toString(), icon: 'stethoscope', iconColor: 'text-blue-500' },
           { label: 'Completed Today', value: queueCompleted.toString(), icon: 'task_alt', iconColor: 'text-emerald-500' },
           { label: 'Waitlisted', value: waitlistWaiting.toString(), icon: 'playlist_add', iconColor: 'text-purple-500' },
+        ];
+      case 'nurse':
+        return [
+          { label: 'Queue Waiting',    value: queueWaiting.toString(),    icon: 'hourglass_top', iconColor: 'text-amber-500' },
+          { label: 'In Consultation',  value: queueInProgress.toString(), icon: 'stethoscope',   iconColor: 'text-blue-500' },
+          { label: 'Completed Today',  value: queueCompleted.toString(),  icon: 'task_alt',      iconColor: 'text-emerald-500' },
+          { label: 'Total Patients',   value: totalPatients.toLocaleString(), icon: 'group',     iconColor: 'text-purple-500' },
         ];
       case 'super_admin':
       case 'admin':
@@ -278,8 +330,10 @@ const Dashboard: React.FC = () => {
   };
 
   const statCards = getStatCards();
-  const quickActions = getQuickActions(role, user?.roles?.includes('super_admin') || false);
-  const quickLinks = getQuickLinks(role);
+  const quickActions = getQuickActions(role, user?.roles?.includes('super_admin') || false)
+    .filter(a => isRouteEnabled(a.to, isModuleEnabled));
+  const quickLinks = getQuickLinks(role)
+    .filter(l => isRouteEnabled(l.to, isModuleEnabled));
   const title = dashboardTitles[role] || 'Dashboard';
 
   return (
@@ -381,7 +435,36 @@ const Dashboard: React.FC = () => {
 
         {/* Workspace Panel — 70% */}
         <div className="lg:col-span-7 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          {isDoctor ? (
+          {isNurse ? (
+            <>
+              <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+                <h3 className="font-bold text-slate-900">Nursing Overview</h3>
+                <button onClick={() => navigate('/appointments/queue')} className="text-primary text-xs font-bold hover:underline">View Queue</button>
+              </div>
+              <div className="p-6">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-4 rounded-lg bg-amber-50">
+                    <p className="text-[10px] font-bold text-amber-500 uppercase mb-1">Queue Waiting</p>
+                    <p className="text-sm font-semibold text-amber-700">{queueWaiting}</p>
+                  </div>
+                  <div className="p-4 rounded-lg bg-blue-50">
+                    <p className="text-[10px] font-bold text-blue-500 uppercase mb-1">In Consultation</p>
+                    <p className="text-sm font-semibold text-blue-700">{queueInProgress}</p>
+                  </div>
+                  <div className="p-4 rounded-lg bg-emerald-50">
+                    <p className="text-[10px] font-bold text-emerald-500 uppercase mb-1">Completed Today</p>
+                    <p className="text-sm font-semibold text-emerald-700">{queueCompleted}</p>
+                  </div>
+                  {canAccessPatients && (
+                    <div className="p-4 rounded-lg bg-slate-50">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Total Patients</p>
+                      <p className="text-sm font-semibold text-slate-800">{totalPatients.toLocaleString()}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          ) : isDoctor ? (
             <>
               <div className="p-6 border-b border-slate-100 flex items-center justify-between">
                 <h3 className="font-bold text-slate-900">My Practice Info</h3>
@@ -502,6 +585,31 @@ const Dashboard: React.FC = () => {
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-slate-600">Waitlisted</span>
                   <span className="font-bold text-purple-600">{waitlistWaiting}</span>
+                </div>
+              </div>
+            </>
+          ) : isNurse ? (
+            <>
+              <h3 className="font-bold text-slate-900 mb-6">Queue Status</h3>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-2 text-slate-600">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    Service
+                  </span>
+                  <span className="font-bold text-emerald-600">Online</span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-600">Waiting</span>
+                  <span className="font-bold text-amber-600">{queueWaiting}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-600">In Consultation</span>
+                  <span className="font-bold text-blue-600">{queueInProgress}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-600">Completed</span>
+                  <span className="font-bold text-emerald-600">{queueCompleted}</span>
                 </div>
               </div>
             </>

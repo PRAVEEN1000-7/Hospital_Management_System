@@ -1,0 +1,18 @@
+[Unit]
+Description=HMS FastAPI Backend
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=hmsadmin
+WorkingDirectory=/home/hmsadmin/projects/Hospital_Management_System/backend
+ExecStart=/home/hmsadmin/projects/Hospital_Management_System/backend/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 2
+Restart=always
+RestartSec=5
+StandardOutput=append:/home/hmsadmin/projects/Hospital_Management_System/backend/backend.log
+StandardError=append:/home/hmsadmin/projects/Hospital_Management_System/backend/backend.log
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

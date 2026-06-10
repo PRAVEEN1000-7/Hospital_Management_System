@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   Building2,
   Plus,
@@ -33,10 +33,12 @@ interface Tenant {
 }
 
 const SuperAdminHospitals: React.FC = () => {
+  const [searchParams] = useSearchParams();
   const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState(searchParams.get('status') ?? '');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   
@@ -56,6 +58,7 @@ const SuperAdminHospitals: React.FC = () => {
         status: statusFilter,
       });
       setTenants(response.data.data);
+      setTotal(response.data.total);
       setTotalPages(response.data.total_pages);
     } catch (error) {
       console.error('Failed to load tenants:', error);
@@ -133,20 +136,22 @@ const SuperAdminHospitals: React.FC = () => {
   };
 
   const getStatusBadge = (status: string) => {
-    const styles = {
-      active: 'bg-green-100 text-green-800',
-      trialing: 'bg-blue-100 text-blue-800',
-      past_due: 'bg-yellow-100 text-yellow-800',
+    const styles: Record<string, string> = {
+      active:    'bg-green-100 text-green-800',
+      trialing:  'bg-blue-100 text-blue-800',
+      past_due:  'bg-yellow-100 text-yellow-800',
       suspended: 'bg-red-100 text-red-800',
-      pending: 'bg-gray-100 text-gray-800',
+      pending:   'bg-amber-100 text-amber-800',
+      cancelled: 'bg-gray-100 text-gray-600',
     };
-    
-    const icons = {
-      active: CheckCircle,
-      trialing: Clock,
-      past_due: AlertCircle,
+
+    const icons: Record<string, React.ElementType> = {
+      active:    CheckCircle,
+      trialing:  Clock,
+      past_due:  AlertCircle,
       suspended: XCircle,
-      pending: Clock,
+      pending:   Clock,
+      cancelled: XCircle,
     };
     
     const Icon = icons[status as keyof typeof icons] || AlertCircle;
@@ -191,7 +196,7 @@ const SuperAdminHospitals: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Hospitals</h1>
           <p className="text-gray-600 mt-1">
-            Manage all hospitals on the platform
+            {total > 0 ? `${total} hospital${total !== 1 ? 's' : ''} on the platform` : 'Manage all hospitals on the platform'}
           </p>
         </div>
         <Link
@@ -228,6 +233,7 @@ const SuperAdminHospitals: React.FC = () => {
             <option value="trialing">Trial</option>
             <option value="past_due">Past Due</option>
             <option value="suspended">Suspended</option>
+            <option value="pending">Pending</option>
           </select>
         </div>
       </div>

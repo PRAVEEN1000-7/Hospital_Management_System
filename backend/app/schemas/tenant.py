@@ -91,8 +91,9 @@ class TenantListResponse(BaseModel):
     total: int
     page: int
     limit: int
+    total_pages: int
     data: List[TenantResponse]
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -448,17 +449,18 @@ class DashboardStatsResponse(BaseModel):
     trial_tenants: int
     past_due_tenants: int
     suspended_tenants: int
-    
+    pending_tenants: int
+
     total_users: int
     total_patients: int
-    
+
     mrr: Decimal  # Monthly Recurring Revenue
-    
+
     plan_distribution: Dict[str, int]
-    
+
     recent_signups: int
     recent_churn: int
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 

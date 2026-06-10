@@ -2,7 +2,7 @@
 Tenant Admin API routes for hospital-level management.
 """
 import uuid
-from typing import Optional, List
+from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -142,9 +142,8 @@ def request_upgrade(
     tenant: Tenant = Depends(require_tenant),
     db: Session = Depends(get_db)
 ):
-    """Submit upgrade request to Super Admin"""
+    """Legacy: submit a plain text upgrade request (no payment tracking)"""
     from ..models.tenant import AuditLog
-    
     audit = AuditLog(
         tenant_id=tenant.id,
         action='upgrade_requested',
@@ -154,12 +153,7 @@ def request_upgrade(
     )
     db.add(audit)
     db.commit()
-    
-    return {
-        "message": "Upgrade request submitted",
-        "requested_plan": requested_plan,
-        "status": "pending_review"
-    }
+    return {"message": "Upgrade request submitted", "requested_plan": requested_plan, "status": "pending_review"}
 
 
 @router.get("/check-limit/{resource_type}")

@@ -145,6 +145,15 @@ const SuperAdminHospitalDetail: React.FC = () => {
   const [pendingChanges, setPendingChanges] = useState<Record<string, boolean>>({});
   const [isSaving, setIsSaving] = useState(false);
 
+  // Manual plan activation
+  const [allPlans, setAllPlans] = useState<{ id: string; name: string; code: string }[]>([]);
+  const [showActivateForm, setShowActivateForm] = useState(false);
+  const [activatePlanId, setActivatePlanId] = useState('');
+  const [activateStartDate, setActivateStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [activateEndDate, setActivateEndDate] = useState('');
+  const [activateNotes, setActivateNotes] = useState('');
+  const [isActivating, setIsActivating] = useState(false);
+
   const hasPendingChanges = Object.keys(pendingChanges).length > 0;
 
   const localModules = modules.map((m) => ({
@@ -154,8 +163,38 @@ const SuperAdminHospitalDetail: React.FC = () => {
   }));
 
   useEffect(() => {
-    if (id) loadData();
+    if (id) {
+      loadData();
+      superAdminApi.getPlans().then(res => setAllPlans(res.data || [])).catch(() => {});
+    }
   }, [id]);
+
+  const handleActivatePlan = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activatePlanId || !activateEndDate) {
+      toast.error('Select a plan and set the end date');
+      return;
+    }
+    setIsActivating(true);
+    try {
+      const res = await superAdminApi.activatePlan(id!, {
+        plan_id: activatePlanId,
+        start_date: new Date(activateStartDate).toISOString(),
+        end_date: new Date(activateEndDate).toISOString(),
+        notes: activateNotes || undefined,
+      });
+      toast.success(res.data.message || 'Plan activated successfully');
+      setShowActivateForm(false);
+      setActivatePlanId('');
+      setActivateEndDate('');
+      setActivateNotes('');
+      await loadData();
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to activate plan');
+    } finally {
+      setIsActivating(false);
+    }
+  };
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -368,7 +407,6 @@ const SuperAdminHospitalDetail: React.FC = () => {
               <InfoRow label="Plan" value={tenant.plan_name || tenant.plan_code || 'No plan assigned'} />
               <InfoRow label="Plan Code" value={tenant.plan_code} mono />
               <InfoRow label="Status" value={subscription?.status?.replace('_', ' ') || tenant.subscription_status || '—'} />
-              {subscription?.billing_email && <InfoRow label="Billing Email" value={subscription.billing_email} />}
               {subscription?.trial_ends_at && <InfoRow label="Trial Ends" value={fmt(subscription.trial_ends_at)} />}
               <InfoRow label="Period Start" value={fmt(subscription?.current_period_start)} />
               <InfoRow label="Period End" value={fmt(subscription?.current_period_end || tenant.current_period_end)} />
@@ -380,6 +418,88 @@ const SuperAdminHospitalDetail: React.FC = () => {
               )}
               {!subscription && !tenant.plan_code && (
                 <p className="text-sm text-slate-400 italic py-2">No active subscription</p>
+              )}
+
+              {/* Manual Plan Activation */}
+              {!showActivateForm ? (
+                <button
+                  onClick={() => setShowActivateForm(true)}
+                  className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors"
+                >
+                  <Calendar className="w-4 h-4" />
+                  Activate Plan Manually
+                </button>
+              ) : (
+                <form onSubmit={handleActivatePlan} className="mt-3 space-y-3 border-t border-slate-100 pt-3">
+                  <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Activate Plan</p>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Plan</label>
+                    <select
+                      value={activatePlanId}
+                      onChange={e => setActivatePlanId(e.target.value)}
+                      required
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    >
+                      <option value="">Select a plan…</option>
+                      {allPlans.map(p => (
+                        <option key={p.id} value={p.id}>{p.name} ({p.code})</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Start Date</label>
+                      <input
+                        type="date"
+                        value={activateStartDate}
+                        onChange={e => setActivateStartDate(e.target.value)}
+                        required
+                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">End Date</label>
+                      <input
+                        type="date"
+                        value={activateEndDate}
+                        onChange={e => setActivateEndDate(e.target.value)}
+                        required
+                        min={activateStartDate}
+                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Notes (optional)</label>
+                    <input
+                      type="text"
+                      value={activateNotes}
+                      onChange={e => setActivateNotes(e.target.value)}
+                      placeholder="e.g. Cash received on 10 Jun 2026"
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      type="submit"
+                      disabled={isActivating}
+                      className="flex-1 bg-primary text-white py-2 rounded-lg text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                    >
+                      {isActivating ? 'Activating…' : 'Activate Plan'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setShowActivateForm(false); setActivatePlanId(''); setActivateEndDate(''); setActivateNotes(''); }}
+                      className="px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
               )}
             </SectionCard>
 

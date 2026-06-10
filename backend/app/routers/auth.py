@@ -16,6 +16,7 @@ from ..schemas.auth import (
     UserResponse,
     ChangePasswordRequest,
     ForgotPasswordRequest,
+    ResetPasswordRequest,
 )
 from ..models.user import User
 from ..models.tenant import Tenant
@@ -66,6 +67,22 @@ async def login(
         ip_address = get_client_ip(request) if request else None
         logger.info(f"LOGIN ATTEMPT: username='{credentials.username}' from {ip_address}")
 
+        # Rate-limit login attempts per username to prevent brute force
+        try:
+            from ..core.rate_limiter import get_rate_limiter
+            limiter = get_rate_limiter()
+            is_allowed, stats = limiter.check_login_limit(credentials.username)
+            if not is_allowed:
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail="Too many login attempts. Please try again in 5 minutes.",
+                    headers={"Retry-After": "300"},
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            pass  # Rate limiter is best-effort; don't fail login if it errors
+
         user, reason = authenticate_user(db, credentials.username, credentials.password)
 
         if not user:
@@ -99,11 +116,33 @@ async def login(
 
         if not is_super_admin:
             tenant = TenantValidator.get_tenant_for_user(user, db)
-            if not tenant or tenant.status != "active":
+            if not tenant or tenant.status not in ("active", "trialing"):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Tenant is suspended or inactive",
                 )
+
+            # Enforce trial expiry: if subscription is still trialing but trial_ends_at
+            # has passed, block access and mark subscription as expired
+            from datetime import datetime, timezone
+            from ..models.tenant import TenantSubscription
+            active_sub = db.query(TenantSubscription).filter(
+                TenantSubscription.tenant_id == tenant.id,
+                TenantSubscription.status == 'trialing',
+            ).first()
+            if active_sub and active_sub.trial_ends_at:
+                now = datetime.now(timezone.utc)
+                trial_end = active_sub.trial_ends_at
+                if trial_end.tzinfo is None:
+                    trial_end = trial_end.replace(tzinfo=timezone.utc)
+                if now > trial_end:
+                    active_sub.status = 'expired'
+                    db.commit()
+                    raise HTTPException(
+                        status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                        detail="Your trial period has ended. Please contact support to activate your subscription.",
+                    )
+
             tenant_id_str = str(tenant.id)
 
         permissions = user.permissions
@@ -181,7 +220,7 @@ async def refresh_token(
 
         if not is_super_admin:
             tenant = TenantValidator.get_tenant_for_user(current_user, db)
-            if not tenant or tenant.status != "active":
+            if not tenant or tenant.status not in ("active", "trialing"):
                 logger.warning(
                     f"TOKEN REFRESH DENIED: Tenant not active. "
                     f"user={current_user.id}, tenant_status={tenant.status if tenant else 'not_found'}"
@@ -274,25 +313,154 @@ async def change_password(
 async def forgot_password(
     payload: ForgotPasswordRequest,
     db: Session = Depends(get_db),
+    request: Request = None,
 ):
     """
-    Initiate password reset flow.
-    Always returns success to prevent email enumeration.
-    (Email delivery requires SMTP configuration — currently logs to console.)
+    Initiate password reset. Always returns success to prevent email enumeration.
+    Generates a signed token, stores its SHA-256 hash in DB, sends reset email.
     """
-    from ..models.user import User as UserModel
+    import secrets
+    import hashlib
+    from datetime import datetime, timezone, timedelta
+    from ..models.user import User as UserModel, PasswordResetToken
+    from ..services.email_service import send_email
+
     user = db.query(UserModel).filter(
         UserModel.email == payload.email,
         UserModel.is_deleted == False,
+        UserModel.is_active == True,
     ).first()
 
     if user:
-        # TODO: generate token, store hash in DB, send reset email via notification service
-        logger.info(f"Password reset requested for user id={user.id} (email delivery not yet configured)")
+        # Invalidate any existing unused tokens for this user
+        db.query(PasswordResetToken).filter(
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.used_at == None,
+        ).delete()
 
-    # Always return success to prevent email enumeration (security best practice)
+        # Generate cryptographically secure token
+        raw_token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+
+        reset_token = PasswordResetToken(
+            user_id=user.id,
+            token_hash=token_hash,
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=2),
+        )
+        db.add(reset_token)
+        db.commit()
+
+        # Build reset URL — use frontend origin from request or settings
+        origin = request.headers.get("origin", "") if request else ""
+        if not origin:
+            origin = settings.CORS_ORIGINS[0] if settings.CORS_ORIGINS else "http://localhost:5173"
+        reset_url = f"{origin}/reset-password?token={raw_token}"
+
+        html_body = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; background: #f3f4f6; padding: 20px;">
+        <div style="max-width:600px; margin:0 auto; background:white; border-radius:8px; overflow:hidden; border:1px solid #e5e7eb;">
+            <div style="background:#0284c7; color:white; padding:24px; text-align:center;">
+                <h1 style="margin:0; font-size:22px;">{settings.HOSPITAL_NAME}</h1>
+                <p style="margin:4px 0 0; font-size:13px; opacity:.9;">Password Reset Request</p>
+            </div>
+            <div style="padding:30px;">
+                <p>Hello <strong>{user.first_name}</strong>,</p>
+                <p>We received a request to reset your password. Click the button below to set a new password.
+                   This link is valid for <strong>2 hours</strong>.</p>
+                <p style="text-align:center; margin:30px 0;">
+                    <a href="{reset_url}"
+                       style="background:#0284c7; color:white; padding:12px 28px; border-radius:6px;
+                              text-decoration:none; font-weight:bold; font-size:15px;">
+                        Reset Password
+                    </a>
+                </p>
+                <p style="color:#6b7280; font-size:13px;">
+                    If the button doesn't work, copy this link:<br/>
+                    <a href="{reset_url}">{reset_url}</a>
+                </p>
+                <p style="color:#6b7280; font-size:13px;">
+                    If you didn't request this, you can safely ignore this email.
+                </p>
+            </div>
+        </div>
+        </body>
+        </html>
+        """
+        send_email(user.email, f"{settings.HOSPITAL_NAME} — Password Reset", html_body)
+        logger.info(f"Password reset token generated for user id={user.id}")
+
     return {
         "success": True,
         "message": "If that email is registered, a reset link has been sent.",
     }
+
+
+@router.post("/reset-password")
+async def reset_password(
+    payload: ResetPasswordRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Complete password reset using the token from the email link.
+    Token is single-use and expires after 2 hours.
+    """
+    import hashlib
+    from datetime import datetime, timezone
+    from ..models.user import User as UserModel, PasswordResetToken
+
+    if payload.new_password != payload.confirm_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Passwords do not match",
+        )
+    if len(payload.new_password) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Password must be at least 8 characters",
+        )
+
+    token_hash = hashlib.sha256(payload.token.encode()).hexdigest()
+    reset_token = db.query(PasswordResetToken).filter(
+        PasswordResetToken.token_hash == token_hash,
+        PasswordResetToken.used_at == None,
+    ).first()
+
+    if not reset_token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or already used reset link",
+        )
+
+    now = datetime.now(timezone.utc)
+    expires = reset_token.expires_at
+    if expires.tzinfo is None:
+        expires = expires.replace(tzinfo=timezone.utc)
+
+    if now > expires:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Reset link has expired. Please request a new one.",
+        )
+
+    user = db.query(UserModel).filter(
+        UserModel.id == reset_token.user_id,
+        UserModel.is_deleted == False,
+        UserModel.is_active == True,
+    ).first()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User not found",
+        )
+
+    user.password_hash = get_password_hash(payload.new_password)
+    user.must_change_password = False
+    user.password_changed_at = now
+    reset_token.used_at = now
+    db.commit()
+
+    logger.info(f"Password reset completed for user id={user.id}")
+    return {"success": True, "message": "Password has been reset successfully. You can now log in."}
 

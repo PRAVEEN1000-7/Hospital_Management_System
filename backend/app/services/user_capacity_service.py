@@ -124,8 +124,8 @@ class UserService:
             "plan_name": plan.name,
             "plan_code": plan.code,
             "subscription_status": subscription.status,
-            "billing_period_start": subscription.billing_period_start.isoformat() if subscription.billing_period_start else None,
-            "billing_period_end": subscription.billing_period_end.isoformat() if subscription.billing_period_end else None,
+            "billing_period_start": subscription.current_period_start.isoformat() if subscription.current_period_start else None,
+            "billing_period_end": subscription.current_period_end.isoformat() if subscription.current_period_end else None,
             "users": {
                 "current": user_count,
                 "limit": plan.max_users or None,

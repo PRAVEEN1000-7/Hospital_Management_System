@@ -2,9 +2,11 @@
 Super Admin API routes for platform management.
 """
 import uuid
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
+from pydantic import BaseModel as PydanticBaseModel
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -19,6 +21,7 @@ from ..schemas.tenant import (
     TenantOnboardingRequest, TenantSubscriptionResponse,
     UsageQuotaResponse, AssignPlanRequest
 )
+from ..models.tenant import SubscriptionPlan
 from ..services.superadmin_service import SuperAdminService
 from ..services.tenant_service import TenantService
 from ..services.subscription_service import SubscriptionService
@@ -206,13 +209,13 @@ def suspend_tenant(
     admin: User = Depends(require_superadmin),
     db: Session = Depends(get_db)
 ):
-    """Suspend a tenant"""
-    tenant = TenantService.update_tenant(
-        db, tenant_id, status='suspended'
-    )
+    """
+    Suspend a tenant — deactivates all users and cancels subscription.
+    Suspended users are immediately blocked on their next API call.
+    """
+    tenant = TenantService.suspend_tenant(db, tenant_id, reason, suspended_by_id=admin.id)
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
-
     return {"message": "Tenant suspended", "reason": reason}
 
 
@@ -222,13 +225,10 @@ def activate_tenant(
     admin: User = Depends(require_superadmin),
     db: Session = Depends(get_db)
 ):
-    """Activate a suspended tenant"""
-    tenant = TenantService.update_tenant(
-        db, tenant_id, status='active'
-    )
+    """Activate a suspended tenant — re-enables all hospital users."""
+    tenant = TenantService.activate_tenant(db, tenant_id, activated_by_id=admin.id)
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
-    
     return {"message": "Tenant activated"}
 
 
@@ -480,4 +480,96 @@ def get_audit_logs(
             }
             for log in logs
         ]
+    }
+
+
+# ============================================================================
+# Manual Plan Activation (super admin activates plan after receiving physical payment)
+# ============================================================================
+
+class ActivatePlanRequest(PydanticBaseModel):
+    plan_id: uuid.UUID
+    start_date: datetime
+    end_date: datetime
+    notes: Optional[str] = None
+
+
+@router.post("/tenants/{tenant_id}/activate-plan")
+def manually_activate_plan(
+    tenant_id: uuid.UUID,
+    request: ActivatePlanRequest,
+    admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db)
+):
+    """
+    Manually activate a subscription plan for a tenant after the super admin
+    has received physical payment (cash, cheque, bank transfer, etc.).
+    Cancels any current active subscription and creates a new one with the
+    specified billing period.
+    """
+    from ..models.tenant import Tenant as TenantModel, TenantSubscription, AuditLog
+
+    tenant = db.query(TenantModel).filter(TenantModel.id == tenant_id).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    plan = db.query(SubscriptionPlan).filter(SubscriptionPlan.id == request.plan_id).first()
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan not found")
+
+    if request.end_date <= request.start_date:
+        raise HTTPException(status_code=400, detail="end_date must be after start_date")
+
+    now = datetime.now(timezone.utc)
+
+    # Cancel any current active/trialing subscription
+    db.query(TenantSubscription).filter(
+        TenantSubscription.tenant_id == tenant_id,
+        TenantSubscription.status.in_(['trialing', 'active', 'past_due'])
+    ).update({'status': 'cancelled', 'cancelled_at': now}, synchronize_session=False)
+
+    # Create the new manually-activated subscription
+    new_sub = TenantSubscription(
+        tenant_id=tenant_id,
+        plan_id=request.plan_id,
+        status='active',
+        current_period_start=request.start_date,
+        current_period_end=request.end_date,
+        payment_method='manual',
+    )
+    db.add(new_sub)
+    db.flush()
+
+    # Enable all modules included in the plan
+    TenantService._enable_modules_for_plan(db, tenant_id, plan)
+
+    # Ensure tenant status is active
+    db.query(TenantModel).filter(TenantModel.id == tenant_id).update(
+        {'status': 'active'}, synchronize_session=False
+    )
+
+    db.add(AuditLog(
+        tenant_id=tenant_id,
+        user_id=admin.id,
+        user_type='superadmin',
+        action='plan_activated_manually',
+        entity_type='TenantSubscription',
+        entity_id=new_sub.id,
+        entity_name=plan.name,
+        new_values={
+            'plan': plan.code,
+            'start_date': request.start_date.isoformat(),
+            'end_date': request.end_date.isoformat(),
+            'notes': request.notes,
+        },
+    ))
+    db.commit()
+
+    return {
+        "message": f"Plan '{plan.name}' activated for {tenant.name}",
+        "plan": plan.code,
+        "plan_name": plan.name,
+        "subscription_id": str(new_sub.id),
+        "period_start": request.start_date.isoformat(),
+        "period_end": request.end_date.isoformat(),
     }

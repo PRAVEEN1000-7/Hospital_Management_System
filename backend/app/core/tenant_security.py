@@ -81,12 +81,12 @@ class TenantValidator:
                 detail="Hospital is inactive or not found"
             )
         
-        # Get tenant (via hospital code match) and verify it's active
+        # Get tenant (via hospital code match) and verify it's active or trialing
         tenant = db.query(Tenant).filter(
             Tenant.code == hospital.code,
-            Tenant.status == 'active'
+            Tenant.status.in_(['active', 'trialing'])
         ).first()
-        
+
         if not tenant:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -130,9 +130,9 @@ class TenantValidator:
         # Link hospitals → tenants via matching code
         tenant = db.query(Tenant).filter(
             Tenant.code == hospital.code,
-            Tenant.status == 'active'
+            Tenant.status.in_(['active', 'trialing'])
         ).first()
-        
+
         if not tenant:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -154,65 +154,60 @@ class SubscriptionValidator:
         subscription = db.query(TenantSubscription).filter(
             TenantSubscription.tenant_id == tenant.id,
             TenantSubscription.status.in_(["trialing", "active", "past_due"]),
-            TenantSubscription.billing_period_end >= datetime.utcnow()
         ).first()
-        
+
         return subscription
     
     @staticmethod
     def is_module_enabled(tenant: Tenant, module_name: str, db: Session) -> bool:
         """Check if module is enabled for tenant's current subscription"""
+        from ..models.tenant import Module as ModuleModel
+
         subscription = SubscriptionValidator.get_active_subscription(tenant, db)
-        
         if not subscription:
             return False
-        
-        # Check if module is enabled in subscription
+
+        module = db.query(ModuleModel).filter(ModuleModel.code == module_name).first()
+        if not module:
+            return False
+
+        # Core modules are always enabled
+        if module.is_core:
+            return True
+
         tenant_module = db.query(TenantModule).filter(
             TenantModule.tenant_id == tenant.id,
-            TenantModule.module_name == module_name,
-            TenantModule.is_active == True
+            TenantModule.module_id == module.id,
+            TenantModule.is_enabled == True
         ).first()
-        
-        if not tenant_module:
-            return False
-        
-        # Verify subscription plan includes this module
-        plan = subscription.plan
-        if plan and hasattr(plan, 'features_enabled'):
-            enabled_modules = plan.features_enabled or {}
-            if module_name not in enabled_modules:
-                return False
-        
-        return True
+
+        return tenant_module is not None
     
     @staticmethod
     def require_module_access(module_name: str):
         """FastAPI dependency to enforce module access"""
+        from ..dependencies import get_current_active_user
+
         async def _check(
-            current_user: User = Depends(lambda: None),  # Will be injected
+            current_user: User = Depends(get_current_active_user),
             db: Session = Depends(get_db)
         ) -> bool:
-            if not current_user:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Authentication required"
-                )
-            
-            tenant = TenantValidator.get_tenant_for_user(current_user, db)
-            
             # Super admins have access to all modules
+            if 'super_admin' in (current_user.roles or []):
+                return True
+
+            tenant = TenantValidator.get_tenant_for_user(current_user, db)
             if not tenant:
                 return True
-            
+
             if not SubscriptionValidator.is_module_enabled(tenant, module_name, db):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail=f"Module '{module_name}' is not available for your subscription plan"
+                    detail=f"Module '{module_name}' is not enabled for your subscription plan"
                 )
-            
+
             return True
-        
+
         return _check
     
     @staticmethod

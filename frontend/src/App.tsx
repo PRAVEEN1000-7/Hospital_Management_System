@@ -7,6 +7,7 @@ import ToastContainer from './components/common/ToastContainer';
 import ProtectedRoute from './components/common/ProtectedRoute';
 import Layout from './components/common/Layout';
 import Login from './pages/Login';
+import ResetPassword from './pages/ResetPassword';
 
 // Super Admin imports
 import SuperAdminLayout from './components/SuperAdmin/SuperAdminLayout';
@@ -102,6 +103,7 @@ const App: React.FC = () => {
           <Routes>
             {/* Public */}
             <Route path="/login" element={<Login />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
 
             {/* Super Admin routes — separate layout, no module gating */}
             <Route

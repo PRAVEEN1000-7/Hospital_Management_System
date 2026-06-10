@@ -94,6 +94,9 @@ export const superAdminApi = {
   reactivateSubscription: (tenantId: string, newPlanId?: string) =>
     api.post(`/superadmin/tenants/${tenantId}/reactivate`, { new_plan_id: newPlanId }),
 
+  activatePlan: (tenantId: string, data: { plan_id: string; start_date: string; end_date: string; notes?: string }) =>
+    api.post(`/superadmin/tenants/${tenantId}/activate-plan`, data),
+
   // Usage & Quotas
   getTenantUsage: (tenantId: string) =>
     api.get(`/superadmin/tenants/${tenantId}/usage`),

@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import TrialBanner from './TrialBanner';
 import { NavLink, useNavigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatRole, ROLE_ICONS } from '../../utils/constants';
@@ -889,6 +890,8 @@ const Layout: React.FC = () => {
 
       {/* Main Area */}
       <main className="flex-1 flex flex-col overflow-hidden bg-slate-50/50">
+        {/* Trial expiry banner — shows for trialing tenants with ≤14 days left */}
+        {!user?.roles?.includes('super_admin') && <TrialBanner />}
         {/* Top Header */}
         <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 md:px-8 shrink-0 z-10">
           <div className="flex items-center gap-3 min-w-0">

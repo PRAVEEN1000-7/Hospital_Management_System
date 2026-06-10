@@ -28,11 +28,14 @@ from .routers import logs as logs_router  # frontend log ingestion endpoint
 
 # Multi-tenant routers
 from .routers import superadmin, tenant_admin
+from .core.tenant_security import SubscriptionValidator
+from fastapi import Depends
 
 logger = get_logger(__name__)
 
 # Import models so they're registered with Base.metadata
 from .models import user, patient, appointment, patient_id_sequence, department, hospital_settings, prescription, inventory as inventory_models, notification  # noqa: F401
+# Ensure PasswordResetToken is registered with SQLAlchemy metadata
 from .models import tax_config, invoice, payment, refund, settlement, insurance  # noqa: F401
 from .models import tenant  # noqa: F401
 
@@ -134,29 +137,34 @@ app.include_router(doctors.router, prefix="/api/v1")
 app.include_router(hospital_settings_router.router, prefix="/api/v1")
 app.include_router(walk_ins.router, prefix="/api/v1")
 app.include_router(waitlist.router, prefix="/api/v1")
-app.include_router(prescriptions.router, prefix="/api/v1")
-app.include_router(prescriptions.medicines_router, prefix="/api/v1")
-app.include_router(prescriptions.templates_router, prefix="/api/v1")
-app.include_router(pharmacy.router, prefix="/api/v1")
-app.include_router(pharmacy_dispensing.router, prefix="/api/v1")
+_require_prescriptions = [Depends(SubscriptionValidator.require_module_access('prescriptions'))]
+_require_pharmacy      = [Depends(SubscriptionValidator.require_module_access('pharmacy'))]
+_require_inventory     = [Depends(SubscriptionValidator.require_module_access('inventory'))]
+_require_billing       = [Depends(SubscriptionValidator.require_module_access('billing'))]
+
+app.include_router(prescriptions.router, prefix="/api/v1", dependencies=_require_prescriptions)
+app.include_router(prescriptions.medicines_router, prefix="/api/v1", dependencies=_require_prescriptions)
+app.include_router(prescriptions.templates_router, prefix="/api/v1", dependencies=_require_prescriptions)
+app.include_router(pharmacy.router, prefix="/api/v1", dependencies=_require_pharmacy)
+app.include_router(pharmacy_dispensing.router, prefix="/api/v1", dependencies=_require_pharmacy)
 app.include_router(logs_router.router, prefix="/api/v1")  # POST /api/v1/logs/frontend
 app.include_router(notifications.router, prefix="/api/v1")
 
 # Inventory module
-app.include_router(inventory.router, prefix="/api/v1")
-app.include_router(inventory.suppliers_router, prefix="/api/v1")
-app.include_router(inventory.po_router, prefix="/api/v1")
-app.include_router(inventory.grn_router, prefix="/api/v1")
-app.include_router(inventory.movements_router, prefix="/api/v1")
-app.include_router(inventory.adjustments_router, prefix="/api/v1")
-app.include_router(inventory.cycle_counts_router, prefix="/api/v1")
+app.include_router(inventory.router, prefix="/api/v1", dependencies=_require_inventory)
+app.include_router(inventory.suppliers_router, prefix="/api/v1", dependencies=_require_inventory)
+app.include_router(inventory.po_router, prefix="/api/v1", dependencies=_require_inventory)
+app.include_router(inventory.grn_router, prefix="/api/v1", dependencies=_require_inventory)
+app.include_router(inventory.movements_router, prefix="/api/v1", dependencies=_require_inventory)
+app.include_router(inventory.adjustments_router, prefix="/api/v1", dependencies=_require_inventory)
+app.include_router(inventory.cycle_counts_router, prefix="/api/v1", dependencies=_require_inventory)
 
 # Billing & Invoice module
-app.include_router(invoices.router, prefix="/api/v1")
-app.include_router(payments.router, prefix="/api/v1")
-app.include_router(refunds.router, prefix="/api/v1")
-app.include_router(settlements.router, prefix="/api/v1")
-app.include_router(tax_configurations.router, prefix="/api/v1")
+app.include_router(invoices.router, prefix="/api/v1", dependencies=_require_billing)
+app.include_router(payments.router, prefix="/api/v1", dependencies=_require_billing)
+app.include_router(refunds.router, prefix="/api/v1", dependencies=_require_billing)
+app.include_router(settlements.router, prefix="/api/v1", dependencies=_require_billing)
+app.include_router(tax_configurations.router, prefix="/api/v1", dependencies=_require_billing)
 
 # Multi-tenant management routes
 app.include_router(superadmin.router, prefix="/api/v1")

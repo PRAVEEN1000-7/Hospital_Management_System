@@ -47,6 +47,14 @@ async def create_new_patient(
 ):
     """Create a new patient with auto-generated PRN"""
     try:
+        # Enforce subscription patient quota (non-super-admins only)
+        if "super_admin" not in current_user.roles:
+            from ..services.user_capacity_service import UserCapacityValidator
+            from ..core.tenant_security import TenantValidator
+            tenant = TenantValidator.get_tenant_for_user(current_user, db)
+            if tenant:
+                UserCapacityValidator.validate_patient_creation(tenant.id, db)
+
         # Check phone uniqueness within this hospital only (multi-tenant: same
         # phone is valid across different hospitals)
         existing_patient = get_patient_by_mobile(

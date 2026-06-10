@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect } fr
 import type { User, AuthState, LoginCredentials } from '../types/auth';
 import authService from '../services/authService';
 import { hospitalService } from '../services/hospitalService';
+import api from '../services/api';
 
 interface AuthContextType extends AuthState {
   login: (credentials: LoginCredentials) => Promise<void>;
@@ -29,15 +30,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [enabledModules, setEnabledModules] = useState<string[]>([]);
 
   const fetchModules = useCallback(async () => {
-    if (state.isAuthenticated && !state.user?.roles.includes('super_admin')) {
+    if (!state.isAuthenticated) return;
+
+    if (state.user?.roles.includes('super_admin')) {
+      // Fetch all system modules dynamically so new modules are auto-included
+      try {
+        const response = await api.get<{ code: string }[]>('/superadmin/modules');
+        const codes = response.data.map(m => m.code);
+        setEnabledModules(codes.length ? codes : [
+          'patients', 'appointments', 'prescriptions', 'pharmacy',
+          'optical', 'billing', 'inventory', 'analytics',
+        ]);
+      } catch {
+        setEnabledModules([
+          'patients', 'appointments', 'prescriptions', 'pharmacy',
+          'optical', 'billing', 'inventory', 'analytics',
+        ]);
+      }
+    } else {
       const modules = await hospitalService.getEnabledModules();
       setEnabledModules(modules);
-    } else if (state.user?.roles.includes('super_admin')) {
-      // Super admins see all modules
-      setEnabledModules([
-        'patients', 'appointments', 'prescriptions', 'pharmacy',
-        'optical', 'billing', 'inventory', 'analytics',
-      ]);
     }
   }, [state.isAuthenticated, state.user]);
 

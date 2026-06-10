@@ -1,15 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
 import { useToast } from '../contexts/ToastContext';
-import { 
-  CreditCard, 
-  Package, 
-  Calendar, 
-  CheckCircle2, 
-  AlertCircle,
-  Clock,
-  ArrowUpCircle
-} from 'lucide-react';
 
 interface SubscriptionPlan {
   id: string;
@@ -26,220 +17,211 @@ interface SubscriptionDetails {
   current_period_start: string;
   current_period_end: string;
   cancel_at_period_end: boolean;
-  features: Record<string, any>;
 }
+
+interface ModuleInfo {
+  code: string;
+  name: string;
+  is_enabled: boolean;
+  is_core: boolean;
+  category: string;
+}
+
+const STATUS_STYLE: Record<string, string> = {
+  active:   'bg-green-100 text-green-700',
+  trialing: 'bg-blue-100 text-blue-700',
+  past_due: 'bg-yellow-100 text-yellow-700',
+  expired:  'bg-red-100 text-red-700',
+  cancelled:'bg-slate-100 text-slate-500',
+  none:     'bg-slate-100 text-slate-500',
+};
+
+const CATEGORY_COLOR: Record<string, string> = {
+  clinical:   'bg-emerald-100 text-emerald-700',
+  pharmacy:   'bg-purple-100 text-purple-700',
+  billing:    'bg-amber-100 text-amber-700',
+  analytics:  'bg-sky-100 text-sky-700',
+  operations: 'bg-slate-100 text-slate-700',
+  optical:    'bg-rose-100 text-rose-700',
+};
+
+const fmt = (d?: string | null) =>
+  d ? new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '—';
 
 const Subscription: React.FC = () => {
   const [subscription, setSubscription] = useState<SubscriptionDetails | null>(null);
+  const [modules, setModules] = useState<ModuleInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const toast = useToast();
 
-  useEffect(() => {
-    fetchSubscription();
-  }, []);
-
-  const fetchSubscription = async () => {
+  const load = useCallback(async () => {
+    setLoading(true);
     try {
-      const response = await api.get('/tenant/subscription');
-      setSubscription(response.data);
-    } catch (error) {
-      console.error('Failed to fetch subscription:', error);
+      const [subRes, modRes] = await Promise.all([
+        api.get('/tenant/subscription'),
+        api.get('/tenant/modules'),
+      ]);
+      if (subRes.data?.status && subRes.data.status !== 'none') {
+        setSubscription(subRes.data);
+      }
+      setModules(modRes.data || []);
+    } catch {
       toast.error('Failed to load subscription details');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
       </div>
     );
   }
 
-  if (!subscription || subscription.status === 'none') {
-    return (
-      <div className="max-w-4xl mx-auto py-12 px-4 text-center">
-        <Package className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-        <h1 className="text-2xl font-bold text-slate-900">No Active Subscription</h1>
-        <p className="text-slate-500 mt-2">
-          Your hospital does not have an active subscription plan. Please contact the platform administrator.
-        </p>
-      </div>
-    );
-  }
+  const status = subscription?.status || 'none';
+  const statusLabel = status.replace('_', ' ').toUpperCase();
+  const statusClass = STATUS_STYLE[status] || 'bg-slate-100 text-slate-500';
 
-  const isTrial = subscription.status === 'trialing';
-  const isPastDue = subscription.status === 'past_due';
-  const isCancelled = subscription.cancel_at_period_end;
+  const daysLeft = subscription?.current_period_end
+    ? Math.ceil((new Date(subscription.current_period_end).getTime() - Date.now()) / 86_400_000)
+    : null;
+
+  const enabledModules = modules.filter(m => m.is_enabled);
+  const disabledModules = modules.filter(m => !m.is_enabled);
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
+    <div className="max-w-3xl mx-auto space-y-6 pb-10">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-            <CreditCard className="text-primary" />
-            Subscription & Billing
-          </h1>
-          <p className="text-slate-500 mt-1">
-            Manage your hospital's subscription plan and usage
-          </p>
-        </div>
+      <div>
+        <h1 className="text-2xl font-bold text-slate-900">Subscription</h1>
+        <p className="text-slate-500 text-sm mt-1">Your current plan and active modules</p>
       </div>
 
-      {/* Main Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Current Plan */}
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <div className="p-2 bg-primary/10 rounded-lg">
-              <Package className="w-6 h-6 text-primary" />
-            </div>
-            <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${
-              subscription.status === 'active' ? 'bg-green-100 text-green-700' :
-              isTrial ? 'bg-blue-100 text-blue-700' :
-              isPastDue ? 'bg-red-100 text-red-700' :
-              'bg-slate-100 text-slate-700'
-            }`}>
-              {subscription.status}
-            </span>
-          </div>
-          <h3 className="text-sm font-medium text-slate-500 uppercase tracking-wider">Current Plan</h3>
-          <p className="text-2xl font-bold text-slate-900 mt-1 capitalize">
-            {subscription.plan.name}
-          </p>
-          <p className="text-sm text-slate-500 mt-1">
-            {subscription.plan.description}
-          </p>
-        </div>
-
-        {/* Renewal Info */}
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <div className="p-2 bg-amber-100 rounded-lg">
-              <Calendar className="w-6 h-6 text-amber-600" />
-            </div>
-          </div>
-          <h3 className="text-sm font-medium text-slate-500 uppercase tracking-wider">
-            {isCancelled ? 'Expires On' : 'Next Renewal'}
-          </h3>
-          <p className="text-2xl font-bold text-slate-900 mt-1">
-            {new Date(subscription.current_period_end).toLocaleDateString()}
-          </p>
-          <p className="text-sm text-slate-500 mt-1 flex items-center gap-1">
-            <Clock className="w-4 h-4" />
-            Period ends in {Math.ceil((new Date(subscription.current_period_end).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} days
-          </p>
-        </div>
-
-        {/* Status Alerts */}
-        <div className={`p-6 rounded-xl border shadow-sm ${
-          isPastDue ? 'bg-red-50 border-red-100' :
-          isCancelled ? 'bg-amber-50 border-amber-100' :
-          isTrial ? 'bg-blue-50 border-blue-100' :
-          'bg-green-50 border-green-100'
-        }`}>
-          <div className="flex items-start gap-3">
-            {isPastDue ? (
-              <AlertCircle className="w-6 h-6 text-red-600 shrink-0" />
-            ) : isCancelled ? (
-              <AlertCircle className="w-6 h-6 text-amber-600 shrink-0" />
-            ) : (
-              <CheckCircle2 className="w-6 h-6 text-green-600 shrink-0" />
+      {/* Plan card */}
+      <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-4">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Current Plan</p>
+            <h2 className="text-xl font-bold text-slate-900">
+              {subscription?.plan?.name || 'No plan assigned'}
+            </h2>
+            {subscription?.plan?.description && (
+              <p className="text-sm text-slate-500 mt-0.5">{subscription.plan.description}</p>
             )}
+          </div>
+          <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${statusClass}`}>
+            {statusLabel}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-100">
+          <div>
+            <p className="text-xs text-slate-400 mb-0.5">Start Date</p>
+            <p className="text-sm font-semibold text-slate-800">{fmt(subscription?.current_period_start)}</p>
+          </div>
+          <div>
+            <p className="text-xs text-slate-400 mb-0.5">End Date</p>
+            <p className="text-sm font-semibold text-slate-800">{fmt(subscription?.current_period_end)}</p>
+          </div>
+          {subscription?.trial_ends_at && (
             <div>
-              <h4 className={`font-bold ${
-                isPastDue ? 'text-red-900' :
-                isCancelled ? 'text-amber-900' :
-                'text-green-900'
-              }`}>
-                {isPastDue ? 'Payment Required' :
-                 isCancelled ? 'Subscription Cancelled' :
-                 isTrial ? 'Trial Period' :
-                 'Subscription Active'}
-              </h4>
-              <p className={`text-sm mt-1 ${
-                isPastDue ? 'text-red-700' :
-                isCancelled ? 'text-amber-700' :
-                'text-green-700'
-              }`}>
-                {isPastDue ? 'Your payment is overdue. Please update your payment method to avoid service interruption.' :
-                 isCancelled ? 'Your subscription will end at the end of the current period. You can reactivate anytime.' :
-                 isTrial ? `Your free trial ends on ${new Date(subscription.trial_ends_at!).toLocaleDateString()}.` :
-                 'Your subscription is active and in good standing. Thank you for using HMS!'}
+              <p className="text-xs text-slate-400 mb-0.5">Trial Ends</p>
+              <p className="text-sm font-semibold text-slate-800">{fmt(subscription.trial_ends_at)}</p>
+            </div>
+          )}
+          {daysLeft !== null && (
+            <div>
+              <p className="text-xs text-slate-400 mb-0.5">Days Remaining</p>
+              <p className={`text-sm font-bold ${daysLeft <= 7 ? 'text-red-600' : daysLeft <= 30 ? 'text-amber-600' : 'text-green-700'}`}>
+                {daysLeft > 0 ? `${daysLeft} day${daysLeft !== 1 ? 's' : ''}` : 'Expired'}
               </p>
             </div>
+          )}
+        </div>
+
+        {subscription?.cancel_at_period_end && (
+          <div className="flex items-center gap-2 px-3 py-2 bg-yellow-50 border border-yellow-200 rounded-lg text-xs text-yellow-700 font-medium">
+            <span className="material-icons text-sm">warning</span>
+            This subscription will not renew at the end of the period.
           </div>
-        </div>
+        )}
+
+        {!subscription && (
+          <div className="flex items-center gap-2 px-3 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-600">
+            <span className="material-icons text-base text-slate-400">info</span>
+            No active subscription. Please contact your administrator to assign a plan.
+          </div>
+        )}
       </div>
 
-      {/* Feature Limits */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-          <h3 className="font-bold text-slate-900">Plan Features & Limits</h3>
-          <button className="text-primary text-sm font-semibold flex items-center gap-1 hover:underline">
-            <ArrowUpCircle className="w-4 h-4" />
-            Upgrade Plan
-          </button>
-        </div>
-        <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <LimitCard 
-            label="User Accounts" 
-            limit={subscription.features.max_users} 
-            icon="groups"
-          />
-          <LimitCard 
-            label="Patient Records" 
-            limit={subscription.features.max_patients} 
-            icon="person"
-          />
-          <LimitCard 
-            label="Monthly Appointments" 
-            limit={subscription.features.max_appointments_monthly} 
-            icon="calendar_month"
-          />
-          <LimitCard 
-            label="Storage Capacity" 
-            limit={subscription.features.max_storage_gb ? `${subscription.features.max_storage_gb} GB` : null} 
-            icon="cloud"
-          />
-        </div>
-      </div>
+      {/* Modules */}
+      <div className="bg-white border border-slate-200 rounded-xl p-6">
+        <h3 className="text-base font-semibold text-slate-900 mb-4">Modules</h3>
 
-      {/* Enabled Modules */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50">
-          <h3 className="font-bold text-slate-900">Active Modules</h3>
-        </div>
-        <div className="p-6">
-          <div className="flex flex-wrap gap-3">
-            {Object.entries(subscription.features)
-              .filter(([key, value]) => value === true && !key.startsWith('max_'))
-              .map(([key]) => (
-                <div key={key} className="flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-lg border border-slate-100 text-sm font-medium text-slate-700 capitalize">
-                  <CheckCircle2 className="w-4 h-4 text-green-500" />
-                  {key.replace(/_/g, ' ')}
+        {modules.length === 0 ? (
+          <p className="text-sm text-slate-400 italic">No modules configured yet.</p>
+        ) : (
+          <div className="space-y-5">
+            {enabledModules.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">
+                  Enabled ({enabledModules.length})
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {enabledModules.map(m => (
+                    <div key={m.code} className="flex items-center gap-3 px-3 py-2.5 border border-slate-200 rounded-lg bg-slate-50">
+                      <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-slate-800 truncate">{m.name}</p>
+                        <p className="text-[11px] text-slate-500 font-mono">{m.code}</p>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        {m.is_core && (
+                          <span className="text-[10px] font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded uppercase">Core</span>
+                        )}
+                        {m.category && (
+                          <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded uppercase ${CATEGORY_COLOR[m.category.toLowerCase()] || 'bg-slate-100 text-slate-500'}`}>
+                            {m.category}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </div>
+            )}
+
+            {disabledModules.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">
+                  Not Enabled ({disabledModules.length})
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {disabledModules.map(m => (
+                    <div key={m.code} className="flex items-center gap-3 px-3 py-2.5 border border-slate-100 rounded-lg bg-white opacity-60">
+                      <span className="w-2 h-2 rounded-full bg-slate-300 shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-slate-500 truncate">{m.name}</p>
+                        <p className="text-[11px] text-slate-400 font-mono">{m.code}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
-        </div>
+        )}
       </div>
+
+      <p className="text-xs text-center text-slate-400">
+        To upgrade your plan or add modules, please contact your administrator.
+      </p>
     </div>
   );
 };
-
-const LimitCard: React.FC<{ label: string; limit: any; icon: string }> = ({ label, limit, icon }) => (
-  <div className="p-4 bg-slate-50 rounded-lg border border-slate-100">
-    <div className="flex items-center gap-3 mb-2">
-      <span className="material-symbols-outlined text-slate-400 text-[20px]">{icon}</span>
-      <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">{label}</span>
-    </div>
-    <p className="text-xl font-bold text-slate-900">
-      {limit === null ? 'Unlimited' : limit.toLocaleString()}
-    </p>
-  </div>
-);
 
 export default Subscription;

@@ -370,6 +370,106 @@ class TenantService:
             TenantService._resolve_module_dependencies(db, tenant_id, req_module)
     
     @staticmethod
+    def suspend_tenant(
+        db: Session,
+        tenant_id: uuid.UUID,
+        reason: str,
+        suspended_by_id: Optional[uuid.UUID] = None,
+    ) -> Optional[Tenant]:
+        """
+        Suspend a tenant with full cascade:
+        - Sets tenant.status = 'suspended'
+        - Sets active subscription status to 'cancelled'
+        - Deactivates all hospital users so any in-flight JWT is blocked on next request
+        - Logs audit trail
+        """
+        tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+        if not tenant:
+            return None
+
+        tenant.status = 'suspended'
+        tenant.updated_at = datetime.utcnow()
+
+        # Cancel active subscription
+        active_sub = db.query(TenantSubscription).filter(
+            TenantSubscription.tenant_id == tenant_id,
+            TenantSubscription.status.in_(['trialing', 'active', 'past_due'])
+        ).first()
+        if active_sub:
+            active_sub.status = 'cancelled'
+            active_sub.cancelled_at = datetime.utcnow()
+            active_sub.cancellation_reason = f"Tenant suspended: {reason}"
+
+        # Deactivate all users in this tenant's hospitals
+        hospital_ids = db.query(Hospital.id).filter(
+            Hospital.code == tenant.code
+        ).all()
+        if hospital_ids:
+            ids = [h[0] for h in hospital_ids]
+            db.query(User).filter(
+                User.hospital_id.in_(ids),
+                User.is_deleted == False,
+            ).update({User.is_active: False}, synchronize_session=False)
+
+        audit = AuditLog(
+            tenant_id=tenant_id,
+            user_id=suspended_by_id,
+            action='tenant_suspended',
+            entity_type='Tenant',
+            entity_id=tenant_id,
+            entity_name=tenant.name,
+            new_values={'status': 'suspended', 'reason': reason},
+        )
+        db.add(audit)
+        db.commit()
+        logger.info("Tenant %s suspended. Reason: %s", tenant_id, reason)
+        return tenant
+
+    @staticmethod
+    def activate_tenant(
+        db: Session,
+        tenant_id: uuid.UUID,
+        activated_by_id: Optional[uuid.UUID] = None,
+    ) -> Optional[Tenant]:
+        """
+        Re-activate a suspended tenant:
+        - Sets tenant.status = 'active'
+        - Re-activates all hospital users
+        - Logs audit trail
+        """
+        tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+        if not tenant:
+            return None
+
+        tenant.status = 'active'
+        tenant.updated_at = datetime.utcnow()
+
+        # Re-activate users
+        hospital_ids = db.query(Hospital.id).filter(
+            Hospital.code == tenant.code
+        ).all()
+        if hospital_ids:
+            ids = [h[0] for h in hospital_ids]
+            db.query(User).filter(
+                User.hospital_id.in_(ids),
+                User.is_deleted == False,
+            ).update({User.is_active: True}, synchronize_session=False)
+
+        audit = AuditLog(
+            tenant_id=tenant_id,
+            user_id=activated_by_id,
+            action='tenant_activated',
+            entity_type='Tenant',
+            entity_id=tenant_id,
+            entity_name=tenant.name,
+            new_values={'status': 'active'},
+        )
+        db.add(audit)
+        db.commit()
+        logger.info("Tenant %s re-activated", tenant_id)
+        return tenant
+
+    @staticmethod
     def update_tenant(
         db: Session,
         tenant_id: uuid.UUID,

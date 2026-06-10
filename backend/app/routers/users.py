@@ -47,6 +47,14 @@ async def create_new_user(
             detail="Only Super Admin can create Super Admin accounts",
         )
     try:
+        # Enforce subscription user quota (non-super-admins only)
+        if "super_admin" not in current_user.roles:
+            from ..services.user_capacity_service import UserCapacityValidator
+            from ..core.tenant_security import TenantValidator
+            tenant = TenantValidator.get_tenant_for_user(current_user, db)
+            if tenant:
+                UserCapacityValidator.validate_user_creation(tenant.id, db)
+
         # Check username uniqueness
         existing = db.query(User).filter(User.username == user_data.username.lower()).first()
         if existing:

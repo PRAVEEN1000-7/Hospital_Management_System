@@ -11,7 +11,11 @@ from functools import wraps
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
-from redis import Redis
+
+try:
+    from redis import Redis
+except ImportError:
+    Redis = None  # type: ignore[assignment,misc]
 
 from ..config import settings
 from ..models.tenant import Tenant

@@ -1,4 +1,5 @@
 import os
+import logging
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import List
 
@@ -69,3 +70,15 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+_INSECURE_KEY = "CHANGE-ME-generate-with-secrets-token-hex-32"
+if settings.SECRET_KEY == _INSECURE_KEY:
+    if not settings.DEBUG:
+        raise RuntimeError(
+            "SECRET_KEY is the insecure default. "
+            "Generate one: python -c \"import secrets; print(secrets.token_hex(32))\" "
+            "and set it in backend/.env"
+        )
+    logging.getLogger(__name__).warning(
+        "SECRET_KEY is using the insecure default — set a real value in .env before production."
+    )

@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ToastProvider } from './contexts/ToastContext';
+import { ConfirmProvider } from './contexts/ConfirmContext';
 import { SuperAdminProvider } from './contexts/SuperAdminContext';
 import ToastContainer from './components/common/ToastContainer';
 import ProtectedRoute from './components/common/ProtectedRoute';
@@ -99,8 +100,9 @@ const App: React.FC = () => {
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <AuthProvider>
         <ToastProvider>
-          <ToastContainer />
-          <Routes>
+          <ConfirmProvider>
+            <ToastContainer />
+            <Routes>
             {/* Public */}
             <Route path="/login" element={<Login />} />
             <Route path="/reset-password" element={<ResetPassword />} />
@@ -605,7 +607,8 @@ const App: React.FC = () => {
             <Route path="/" element={<DefaultRedirect />} />
             <Route path="/change-password" element={<Navigate to="/profile" replace />} />
             <Route path="*" element={<DefaultRedirect />} />
-          </Routes>
+            </Routes>
+          </ConfirmProvider>
         </ToastProvider>
       </AuthProvider>
     </BrowserRouter>

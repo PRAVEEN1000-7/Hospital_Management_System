@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { superAdminApi } from '../services/superAdminApi';
 import { useToast } from '../contexts/ToastContext';
+import { useConfirm } from '../contexts/ConfirmContext';
 
 interface Tenant {
   id: string;
@@ -43,6 +44,7 @@ const SuperAdminHospitals: React.FC = () => {
   const [totalPages, setTotalPages] = useState(1);
   
   const toast = useToast();
+  const confirm = useConfirm();
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [selectedTenant, setSelectedTenant] = useState<Tenant | null>(null);
   const [plans, setPlans] = useState<any[]>([]);
@@ -114,7 +116,13 @@ const SuperAdminHospitals: React.FC = () => {
   };
 
   const handleSuspend = async (id: string, name: string) => {
-    if (!confirm(`Are you sure you want to suspend ${name}?`)) return;
+    const ok = await confirm({
+      title: 'Suspend Hospital',
+      message: `Are you sure you want to suspend "${name}"? Staff will lose access immediately.`,
+      confirmLabel: 'Suspend',
+      variant: 'warning',
+    });
+    if (!ok) return;
 
     try {
       await superAdminApi.suspendTenant(id, 'Administrative suspension');
@@ -385,19 +393,21 @@ const SuperAdminHospitals: React.FC = () => {
       {/* Assign Plan Modal */}
       {isAssignModalOpen && selectedTenant && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden">
+            {/* Header */}
+            <div className="shrink-0 px-6 py-4 border-b border-slate-100 flex items-center justify-between">
               <h2 className="text-xl font-bold text-slate-900">Assign Plan</h2>
               <button onClick={() => setIsAssignModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
                 <X className="w-5 h-5 text-slate-400" />
               </button>
             </div>
-            <form onSubmit={handleAssignSubmit} className="p-6 space-y-6">
-              <div>
-                <p className="text-sm text-slate-600 mb-4">
+            {/* Scrollable body */}
+            <form onSubmit={handleAssignSubmit} className="flex flex-col flex-1 min-h-0">
+              <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
+                <p className="text-sm text-slate-600">
                   Assigning a plan to <span className="font-bold">{selectedTenant.name}</span> (Code: {selectedTenant.code})
                 </p>
-                <label className="block text-sm font-medium text-slate-700 mb-2">Select Subscription Plan</label>
+                <label className="block text-sm font-medium text-slate-700">Select Subscription Plan</label>
                 <div className="space-y-3">
                   {plans.map(plan => (
                     <label key={plan.id} className={`flex items-center p-3 border rounded-lg cursor-pointer ${selectedPlanId === plan.id ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'border-slate-200'}`}>
@@ -417,7 +427,8 @@ const SuperAdminHospitals: React.FC = () => {
                   ))}
                 </div>
               </div>
-              <div className="flex gap-3 pt-2 border-t border-slate-100">
+              {/* Footer buttons — always visible */}
+              <div className="shrink-0 flex gap-3 px-6 py-4 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setIsAssignModalOpen(false)}

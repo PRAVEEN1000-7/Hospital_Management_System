@@ -9,6 +9,7 @@ import doctorService from '../services/doctorService';
 import type { UserData, UserCreateData, UserUpdateData } from '../types/user';
 import { ROLE_TEXT_COLORS, ROLE_LABELS, COUNTRIES } from '../utils/constants';
 import { useToast } from '../contexts/ToastContext';
+import { useConfirm } from '../contexts/ConfirmContext';
 import { useAuth } from '../contexts/AuthContext';
 import feLogger from '../services/loggerService';
 
@@ -158,6 +159,7 @@ const getDepartment = (role: string, specialization?: string | null): string => 
 // ────────────────────────────────────────
 const StaffDirectory: React.FC = () => {
   const toast = useToast();
+  const confirm = useConfirm();
   const availableRoles = useAvailableRoles();
   const [searchParams, setSearchParams] = useSearchParams();
   const [users, setUsers] = useState<UserData[]>([]);
@@ -275,7 +277,15 @@ const StaffDirectory: React.FC = () => {
 
   const handleBulkAction = async (action: 'activate' | 'deactivate' | 'delete') => {
     if (selectedUsers.size === 0) { toast.error('No users selected'); return; }
-    if (action === 'delete' && !window.confirm(`Delete ${selectedUsers.size} user(s)? This cannot be undone.`)) return;
+    if (action === 'delete') {
+      const ok = await confirm({
+        title: 'Delete Staff Members',
+        message: `Permanently delete ${selectedUsers.size} selected user${selectedUsers.size > 1 ? 's' : ''}? This cannot be undone.`,
+        confirmLabel: 'Delete',
+        variant: 'danger',
+      });
+      if (!ok) return;
+    }
     setBulkActionLoading(true);
     setShowBulkMenu(false);
     try {
@@ -715,10 +725,11 @@ const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => void; o
   const [isSaving, setIsSaving] = useState(false);
   const [usernameError, setUsernameError] = useState('');
   const [usernameChecking, setUsernameChecking] = useState(false);
+  const passwordTriggerMounted = useRef(false);
 
   const { register, handleSubmit, watch, setValue, trigger, formState: { errors, isValid, isSubmitting } } = useForm<CreateFormData>({
     resolver: zodResolverV4(staffCreateSchema),
-    mode: 'all',
+    mode: 'onTouched',
     defaultValues: { first_name: '', last_name: '', email: '', username: '', phone_number: '', country_code: '+91', role: '', password: '', confirm_password: '', auto_generate_password: false, specialization: '', qualification: '', registration_number: '' },
   });
 
@@ -730,8 +741,13 @@ const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => void; o
   const selectedRole = watch('role', '');
   const username = watch('username', '');
 
-  // Re-trigger validation when auto_generate_password changes (password field becomes optional/required)
+  // Re-trigger validation when auto_generate_password changes (skip on initial mount to avoid
+  // marking the empty password field as invalid before the user has typed anything)
   useEffect(() => {
+    if (!passwordTriggerMounted.current) {
+      passwordTriggerMounted.current = true;
+      return;
+    }
     trigger(['password', 'confirm_password']);
   }, [autoGenPassword, trigger]);
 
@@ -981,14 +997,14 @@ const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => void; o
           </div>
           {!autoGenPassword && (
             <>
-              <Field label="Password *" error={errors.password?.message}>
+              <Field label="Password *">
                 <div className="relative">
-                  <input {...register('password')} type={showPassword ? 'text' : 'password'} className={`input-field pr-10 ${inputErr(errors.password)}`} placeholder="••••••••••••••" />
+                  <input {...register('password')} type={showPassword ? 'text' : 'password'} className="input-field pr-10" placeholder="••••••••••••••" />
                   <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
                     <span className="material-icons text-lg">{showPassword ? 'visibility_off' : 'visibility'}</span>
                   </button>
                 </div>
-                {(password || '').length > 0 && (
+                {(password || '').length > 0 ? (
                   <div className="mt-2">
                     <div className="password-strength-meter flex gap-1">
                       {[0, 1, 2, 3, 4].map(i => (
@@ -999,10 +1015,12 @@ const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => void; o
                       {passedCount <= 2 ? 'Weak' : passedCount <= 3 ? 'Fair' : passedCount === 4 ? 'Good' : 'Strong'} password
                     </p>
                   </div>
+                ) : (
+                  <p className="text-xs text-slate-400 mt-1">Min 8 chars · uppercase · lowercase · number · special char</p>
                 )}
               </Field>
               <Field label="Confirm Password *" error={errors.confirm_password?.message}>
-                <input {...register('confirm_password')} type="password" className={`input-field ${inputErr(errors.confirm_password)}`} placeholder="Re-enter password" />
+                <input {...register('confirm_password')} type="password" className="input-field" placeholder="Re-enter password" />
               </Field>
             </>
           )}
@@ -1021,13 +1039,6 @@ const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => void; o
           </button>
         </div>
 
-        {/* Inline guide — shows when form has errors and user might be confused */}
-        {hasErrors && !isSaving && (
-          <p className="text-xs text-amber-600 text-center flex items-center justify-center gap-1">
-            <span className="material-icons text-xs">info</span>
-            Please fix the highlighted errors above to enable the save button
-          </p>
-        )}
       </form>
     </Drawer>
   );
@@ -1051,7 +1062,7 @@ const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onSuccess:
 
   const { register, handleSubmit, watch, formState: { errors, isSubmitting, isValid } } = useForm<EditFormData>({
     resolver: zodResolverV4(staffEditSchema),
-    mode: 'all',
+    mode: 'onTouched',
     defaultValues: {
       email: user.email,
       first_name: user.first_name || '',
@@ -1228,7 +1239,7 @@ const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onSuccess:
 const ResetPasswordModal: React.FC<{ user: UserData; onClose: () => void; onSuccess: () => void; onError: (msg: string) => void }> = ({ user, onClose, onSuccess, onError }) => {
   const { register, handleSubmit, formState: { errors, isSubmitting, isValid } } = useForm<ResetFormData>({
     resolver: zodResolverV4(resetPasswordSchema),
-    mode: 'all',
+    mode: 'onTouched',
   });
 
   const onSubmit = async (data: ResetFormData) => {

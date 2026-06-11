@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useConfirm } from '../contexts/ConfirmContext';
 import waitlistService from '../services/waitlistService';
 import scheduleService from '../services/scheduleService';
 import type { WaitlistEntry, WaitlistStats, DoctorOption } from '../types/appointment';
@@ -20,6 +21,7 @@ const statusBadge: Record<string, { bg: string; text: string; label: string; ico
 
 const WaitlistManagement: React.FC = () => {
   const { user } = useAuth();
+  const confirm = useConfirm();
   const roles = user?.roles || [];
   const isDoctor = roles.includes('doctor');
 
@@ -114,7 +116,13 @@ const WaitlistManagement: React.FC = () => {
   };
 
   const handleCancel = async (entry: WaitlistEntry) => {
-    if (!confirm(`Remove ${entry.patient_name || 'this patient'} from the waitlist?`)) return;
+    const ok = await confirm({
+      title: 'Remove from Waitlist',
+      message: `Remove ${entry.patient_name || 'this patient'} from the waitlist? This cannot be undone.`,
+      confirmLabel: 'Remove',
+      variant: 'danger',
+    });
+    if (!ok) return;
     setActionLoading(entry.id);
     try {
       await waitlistService.cancelEntry(entry.id);

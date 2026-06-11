@@ -22,9 +22,13 @@ import {
   Hash,
   Calendar,
   FileText,
+  KeyRound,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { superAdminApi } from '../services/superAdminApi';
 import { useToast } from '../contexts/ToastContext';
+import { useConfirm } from '../contexts/ConfirmContext';
 
 interface Tenant {
   id: string;
@@ -134,6 +138,7 @@ const SuperAdminHospitalDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const toast = useToast();
+  const confirm = useConfirm();
 
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
@@ -144,6 +149,14 @@ const SuperAdminHospitalDetail: React.FC = () => {
 
   const [pendingChanges, setPendingChanges] = useState<Record<string, boolean>>({});
   const [isSaving, setIsSaving] = useState(false);
+
+  // Reset admin password
+  const [showResetPasswordModal, setShowResetPasswordModal] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
 
   // Manual plan activation
   const [allPlans, setAllPlans] = useState<{ id: string; name: string; code: string }[]>([]);
@@ -193,6 +206,30 @@ const SuperAdminHospitalDetail: React.FC = () => {
       toast.error(err.response?.data?.detail || 'Failed to activate plan');
     } finally {
       setIsActivating(false);
+    }
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      toast.error('Passwords do not match');
+      return;
+    }
+    if (newPassword.length < 8) {
+      toast.error('Password must be at least 8 characters');
+      return;
+    }
+    setIsResettingPassword(true);
+    try {
+      const res = await superAdminApi.resetAdminPassword(id!, newPassword);
+      toast.success(res.data.message || 'Admin password reset successfully');
+      setShowResetPasswordModal(false);
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to reset admin password');
+    } finally {
+      setIsResettingPassword(false);
     }
   };
 
@@ -513,6 +550,13 @@ const SuperAdminHospitalDetail: React.FC = () => {
               <InfoRow label="Currency" value={tenant.default_currency} />
               <InfoRow label="Created" value={fmt(tenant.created_at)} />
               <InfoRow label="Last Updated" value={fmt(tenant.updated_at)} />
+              <button
+                onClick={() => setShowResetPasswordModal(true)}
+                className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-sm font-semibold transition-colors"
+              >
+                <KeyRound className="w-4 h-4" />
+                Reset Admin Password
+              </button>
             </SectionCard>
 
             {/* Branding */}
@@ -781,12 +825,127 @@ const SuperAdminHospitalDetail: React.FC = () => {
         )}
       </div>
 
+      {/* Reset Admin Password Modal */}
+      {showResetPasswordModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="shrink-0 px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-amber-50">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-amber-100 rounded-lg">
+                  <KeyRound className="w-5 h-5 text-amber-600" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-slate-900">Reset Admin Password</h2>
+                  <p className="text-xs text-slate-500 mt-0.5">{tenant?.name}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => { setShowResetPasswordModal(false); setNewPassword(''); setConfirmPassword(''); }}
+                className="p-2 hover:bg-amber-100 rounded-full transition-colors"
+              >
+                <XCircle className="w-5 h-5 text-slate-400" />
+              </button>
+            </div>
+
+            <form onSubmit={handleResetPassword} className="flex flex-col flex-1 min-h-0">
+              <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
+              <p className="text-sm text-slate-600 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+                This will immediately change the login password for the primary admin of this hospital. Share the new password with them securely.
+              </p>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">New Password</label>
+                <div className="relative">
+                  <input
+                    type={showNewPassword ? 'text' : 'password'}
+                    required
+                    minLength={8}
+                    placeholder="Minimum 8 characters"
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400 outline-none text-sm pr-11"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword((v) => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                    tabIndex={-1}
+                  >
+                    {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Confirm Password</label>
+                <div className="relative">
+                  <input
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    required
+                    minLength={8}
+                    placeholder="Re-enter new password"
+                    className={`w-full px-4 py-2.5 border rounded-lg focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400 outline-none text-sm pr-11 ${
+                      confirmPassword && confirmPassword !== newPassword
+                        ? 'border-red-400 bg-red-50'
+                        : 'border-slate-200'
+                    }`}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword((v) => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                    tabIndex={-1}
+                  >
+                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                {confirmPassword && confirmPassword !== newPassword && (
+                  <p className="mt-1 text-xs text-red-500">Passwords do not match</p>
+                )}
+              </div>
+
+              </div>
+              {/* Sticky footer */}
+              <div className="shrink-0 flex gap-3 px-6 py-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => { setShowResetPasswordModal(false); setNewPassword(''); setConfirmPassword(''); }}
+                  className="flex-1 px-4 py-2.5 border border-slate-200 text-slate-700 rounded-lg font-medium hover:bg-slate-50 text-sm transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isResettingPassword || !newPassword || newPassword !== confirmPassword}
+                  className="flex-1 bg-amber-500 hover:bg-amber-600 text-white px-4 py-2.5 rounded-lg font-medium text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {isResettingPassword ? (
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white animate-spin rounded-full" />
+                  ) : (
+                    <KeyRound className="w-4 h-4" />
+                  )}
+                  {isResettingPassword ? 'Resetting…' : 'Reset Password'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Actions */}
       <div className="flex justify-end gap-3">
         {tenant.status === 'active' ? (
           <button
             onClick={async () => {
-              if (!confirm(`Are you sure you want to suspend ${tenant.name}?`)) return;
+              const ok = await confirm({
+                title: 'Suspend Hospital',
+                message: `Are you sure you want to suspend "${tenant.name}"? Staff will lose access immediately.`,
+                confirmLabel: 'Suspend',
+                variant: 'warning',
+              });
+              if (!ok) return;
               try {
                 await superAdminApi.suspendTenant(id!, 'Administrative action');
                 toast.success(`${tenant.name} has been suspended`);

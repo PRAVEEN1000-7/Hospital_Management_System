@@ -1,60 +1,117 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  Building2,
-  ChevronLeft,
-  Shield,
-  MapPin,
-  Eye,
-  EyeOff,
-  CheckCircle2,
-} from 'lucide-react';
+import { Building2, ChevronLeft, Eye, EyeOff, Phone } from 'lucide-react';
 import { superAdminApi } from '../services/superAdminApi';
 import { useToast } from '../contexts/ToastContext';
 
-interface OnboardingFormData {
-  // Hospital identity
+// ── Country data (3-letter ISO codes used by the backend) ─────────────────────
+interface CountryEntry {
+  code3: string;
   name: string;
-  email: string;
-  phone: string;
-  registration_number: string;
-  // Location
-  address_line_1: string;
-  address_line_2: string;
-  city: string;
-  state_province: string;
-  postal_code: string;
-  country: string;
+  phoneCode: string;
+  postalLabel: string;
   timezone: string;
-  // Admin
-  admin_email: string;
-  admin_username: string;
-  admin_first_name: string;
-  admin_last_name: string;
-  admin_password: string;
+  states?: string[];
 }
 
-const COUNTRIES = [
-  { code: 'USA', name: 'United States' },
-  { code: 'GBR', name: 'United Kingdom' },
-  { code: 'CAN', name: 'Canada' },
-  { code: 'AUS', name: 'Australia' },
-  { code: 'IND', name: 'India' },
-  { code: 'DEU', name: 'Germany' },
-  { code: 'FRA', name: 'France' },
-  { code: 'NGA', name: 'Nigeria' },
-  { code: 'ZAF', name: 'South Africa' },
-  { code: 'KEN', name: 'Kenya' },
-  { code: 'GHA', name: 'Ghana' },
-  { code: 'ARE', name: 'UAE' },
-  { code: 'SAU', name: 'Saudi Arabia' },
-  { code: 'SGP', name: 'Singapore' },
-  { code: 'MYS', name: 'Malaysia' },
-  { code: 'PHL', name: 'Philippines' },
-  { code: 'PAK', name: 'Pakistan' },
-  { code: 'BGD', name: 'Bangladesh' },
-  { code: 'LKA', name: 'Sri Lanka' },
-  { code: 'NZL', name: 'New Zealand' },
+const COUNTRIES_DATA: CountryEntry[] = [
+  {
+    code3: 'IND', name: 'India', phoneCode: '+91', postalLabel: 'PIN Code', timezone: 'Asia/Kolkata',
+    states: [
+      'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat',
+      'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka', 'Kerala', 'Madhya Pradesh',
+      'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram', 'Nagaland', 'Odisha', 'Punjab',
+      'Rajasthan', 'Sikkim', 'Tamil Nadu', 'Telangana', 'Tripura', 'Uttar Pradesh',
+      'Uttarakhand', 'West Bengal', 'Andaman and Nicobar Islands', 'Chandigarh', 'Delhi',
+      'Jammu and Kashmir', 'Ladakh', 'Lakshadweep', 'Puducherry',
+    ],
+  },
+  {
+    code3: 'USA', name: 'United States', phoneCode: '+1', postalLabel: 'ZIP Code', timezone: 'America/New_York',
+    states: [
+      'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado', 'Connecticut',
+      'Delaware', 'Florida', 'Georgia', 'Hawaii', 'Idaho', 'Illinois', 'Indiana', 'Iowa',
+      'Kansas', 'Kentucky', 'Louisiana', 'Maine', 'Maryland', 'Massachusetts', 'Michigan',
+      'Minnesota', 'Mississippi', 'Missouri', 'Montana', 'Nebraska', 'Nevada', 'New Hampshire',
+      'New Jersey', 'New Mexico', 'New York', 'North Carolina', 'North Dakota', 'Ohio',
+      'Oklahoma', 'Oregon', 'Pennsylvania', 'Rhode Island', 'South Carolina', 'South Dakota',
+      'Tennessee', 'Texas', 'Utah', 'Vermont', 'Virginia', 'Washington', 'West Virginia',
+      'Wisconsin', 'Wyoming', 'District of Columbia',
+    ],
+  },
+  {
+    code3: 'GBR', name: 'United Kingdom', phoneCode: '+44', postalLabel: 'Postcode', timezone: 'Europe/London',
+    states: ['England', 'Scotland', 'Wales', 'Northern Ireland'],
+  },
+  {
+    code3: 'CAN', name: 'Canada', phoneCode: '+1', postalLabel: 'Postal Code', timezone: 'America/Toronto',
+    states: [
+      'Alberta', 'British Columbia', 'Manitoba', 'New Brunswick', 'Newfoundland and Labrador',
+      'Northwest Territories', 'Nova Scotia', 'Nunavut', 'Ontario', 'Prince Edward Island',
+      'Quebec', 'Saskatchewan', 'Yukon',
+    ],
+  },
+  {
+    code3: 'AUS', name: 'Australia', phoneCode: '+61', postalLabel: 'Postcode', timezone: 'Australia/Sydney',
+    states: [
+      'Australian Capital Territory', 'New South Wales', 'Northern Territory',
+      'Queensland', 'South Australia', 'Tasmania', 'Victoria', 'Western Australia',
+    ],
+  },
+  {
+    code3: 'ARE', name: 'UAE', phoneCode: '+971', postalLabel: 'Postal Code', timezone: 'Asia/Dubai',
+    states: ['Abu Dhabi', 'Dubai', 'Sharjah', 'Ajman', 'Umm Al Quwain', 'Ras Al Khaimah', 'Fujairah'],
+  },
+  {
+    code3: 'SAU', name: 'Saudi Arabia', phoneCode: '+966', postalLabel: 'Postal Code', timezone: 'Asia/Riyadh',
+    states: ['Riyadh', 'Makkah', 'Madinah', 'Eastern Province', 'Asir', 'Tabuk', 'Hail', 'Jazan', 'Najran'],
+  },
+  {
+    code3: 'DEU', name: 'Germany', phoneCode: '+49', postalLabel: 'Postleitzahl', timezone: 'Europe/Berlin',
+    states: [
+      'Baden-Württemberg', 'Bavaria', 'Berlin', 'Brandenburg', 'Bremen', 'Hamburg',
+      'Hesse', 'Lower Saxony', 'Mecklenburg-Vorpommern', 'North Rhine-Westphalia',
+      'Rhineland-Palatinate', 'Saarland', 'Saxony', 'Saxony-Anhalt', 'Schleswig-Holstein', 'Thuringia',
+    ],
+  },
+  {
+    code3: 'FRA', name: 'France', phoneCode: '+33', postalLabel: 'Code Postal', timezone: 'Europe/Paris',
+  },
+  {
+    code3: 'MYS', name: 'Malaysia', phoneCode: '+60', postalLabel: 'Postcode', timezone: 'Asia/Kuala_Lumpur',
+    states: [
+      'Johor', 'Kedah', 'Kelantan', 'Kuala Lumpur', 'Labuan', 'Malacca', 'Negeri Sembilan',
+      'Pahang', 'Penang', 'Perak', 'Perlis', 'Putrajaya', 'Sabah', 'Sarawak', 'Selangor', 'Terengganu',
+    ],
+  },
+  { code3: 'SGP', name: 'Singapore', phoneCode: '+65', postalLabel: 'Postal Code', timezone: 'Asia/Singapore' },
+  {
+    code3: 'PHL', name: 'Philippines', phoneCode: '+63', postalLabel: 'ZIP Code', timezone: 'Asia/Manila',
+  },
+  {
+    code3: 'PAK', name: 'Pakistan', phoneCode: '+92', postalLabel: 'Postal Code', timezone: 'Asia/Karachi',
+    states: ['Azad Kashmir', 'Balochistan', 'Gilgit-Baltistan', 'Islamabad', 'Khyber Pakhtunkhwa', 'Punjab', 'Sindh'],
+  },
+  {
+    code3: 'BGD', name: 'Bangladesh', phoneCode: '+880', postalLabel: 'Postal Code', timezone: 'Asia/Dhaka',
+    states: ['Barishal', 'Chattogram', 'Dhaka', 'Khulna', 'Mymensingh', 'Rajshahi', 'Rangpur', 'Sylhet'],
+  },
+  {
+    code3: 'LKA', name: 'Sri Lanka', phoneCode: '+94', postalLabel: 'Postal Code', timezone: 'Asia/Colombo',
+    states: ['Central', 'Eastern', 'North Central', 'Northern', 'North Western', 'Sabaragamuwa', 'Southern', 'Uva', 'Western'],
+  },
+  {
+    code3: 'NGA', name: 'Nigeria', phoneCode: '+234', postalLabel: 'Postal Code', timezone: 'Africa/Lagos',
+  },
+  {
+    code3: 'ZAF', name: 'South Africa', phoneCode: '+27', postalLabel: 'Postal Code', timezone: 'Africa/Johannesburg',
+    states: ['Eastern Cape', 'Free State', 'Gauteng', 'KwaZulu-Natal', 'Limpopo', 'Mpumalanga', 'North West', 'Northern Cape', 'Western Cape'],
+  },
+  { code3: 'KEN', name: 'Kenya', phoneCode: '+254', postalLabel: 'Postal Code', timezone: 'Africa/Nairobi' },
+  { code3: 'GHA', name: 'Ghana', phoneCode: '+233', postalLabel: 'Postal Code', timezone: 'Africa/Accra' },
+  {
+    code3: 'NZL', name: 'New Zealand', phoneCode: '+64', postalLabel: 'Postcode', timezone: 'Pacific/Auckland',
+  },
 ];
 
 const TIMEZONES = [
@@ -70,41 +127,126 @@ const TIMEZONES = [
   { value: 'Europe/Berlin', label: 'Europe/Berlin — Central European Time' },
   { value: 'Asia/Kolkata', label: 'Asia/Kolkata — India Standard Time' },
   { value: 'Asia/Dubai', label: 'Asia/Dubai — Gulf Standard Time' },
+  { value: 'Asia/Riyadh', label: 'Asia/Riyadh — Arabia Standard Time' },
   { value: 'Asia/Singapore', label: 'Asia/Singapore — Singapore Time' },
+  { value: 'Asia/Kuala_Lumpur', label: 'Asia/Kuala_Lumpur — Malaysia Time' },
   { value: 'Asia/Tokyo', label: 'Asia/Tokyo — Japan Standard Time' },
   { value: 'Asia/Shanghai', label: 'Asia/Shanghai — China Standard Time' },
   { value: 'Asia/Karachi', label: 'Asia/Karachi — Pakistan Standard Time' },
   { value: 'Asia/Dhaka', label: 'Asia/Dhaka — Bangladesh Standard Time' },
+  { value: 'Asia/Colombo', label: 'Asia/Colombo — Sri Lanka Time' },
+  { value: 'Asia/Manila', label: 'Asia/Manila — Philippine Time' },
   { value: 'Africa/Lagos', label: 'Africa/Lagos — West Africa Time' },
   { value: 'Africa/Nairobi', label: 'Africa/Nairobi — East Africa Time' },
   { value: 'Africa/Johannesburg', label: 'Africa/Johannesburg — South Africa Standard Time' },
+  { value: 'Africa/Accra', label: 'Africa/Accra — Ghana Mean Time' },
   { value: 'Australia/Sydney', label: 'Australia/Sydney — Australian Eastern Time' },
   { value: 'Pacific/Auckland', label: 'Pacific/Auckland — New Zealand Standard Time' },
 ];
 
-const inputClass =
-  'w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none text-sm bg-white transition-colors';
-const labelClass = 'block text-sm font-medium text-slate-700 mb-1.5';
-const selectClass =
-  'w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none text-sm bg-white transition-colors appearance-none';
+// ── Helpers ──────────────────────────────────────────────────────────────────
+const getCountry = (code3: string) => COUNTRIES_DATA.find((c) => c.code3 === code3);
 
-const SectionHeader: React.FC<{ icon: React.ReactNode; title: string }> = ({ icon, title }) => (
-  <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-5 flex items-center gap-2">
-    {icon}
-    {title}
-  </h2>
+// ── Styles ───────────────────────────────────────────────────────────────────
+const inputBase =
+  'w-full bg-white border rounded-lg px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 transition-all duration-200';
+const inputClass = `${inputBase} border-slate-300 focus:ring-blue-500 focus:border-blue-500`;
+const inputErrorClass = `${inputBase} border-red-400 focus:ring-red-300 focus:border-red-400`;
+const selectBase =
+  'w-full bg-white border rounded-lg px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 transition-all duration-200 cursor-pointer';
+const selectClass = `${selectBase} border-slate-300 focus:ring-blue-500 focus:border-blue-500`;
+const selectErrorClass = `${selectBase} border-red-400 focus:ring-red-300 focus:border-red-400`;
+const labelClass = 'text-sm font-medium text-slate-700 mb-1.5 block';
+const hintClass = 'mt-1 text-xs text-slate-400';
+const errorClass = 'mt-1 text-xs text-red-500 flex items-center gap-1';
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+interface FormData {
+  name: string;
+  email: string;
+  phone_code: string;
+  phone_number: string;
+  registration_number: string;
+  address_line_1: string;
+  address_line_2: string;
+  city: string;
+  state_province: string;
+  postal_code: string;
+  country: string;
+  timezone: string;
+  admin_email: string;
+  admin_username: string;
+  admin_first_name: string;
+  admin_last_name: string;
+  admin_password: string;
+}
+
+type FieldErrors = Partial<Record<keyof FormData, string>>;
+
+// ── Validation ────────────────────────────────────────────────────────────────
+function validateForm(d: FormData): FieldErrors {
+  const e: FieldErrors = {};
+
+  if (!d.name.trim()) e.name = 'Hospital name is required';
+  else if (d.name.trim().length < 3) e.name = 'Must be at least 3 characters';
+
+  if (!d.email.trim()) e.email = 'Official email is required';
+  else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email)) e.email = 'Invalid email address';
+
+  if (!d.phone_number.trim()) e.phone_number = 'Phone number is required';
+  else if (!/^\d{5,15}$/.test(d.phone_number.replace(/\s/g, '')))
+    e.phone_number = 'Must be 5–15 digits (no spaces or dashes)';
+
+  if (!d.country) e.country = 'Country is required';
+  if (!d.timezone) e.timezone = 'Timezone is required';
+
+  if (!d.admin_email.trim()) e.admin_email = 'Admin email is required';
+  else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.admin_email)) e.admin_email = 'Invalid email address';
+
+  if (!d.admin_username.trim()) e.admin_username = 'Admin username is required';
+  else if (d.admin_username.trim().length < 3) e.admin_username = 'Must be at least 3 characters';
+  else if (!/^[a-z0-9_]+$/.test(d.admin_username)) e.admin_username = 'Lowercase letters, numbers and underscores only';
+
+  if (!d.admin_first_name.trim()) e.admin_first_name = 'First name is required';
+  else if (!/^[A-Za-z\s'-]+$/.test(d.admin_first_name.trim())) e.admin_first_name = 'Letters only';
+
+  if (!d.admin_last_name.trim()) e.admin_last_name = 'Last name is required';
+  else if (!/^[A-Za-z\s'-]+$/.test(d.admin_last_name.trim())) e.admin_last_name = 'Letters only';
+
+  if (!d.admin_password) e.admin_password = 'Password is required';
+  else if (d.admin_password.length < 8) e.admin_password = 'Minimum 8 characters';
+
+  return e;
+}
+
+// ── Section header (matches patient form style) ───────────────────────────────
+const SectionHeader: React.FC<{ label: string; color?: string }> = ({
+  label,
+  color = 'bg-primary/20',
+}) => (
+  <div className="flex items-center gap-2 mb-5">
+    <span className={`w-8 h-[2px] ${color} rounded-full`} />
+    <h2 className="text-sm font-bold text-primary uppercase tracking-wider">{label}</h2>
+  </div>
 );
 
+// ── Main Component ────────────────────────────────────────────────────────────
 const SuperAdminCreateHospital: React.FC = () => {
   const navigate = useNavigate();
   const toast = useToast();
+  const formRef = useRef<HTMLFormElement>(null);
+  const submittedRef = useRef(false);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [serverError, setServerError] = useState<string | null>(null);
 
-  const [formData, setFormData] = useState<OnboardingFormData>({
+  const [form, setForm] = useState<FormData>({
     name: '',
     email: '',
-    phone: '',
+    phone_code: '+1',
+    phone_number: '',
     registration_number: '',
     address_line_1: '',
     address_line_2: '',
@@ -112,7 +254,7 @@ const SuperAdminCreateHospital: React.FC = () => {
     state_province: '',
     postal_code: '',
     country: 'USA',
-    timezone: 'UTC',
+    timezone: 'America/New_York',
     admin_email: '',
     admin_username: '',
     admin_first_name: '',
@@ -120,358 +262,534 @@ const SuperAdminCreateHospital: React.FC = () => {
     admin_password: '',
   });
 
-  const updateField = (field: keyof OnboardingFormData, value: string | number) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
+  const set = (field: keyof FormData, value: string) => {
+    setForm((prev) => {
+      const next = { ...prev, [field]: value };
+      if (submittedRef.current) setFieldErrors(validateForm(next));
+      return next;
+    });
+    setServerError(null);
   };
+
+  // Auto-update phone code + timezone when country changes
+  useEffect(() => {
+    const c = getCountry(form.country);
+    if (!c) return;
+    setForm((prev) => ({
+      ...prev,
+      phone_code: c.phoneCode,
+      timezone: c.timezone,
+      state_province: '',   // clear stale state when country switches
+    }));
+  }, [form.country]);
 
   const suggestUsername = () => {
+    if (form.admin_username.trim()) return;
     const base =
-      formData.admin_email.trim().split('@')[0] ||
-      formData.name.trim().split(' ').join('').toLowerCase();
-    if (!base || formData.admin_username.trim()) return;
-    updateField('admin_username', `${base}_${Date.now().toString().slice(-4)}`.toLowerCase());
+      form.admin_email.trim().split('@')[0] ||
+      form.name.trim().toLowerCase().replace(/\s+/g, '_');
+    if (!base) return;
+    set('admin_username', `${base}_${Date.now().toString().slice(-4)}`);
   };
 
-  const handleSubmit = async (e: React.SyntheticEvent) => {
+  const blockNonDigit = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (
+      !/^\d$/.test(e.key) &&
+      !['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Home', 'End'].includes(e.key)
+    ) {
+      e.preventDefault();
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    submittedRef.current = true;
+
+    const errs = validateForm(form);
+    if (Object.keys(errs).length > 0) {
+      setFieldErrors(errs);
+      formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+
     setIsSubmitting(true);
+    setServerError(null);
     try {
-      const payload: Record<string, unknown> = { ...formData };
-      ['registration_number', 'address_line_1', 'address_line_2', 'city',
-       'state_province', 'postal_code', 'phone', 'admin_username'].forEach((k) => {
-        if (payload[k] === '') payload[k] = null;
-      });
+      const phone = form.phone_number ? `${form.phone_code}${form.phone_number}` : null;
+      const payload: Record<string, unknown> = {
+        name: form.name,
+        email: form.email,
+        phone,
+        registration_number: form.registration_number || null,
+        address_line_1: form.address_line_1 || null,
+        address_line_2: form.address_line_2 || null,
+        city: form.city || null,
+        state_province: form.state_province || null,
+        postal_code: form.postal_code || null,
+        country: form.country,
+        timezone: form.timezone,
+        admin_email: form.admin_email,
+        admin_username: form.admin_username || null,
+        admin_first_name: form.admin_first_name,
+        admin_last_name: form.admin_last_name,
+        admin_password: form.admin_password,
+      };
       await superAdminApi.createTenant(payload);
       toast.success('Hospital created successfully');
       navigate('/superadmin/hospitals');
     } catch (err: any) {
       const detail = err.response?.data?.detail || 'Failed to create hospital';
+      setServerError(detail);
       toast.error(detail);
       setIsSubmitting(false);
     }
   };
 
+  const selectedCountry = getCountry(form.country);
+  const states = selectedCountry?.states ?? [];
+  const postalLabel = selectedCountry?.postalLabel ?? 'Postal Code';
+
+  const Err: React.FC<{ field: keyof FormData }> = ({ field }) =>
+    fieldErrors[field] ? (
+      <p className={errorClass}>
+        <span className="material-symbols-outlined text-xs">error</span>
+        {fieldErrors[field]}
+      </p>
+    ) : null;
+
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
-      {/* Header */}
-      <div>
+    <div className="max-w-4xl mx-auto pb-10">
+      {/* Page header */}
+      <div className="mb-6">
         <button
           onClick={() => navigate('/superadmin/hospitals')}
-          className="flex items-center gap-2 text-slate-500 hover:text-primary transition-colors mb-4 text-sm font-medium"
+          className="flex items-center gap-1.5 text-slate-500 hover:text-primary transition-colors mb-4 text-sm font-medium"
         >
           <ChevronLeft className="w-4 h-4" />
           Back to Hospitals
         </button>
         <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-          <Building2 className="text-primary" />
+          <Building2 className="text-primary w-6 h-6" />
           Onboard New Hospital
         </h1>
         <p className="text-slate-500 mt-1 text-sm">
-          Set up a new hospital instance with location details, a dedicated admin account, and an
-          optional subscription plan.
+          Fill in the details below to provision a new hospital with a dedicated admin account.
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* ── Left / Main Column ── */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Section 1: Hospital Information */}
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-            <SectionHeader icon={<Building2 className="w-4 h-4" />} title="Hospital Information" />
-            <div className="space-y-4">
-              <div>
-                <label className={labelClass}>Hospital Name *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. City General Hospital"
-                  className={inputClass}
-                  value={formData.name}
-                  onChange={(e) => updateField('name', e.target.value)}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className={labelClass}>Official Email *</label>
-                  <input
-                    type="email"
-                    required
-                    placeholder="contact@hospital.com"
-                    className={inputClass}
-                    value={formData.email}
-                    onChange={(e) => updateField('email', e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className={labelClass}>Phone Number *</label>
-                  <input
-                    type="tel"
-                    required
-                    placeholder="+1 (555) 000-0000"
-                    className={inputClass}
-                    value={formData.phone}
-                    onChange={(e) => updateField('phone', e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className={labelClass}>
-                  Registration / License Number
-                  <span className="ml-1 text-slate-400 font-normal">(optional)</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="Government-issued hospital registration number"
-                  className={inputClass}
-                  value={formData.registration_number}
-                  onChange={(e) => updateField('registration_number', e.target.value)}
-                />
-                <p className="mt-1 text-xs text-slate-400">
-                  Required for compliance and regulatory reporting.
-                </p>
-              </div>
-            </div>
+      {/* Validation error banner */}
+      {Object.keys(fieldErrors).length > 0 && submittedRef.current && (
+        <div className="mb-5 bg-amber-50 border border-amber-300 rounded-xl p-4 flex items-start gap-3">
+          <span className="material-symbols-outlined text-amber-500 flex-shrink-0 text-xl mt-0.5">warning</span>
+          <div>
+            <p className="text-sm font-semibold text-amber-800">
+              Fix {Object.keys(fieldErrors).length} error{Object.keys(fieldErrors).length > 1 ? 's' : ''} before submitting
+            </p>
+            <ul className="mt-1.5 space-y-0.5">
+              {Object.entries(fieldErrors).map(([k, msg]) => (
+                <li key={k} className="text-xs text-amber-700 flex items-start gap-1">
+                  <span className="material-symbols-outlined text-[12px] mt-0.5">arrow_right</span>
+                  {msg}
+                </li>
+              ))}
+            </ul>
           </div>
+        </div>
+      )}
 
-          {/* Section 2: Location */}
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-            <SectionHeader icon={<MapPin className="w-4 h-4" />} title="Hospital Location" />
-            <div className="space-y-4">
-              <div>
-                <label className={labelClass}>Address Line 1</label>
-                <input
-                  type="text"
-                  placeholder="Street address, P.O. box"
-                  className={inputClass}
-                  value={formData.address_line_1}
-                  onChange={(e) => updateField('address_line_1', e.target.value)}
-                />
-              </div>
-              <div>
-                <label className={labelClass}>
-                  Address Line 2{' '}
-                  <span className="text-slate-400 font-normal">(optional)</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="Apartment, suite, building, floor, etc."
-                  className={inputClass}
-                  value={formData.address_line_2}
-                  onChange={(e) => updateField('address_line_2', e.target.value)}
-                />
-              </div>
+      <form ref={formRef} onSubmit={handleSubmit} className="space-y-6" noValidate>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className={labelClass}>City</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. New York"
-                    className={inputClass}
-                    value={formData.city}
-                    onChange={(e) => updateField('city', e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className={labelClass}>State / Province</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. NY"
-                    className={inputClass}
-                    value={formData.state_province}
-                    onChange={(e) => updateField('state_province', e.target.value)}
-                  />
-                </div>
-              </div>
+        {/* ── Section 1: Hospital Information ─────────────────────────────── */}
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+          <SectionHeader label="Hospital Information" />
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className={labelClass}>Postal / ZIP Code</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. 10001"
-                    className={inputClass}
-                    value={formData.postal_code}
-                    onChange={(e) => updateField('postal_code', e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className={labelClass}>Country *</label>
-                  <select
-                    required
-                    className={selectClass}
-                    value={formData.country}
-                    onChange={(e) => updateField('country', e.target.value)}
-                  >
-                    {COUNTRIES.map((c) => (
-                      <option key={c.code} value={c.code}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Hospital Name — full width */}
+            <div className="md:col-span-2">
+              <label className={labelClass}>
+                Hospital Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                className={fieldErrors.name ? inputErrorClass : inputClass}
+                placeholder="e.g. City General Hospital"
+                maxLength={200}
+                value={form.name}
+                onChange={(e) => set('name', e.target.value)}
+              />
+              <Err field="name" />
+              {!fieldErrors.name && <p className={hintClass}>Official registered name of the hospital</p>}
+            </div>
 
-              <div>
-                <label className={labelClass}>Timezone *</label>
+            {/* Official Email */}
+            <div>
+              <label className={labelClass}>
+                Official Email <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="email"
+                className={fieldErrors.email ? inputErrorClass : inputClass}
+                placeholder="contact@hospital.com"
+                value={form.email}
+                onChange={(e) => set('email', e.target.value)}
+              />
+              <Err field="email" />
+              {!fieldErrors.email && <p className={hintClass}>Primary contact email for the hospital</p>}
+            </div>
+
+            {/* Registration Number */}
+            <div>
+              <label className={labelClass}>
+                Registration / License No.{' '}
+                <span className="text-slate-400 font-normal text-xs">(optional)</span>
+              </label>
+              <input
+                type="text"
+                className={inputClass}
+                placeholder="Government-issued registration number"
+                value={form.registration_number}
+                onChange={(e) => set('registration_number', e.target.value)}
+              />
+              <p className={hintClass}>Required for compliance and regulatory reporting</p>
+            </div>
+
+            {/* Phone Country Code + Number */}
+            <div className="md:col-span-2">
+              <label className={labelClass}>
+                <span className="flex items-center gap-1.5">
+                  <Phone className="w-3.5 h-3.5 text-slate-500" />
+                  Phone Number <span className="text-red-500">*</span>
+                </span>
+              </label>
+              <div className="flex gap-2">
                 <select
-                  required
-                  className={selectClass}
-                  value={formData.timezone}
-                  onChange={(e) => updateField('timezone', e.target.value)}
+                  className={`${selectClass} w-36 shrink-0`}
+                  value={form.phone_code}
+                  onChange={(e) => set('phone_code', e.target.value)}
                 >
-                  {TIMEZONES.map((tz) => (
-                    <option key={tz.value} value={tz.value}>
-                      {tz.label}
+                  {COUNTRIES_DATA.map((c) => (
+                    <option key={c.code3} value={c.phoneCode}>
+                      {c.phoneCode} ({c.name})
                     </option>
                   ))}
                 </select>
-                <p className="mt-1 text-xs text-slate-400">
-                  Used for appointment scheduling and all date/time displays.
-                </p>
+                <div className="flex-1">
+                  <input
+                    type="tel"
+                    className={fieldErrors.phone_number ? inputErrorClass : inputClass}
+                    placeholder="e.g. 9876543210"
+                    maxLength={15}
+                    value={form.phone_number}
+                    onKeyDown={blockNonDigit}
+                    onChange={(e) => set('phone_number', e.target.value.replace(/\D/g, ''))}
+                  />
+                </div>
               </div>
+              <Err field="phone_number" />
+              {!fieldErrors.phone_number && (
+                <p className={hintClass}>Select country code, then enter the number — digits only</p>
+              )}
             </div>
           </div>
+        </div>
 
-          {/* Section 3: Primary Administrator */}
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-            <SectionHeader icon={<Shield className="w-4 h-4" />} title="Primary Administrator" />
-            <div className="space-y-4">
-              <div>
-                <label className={labelClass}>Admin Email *</label>
-                <input
-                  type="email"
-                  required
-                  placeholder="admin@hospital.com"
-                  className={inputClass}
-                  value={formData.admin_email}
-                  onChange={(e) => updateField('admin_email', e.target.value)}
-                />
-              </div>
+        {/* ── Section 2: Location ──────────────────────────────────────────── */}
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+          <SectionHeader label="Hospital Location" />
 
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className={labelClass + ' mb-0'}>Admin Username *</label>
-                  <button
-                    type="button"
-                    onClick={suggestUsername}
-                    className="text-xs font-semibold text-primary hover:text-primary/80 transition-colors"
-                  >
-                    Suggest username
-                  </button>
-                </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {/* Country — updating this auto-fills phone code + timezone */}
+            <div>
+              <label className={labelClass}>
+                Country <span className="text-red-500">*</span>
+              </label>
+              <select
+                className={fieldErrors.country ? selectErrorClass : selectClass}
+                value={form.country}
+                onChange={(e) => set('country', e.target.value)}
+              >
+                {COUNTRIES_DATA.map((c) => (
+                  <option key={c.code3} value={c.code3}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              <Err field="country" />
+              {!fieldErrors.country && (
+                <p className={hintClass}>Auto-fills phone code &amp; timezone</p>
+              )}
+            </div>
+
+            {/* State / Province — dropdown if available, text input otherwise */}
+            <div>
+              <label className={labelClass}>State / Province</label>
+              {states.length > 0 ? (
+                <select
+                  className={selectClass}
+                  value={form.state_province}
+                  onChange={(e) => set('state_province', e.target.value)}
+                >
+                  <option value="">Select state / province</option>
+                  {states.map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              ) : (
                 <input
                   type="text"
-                  required
-                  minLength={3}
-                  maxLength={50}
-                  placeholder="e.g. admin_citygen"
                   className={inputClass}
-                  value={formData.admin_username}
-                  onChange={(e) =>
-                    updateField('admin_username', e.target.value.toLowerCase().replace(/\s+/g, '_'))
-                  }
+                  placeholder="State or province"
+                  value={form.state_province}
+                  onChange={(e) => set('state_province', e.target.value)}
                 />
-                <p className="mt-1 text-xs text-slate-400">
-                  Login username for the primary hospital admin. Min 3 characters, lowercase.
+              )}
+              <p className={hintClass}>
+                {states.length > 0 ? 'Select from the list' : 'Type the state or province name'}
+              </p>
+            </div>
+
+            {/* City */}
+            <div>
+              <label className={labelClass}>City / District</label>
+              <input
+                type="text"
+                className={inputClass}
+                placeholder="e.g. Mumbai"
+                value={form.city}
+                onChange={(e) => set('city', e.target.value)}
+              />
+              <p className={hintClass}>City where the hospital is located</p>
+            </div>
+
+            {/* Address Line 1 — full width */}
+            <div className="lg:col-span-3">
+              <label className={labelClass}>Address Line 1</label>
+              <input
+                type="text"
+                className={inputClass}
+                placeholder="Street address, building name, P.O. box"
+                value={form.address_line_1}
+                onChange={(e) => set('address_line_1', e.target.value)}
+              />
+              <p className={hintClass}>Street-level address of the hospital</p>
+            </div>
+
+            {/* Address Line 2 — full width */}
+            <div className="lg:col-span-3">
+              <label className={labelClass}>
+                Address Line 2{' '}
+                <span className="text-slate-400 font-normal text-xs">(optional)</span>
+              </label>
+              <input
+                type="text"
+                className={inputClass}
+                placeholder="Apartment, floor, landmark, etc."
+                value={form.address_line_2}
+                onChange={(e) => set('address_line_2', e.target.value)}
+              />
+            </div>
+
+            {/* Postal Code */}
+            <div>
+              <label className={labelClass}>{postalLabel}</label>
+              <input
+                type="text"
+                className={inputClass}
+                placeholder={`e.g. ${selectedCountry?.code3 === 'IND' ? '600001' : '10001'}`}
+                maxLength={12}
+                value={form.postal_code}
+                onChange={(e) => set('postal_code', e.target.value)}
+              />
+              <p className={hintClass}>Postal / ZIP code for the hospital address</p>
+            </div>
+
+            {/* Timezone — auto-filled when country changes, editable */}
+            <div className="md:col-span-2">
+              <label className={labelClass}>
+                Timezone <span className="text-red-500">*</span>
+              </label>
+              <select
+                className={fieldErrors.timezone ? selectErrorClass : selectClass}
+                value={form.timezone}
+                onChange={(e) => set('timezone', e.target.value)}
+              >
+                {TIMEZONES.map((tz) => (
+                  <option key={tz.value} value={tz.value}>
+                    {tz.label}
+                  </option>
+                ))}
+              </select>
+              <Err field="timezone" />
+              {!fieldErrors.timezone && (
+                <p className={hintClass}>
+                  Auto-selected from country — used for appointments and date/time displays
                 </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className={labelClass}>First Name *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="John"
-                    className={inputClass}
-                    value={formData.admin_first_name}
-                    onChange={(e) => updateField('admin_first_name', e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className={labelClass}>Last Name *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Doe"
-                    className={inputClass}
-                    value={formData.admin_last_name}
-                    onChange={(e) => updateField('admin_last_name', e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className={labelClass}>Admin Password *</label>
-                <div className="relative">
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    required
-                    minLength={8}
-                    placeholder="Minimum 8 characters"
-                    className={inputClass + ' pr-11'}
-                    value={formData.admin_password}
-                    onChange={(e) => updateField('admin_password', e.target.value)}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword((v) => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
-                    tabIndex={-1}
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-                {formData.admin_password && formData.admin_password.length < 8 && (
-                  <p className="mt-1 text-xs text-red-500">Password must be at least 8 characters.</p>
-                )}
-              </div>
+              )}
             </div>
           </div>
         </div>
 
-        {/* ── Right Sidebar ── */}
-        <div className="space-y-6">
-          {/* Summary & Submit */}
-          <div className="bg-slate-900 rounded-xl p-6 text-white space-y-4 sticky top-6">
-            <h3 className="font-bold text-base">Ready to Launch?</h3>
+        {/* ── Section 3: Primary Administrator ────────────────────────────── */}
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+          <SectionHeader label="Primary Administrator" />
+          <p className="text-xs text-slate-500 mb-5 -mt-3">
+            This account will have full admin access to the hospital portal.
+          </p>
 
-            <ul className="space-y-2 text-xs text-slate-300">
-              <li className="flex items-center gap-2">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                Creates tenant &amp; hospital records
-              </li>
-              <li className="flex items-center gap-2">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                Provisions admin account with login access
-              </li>
-              <li className="flex items-center gap-2">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                Generates unique hospital code automatically
-              </li>
-              <li className="flex items-center gap-2">
-                <CheckCircle2 className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                <span className="text-slate-500">Subscription plan can be assigned after creation</span>
-              </li>
-            </ul>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Admin Email */}
+            <div>
+              <label className={labelClass}>
+                Admin Email <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="email"
+                className={fieldErrors.admin_email ? inputErrorClass : inputClass}
+                placeholder="admin@hospital.com"
+                value={form.admin_email}
+                onChange={(e) => set('admin_email', e.target.value)}
+              />
+              <Err field="admin_email" />
+              {!fieldErrors.admin_email && <p className={hintClass}>Login email for the hospital admin</p>}
+            </div>
 
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="w-full bg-primary hover:bg-primary/90 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isSubmitting ? (
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white animate-spin rounded-full" />
-              ) : (
-                <Building2 className="w-5 h-5" />
+            {/* Admin Username */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className={`${labelClass} mb-0`}>
+                  Username <span className="text-red-500">*</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={suggestUsername}
+                  className="text-xs font-semibold text-primary hover:text-primary/80 transition-colors"
+                >
+                  Auto-suggest
+                </button>
+              </div>
+              <input
+                type="text"
+                className={fieldErrors.admin_username ? inputErrorClass : inputClass}
+                placeholder="e.g. admin_citygen"
+                minLength={3}
+                maxLength={50}
+                value={form.admin_username}
+                onChange={(e) =>
+                  set('admin_username', e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))
+                }
+              />
+              <Err field="admin_username" />
+              {!fieldErrors.admin_username && (
+                <p className={hintClass}>Min 3 chars — lowercase letters, numbers and underscores only</p>
               )}
-              {isSubmitting ? 'Creating Hospital…' : 'Create Hospital'}
-            </button>
+            </div>
+
+            {/* First Name */}
+            <div>
+              <label className={labelClass}>
+                First Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                className={fieldErrors.admin_first_name ? inputErrorClass : inputClass}
+                placeholder="John"
+                maxLength={100}
+                value={form.admin_first_name}
+                onChange={(e) => set('admin_first_name', e.target.value)}
+              />
+              <Err field="admin_first_name" />
+              {!fieldErrors.admin_first_name && <p className={hintClass}>Admin's first / given name</p>}
+            </div>
+
+            {/* Last Name */}
+            <div>
+              <label className={labelClass}>
+                Last Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                className={fieldErrors.admin_last_name ? inputErrorClass : inputClass}
+                placeholder="Doe"
+                maxLength={100}
+                value={form.admin_last_name}
+                onChange={(e) => set('admin_last_name', e.target.value)}
+              />
+              <Err field="admin_last_name" />
+              {!fieldErrors.admin_last_name && <p className={hintClass}>Admin's last / family name</p>}
+            </div>
+
+            {/* Password — full width */}
+            <div className="md:col-span-2">
+              <label className={labelClass}>
+                Admin Password <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  className={(fieldErrors.admin_password ? inputErrorClass : inputClass) + ' pr-11'}
+                  placeholder="Minimum 8 characters"
+                  minLength={8}
+                  value={form.admin_password}
+                  onChange={(e) => set('admin_password', e.target.value)}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <Err field="admin_password" />
+              {!fieldErrors.admin_password && (
+                <p className={hintClass}>
+                  Min 8 characters — share securely with the admin after creation
+                </p>
+              )}
+            </div>
           </div>
         </div>
+
+        {/* Server error */}
+        {serverError && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
+            <span className="material-symbols-outlined text-red-500 flex-shrink-0 text-xl">error</span>
+            <div>
+              <p className="text-sm font-semibold text-red-700">Creation failed</p>
+              <p className="text-sm text-red-600 mt-0.5 whitespace-pre-line">{serverError}</p>
+            </div>
+          </div>
+        )}
+
+        {/* ── Submit ───────────────────────────────────────────────────────── */}
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => navigate('/superadmin/hospitals')}
+            className="px-6 py-2.5 border border-slate-200 text-slate-600 rounded-lg font-semibold hover:bg-slate-50 text-sm transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="flex-1 px-6 py-2.5 bg-primary hover:bg-primary/90 disabled:opacity-50 text-white rounded-lg font-semibold text-sm transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary/25 active:scale-[0.98]"
+          >
+            {isSubmitting ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Creating Hospital…
+              </>
+            ) : (
+              <>
+                <Building2 className="w-4 h-4" />
+                Create Hospital
+              </>
+            )}
+          </button>
+        </div>
+
       </form>
     </div>
   );

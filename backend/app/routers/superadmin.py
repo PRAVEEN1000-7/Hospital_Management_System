@@ -1,4 +1,4 @@
-"""
+﻿"""
 Super Admin API routes for platform management.
 """
 import uuid
@@ -98,7 +98,7 @@ def get_dashboard_stats(
 @router.get("/tenants", response_model=TenantListResponse)
 def list_tenants(
     page: int = Query(1, ge=1),
-    limit: int = Query(10, ge=1, le=100),
+    limit: int = Query(10, ge=1, le=1000),
     status: Optional[str] = None,
     search: Optional[str] = None,
     plan_code: Optional[str] = None,
@@ -307,6 +307,7 @@ def create_plan(
         description=request.description or "",
         base_price=request.base_price,
         billing_cycle=request.billing_cycle,
+        currency=request.currency,
         max_users=request.max_users,
         max_patients=request.max_patients,
         max_storage_gb=request.max_storage_gb,
@@ -314,26 +315,51 @@ def create_plan(
         features_enabled=request.features_enabled,
         modules_included=request.modules_included,
         is_public=request.is_public,
+        is_active=request.is_active,
         sort_order=request.sort_order
     )
     return plan
 
 
-@router.post("/plans/assign", response_model=TenantSubscriptionResponse)
+@router.post("/plans/assign")
 def assign_plan_to_hospital(
     request: AssignPlanRequest,
     admin: User = Depends(require_superadmin),
     db: Session = Depends(get_db)
 ):
     """Assign a subscription plan and modules to a hospital using its code"""
-    subscription = TenantService.assign_plan_to_tenant(
-        db=db,
-        hospital_code=request.hospital_code,
-        plan_id=request.plan_id,
-        modules=request.modules,
-        admin_id=admin.id
-    )
-    return subscription
+    try:
+        subscription = TenantService.assign_plan_to_tenant(
+            db=db,
+            hospital_code=request.hospital_code,
+            plan_id=request.plan_id,
+            modules=request.modules,
+            admin_id=admin.id
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    plan = subscription.plan
+    return {
+        "id": str(subscription.id),
+        "tenant_id": str(subscription.tenant_id),
+        "plan_id": str(subscription.plan_id),
+        "plan_name": plan.name if plan else None,
+        "plan_code": plan.code if plan else None,
+        "status": subscription.status,
+        "trial_ends_at": subscription.trial_ends_at,
+        "current_period_start": subscription.current_period_start,
+        "current_period_end": subscription.current_period_end,
+        "cancel_at_period_end": subscription.cancel_at_period_end,
+        "billing_email": subscription.billing_email,
+        "custom_features": subscription.custom_features or {},
+        "custom_limits": subscription.custom_limits or {},
+        "cancelled_at": subscription.cancelled_at,
+        "cancellation_reason": subscription.cancellation_reason,
+        "payment_method": subscription.payment_method,
+        "created_at": subscription.created_at,
+        "updated_at": subscription.updated_at,
+    }
 
 
 @router.put("/plans/{plan_id}", response_model=SubscriptionPlanResponse)
@@ -346,11 +372,39 @@ def update_plan(
     """Update subscription plan"""
     update_data = request.model_dump(exclude_unset=True)
     plan = SubscriptionService.update_plan(db, plan_id, **update_data)
-    
+
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
-    
+
     return plan
+
+
+@router.delete("/plans/{plan_id}")
+def delete_plan(
+    plan_id: uuid.UUID,
+    admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db)
+):
+    """Delete a subscription plan — only allowed when no hospital has ever been assigned to it"""
+    from ..models.tenant import TenantSubscription
+
+    plan = db.query(SubscriptionPlan).filter(SubscriptionPlan.id == plan_id).first()
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan not found")
+
+    assigned_count = db.query(TenantSubscription).filter(
+        TenantSubscription.plan_id == plan_id
+    ).count()
+
+    if assigned_count > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot delete plan: {assigned_count} hospital(s) have been assigned to this plan"
+        )
+
+    db.delete(plan)
+    db.commit()
+    return {"message": f"Plan '{plan.name}' deleted successfully"}
 
 
 # ============================================================================
@@ -573,3 +627,42 @@ def manually_activate_plan(
         "period_start": request.start_date.isoformat(),
         "period_end": request.end_date.isoformat(),
     }
+
+
+# ============================================================================
+# Admin Password Reset
+# ============================================================================
+
+class ResetAdminPasswordRequest(PydanticBaseModel):
+    new_password: str
+
+
+@router.post("/tenants/{tenant_id}/reset-admin-password")
+def reset_admin_password(
+    tenant_id: uuid.UUID,
+    request: ResetAdminPasswordRequest,
+    admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db)
+):
+    """Reset the primary admin's password for a tenant hospital"""
+    from ..models.tenant import Tenant as TenantModel
+    from ..core.security import get_password_hash
+
+    if len(request.new_password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+
+    tenant = db.query(TenantModel).filter(TenantModel.id == tenant_id).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    if not tenant.admin_user_id:
+        raise HTTPException(status_code=404, detail="No admin user associated with this tenant")
+
+    admin_user = db.query(User).filter(User.id == tenant.admin_user_id).first()
+    if not admin_user:
+        raise HTTPException(status_code=404, detail="Admin user not found")
+
+    admin_user.hashed_password = get_password_hash(request.new_password)
+    db.commit()
+
+    return {"message": f"Password reset successfully for admin '{admin_user.username}'"}

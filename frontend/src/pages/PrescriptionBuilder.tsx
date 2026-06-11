@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
@@ -112,6 +113,9 @@ const PrescriptionBuilder: React.FC = () => {
   const [activeMedItemIdx, setActiveMedItemIdx] = useState<number | null>(null);
   const [activeMedResultIdx, setActiveMedResultIdx] = useState<number>(-1);
   const medicineOptionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  // Portal dropdown positioning
+  const activeMedInputRef = useRef<HTMLInputElement | null>(null);
+  const [medDropdownPos, setMedDropdownPos] = useState<{ top: number; left: number; width: number } | null>(null);
 
   // Templates
   const [templates, setTemplates] = useState<PrescriptionTemplate[]>([]);
@@ -303,6 +307,16 @@ const PrescriptionBuilder: React.FC = () => {
     if (activeMedResultIdx < 0) return;
     medicineOptionRefs.current[activeMedResultIdx]?.scrollIntoView({ block: 'nearest' });
   }, [activeMedResultIdx, medicineResults]);
+
+  // Recompute portal dropdown position whenever results arrive or active input changes
+  useEffect(() => {
+    if (activeMedBlockIdx === null || activeMedItemIdx === null || !activeMedInputRef.current) {
+      setMedDropdownPos(null);
+      return;
+    }
+    const rect = activeMedInputRef.current.getBoundingClientRect();
+    setMedDropdownPos({ top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, 288) });
+  }, [activeMedBlockIdx, activeMedItemIdx, medicineResults]);
 
   const selectPatient = (p: Patient) => {
     setPatient(p);
@@ -901,46 +915,16 @@ const PrescriptionBuilder: React.FC = () => {
                             type="text"
                             value={item.medicine_name}
                             onChange={e => handleMedicineNameChange(blockIdx, itemIdx, e.target.value)}
-                            onFocus={() => { setActiveMedBlockIdx(blockIdx); setActiveMedItemIdx(itemIdx); }}
-                            onBlur={() => setTimeout(() => { setActiveMedBlockIdx(null); setActiveMedItemIdx(null); }, 200)}
+                            onFocus={(e) => {
+                              activeMedInputRef.current = e.currentTarget;
+                              setActiveMedBlockIdx(blockIdx);
+                              setActiveMedItemIdx(itemIdx);
+                            }}
+                            onBlur={() => setTimeout(() => { setActiveMedBlockIdx(null); setActiveMedItemIdx(null); }, 400)}
                             onKeyDown={(e) => handleMedicineInputKeyDown(e, blockIdx, itemIdx)}
                             className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
                             placeholder="Type medicine name..."
                           />
-                          {activeMedBlockIdx === blockIdx && activeMedItemIdx === itemIdx && medicineResults.length > 0 && (
-                            <div className="absolute z-50 left-0 top-full mt-1 w-72 bg-white border border-slate-200 rounded-lg shadow-xl max-h-48 overflow-y-auto">
-                              {medicineResults.map((med, idx) => {
-                                const isOutOfStock = (med.total_stock ?? 0) <= 0;
-                                return (
-                                <button
-                                  key={med.id}
-                                  ref={(el) => { medicineOptionRefs.current[idx] = el; }}
-                                  onMouseDown={e => e.preventDefault()}
-                                  onClick={() => selectMedicine(med, blockIdx, itemIdx)}
-                                  onMouseEnter={() => {
-                                    setActiveMedResultIdx(idx);
-                                    updateItemWithoutAutoAdd(blockIdx, itemIdx, 'medicine_name', getDisplayMedicineName(med));
-                                  }}
-                                  className={`w-full text-left px-3 py-2 text-xs border-b border-slate-100 last:border-0 ${
-                                    activeMedResultIdx === idx
-                                      ? 'bg-primary/10'
-                                      : isOutOfStock
-                                      ? 'bg-red-50 hover:bg-red-100'
-                                      : 'hover:bg-slate-50'
-                                  }`}
-                                >
-                                  <div className="flex items-center justify-between gap-2">
-                                    <span className="font-medium">{med.name}</span>
-                                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${isOutOfStock ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                                      {isOutOfStock ? 'Out of stock' : `Stock: ${med.total_stock ?? 0}`}
-                                    </span>
-                                  </div>
-                                  {med.strength && <span className="text-slate-500"> {med.strength}</span>}
-                                  <span className="text-[10px] text-slate-400 block">{med.generic_name}</span>
-                                </button>
-                              );})}
-                            </div>
-                          )}
                         </div>
 
                         {/* Dosage */}
@@ -1356,6 +1340,51 @@ const PrescriptionBuilder: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Medicine autocomplete portal — escapes any overflow:hidden/auto ancestor */}
+      {activeMedBlockIdx !== null && activeMedItemIdx !== null && medicineResults.length > 0 && medDropdownPos &&
+        createPortal(
+          <div
+            style={{ position: 'fixed', top: medDropdownPos.top, left: medDropdownPos.left, width: medDropdownPos.width, zIndex: 9999 }}
+            className="bg-white border border-slate-200 rounded-lg shadow-xl max-h-48 overflow-y-auto"
+          >
+            {medicineResults.map((med, idx) => {
+              const isOutOfStock = (med.total_stock ?? 0) <= 0;
+              return (
+                <button
+                  key={med.id}
+                  ref={(el) => { medicineOptionRefs.current[idx] = el; }}
+                  onMouseDown={e => e.preventDefault()}
+                  onClick={() => {
+                    if (activeMedBlockIdx !== null && activeMedItemIdx !== null) {
+                      selectMedicine(med, activeMedBlockIdx, activeMedItemIdx);
+                    }
+                  }}
+                  onMouseEnter={() => {
+                    setActiveMedResultIdx(idx);
+                    if (activeMedBlockIdx !== null && activeMedItemIdx !== null) {
+                      updateItemWithoutAutoAdd(activeMedBlockIdx, activeMedItemIdx, 'medicine_name', getDisplayMedicineName(med));
+                    }
+                  }}
+                  className={`w-full text-left px-3 py-2 text-xs border-b border-slate-100 last:border-0 ${
+                    activeMedResultIdx === idx ? 'bg-primary/10' : isOutOfStock ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium">{med.name}</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${isOutOfStock ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                      {isOutOfStock ? 'Out of stock' : `Stock: ${med.total_stock ?? 0}`}
+                    </span>
+                  </div>
+                  {med.strength && <span className="text-slate-500"> {med.strength}</span>}
+                  <span className="text-[10px] text-slate-400 block">{med.generic_name}</span>
+                </button>
+              );
+            })}
+          </div>,
+          document.body
+        )
+      }
     </div>
   );
 };

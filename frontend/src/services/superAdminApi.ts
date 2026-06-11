@@ -72,6 +72,8 @@ export const superAdminApi = {
   
   updatePlan: (id: string, data: any) => api.put(`/superadmin/plans/${id}`, data),
 
+  deletePlan: (id: string) => api.delete(`/superadmin/plans/${id}`),
+
   assignPlan: (data: { hospital_code: string; plan_id: string; modules?: Record<string, boolean> }) => 
     api.post('/superadmin/plans/assign', data),
 
@@ -96,6 +98,9 @@ export const superAdminApi = {
 
   activatePlan: (tenantId: string, data: { plan_id: string; start_date: string; end_date: string; notes?: string }) =>
     api.post(`/superadmin/tenants/${tenantId}/activate-plan`, data),
+
+  resetAdminPassword: (tenantId: string, newPassword: string) =>
+    api.post(`/superadmin/tenants/${tenantId}/reset-admin-password`, { new_password: newPassword }),
 
   // Usage & Quotas
   getTenantUsage: (tenantId: string) =>

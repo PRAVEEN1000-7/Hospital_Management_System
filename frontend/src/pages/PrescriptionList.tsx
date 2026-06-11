@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
+import { useConfirm } from '../contexts/ConfirmContext';
 import prescriptionService from '../services/prescriptionService';
 import type { PrescriptionListItem, PaginatedResponse } from '../types/prescription';
 
@@ -41,6 +42,7 @@ const PrescriptionList: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const { showToast } = useToast();
+  const confirm = useConfirm();
 
   const [prescriptions, setPrescriptions] = useState<PrescriptionListItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -106,7 +108,13 @@ const PrescriptionList: React.FC = () => {
   }, [search, setSearchParams]);
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Delete this prescription?')) return;
+    const ok = await confirm({
+      title: 'Delete Prescription',
+      message: 'Permanently delete this prescription? This cannot be undone.',
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!ok) return;
     try {
       await prescriptionService.deletePrescription(id);
       showToast('success', 'Prescription deleted');

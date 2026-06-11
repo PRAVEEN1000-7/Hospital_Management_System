@@ -9,9 +9,11 @@ import {
   AlertCircle,
   X,
   Save,
+  Trash2,
 } from 'lucide-react';
 import { superAdminApi } from '../services/superAdminApi';
 import { useToast } from '../contexts/ToastContext';
+import { useConfirm } from '../contexts/ConfirmContext';
 
 interface Module {
   id: string;
@@ -62,7 +64,10 @@ const SuperAdminPlans: React.FC = () => {
   const [selectedHospitalCode, setSelectedHospitalCode] = useState('');
   const [isLoadingHospitals, setIsLoadingHospitals] = useState(false);
   const [isAssigning, setIsAssigning] = useState(false);
+  const [usedPlanCodes, setUsedPlanCodes] = useState<Set<string>>(new Set());
+  const [isDeletingPlanId, setIsDeletingPlanId] = useState<string | null>(null);
   const toast = useToast();
+  const confirm = useConfirm();
 
   useEffect(() => {
     loadData();
@@ -98,17 +103,45 @@ const SuperAdminPlans: React.FC = () => {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [plansRes, modulesRes] = await Promise.all([
+      const [plansRes, modulesRes, tenantsRes] = await Promise.all([
         superAdminApi.getPlans(true),
-        superAdminApi.getModules()
+        superAdminApi.getModules(),
+        superAdminApi.getTenants({ page: 1, limit: 500 }),
       ]);
       setPlans(plansRes.data.sort((a: Plan, b: Plan) => a.sort_order - b.sort_order));
       setModules(modulesRes.data);
+
+      const codes = new Set<string>(
+        (tenantsRes.data.data || [])
+          .map((t: HospitalOption) => t.plan_code)
+          .filter(Boolean) as string[]
+      );
+      setUsedPlanCodes(codes);
     } catch (error) {
       console.error('Failed to load data:', error);
       toast.error('Failed to load plans or modules');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleDeletePlan = async (plan: Plan) => {
+    const ok = await confirm({
+      title: 'Delete Plan',
+      message: `Delete "${plan.name}"? This action cannot be undone.`,
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    setIsDeletingPlanId(plan.id);
+    try {
+      await superAdminApi.deletePlan(plan.id);
+      toast.success(`Plan "${plan.name}" deleted`);
+      loadData();
+    } catch (error: any) {
+      toast.error(error.response?.data?.detail || 'Failed to delete plan');
+    } finally {
+      setIsDeletingPlanId(null);
     }
   };
 
@@ -154,20 +187,47 @@ const SuperAdminPlans: React.FC = () => {
     e.preventDefault();
     if (!editingPlan) return;
 
+    if (!editingPlan.code.trim()) {
+      toast.error('Plan code is required');
+      return;
+    }
+    if (!editingPlan.name.trim()) {
+      toast.error('Plan name is required');
+      return;
+    }
+
     setIsSaving(true);
     try {
-      if (editingPlan.id) {
-        await superAdminApi.updatePlan(editingPlan.id, editingPlan);
+      const { id, ...rest } = editingPlan;
+      const payload = {
+        ...rest,
+        code: rest.code.trim().toLowerCase().replace(/\s+/g, '-'),
+        name: rest.name.trim(),
+        base_price: isNaN(rest.base_price) ? 0 : rest.base_price,
+        max_users: rest.max_users ?? null,
+        max_patients: rest.max_patients ?? null,
+        max_storage_gb: rest.max_storage_gb ?? null,
+        max_appointments_monthly: rest.max_appointments_monthly ?? null,
+      };
+
+      if (id) {
+        await superAdminApi.updatePlan(id, payload);
         toast.success('Plan updated successfully');
       } else {
-        await superAdminApi.createPlan(editingPlan);
+        await superAdminApi.createPlan(payload);
         toast.success('New plan created successfully');
       }
       setEditingPlan(null);
       loadData();
-    } catch (error) {
-      console.error('Failed to save plan:', error);
-      toast.error('Failed to save plan details');
+    } catch (error: any) {
+      const detail = error?.response?.data?.detail;
+      const msg =
+        typeof detail === 'string'
+          ? detail
+          : Array.isArray(detail)
+          ? detail.map((d: any) => `${(d.loc ?? []).slice(1).join('.')}: ${d.msg}`).join(' · ')
+          : 'Failed to save plan';
+      toast.error(msg);
     } finally {
       setIsSaving(false);
     }
@@ -299,7 +359,7 @@ const SuperAdminPlans: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleSavePlan} className="flex-1 overflow-y-auto p-6 space-y-8">
+            <form id="plan-editor-form" onSubmit={handleSavePlan} className="flex-1 overflow-y-auto p-6 space-y-8">
               {/* Basic Info */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
@@ -347,9 +407,24 @@ const SuperAdminPlans: React.FC = () => {
                         <input
                           type="number"
                           required
+                          min="0"
+                          step="0.01"
                           className="w-full pl-7 pr-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                          value={editingPlan.base_price}
-                          onChange={(e) => setEditingPlan({ ...editingPlan, base_price: parseFloat(e.target.value) })}
+                          value={isNaN(editingPlan.base_price) ? '' : editingPlan.base_price}
+                          onFocus={(e) => {
+                            if (editingPlan.base_price === 0) {
+                              setEditingPlan({ ...editingPlan, base_price: NaN });
+                              e.target.value = '';
+                            } else {
+                              e.target.select();
+                            }
+                          }}
+                          onBlur={() => {
+                            if (isNaN(editingPlan.base_price)) {
+                              setEditingPlan({ ...editingPlan, base_price: 0 });
+                            }
+                          }}
+                          onChange={(e) => setEditingPlan({ ...editingPlan, base_price: e.target.value === '' ? NaN : parseFloat(e.target.value) })}
                         />
                       </div>
                     </div>
@@ -493,9 +568,9 @@ const SuperAdminPlans: React.FC = () => {
                 Cancel
               </button>
               <button
-                type="button"
+                type="submit"
+                form="plan-editor-form"
                 disabled={isSaving}
-                onClick={handleSavePlan}
                 className="bg-primary hover:bg-primary/90 text-white px-6 py-2 rounded-lg font-bold flex items-center gap-2 shadow-sm transition-all disabled:opacity-50"
               >
                 {isSaving ? <div className="w-4 h-4 border-2 border-white/30 border-t-white animate-spin rounded-full" /> : <Save className="w-4 h-4" />}
@@ -609,6 +684,24 @@ const SuperAdminPlans: React.FC = () => {
                 </button>
               </div>
 
+              {/* Delete — only when no hospital is assigned to this plan */}
+              {!usedPlanCodes.has(plan.code) && (
+                <div className="pt-2">
+                  <button
+                    onClick={() => handleDeletePlan(plan)}
+                    disabled={isDeletingPlanId === plan.id}
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-bold transition-colors bg-red-50 text-red-600 hover:bg-red-100 border border-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isDeletingPlanId === plan.id ? (
+                      <div className="w-3.5 h-3.5 border-2 border-red-300 border-t-red-600 animate-spin rounded-full" />
+                    ) : (
+                      <Trash2 className="w-3.5 h-3.5" />
+                    )}
+                    Delete Plan
+                  </button>
+                </div>
+              )}
+
               {/* Status Badge */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -642,13 +735,13 @@ const SuperAdminPlans: React.FC = () => {
           role="presentation"
         >
           <div
-            className="w-full max-w-5xl overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-black/5"
+            className="w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-black/5"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
             aria-labelledby="assign-plan-title"
           >
-            <div className="flex items-start justify-between border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-6 py-5">
+            <div className="shrink-0 flex items-start justify-between border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-6 py-5">
               <div className="min-w-0">
                 <p className="text-xs font-bold uppercase tracking-[0.28em] text-primary">Plan Assignment</p>
                 <h2 id="assign-plan-title" className="mt-1 text-2xl font-black tracking-tight text-slate-900">
@@ -667,8 +760,8 @@ const SuperAdminPlans: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleAssignPlan} className="grid max-h-[80vh] grid-cols-1 overflow-hidden lg:grid-cols-[1.1fr_1.4fr]">
-              <aside className="border-b border-slate-100 bg-slate-50/70 p-6 lg:border-b-0 lg:border-r">
+            <form onSubmit={handleAssignPlan} className="flex-1 min-h-0 overflow-y-auto lg:overflow-hidden lg:grid lg:grid-cols-[1.1fr_1.4fr]">
+              <aside className="border-b border-slate-100 bg-slate-50/70 p-6 lg:border-b-0 lg:border-r lg:overflow-y-auto lg:custom-scrollbar">
                 <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                   <div className="flex items-start gap-4">
                     <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">

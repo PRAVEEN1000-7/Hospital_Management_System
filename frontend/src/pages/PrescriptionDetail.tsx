@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
+import { useConfirm } from '../contexts/ConfirmContext';
 import prescriptionService from '../services/prescriptionService';
 import type { Prescription, PrescriptionListItem } from '../types/prescription';
 
@@ -10,6 +11,7 @@ const PrescriptionDetail: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { showToast } = useToast();
+  const confirm = useConfirm();
 
   const [prescription, setPrescription] = useState<Prescription | null>(null);
   const [history, setHistory] = useState<PrescriptionListItem[]>([]);
@@ -65,7 +67,14 @@ const PrescriptionDetail: React.FC = () => {
   };
 
   const handleDelete = async () => {
-    if (!id || !confirm('Are you sure you want to delete this draft?')) return;
+    if (!id) return;
+    const ok = await confirm({
+      title: 'Delete Draft',
+      message: 'Permanently delete this draft prescription? This cannot be undone.',
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!ok) return;
     try {
       await prescriptionService.deletePrescription(id);
       showToast('success', 'Prescription deleted');

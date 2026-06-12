@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Building2, Shield, AlertCircle } from 'lucide-react';
+import { Building2, Shield, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { useSuperAdmin } from '../contexts/SuperAdminContext';
 
 const SuperAdminLogin: React.FC = () => {
@@ -8,19 +8,23 @@ const SuperAdminLogin: React.FC = () => {
   const { login } = useSuperAdmin();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!username.trim() || !password) {
+      setError('Username and password are required');
+      return;
+    }
     setError('');
     setIsLoading(true);
-
     try {
-      await login(username, password);
+      await login(username.trim(), password);
       navigate('/superadmin');
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Invalid credentials');
+      setError(err.response?.data?.detail || 'Invalid credentials. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -47,12 +51,12 @@ const SuperAdminLogin: React.FC = () => {
 
           {error && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700">
-              <AlertCircle className="w-5 h-5" />
+              <AlertCircle className="w-5 h-5 shrink-0" />
               <span className="text-sm">{error}</span>
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4" noValidate autoComplete="off">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Username
@@ -60,10 +64,11 @@ const SuperAdminLogin: React.FC = () => {
               <input
                 type="text"
                 value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                onChange={(e) => { setUsername(e.target.value); setError(''); }}
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm transition-all"
                 placeholder="Enter username"
-                required
+                autoComplete="username"
+                spellCheck={false}
               />
             </div>
 
@@ -71,35 +76,44 @@ const SuperAdminLogin: React.FC = () => {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Password
               </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Enter password"
-                required
-              />
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => { setPassword(e.target.value); setError(''); }}
+                  className="w-full px-4 py-2.5 pr-11 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm transition-all"
+                  placeholder="Enter password"
+                  autoComplete="current-password"
+                />
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
             </div>
 
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
-              {isLoading ? 'Signing in...' : 'Sign In'}
+              {isLoading ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Signing in…
+                </>
+              ) : (
+                'Sign In'
+              )}
             </button>
           </form>
-
-          <div className="mt-6 p-3 bg-blue-50 rounded-lg">
-            <p className="text-xs text-blue-700 text-center">
-              <strong>Default Credentials:</strong><br />
-              Username: superadmin<br />
-              Password: superadmin@123
-            </p>
-          </div>
         </div>
 
-        {/* Footer */}
         <p className="text-center text-blue-300 text-sm mt-8">
           HMS Multi-Tenant Platform © 2026
         </p>

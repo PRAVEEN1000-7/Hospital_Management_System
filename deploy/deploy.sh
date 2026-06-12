@@ -2,7 +2,7 @@
 # =============================================================================
 # HMS Deployment Script
 # Run this on the server after: git pull
-# Usage: bash deploy.sh
+# Usage: bash deploy/deploy.sh   (run from the project root)
 # =============================================================================
 
 set -e  # stop on any error
@@ -74,7 +74,7 @@ echo "[5/7] Configuring Nginx..."
 
 sudo apt-get install -y nginx -qq
 
-sudo cp "$PROJECT_DIR/nginx.conf" /etc/nginx/sites-available/hms
+sudo cp "$PROJECT_DIR/deploy/nginx.conf" /etc/nginx/sites-available/hms
 sudo ln -sf /etc/nginx/sites-available/hms /etc/nginx/sites-enabled/hms
 sudo rm -f /etc/nginx/sites-enabled/default
 sudo nginx -t
@@ -94,7 +94,7 @@ echo "[7/7] Starting services..."
 
 # Install systemd service if not already registered
 if [ ! -f /etc/systemd/system/hms-backend.service ]; then
-    sudo cp "$PROJECT_DIR/hms-backend.service" /etc/systemd/system/hms-backend.service
+    sudo cp "$PROJECT_DIR/deploy/hms-backend.service" /etc/systemd/system/hms-backend.service
     sudo systemctl daemon-reload
     sudo systemctl enable hms-backend
     echo "  Installed hms-backend systemd service"

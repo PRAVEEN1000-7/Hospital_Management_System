@@ -3,8 +3,9 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Building2, ChevronLeft, Save, Phone } from 'lucide-react';
 import { superAdminApi } from '../services/superAdminApi';
 import { useToast } from '../contexts/ToastContext';
+import DialCodeSelect from '../components/common/DialCodeSelect';
 
-// ── Country data (3-letter ISO codes match the backend) ──────────────────────
+// ── Country data ──────────────────────────────────────────────────────────────
 interface CountryEntry {
   code3: string;
   name: string;
@@ -138,12 +139,23 @@ const TIMEZONES = [
 
 const getCountry = (code3: string) => COUNTRIES_DATA.find((c) => c.code3 === code3);
 
+// Deduplicated dial codes — +1 (US & Canada) appear as one option.
+const DIAL_CODES: { phoneCode: string; countries: string }[] = (() => {
+  const byCode = new Map<string, string[]>();
+  for (const c of COUNTRIES_DATA) {
+    byCode.set(c.phoneCode, [...(byCode.get(c.phoneCode) ?? []), c.name]);
+  }
+  return Array.from(byCode, ([phoneCode, names]) => ({
+    phoneCode,
+    countries: names.join(' / '),
+  })).sort((a, b) => Number(a.phoneCode.slice(1)) - Number(b.phoneCode.slice(1)));
+})();
+
 /** Split a stored phone string like "+919876543210" into { code, number } */
 const splitPhone = (phone: string, fallbackCode3: string): { code: string; number: string } => {
   const defaultCode = getCountry(fallbackCode3)?.phoneCode ?? '+1';
   if (!phone) return { code: defaultCode, number: '' };
   const normalized = phone.replace(/\s/g, '');
-  // Try longest codes first to avoid "+1" matching "+1x" codes
   const sorted = [...COUNTRIES_DATA]
     .map((c) => c.phoneCode)
     .filter((v, i, a) => a.indexOf(v) === i)
@@ -167,7 +179,7 @@ const labelClass = 'text-sm font-medium text-slate-700 mb-1.5 block';
 const hintClass = 'mt-1 text-xs text-slate-400';
 const errorClass = 'mt-1 text-xs text-red-500 flex items-center gap-1';
 
-// ── Form types ────────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 interface EditForm {
   name: string;
   email: string;
@@ -192,20 +204,26 @@ function validateForm(d: EditForm): FieldErrors {
   else if (d.name.trim().length < 3) e.name = 'Must be at least 3 characters';
   if (!d.email.trim()) e.email = 'Email is required';
   else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email)) e.email = 'Invalid email address';
-  if (d.phone_number && !/^\d{5,15}$/.test(d.phone_number.replace(/\s/g, '')))
-    e.phone_number = 'Must be 5–15 digits';
+  if (d.phone_number && !/^\d{10}$/.test(d.phone_number))
+    e.phone_number = 'Must be exactly 10 digits';
   if (!d.country) e.country = 'Country is required';
   if (!d.timezone) e.timezone = 'Timezone is required';
   return e;
 }
 
-// ── Section header ────────────────────────────────────────────────────────────
 const SectionHeader: React.FC<{ label: string }> = ({ label }) => (
   <div className="flex items-center gap-2 mb-5">
     <span className="w-8 h-[2px] bg-primary/20 rounded-full" />
     <h2 className="text-sm font-bold text-primary uppercase tracking-wider">{label}</h2>
   </div>
 );
+
+const STATUS_OPTIONS = [
+  { value: 'pending',   label: 'Pending',   dot: 'bg-gray-400',   card: 'border-gray-200 bg-gray-50 text-gray-700',   ring: 'ring-gray-300' },
+  { value: 'active',    label: 'Active',    dot: 'bg-green-500',  card: 'border-green-200 bg-green-50 text-green-700', ring: 'ring-green-300' },
+  { value: 'suspended', label: 'Suspended', dot: 'bg-red-500',    card: 'border-red-200 bg-red-50 text-red-700',       ring: 'ring-red-300' },
+  { value: 'cancelled', label: 'Cancelled', dot: 'bg-slate-400',  card: 'border-slate-200 bg-slate-50 text-slate-500', ring: 'ring-slate-300' },
+];
 
 // ── Component ─────────────────────────────────────────────────────────────────
 const SuperAdminHospitalEdit: React.FC = () => {
@@ -236,9 +254,6 @@ const SuperAdminHospitalEdit: React.FC = () => {
     status: 'pending',
   });
 
-  // Track whether the country was changed by the user (vs loaded from API)
-  const countryInitialisedRef = useRef(false);
-
   useEffect(() => {
     if (!id) return;
     const load = async () => {
@@ -262,7 +277,6 @@ const SuperAdminHospitalEdit: React.FC = () => {
           timezone: t.timezone || getCountry(country3)?.timezone || 'UTC',
           status: t.status || 'pending',
         });
-        countryInitialisedRef.current = true;
       } catch {
         toast.error('Failed to load hospital details');
         navigate('/superadmin/hospitals');
@@ -282,26 +296,26 @@ const SuperAdminHospitalEdit: React.FC = () => {
     setServerError(null);
   };
 
-  // When user explicitly changes country, auto-update phone code + timezone + clear state
+  // Atomic cascade: country change updates phone code, timezone, and clears state in one render.
   const handleCountryChange = (newCode3: string) => {
     const c = getCountry(newCode3);
-    setForm((prev) => ({
-      ...prev,
-      country: newCode3,
-      phone_code: c?.phoneCode ?? prev.phone_code,
-      timezone: c?.timezone ?? prev.timezone,
-      state_province: '',
-    }));
+    setForm((prev) => {
+      const next = {
+        ...prev,
+        country: newCode3,
+        phone_code: c?.phoneCode ?? prev.phone_code,
+        timezone: c?.timezone ?? prev.timezone,
+        state_province: '',
+      };
+      if (submittedRef.current) setFieldErrors(validateForm(next));
+      return next;
+    });
     setServerError(null);
   };
 
   const blockNonDigit = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (
-      !/^\d$/.test(e.key) &&
-      !['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Home', 'End'].includes(e.key)
-    ) {
-      e.preventDefault();
-    }
+    if (e.ctrlKey || e.metaKey) return;
+    if (e.key.length === 1 && !/^\d$/.test(e.key)) e.preventDefault();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -405,7 +419,7 @@ const SuperAdminHospitalEdit: React.FC = () => {
         </div>
       )}
 
-      <form ref={formRef} onSubmit={handleSubmit} className="space-y-6" noValidate>
+      <form ref={formRef} onSubmit={handleSubmit} className="space-y-6" noValidate autoComplete="off">
 
         {/* ── Section 1: Hospital Information ──────────────────────────────── */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
@@ -467,35 +481,35 @@ const SuperAdminHospitalEdit: React.FC = () => {
                 <span className="flex items-center gap-1.5">
                   <Phone className="w-3.5 h-3.5 text-slate-500" />
                   Phone Number
+                  <span className="text-slate-400 font-normal text-xs">(optional)</span>
                 </span>
               </label>
               <div className="flex gap-2">
-                <select
-                  className={`${selectClass} w-36 shrink-0`}
-                  value={form.phone_code}
-                  onChange={(e) => set('phone_code', e.target.value)}
-                >
-                  {COUNTRIES_DATA.map((c) => (
-                    <option key={c.code3} value={c.phoneCode}>
-                      {c.phoneCode} ({c.name})
-                    </option>
-                  ))}
-                </select>
-                <div className="flex-1">
+                {/* Fixed-width wrapper — prevents selectClass w-full from expanding here */}
+                <div className="w-28 shrink-0">
+                  <DialCodeSelect
+                    className={`${selectClass} cursor-pointer`}
+                    value={form.phone_code}
+                    options={DIAL_CODES}
+                    onChange={(code) => set('phone_code', code)}
+                  />
+                </div>
+                <div className="flex-1 min-w-0">
                   <input
                     type="tel"
+                    inputMode="numeric"
                     className={fieldErrors.phone_number ? inputErrorClass : inputClass}
                     placeholder="e.g. 9876543210"
-                    maxLength={15}
+                    maxLength={10}
                     value={form.phone_number}
                     onKeyDown={blockNonDigit}
-                    onChange={(e) => set('phone_number', e.target.value.replace(/\D/g, ''))}
+                    onChange={(e) => set('phone_number', e.target.value.replace(/\D/g, '').slice(0, 10))}
                   />
                 </div>
               </div>
               <Err field="phone_number" />
               {!fieldErrors.phone_number && (
-                <p className={hintClass}>Select country code, then enter digits only</p>
+                <p className={hintClass}>Pick the country code (type to search), then enter 10 digits</p>
               )}
             </div>
           </div>
@@ -524,7 +538,7 @@ const SuperAdminHospitalEdit: React.FC = () => {
               {!fieldErrors.country && <p className={hintClass}>Auto-updates phone code &amp; timezone</p>}
             </div>
 
-            {/* State / Province — dropdown when available */}
+            {/* State / Province */}
             <div>
               <label className={labelClass}>State / Province</label>
               {states.length > 0 ? (
@@ -629,24 +643,31 @@ const SuperAdminHospitalEdit: React.FC = () => {
           </div>
         </div>
 
-        {/* ── Section 3: Status ─────────────────────────────────────────────── */}
+        {/* ── Section 3: Account Status ─────────────────────────────────────── */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
           <SectionHeader label="Account Status" />
-          <div className="max-w-xs">
-            <label className={labelClass}>Hospital Status</label>
-            <select
-              className={selectClass}
-              value={form.status}
-              onChange={(e) => set('status', e.target.value)}
-            >
-              <option value="pending">Pending</option>
-              <option value="active">Active</option>
-              <option value="suspended">Suspended</option>
-              <option value="cancelled">Cancelled</option>
-            </select>
-            <p className={hintClass}>
-              Active allows hospital staff to log in. Suspended blocks access immediately.
-            </p>
+          <p className="text-xs text-slate-500 -mt-3 mb-4">
+            Active allows hospital staff to log in. Suspended blocks access immediately.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            {STATUS_OPTIONS.map((opt) => {
+              const isSelected = form.status === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => set('status', opt.value)}
+                  className={`flex items-center gap-2.5 px-5 py-2.5 border rounded-lg text-sm font-medium transition-all ${
+                    isSelected
+                      ? `${opt.card} ring-2 ${opt.ring} shadow-sm`
+                      : 'border-slate-200 text-slate-500 bg-white hover:bg-slate-50'
+                  }`}
+                >
+                  <span className={`w-2.5 h-2.5 rounded-full ${isSelected ? opt.dot : 'bg-slate-300'}`} />
+                  {opt.label}
+                </button>
+              );
+            })}
           </div>
         </div>
 

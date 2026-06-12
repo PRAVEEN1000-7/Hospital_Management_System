@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Building2, ChevronLeft, Eye, EyeOff, Phone } from 'lucide-react';
 import { superAdminApi } from '../services/superAdminApi';
 import { useToast } from '../contexts/ToastContext';
+import DialCodeSelect from '../components/common/DialCodeSelect';
 
 // ── Country data (3-letter ISO codes used by the backend) ─────────────────────
 interface CountryEntry {
@@ -147,6 +148,19 @@ const TIMEZONES = [
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const getCountry = (code3: string) => COUNTRIES_DATA.find((c) => c.code3 === code3);
 
+// Dial codes deduplicated by value — several countries share one (+1 → US & Canada),
+// so each code appears once and the picker searches by country name or code.
+const DIAL_CODES: { phoneCode: string; countries: string }[] = (() => {
+  const byCode = new Map<string, string[]>();
+  for (const c of COUNTRIES_DATA) {
+    byCode.set(c.phoneCode, [...(byCode.get(c.phoneCode) ?? []), c.name]);
+  }
+  return Array.from(byCode, ([phoneCode, names]) => ({
+    phoneCode,
+    countries: names.join(' / '),
+  })).sort((a, b) => Number(a.phoneCode.slice(1)) - Number(b.phoneCode.slice(1)));
+})();
+
 // ── Styles ───────────────────────────────────────────────────────────────────
 const inputBase =
   'w-full bg-white border rounded-lg px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 transition-all duration-200';
@@ -194,8 +208,8 @@ function validateForm(d: FormData): FieldErrors {
   else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email)) e.email = 'Invalid email address';
 
   if (!d.phone_number.trim()) e.phone_number = 'Phone number is required';
-  else if (!/^\d{5,15}$/.test(d.phone_number.replace(/\s/g, '')))
-    e.phone_number = 'Must be 5–15 digits (no spaces or dashes)';
+  else if (!/^\d{10}$/.test(d.phone_number))
+    e.phone_number = 'Must be exactly 10 digits';
 
   if (!d.country) e.country = 'Country is required';
   if (!d.timezone) e.timezone = 'Timezone is required';
@@ -208,10 +222,10 @@ function validateForm(d: FormData): FieldErrors {
   else if (!/^[a-z0-9_]+$/.test(d.admin_username)) e.admin_username = 'Lowercase letters, numbers and underscores only';
 
   if (!d.admin_first_name.trim()) e.admin_first_name = 'First name is required';
-  else if (!/^[A-Za-z\s'-]+$/.test(d.admin_first_name.trim())) e.admin_first_name = 'Letters only';
+  else if (!/^[\p{L}\s'.-]+$/u.test(d.admin_first_name.trim())) e.admin_first_name = 'Letters only';
 
   if (!d.admin_last_name.trim()) e.admin_last_name = 'Last name is required';
-  else if (!/^[A-Za-z\s'-]+$/.test(d.admin_last_name.trim())) e.admin_last_name = 'Letters only';
+  else if (!/^[\p{L}\s'.-]+$/u.test(d.admin_last_name.trim())) e.admin_last_name = 'Letters only';
 
   if (!d.admin_password) e.admin_password = 'Password is required';
   else if (d.admin_password.length < 8) e.admin_password = 'Minimum 8 characters';
@@ -271,17 +285,24 @@ const SuperAdminCreateHospital: React.FC = () => {
     setServerError(null);
   };
 
-  // Auto-update phone code + timezone when country changes
-  useEffect(() => {
-    const c = getCountry(form.country);
-    if (!c) return;
-    setForm((prev) => ({
-      ...prev,
-      phone_code: c.phoneCode,
-      timezone: c.timezone,
-      state_province: '',   // clear stale state when country switches
-    }));
-  }, [form.country]);
+  // Changing the country cascades to the dependent fields in a single, atomic
+  // update — phone code + timezone auto-fill, and the now-irrelevant state is
+  // cleared so the State dropdown never holds a value from the previous country.
+  const handleCountryChange = (code3: string) => {
+    const c = getCountry(code3);
+    setForm((prev) => {
+      const next = {
+        ...prev,
+        country: code3,
+        phone_code: c?.phoneCode ?? prev.phone_code,
+        timezone: c?.timezone ?? prev.timezone,
+        state_province: '',
+      };
+      if (submittedRef.current) setFieldErrors(validateForm(next));
+      return next;
+    });
+    setServerError(null);
+  };
 
   const suggestUsername = () => {
     if (form.admin_username.trim()) return;
@@ -293,9 +314,11 @@ const SuperAdminCreateHospital: React.FC = () => {
   };
 
   const blockNonDigit = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // Let clipboard / select-all shortcuts through (Ctrl+V, Cmd+A, etc.)
+    if (e.ctrlKey || e.metaKey) return;
     if (
-      !/^\d$/.test(e.key) &&
-      !['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Home', 'End'].includes(e.key)
+      e.key.length === 1 &&
+      !/^\d$/.test(e.key)
     ) {
       e.preventDefault();
     }
@@ -397,7 +420,7 @@ const SuperAdminCreateHospital: React.FC = () => {
         </div>
       )}
 
-      <form ref={formRef} onSubmit={handleSubmit} className="space-y-6" noValidate>
+      <form ref={formRef} onSubmit={handleSubmit} className="space-y-6" noValidate autoComplete="off">
 
         {/* ── Section 1: Hospital Information ─────────────────────────────── */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
@@ -462,32 +485,30 @@ const SuperAdminCreateHospital: React.FC = () => {
                 </span>
               </label>
               <div className="flex gap-2">
-                <select
-                  className={`${selectClass} w-36 shrink-0`}
-                  value={form.phone_code}
-                  onChange={(e) => set('phone_code', e.target.value)}
-                >
-                  {COUNTRIES_DATA.map((c) => (
-                    <option key={c.code3} value={c.phoneCode}>
-                      {c.phoneCode} ({c.name})
-                    </option>
-                  ))}
-                </select>
-                <div className="flex-1">
+                <div className="w-28 shrink-0">
+                  <DialCodeSelect
+                    className={`${selectClass} cursor-pointer`}
+                    value={form.phone_code}
+                    options={DIAL_CODES}
+                    onChange={(code) => set('phone_code', code)}
+                  />
+                </div>
+                <div className="flex-1 min-w-0">
                   <input
                     type="tel"
+                    inputMode="numeric"
                     className={fieldErrors.phone_number ? inputErrorClass : inputClass}
                     placeholder="e.g. 9876543210"
-                    maxLength={15}
+                    maxLength={10}
                     value={form.phone_number}
                     onKeyDown={blockNonDigit}
-                    onChange={(e) => set('phone_number', e.target.value.replace(/\D/g, ''))}
+                    onChange={(e) => set('phone_number', e.target.value.replace(/\D/g, '').slice(0, 10))}
                   />
                 </div>
               </div>
               <Err field="phone_number" />
               {!fieldErrors.phone_number && (
-                <p className={hintClass}>Select country code, then enter the number — digits only</p>
+                <p className={hintClass}>Pick the country code (type to search), then enter a 10-digit number</p>
               )}
             </div>
           </div>
@@ -506,7 +527,7 @@ const SuperAdminCreateHospital: React.FC = () => {
               <select
                 className={fieldErrors.country ? selectErrorClass : selectClass}
                 value={form.country}
-                onChange={(e) => set('country', e.target.value)}
+                onChange={(e) => handleCountryChange(e.target.value)}
               >
                 {COUNTRIES_DATA.map((c) => (
                   <option key={c.code3} value={c.code3}>
@@ -729,6 +750,7 @@ const SuperAdminCreateHospital: React.FC = () => {
                   className={(fieldErrors.admin_password ? inputErrorClass : inputClass) + ' pr-11'}
                   placeholder="Minimum 8 characters"
                   minLength={8}
+                  autoComplete="new-password"
                   value={form.admin_password}
                   onChange={(e) => set('admin_password', e.target.value)}
                 />

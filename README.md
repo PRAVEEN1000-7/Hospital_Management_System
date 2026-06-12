@@ -431,10 +431,22 @@ HMS/v1/
 │   ├── 03_queries.sql        # Reference queries (DO NOT run)
 │   └── README.md             # Database-specific setup notes
 │
-├── project-plan/             # Architecture & design docs
+├── deploy/                   # Deployment artifacts
+│   ├── deploy.sh             # Server deploy script (run from project root)
+│   ├── nginx.conf            # Nginx site config
+│   └── hms-backend.service   # systemd unit for the backend
+│
+├── docs/                     # All project documentation
+│   ├── api/                  # API reference (full + simple)
+│   ├── setup/                # Setup & install guides
+│   ├── deployment/           # Deployment guide
+│   ├── multi-tenant/         # Multi-tenant architecture & security
+│   ├── planning/             # Architecture & design docs (+ diagrams/)
+│   ├── notes/                # Scratch notes & misc assets
+│   └── PROJECT_STATUS_SUMMARY.md
+│
 ├── .gitignore                # Git ignore rules
-├── README.md                 # Project overview
-└── SETUP_GUIDE.md            # ← You are here
+└── README.md                 # Project overview (you are here)
 ```
 
 ---

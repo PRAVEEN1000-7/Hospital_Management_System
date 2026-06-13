@@ -14,6 +14,9 @@ from ..models.tenant import (
     SubscriptionPlan, TenantSubscription, Tenant,
     UsageTracking, BillingInvoice, AuditLog
 )
+from ..models.patient import Patient
+from ..models.appointment import Appointment
+from ..models.user import User
 
 logger = logging.getLogger(__name__)
 
@@ -250,6 +253,34 @@ class SubscriptionService:
         return subscription
     
     @staticmethod
+    def _get_real_count(db: Session, tenant_id: uuid.UUID, resource_type: str) -> int:
+        """Query actual DB table count for a resource type."""
+        if resource_type == 'patients':
+            return db.query(func.count(Patient.id)).filter(
+                Patient.hospital_id == tenant_id,
+                Patient.is_active == True  # noqa: E712
+            ).scalar() or 0
+        elif resource_type == 'appointments':
+            return db.query(func.count(Appointment.id)).filter(
+                Appointment.hospital_id == tenant_id
+            ).scalar() or 0
+        elif resource_type == 'users':
+            return db.query(func.count(User.id)).filter(
+                User.hospital_id == tenant_id,
+                User.is_active == True  # noqa: E712
+            ).scalar() or 0
+        else:
+            # For storage and unknown types fall back to UsageTracking sum
+            now = datetime.utcnow()
+            usage = db.query(UsageTracking).filter(
+                UsageTracking.tenant_id == tenant_id,
+                UsageTracking.resource_type == resource_type,
+                UsageTracking.period_year == now.year,
+                UsageTracking.period_month == now.month
+            ).first()
+            return usage.usage_count if usage else 0
+
+    @staticmethod
     def get_usage_quota(
         db: Session,
         tenant_id: uuid.UUID,
@@ -257,21 +288,14 @@ class SubscriptionService:
     ) -> Dict[str, Any]:
         """Get current usage vs limit for a resource"""
         subscription = SubscriptionService.get_active_subscription(db, tenant_id)
-        
+
         max_limit = None
         if subscription:
             max_limit = subscription.get_effective_limit(resource_type)
-        
-        # Get current usage
+
+        current = SubscriptionService._get_real_count(db, tenant_id, resource_type)
+
         now = datetime.utcnow()
-        usage = db.query(UsageTracking).filter(
-            UsageTracking.tenant_id == tenant_id,
-            UsageTracking.resource_type == resource_type,
-            UsageTracking.period_year == now.year,
-            UsageTracking.period_month == now.month
-        ).first()
-        
-        current = usage.usage_count if usage else 0
         percentage = 0
         if max_limit and max_limit > 0:
             percentage = (current / max_limit) * 100
@@ -279,7 +303,7 @@ class SubscriptionService:
             percentage = 0  # Unlimited
         else:
             percentage = 100
-        
+
         return {
             'resource_type': resource_type,
             'current_usage': current,

@@ -9,10 +9,7 @@ import pharmacyService, {
 } from '../../services/pharmacyService';
 import type { MedicineBatch } from '../../types/pharmacy';
 
-interface DispensingPrescriptionItem extends PrescriptionItemWithStock {
-  duration_value?: number;
-  duration_unit?: string;
-}
+type DispensingPrescriptionItem = PrescriptionItemWithStock;
 
 interface DispensingPendingPrescription extends PendingPrescription {
   patient_blood_group?: string;
@@ -112,12 +109,18 @@ const DispensingScreen: React.FC = () => {
           const prescribedQuantity = calculatePrescribedQuantity(item);
           const alreadyDispensed = Number(item.dispensed_quantity || 0);
           const remainingQty = Math.max(0, prescribedQuantity - alreadyDispensed);
-          const hasStock = item.available_batches && item.available_batches.length > 0;
-          const isOutOfStock = item.available_quantity === 0;
+          const notLinked = !item.medicine_id;
+          const hasStock = !notLinked && item.available_batches && item.available_batches.length > 0;
+          const isOutOfStock = !notLinked && item.available_quantity === 0;
           const firstBatch = hasStock ? item.available_batches[0] : undefined;
           const defaultDispenseQty = firstBatch ? Math.min(remainingQty, firstBatch.quantity || 0) : 0;
           const isAlreadyFulfilled = item.is_dispensed || remainingQty <= 0;
-          
+
+          let skipReason: string | undefined;
+          if (isAlreadyFulfilled) skipReason = 'already_dispensed';
+          else if (notLinked) skipReason = 'not_in_formulary';
+          else if (!hasStock || isOutOfStock) skipReason = 'out_of_stock';
+
           return {
             ...item,
             quantity: prescribedQuantity,
@@ -125,10 +128,8 @@ const DispensingScreen: React.FC = () => {
             remainingQty,
             selectedBatchId: firstBatch?.id,
             dispensedQty: hasStock ? defaultDispenseQty : 0,
-            skip: isAlreadyFulfilled || !hasStock || isOutOfStock,
-            skipReason: isAlreadyFulfilled
-              ? 'already_dispensed'
-              : (!hasStock || isOutOfStock ? 'out_of_stock' : undefined),
+            skip: isAlreadyFulfilled || notLinked || !hasStock || isOutOfStock,
+            skipReason,
           };
         });
         setDispensingItems(items);
@@ -385,7 +386,7 @@ const DispensingScreen: React.FC = () => {
       ].filter(Boolean).join(' | ');
 
       dispensingItems.forEach((item) => {
-        if (item.skip || item.dispensedQty <= 0) return;
+        if (item.skip || item.dispensedQty <= 0 || !item.medicine_id) return;
 
         const batch = item.available_batches.find(
           (b) => b.id === item.selectedBatchId
@@ -735,17 +736,17 @@ const DispensingScreen: React.FC = () => {
                             <div className="bg-slate-100 rounded-lg px-3 py-2 text-center">
                               <div className="text-[10px] text-slate-500 uppercase font-semibold tracking-wide">Prescribed</div>
                               <div className="text-xl font-bold text-slate-900 leading-tight">{prescribedQuantity}</div>
-                              <div className="text-[11px] text-slate-500">units</div>
+                              <div className="text-[11px] text-slate-500">{item.dispense_unit || 'units'}</div>
                             </div>
                             <div className="bg-slate-100 rounded-lg px-3 py-2 text-center">
                               <div className="text-[10px] text-slate-500 uppercase font-semibold tracking-wide">Dispensed</div>
                               <div className="text-xl font-bold text-slate-900 leading-tight">{Number(item.dispensed_quantity || 0)}</div>
-                              <div className="text-[11px] text-slate-500">units</div>
+                              <div className="text-[11px] text-slate-500">{item.dispense_unit || 'units'}</div>
                             </div>
                             <div className="bg-slate-100 rounded-lg px-3 py-2 text-center">
                               <div className="text-[10px] text-slate-500 uppercase font-semibold tracking-wide">Remaining</div>
                               <div className={`text-xl font-bold leading-tight ${item.remainingQty > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>{item.remainingQty}</div>
-                              <div className="text-[11px] text-slate-500">units</div>
+                              <div className="text-[11px] text-slate-500">{item.dispense_unit || 'units'}</div>
                             </div>
                           </div>
                         </div>

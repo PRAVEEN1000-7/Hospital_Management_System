@@ -81,20 +81,22 @@ class TenantValidator:
                 detail="Hospital is inactive or not found"
             )
         
-        # Get tenant (via hospital code match) and verify it's active or trialing
-        tenant = db.query(Tenant).filter(
-            Tenant.code == hospital.code,
-            Tenant.status.in_(['active', 'trialing'])
-        ).first()
+        # Get tenant via hospitals.tenant_id FK
+        tenant = None
+        if hospital.tenant_id:
+            tenant = db.query(Tenant).filter(
+                Tenant.id == hospital.tenant_id,
+                Tenant.status.in_(['active', 'trialing'])
+            ).first()
 
-        if not tenant:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Tenant is inactive or suspended"
-            )
-        
+            if not tenant:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Tenant is inactive or suspended"
+                )
+
         # Verify tenant_id in JWT matches
-        if tenant_id and tenant.id != tenant_id:
+        if tenant_id and tenant and tenant.id != tenant_id:
             logger.warning(
                 f"SECURITY: Tenant ID mismatch for user {user.id}. "
                 f"JWT: {tenant_id}, DB: {tenant.id}"
@@ -109,36 +111,34 @@ class TenantValidator:
     @staticmethod
     def get_tenant_for_user(user: User, db: Session) -> Optional[Tenant]:
         """
-        Get tenant for a user (via hospital → tenant code match).
-        Returns None for super_admin users (they are platform-level).
+        Get tenant for a user via hospitals.tenant_id FK.
+        Returns None for super_admin users (platform-level) or hospitals
+        not yet linked to a SaaS tenant (grants full access as fallback).
         """
-        # Super admins are platform-level — they don't belong to a tenant
         if hasattr(user, 'roles') and 'super_admin' in (user.roles or []):
             return None
-        
+
         hospital = db.query(Hospital).filter(
             Hospital.id == user.hospital_id,
             Hospital.is_active == True
         ).first()
-        
+
         if not hospital:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Hospital not found or inactive"
             )
-        
-        # Link hospitals → tenants via matching code
+
+        if not hospital.tenant_id:
+            # Hospital not linked to a SaaS tenant — allow full access
+            return None
+
         tenant = db.query(Tenant).filter(
-            Tenant.code == hospital.code,
+            Tenant.id == hospital.tenant_id,
             Tenant.status.in_(['active', 'trialing'])
         ).first()
 
-        if not tenant:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Tenant not found or inactive"
-            )
-        
+        # Tenant record missing or suspended → return None so caller can decide
         return tenant
 
 
@@ -327,18 +327,12 @@ class UsageTracker:
         
         if not subscription or not subscription.plan:
             return 0, 0
-        
-        tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
-        if not tenant:
-            return 0, 0
-        
-        # Count active users in tenant's hospitals
-        # Find hospitals linked to tenant by matching code
-        tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+
         hospital_ids = db.query(Hospital.id).filter(
-            Hospital.code == tenant.code
-        ).all() if tenant else []
-        
+            Hospital.tenant_id == tenant_id,
+            Hospital.is_active == True
+        ).all()
+
         current_count = db.query(User).filter(
             User.hospital_id.in_([h[0] for h in hospital_ids]),
             User.is_deleted == False,
@@ -361,17 +355,12 @@ class UsageTracker:
         
         if not subscription or not subscription.plan:
             return 0, 0
-        
-        tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
-        if not tenant:
-            return 0, 0
-        
-        # Find hospitals linked to tenant by matching code
-        tenant = db.query(Tenant).filter(Tenant.id == tenant_id).first()
+
         hospital_ids = db.query(Hospital.id).filter(
-            Hospital.code == tenant.code
-        ).all() if tenant else []
-        
+            Hospital.tenant_id == tenant_id,
+            Hospital.is_active == True
+        ).all()
+
         current_count = db.query(Patient).filter(
             Patient.hospital_id.in_([h[0] for h in hospital_ids]),
             Patient.is_deleted == False

@@ -332,6 +332,13 @@ def _enrich_prescription_for_dispensing(db: Session, rx: Prescription) -> dict:
             item.quantity,
         ) or 0
 
+        # Resolve dispense unit label from the linked medicine
+        dispense_unit = "units"
+        if item.medicine_id:
+            med = db.query(Medicine).filter(Medicine.id == item.medicine_id).first()
+            if med and med.unit_of_measure:
+                dispense_unit = med.unit_of_measure
+
         item_dict = {
             "id": str(item.id),
             "prescription_item_id": str(item.id),
@@ -348,6 +355,7 @@ def _enrich_prescription_for_dispensing(db: Session, rx: Prescription) -> dict:
             "dispensed_quantity": item.dispensed_quantity,
             "allow_substitution": item.allow_substitution,
             "is_dispensed": item.is_dispensed,
+            "dispense_unit": dispense_unit,
         }
         
         # Get available stock for this medicine across all active batches (FEFO ordered).
@@ -356,6 +364,7 @@ def _enrich_prescription_for_dispensing(db: Session, rx: Prescription) -> dict:
                 MedicineBatch.medicine_id == item.medicine_id,
                 MedicineBatch.is_active == True,
                 MedicineBatch.quantity > 0,
+                MedicineBatch.expiry_date >= date.today(),
             ).order_by(MedicineBatch.expiry_date.asc()).all()
 
             if batches:

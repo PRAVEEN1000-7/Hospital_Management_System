@@ -19,6 +19,46 @@ const DURATION_UNITS = ['days', 'weeks', 'months'];
 const ROUTE_OPTIONS = ['oral', 'topical', 'injection', 'inhalation', 'sublingual', 'rectal', 'nasal', 'ophthalmic', 'otic'];
 const FOOD_TIMING_OPTIONS = ['', 'Before food', 'After food'];
 
+const _LIQUID_CATS = new Set(['syrup', 'suspension', 'liquid', 'solution', 'linctus', 'elixir', 'tincture']);
+const _SINGLE_UNIT_CATS = new Set(['drops', 'eye drops', 'ear drops', 'nasal drops', 'nasal spray', 'cream', 'ointment', 'gel', 'lotion', 'paste', 'inhaler', 'spray', 'patch', 'suppository']);
+
+interface MedInfo { category: string | null; units_per_pack: number; unit_of_measure: string; }
+
+function computeDispenseQty(
+  item: PrescriptionItemCreate,
+  info?: MedInfo,
+): { qty: number | null; unit: string } {
+  const uom = (info?.unit_of_measure || '').toLowerCase();
+  const unit = uom || 'units';
+
+  if (!item.frequency || !item.duration_value || item.duration_value <= 0) {
+    return { qty: null, unit };
+  }
+
+  const parts = item.frequency.match(/\d+(?:\.\d+)?/g);
+  if (!parts?.length) return { qty: null, unit };
+  const dailyDoses = parts.reduce((s, p) => s + Number(p), 0);
+  if (dailyDoses <= 0) return { qty: null, unit };
+
+  const durUnit = (item.duration_unit || 'days').toLowerCase();
+  let days = item.duration_value;
+  if (durUnit === 'weeks') days *= 7;
+  if (durUnit === 'months') days *= 30;
+
+  const cat = (info?.category || '').toLowerCase();
+  const uop = Math.max(1, info?.units_per_pack || 1);
+
+  if (_LIQUID_CATS.has(cat) || (uom === 'bottle' && cat !== 'drops')) {
+    return { qty: Math.max(1, Math.ceil(days / 5)), unit: uom || 'bottle' };
+  }
+  if (_SINGLE_UNIT_CATS.has(cat) || uom === 'tube') {
+    return { qty: 1, unit: uom || 'unit' };
+  }
+  const totalDoses = Math.ceil(dailyDoses * days);
+  if (uop > 1) return { qty: Math.max(1, Math.ceil(totalDoses / uop)), unit: uom || 'strip' };
+  return { qty: totalDoses, unit: uom || 'units' };
+}
+
 const getDisplayMedicineName = (med: Medicine): string => {
   if (!med.strength) return med.name;
   const name = med.name.trim();
@@ -109,6 +149,7 @@ const PrescriptionBuilder: React.FC = () => {
   const [medicineSearch, setMedicineSearch] = useState('');
   const [medicineResults, setMedicineResults] = useState<Medicine[]>([]);
   const [medicineStockById, setMedicineStockById] = useState<Record<string, number>>({});
+  const [medicineInfoById, setMedicineInfoById] = useState<Record<string, MedInfo>>({});
   const [activeMedBlockIdx, setActiveMedBlockIdx] = useState<number | null>(null);
   const [activeMedItemIdx, setActiveMedItemIdx] = useState<number | null>(null);
   const [activeMedResultIdx, setActiveMedResultIdx] = useState<number>(-1);
@@ -281,10 +322,14 @@ const PrescriptionBuilder: React.FC = () => {
   const searchMedicines = useCallback(async (q: string) => {
     if (q.length < 2) { setMedicineResults([]); return; }
     try {
-      const res = await prescriptionService.getMedicines(1, 10, q);
+      const res = await prescriptionService.getMedicines(1, 20, q);
       setMedicineResults(res.data);
-    } catch { setMedicineResults([]); }
-  }, []);
+    } catch (err: any) {
+      setMedicineResults([]);
+      const msg = err?.response?.data?.detail;
+      if (msg) showToast('error', `Medicine search: ${msg}`);
+    }
+  }, [showToast]);
 
   useEffect(() => {
     const timer = setTimeout(() => searchMedicines(medicineSearch), 300);
@@ -339,6 +384,14 @@ const PrescriptionBuilder: React.FC = () => {
     newBlocks[blockIdx] = { ...newBlocks[blockIdx], items: updatedItems };
     setBlocks(newBlocks);
     setMedicineStockById((prev) => ({ ...prev, [med.id]: med.total_stock ?? 0 }));
+    setMedicineInfoById((prev) => ({
+      ...prev,
+      [med.id]: {
+        category: med.category,
+        units_per_pack: med.units_per_pack ?? 1,
+        unit_of_measure: med.unit_of_measure ?? 'units',
+      },
+    }));
     setMedicineSearch('');
     setMedicineResults([]);
     setActiveMedBlockIdx(null);
@@ -360,21 +413,6 @@ const PrescriptionBuilder: React.FC = () => {
       }
     }
     setBlocks(newBlocks);
-  };
-
-  const updateItemWithoutAutoAdd = (
-    blockIdx: number,
-    itemIdx: number,
-    field: keyof PrescriptionItemCreate,
-    value: unknown,
-  ) => {
-    setBlocks((prev) => {
-      const next = [...prev];
-      const updatedItems = [...next[blockIdx].items];
-      updatedItems[itemIdx] = { ...updatedItems[itemIdx], [field]: value };
-      next[blockIdx] = { ...next[blockIdx], items: updatedItems };
-      return next;
-    });
   };
 
   const addItemToBlock = (blockIdx: number) => {
@@ -431,9 +469,6 @@ const PrescriptionBuilder: React.FC = () => {
       const baseIdx = activeMedResultIdx < 0 ? 0 : activeMedResultIdx;
       const nextIdx = Math.min(baseIdx + 1, medicineResults.length - 1);
       setActiveMedResultIdx(nextIdx);
-      if (nextIdx >= 0) {
-        updateItemWithoutAutoAdd(blockIdx, itemIdx, 'medicine_name', getDisplayMedicineName(medicineResults[nextIdx]));
-      }
       return;
     }
 
@@ -441,9 +476,6 @@ const PrescriptionBuilder: React.FC = () => {
       e.preventDefault();
       const nextIdx = Math.max(activeMedResultIdx - 1, 0);
       setActiveMedResultIdx(nextIdx);
-      if (nextIdx >= 0) {
-        updateItemWithoutAutoAdd(blockIdx, itemIdx, 'medicine_name', getDisplayMedicineName(medicineResults[nextIdx]));
-      }
       return;
     }
 
@@ -885,12 +917,13 @@ const PrescriptionBuilder: React.FC = () => {
 
                   <div className="border border-slate-200 rounded-lg overflow-visible">
                     {/* Table Header */}
-                    <div className="grid grid-cols-[40px_1fr_80px_100px_120px_80px_1fr_40px] gap-1 bg-slate-100 border-b border-slate-200 px-3 py-2">
+                    <div className="grid grid-cols-[40px_1fr_80px_100px_120px_72px_80px_1fr_40px] gap-1 bg-slate-100 border-b border-slate-200 px-3 py-2">
                       <div className="text-[10px] font-semibold text-slate-500 uppercase">#</div>
                       <div className="text-[10px] font-semibold text-slate-500 uppercase">Medicine</div>
                       <div className="text-[10px] font-semibold text-slate-500 uppercase">Dosage</div>
                       <div className="text-[10px] font-semibold text-slate-500 uppercase">Frequency</div>
                       <div className="text-[10px] font-semibold text-slate-500 uppercase">Duration</div>
+                      <div className="text-[10px] font-semibold text-slate-500 uppercase text-center">Qty</div>
                       <div className="text-[10px] font-semibold text-slate-500 uppercase">Route</div>
                       <div className="text-[10px] font-semibold text-slate-500 uppercase">Food Timing</div>
                       <div className="text-[10px] font-semibold text-slate-500 uppercase text-center">×</div>
@@ -901,10 +934,12 @@ const PrescriptionBuilder: React.FC = () => {
                       (() => {
                         const selectedStock = item.medicine_id ? medicineStockById[item.medicine_id] : undefined;
                         const isSelectedOutOfStock = typeof selectedStock === 'number' && selectedStock <= 0;
+                        const medInfo = item.medicine_id ? medicineInfoById[item.medicine_id] : undefined;
+                        const { qty: dispQty, unit: dispUnit } = computeDispenseQty(item, medInfo);
                         return (
                       <div
                         key={itemIdx}
-                        className={`grid grid-cols-[40px_1fr_80px_100px_120px_80px_1fr_40px] gap-1 items-center px-3 py-1.5 border-b border-slate-100 last:border-0 hover:bg-blue-50/30 transition-colors ${item.medicine_name.trim() ? 'bg-white' : 'bg-slate-50/50'} ${isSelectedOutOfStock ? 'bg-red-50/60' : ''}`}
+                        className={`grid grid-cols-[40px_1fr_80px_100px_120px_72px_80px_1fr_40px] gap-1 items-center px-3 py-1.5 border-b border-slate-100 last:border-0 hover:bg-blue-50/30 transition-colors ${item.medicine_name.trim() ? 'bg-white' : 'bg-slate-50/50'} ${isSelectedOutOfStock ? 'bg-red-50/60' : ''}`}
                       >
                         {/* Row number */}
                         <div className="text-xs text-slate-400 font-medium">{itemIdx + 1}</div>
@@ -971,6 +1006,18 @@ const PrescriptionBuilder: React.FC = () => {
                               ))}
                             </select>
                           </div>
+                        </div>
+
+                        {/* Qty preview (read-only, computed) */}
+                        <div className="flex flex-col items-center justify-center">
+                          {dispQty !== null ? (
+                            <>
+                              <span className="text-sm font-bold text-primary leading-tight">{dispQty}</span>
+                              <span className="text-[9px] text-slate-400 leading-none truncate max-w-[64px] text-center">{dispUnit}</span>
+                            </>
+                          ) : (
+                            <span className="text-xs text-slate-300">—</span>
+                          )}
                         </div>
 
                         {/* Route */}
@@ -1362,9 +1409,6 @@ const PrescriptionBuilder: React.FC = () => {
                   }}
                   onMouseEnter={() => {
                     setActiveMedResultIdx(idx);
-                    if (activeMedBlockIdx !== null && activeMedItemIdx !== null) {
-                      updateItemWithoutAutoAdd(activeMedBlockIdx, activeMedItemIdx, 'medicine_name', getDisplayMedicineName(med));
-                    }
                   }}
                   className={`w-full text-left px-3 py-2 text-xs border-b border-slate-100 last:border-0 ${
                     activeMedResultIdx === idx ? 'bg-primary/10' : isOutOfStock ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-slate-50'

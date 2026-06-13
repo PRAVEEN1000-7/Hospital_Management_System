@@ -3,8 +3,11 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import pharmacyService from '../../services/pharmacyService';
+import invoiceService from '../../services/invoiceService';
+import paymentService from '../../services/paymentService';
 import hospitalService from '../../services/hospitalService';
 import type { HospitalDetails } from '../../services/hospitalService';
+import type { PaymentMode } from '../../types/billing';
 import { patientService } from '../../services/patientService';
 
 interface DispensingItem {
@@ -51,6 +54,8 @@ const DispensingBilling: React.FC = () => {
   const [patientPrn, setPatientPrn] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
+  const [paymentMode, setPaymentMode] = useState<PaymentMode>('cash');
+  const [paymentRef, setPaymentRef] = useState('');
 
   // Get dispensing details from location state or fetch from API
   useEffect(() => {
@@ -107,24 +112,51 @@ const DispensingBilling: React.FC = () => {
 
   const handlePaymentAndPrint = async () => {
     if (!dispensing) return;
-    
     setProcessing(true);
     try {
-      // TODO: When payment module is implemented, this will:
-      // 1. Create payment record
-      // 2. Update dispensing payment status
-      // 3. Generate invoice PDF
-      
-      // For now, just show success and navigate
-      showToast('success', 'Payment recorded successfully (Demo mode)');
-      
-      // Navigate to pending prescriptions with success state
+      if (!dispensing.patient_id) {
+        // Walk-in without patient record — print the dispensing slip and exit
+        window.print();
+        showToast('success', 'Dispensing bill printed');
+        navigate('/pharmacy/pending-prescriptions', {
+          state: { billingComplete: true, dispensingNumber: dispensing.dispensing_number, amount: dispensing.net_amount },
+        });
+        return;
+      }
+
+      // Step 1: Create pharmacy invoice with line items
+      const invoice = await invoiceService.create({
+        patient_id: dispensing.patient_id,
+        invoice_type: 'pharmacy',
+        discount_amount: dispensing.discount_amount || undefined,
+        notes: dispensing.notes || undefined,
+        items: dispensing.items.map((item, idx) => ({
+          item_type: 'medicine' as const,
+          reference_id: item.medicine_id,
+          description: item.medicine_name || 'Medicine',
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          batch_number: item.batch_number,
+          display_order: idx + 1,
+        })),
+      });
+
+      // Step 2: Issue the invoice so it can accept payments
+      await invoiceService.issue(invoice.id);
+
+      // Step 3: Record payment
+      await paymentService.record({
+        invoice_id: invoice.id,
+        patient_id: dispensing.patient_id,
+        amount: dispensing.net_amount,
+        payment_mode: paymentMode,
+        payment_reference: paymentRef.trim() || undefined,
+      });
+
+      showToast('success', 'Payment recorded successfully');
+      window.print();
       navigate('/pharmacy/pending-prescriptions', {
-        state: { 
-          billingComplete: true, 
-          dispensingNumber: dispensing.dispensing_number,
-          amount: dispensing.net_amount 
-        },
+        state: { billingComplete: true, dispensingNumber: dispensing.dispensing_number, amount: dispensing.net_amount },
       });
     } catch (err: any) {
       showToast('error', err?.response?.data?.detail || 'Failed to process payment');
@@ -368,23 +400,34 @@ const DispensingBilling: React.FC = () => {
         </button>
       </div>
 
-      {/* Payment Instructions - Hidden when printing */}
-      <div className="mt-6 bg-amber-50 border border-amber-200 rounded-xl p-4 print:hidden">
-        <div className="flex items-start gap-3">
-          <span className="material-symbols-outlined text-amber-600 text-lg">info</span>
-          <div>
-            <div className="text-sm font-semibold text-amber-800">Payment Module - Demo Mode</div>
-            <p className="text-sm text-amber-700 mt-1">
-              This is a simplified billing view. When the payment module is implemented, clicking "Confirm Payment & Print" will:
-            </p>
-            <ul className="text-sm text-amber-700 mt-2 space-y-1 list-disc list-inside">
-              <li>Create a payment record in the database</li>
-              <li>Update the dispensing payment status</li>
-              <li>Generate a PDF invoice</li>
-              <li>Support multiple payment methods (cash, card, UPI, insurance)</li>
-            </ul>
-          </div>
+      {/* Payment Method — Hidden when printing */}
+      <div className="mt-6 bg-white border border-slate-200 rounded-xl p-5 print:hidden">
+        <div className="text-sm font-semibold text-slate-700 mb-3">Payment Method</div>
+        <div className="flex flex-wrap gap-2 mb-4">
+          {(['cash', 'upi', 'debit_card', 'credit_card'] as PaymentMode[]).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => setPaymentMode(mode)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                paymentMode === mode
+                  ? 'bg-primary text-white border-primary'
+                  : 'bg-white text-slate-600 border-slate-200 hover:border-primary/40'
+              }`}
+            >
+              {mode === 'cash' ? 'Cash' : mode === 'upi' ? 'UPI' : mode === 'debit_card' ? 'Debit Card' : 'Credit Card'}
+            </button>
+          ))}
         </div>
+        {paymentMode !== 'cash' && (
+          <input
+            type="text"
+            value={paymentRef}
+            onChange={(e) => setPaymentRef(e.target.value)}
+            placeholder={paymentMode === 'upi' ? 'UPI transaction ID' : 'Card / reference number'}
+            className="w-full max-w-xs px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+          />
+        )}
       </div>
     </div>
   );

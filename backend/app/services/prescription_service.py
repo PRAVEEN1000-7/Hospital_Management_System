@@ -25,13 +25,37 @@ from ..models.pharmacy import PharmacySale, PharmacySaleItem
 logger = logging.getLogger(__name__)
 
 
+_LIQUID_CATEGORIES = frozenset({
+    "syrup", "suspension", "liquid", "solution", "linctus", "elixir", "tincture",
+})
+_SINGLE_UNIT_CATEGORIES = frozenset({
+    "drops", "eye drops", "ear drops", "nasal drops", "nasal spray",
+    "cream", "ointment", "gel", "lotion", "paste",
+    "inhaler", "spray", "patch", "suppository",
+})
+
+
 def calculate_prescribed_quantity(
     frequency: Optional[str],
     duration_value: Optional[int],
     duration_unit: Optional[str],
     quantity: Optional[int] = None,
+    category: Optional[str] = None,
+    unit_of_measure: Optional[str] = None,
+    units_per_pack: Optional[int] = None,
 ) -> Optional[int]:
-    """Derive total prescribed units from frequency and duration when quantity is missing."""
+    """
+    Derive total dispensing units from frequency/duration, accounting for medicine category.
+
+    Stock is tracked in pack units (strips, bottles, tubes, vials):
+    - Tablets/Capsules: doses ÷ units_per_pack → strips
+    - Syrup/Suspension: 1 bottle per 5 days
+    - Cream/Drops/Inhaler: 1 pack per treatment course
+    - Injection: doses (1 vial per dose)
+
+    When category/uom/uop are not passed (legacy callers) the old dose-count
+    formula is used unchanged for backward compatibility.
+    """
     if quantity is not None and quantity > 0:
         return quantity
 
@@ -46,15 +70,34 @@ def calculate_prescribed_quantity(
     if daily_units <= 0:
         return quantity
 
-    normalized_duration_unit = (duration_unit or "days").lower()
+    norm_unit = (duration_unit or "days").lower()
     duration_days = duration_value
-    if normalized_duration_unit == "weeks":
+    if norm_unit == "weeks":
         duration_days = duration_value * 7
-    elif normalized_duration_unit == "months":
+    elif norm_unit == "months":
         duration_days = duration_value * 30
 
-    derived_quantity = ceil(daily_units * duration_days)
-    return derived_quantity if derived_quantity > 0 else quantity
+    cat = (category or "").lower().strip()
+    uom = (unit_of_measure or "").lower().strip()
+    uop = max(1, units_per_pack or 1)
+
+    # ── Liquid medicines (syrup, suspension …) ──────────────────────────────
+    # Dispensed per bottle; clinical standard ≈ 1 bottle per 5 days (100 ml).
+    if cat in _LIQUID_CATEGORIES or (uom == "bottle" and cat not in ("drops",)):
+        return max(1, ceil(duration_days / 5))
+
+    # ── Single-unit topicals / devices ──────────────────────────────────────
+    # Creams, drops, inhalers: one pack covers the whole course.
+    if cat in _SINGLE_UNIT_CATEGORIES or uom == "tube":
+        return 1
+
+    # ── Dose-counted medicines (tablets, capsules, injections) ──────────────
+    total_doses = ceil(daily_units * duration_days)
+    if uop > 1:
+        # Stock tracked in packs (strips/blisters). Convert doses → packs.
+        return max(1, ceil(total_doses / uop))
+
+    return total_doses if total_doses > 0 else quantity
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -161,6 +204,9 @@ def create_prescription(
         else:
             medicine_id = None
 
+        # Look up medicine for category-aware quantity calculation
+        med = db.query(Medicine).filter(Medicine.id == medicine_id).first() if medicine_id else None
+
         item = PrescriptionItem(
             prescription_id=rx.id,
             medicine_id=medicine_id,
@@ -177,6 +223,9 @@ def create_prescription(
                 item_data.get("duration_value"),
                 item_data.get("duration_unit"),
                 item_data.get("quantity"),
+                category=med.category if med else None,
+                unit_of_measure=med.unit_of_measure if med else None,
+                units_per_pack=med.units_per_pack if med else None,
             ),
             allow_substitution=item_data.get("allow_substitution", True),
             display_order=item_data.get("display_order", idx),
@@ -317,6 +366,8 @@ def update_prescription(
             else:
                 medicine_id = None
 
+            med = db.query(Medicine).filter(Medicine.id == medicine_id).first() if medicine_id else None
+
             item = PrescriptionItem(
                 prescription_id=rx.id,
                 medicine_id=medicine_id,
@@ -333,6 +384,9 @@ def update_prescription(
                     item_data.get("duration_value"),
                     item_data.get("duration_unit"),
                     item_data.get("quantity"),
+                    category=med.category if med else None,
+                    unit_of_measure=med.unit_of_measure if med else None,
+                    units_per_pack=med.units_per_pack if med else None,
                 ),
                 allow_substitution=item_data.get("allow_substitution", True),
                 display_order=item_data.get("display_order", idx),
@@ -759,11 +813,13 @@ def list_medicines(
     med_ids = [m.id for m in rows]
     stock_map: dict[uuid.UUID, int] = {}
     if med_ids:
+        today = date.today()
         stock_rows = (
             db.query(MedicineBatch.medicine_id, func.coalesce(func.sum(MedicineBatch.quantity), 0))
             .filter(
                 MedicineBatch.medicine_id.in_(med_ids),
                 MedicineBatch.is_active == True,
+                MedicineBatch.expiry_date >= today,
             )
             .group_by(MedicineBatch.medicine_id)
             .all()

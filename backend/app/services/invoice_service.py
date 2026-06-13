@@ -396,44 +396,59 @@ def _deduct_invoice_medicine_stock(db: Session, invoice: Invoice) -> None:
         medicine_id = line.reference_id
         remaining = int(qty_decimal)
 
-        if not (line.batch_number or "").strip():
-            raise ValueError(
-                f"Medicine line item {line.id} missing batch_number; cannot deduct stock"
-            )
+        batch_num = (line.batch_number or "").strip()
+        if batch_num:
+            # Specific batch requested — use it directly
+            batches = db.query(MedicineBatch).filter(
+                MedicineBatch.medicine_id == medicine_id,
+                MedicineBatch.batch_number == batch_num,
+                MedicineBatch.is_active == True,
+                MedicineBatch.is_expired == False,
+            ).all()
+            if not batches:
+                raise ValueError(
+                    f"Batch '{batch_num}' not found for medicine line item {line.id}"
+                )
+        else:
+            # No batch specified — use FIFO (earliest-expiring batches with stock)
+            batches = db.query(MedicineBatch).filter(
+                MedicineBatch.medicine_id == medicine_id,
+                MedicineBatch.is_active == True,
+                MedicineBatch.is_expired == False,
+                MedicineBatch.quantity > 0,
+            ).order_by(MedicineBatch.expiry_date.asc()).all()
+            if not batches:
+                raise ValueError(
+                    f"No stock available for medicine in line item {line.id}"
+                )
 
-        batch = db.query(MedicineBatch).filter(
-            MedicineBatch.medicine_id == medicine_id,
-            MedicineBatch.batch_number == line.batch_number,
-            MedicineBatch.is_active == True,
-            MedicineBatch.is_expired == False,
-        ).first()
-        if not batch:
-            raise ValueError(
-                f"Batch '{line.batch_number}' not found for medicine line item {line.id}"
-            )
+        for batch in batches:
+            if remaining <= 0:
+                break
+            available = int(batch.quantity or 0)
+            deduct = min(remaining, available)
+            batch.quantity = available - deduct
+            remaining -= deduct
+            balance_after = _get_medicine_total_stock(db, medicine_id)
+            db.add(StockMovement(
+                hospital_id=invoice.hospital_id,
+                item_type="medicine",
+                item_id=medicine_id,
+                batch_id=batch.id,
+                movement_type="sale",
+                reference_type="invoice_issue",
+                reference_id=invoice.id,
+                quantity=-deduct,
+                balance_after=balance_after,
+                unit_cost=line.unit_price,
+                notes=f"Invoice issue {invoice.invoice_number}",
+                performed_by=invoice.created_by,
+            ))
 
-        available = int(batch.quantity or 0)
-        if remaining > available:
+        if remaining > 0:
             raise ValueError(
-                f"Insufficient stock in batch {line.batch_number}: requested {remaining}, available {available}"
+                f"Insufficient stock for medicine line item {line.id}: still need {remaining} units"
             )
-
-        batch.quantity = available - remaining
-        balance_after = _get_medicine_total_stock(db, medicine_id)
-        db.add(StockMovement(
-            hospital_id=invoice.hospital_id,
-            item_type="medicine",
-            item_id=medicine_id,
-            batch_id=batch.id,
-            movement_type="sale",
-            reference_type="invoice_issue",
-            reference_id=invoice.id,
-            quantity=-remaining,
-            balance_after=balance_after,
-            unit_cost=line.unit_price,
-            notes=f"Invoice issue {invoice.invoice_number}",
-            performed_by=invoice.created_by,
-        ))
 
 
 def _get_medicine_total_stock(db: Session, medicine_id: uuid.UUID) -> int:

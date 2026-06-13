@@ -29,17 +29,20 @@ export interface PendingPrescription {
 
 export interface PrescriptionItemWithStock {
   id: string;
-  medicine_id: string;
+  medicine_id: string | null;
   medicine_name: string;
   generic_name?: string;
   dosage: string;
   frequency: string;
+  duration_value?: number | null;
+  duration_unit?: string | null;
   quantity: number;
   dispensed_quantity: number;
   is_dispensed: boolean;
   allow_substitution: boolean;
   available_quantity: number;
   available_batches: MedicineBatch[];
+  dispense_unit?: string;
 }
 
 export interface DispenseItemData {

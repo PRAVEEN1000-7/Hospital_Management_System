@@ -64,8 +64,7 @@ class InvoiceItem(Base):
     tax_amount = Column(Numeric(12, 2), default=0)
     total_price = Column(Numeric(12, 2), nullable=False)
     display_order = Column(Integer, default=0)
-    # NOTE: Some deployments do not have invoice_items.batch_number in DB schema.
-    # Keep invoice item model schema-compatible by not mapping this optional column.
+    batch_number = Column(String(50))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # Relationships

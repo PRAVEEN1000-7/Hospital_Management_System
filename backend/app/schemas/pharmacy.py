@@ -7,8 +7,20 @@ from datetime import date, datetime
 from decimal import Decimal
 
 
+_FIELD_ALIASES: dict[str, str] = {
+    # Medicine model attr → pharmacy schema field name
+    "unit_of_measure": "unit",
+    "composition": "description",
+    "storage_instructions": "storage_conditions",
+}
+
+
 def _orm_to_dict(data: Any) -> Any:
-    """Convert SQLAlchemy ORM instance to dict, stringifying UUIDs."""
+    """Convert SQLAlchemy ORM instance to dict, stringifying UUIDs.
+
+    Also emits pharmacy-schema alias names for Medicine fields that have
+    different names in the schema vs the ORM model (e.g. unit_of_measure → unit).
+    """
     if hasattr(data, "__mapper__"):
         d = {}
         for attr in data.__mapper__.column_attrs:
@@ -17,6 +29,9 @@ def _orm_to_dict(data: Any) -> Any:
             if hasattr(val, "hex"):
                 val = str(val)
             d[key] = val
+            alias = _FIELD_ALIASES.get(key)
+            if alias:
+                d[alias] = val
         return d
     return data
 

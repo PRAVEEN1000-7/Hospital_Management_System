@@ -16,7 +16,6 @@ import {
   MapPin,
   Mail,
   Shield,
-  Palette,
   Calendar,
   KeyRound,
   Eye,
@@ -553,36 +552,6 @@ const SuperAdminHospitalDetail: React.FC = () => {
                 <KeyRound className="w-4 h-4" />
                 Reset Admin Password
               </button>
-            </SectionCard>
-
-            {/* Branding */}
-            <SectionCard title="Branding" icon={<Palette className="w-4 h-4" />}>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between py-2.5 border-b border-slate-100">
-                  <span className="text-sm text-slate-500">Primary Color</span>
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full border border-slate-200 shadow-sm" style={{ background: tenant.primary_color }} />
-                    <span className="font-mono text-xs text-slate-700">{tenant.primary_color}</span>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between py-2.5 border-b border-slate-100">
-                  <span className="text-sm text-slate-500">Secondary Color</span>
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full border border-slate-200 shadow-sm" style={{ background: tenant.secondary_color }} />
-                    <span className="font-mono text-xs text-slate-700">{tenant.secondary_color}</span>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between py-2.5">
-                  <span className="text-sm text-slate-500">Logo</span>
-                  {tenant.logo_url ? (
-                    <a href={tenant.logo_url} target="_blank" rel="noreferrer" className="text-sm text-primary hover:underline">
-                      View Logo
-                    </a>
-                  ) : (
-                    <span className="text-sm text-slate-400 italic">No logo uploaded</span>
-                  )}
-                </div>
-              </div>
             </SectionCard>
 
             {/* Module summary */}

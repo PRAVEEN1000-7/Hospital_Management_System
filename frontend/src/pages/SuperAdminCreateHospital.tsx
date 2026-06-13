@@ -11,13 +11,14 @@ interface CountryEntry {
   name: string;
   phoneCode: string;
   postalLabel: string;
+  postalMaxLength: number;
   timezone: string;
   states?: string[];
 }
 
 const COUNTRIES_DATA: CountryEntry[] = [
   {
-    code3: 'IND', name: 'India', phoneCode: '+91', postalLabel: 'PIN Code', timezone: 'Asia/Kolkata',
+    code3: 'IND', name: 'India', phoneCode: '+91', postalLabel: 'PIN Code', postalMaxLength: 6, timezone: 'Asia/Kolkata',
     states: [
       'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat',
       'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka', 'Kerala', 'Madhya Pradesh',
@@ -28,7 +29,7 @@ const COUNTRIES_DATA: CountryEntry[] = [
     ],
   },
   {
-    code3: 'USA', name: 'United States', phoneCode: '+1', postalLabel: 'ZIP Code', timezone: 'America/New_York',
+    code3: 'USA', name: 'United States', phoneCode: '+1', postalLabel: 'ZIP Code', postalMaxLength: 10, timezone: 'America/New_York',
     states: [
       'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado', 'Connecticut',
       'Delaware', 'Florida', 'Georgia', 'Hawaii', 'Idaho', 'Illinois', 'Indiana', 'Iowa',
@@ -41,11 +42,11 @@ const COUNTRIES_DATA: CountryEntry[] = [
     ],
   },
   {
-    code3: 'GBR', name: 'United Kingdom', phoneCode: '+44', postalLabel: 'Postcode', timezone: 'Europe/London',
+    code3: 'GBR', name: 'United Kingdom', phoneCode: '+44', postalLabel: 'Postcode', postalMaxLength: 8, timezone: 'Europe/London',
     states: ['England', 'Scotland', 'Wales', 'Northern Ireland'],
   },
   {
-    code3: 'CAN', name: 'Canada', phoneCode: '+1', postalLabel: 'Postal Code', timezone: 'America/Toronto',
+    code3: 'CAN', name: 'Canada', phoneCode: '+1', postalLabel: 'Postal Code', postalMaxLength: 7, timezone: 'America/Toronto',
     states: [
       'Alberta', 'British Columbia', 'Manitoba', 'New Brunswick', 'Newfoundland and Labrador',
       'Northwest Territories', 'Nova Scotia', 'Nunavut', 'Ontario', 'Prince Edward Island',
@@ -53,22 +54,22 @@ const COUNTRIES_DATA: CountryEntry[] = [
     ],
   },
   {
-    code3: 'AUS', name: 'Australia', phoneCode: '+61', postalLabel: 'Postcode', timezone: 'Australia/Sydney',
+    code3: 'AUS', name: 'Australia', phoneCode: '+61', postalLabel: 'Postcode', postalMaxLength: 4, timezone: 'Australia/Sydney',
     states: [
       'Australian Capital Territory', 'New South Wales', 'Northern Territory',
       'Queensland', 'South Australia', 'Tasmania', 'Victoria', 'Western Australia',
     ],
   },
   {
-    code3: 'ARE', name: 'UAE', phoneCode: '+971', postalLabel: 'Postal Code', timezone: 'Asia/Dubai',
+    code3: 'ARE', name: 'UAE', phoneCode: '+971', postalLabel: 'Postal Code', postalMaxLength: 5, timezone: 'Asia/Dubai',
     states: ['Abu Dhabi', 'Dubai', 'Sharjah', 'Ajman', 'Umm Al Quwain', 'Ras Al Khaimah', 'Fujairah'],
   },
   {
-    code3: 'SAU', name: 'Saudi Arabia', phoneCode: '+966', postalLabel: 'Postal Code', timezone: 'Asia/Riyadh',
+    code3: 'SAU', name: 'Saudi Arabia', phoneCode: '+966', postalLabel: 'Postal Code', postalMaxLength: 5, timezone: 'Asia/Riyadh',
     states: ['Riyadh', 'Makkah', 'Madinah', 'Eastern Province', 'Asir', 'Tabuk', 'Hail', 'Jazan', 'Najran'],
   },
   {
-    code3: 'DEU', name: 'Germany', phoneCode: '+49', postalLabel: 'Postleitzahl', timezone: 'Europe/Berlin',
+    code3: 'DEU', name: 'Germany', phoneCode: '+49', postalLabel: 'Postleitzahl', postalMaxLength: 5, timezone: 'Europe/Berlin',
     states: [
       'Baden-Württemberg', 'Bavaria', 'Berlin', 'Brandenburg', 'Bremen', 'Hamburg',
       'Hesse', 'Lower Saxony', 'Mecklenburg-Vorpommern', 'North Rhine-Westphalia',
@@ -76,42 +77,42 @@ const COUNTRIES_DATA: CountryEntry[] = [
     ],
   },
   {
-    code3: 'FRA', name: 'France', phoneCode: '+33', postalLabel: 'Code Postal', timezone: 'Europe/Paris',
+    code3: 'FRA', name: 'France', phoneCode: '+33', postalLabel: 'Code Postal', postalMaxLength: 5, timezone: 'Europe/Paris',
   },
   {
-    code3: 'MYS', name: 'Malaysia', phoneCode: '+60', postalLabel: 'Postcode', timezone: 'Asia/Kuala_Lumpur',
+    code3: 'MYS', name: 'Malaysia', phoneCode: '+60', postalLabel: 'Postcode', postalMaxLength: 5, timezone: 'Asia/Kuala_Lumpur',
     states: [
       'Johor', 'Kedah', 'Kelantan', 'Kuala Lumpur', 'Labuan', 'Malacca', 'Negeri Sembilan',
       'Pahang', 'Penang', 'Perak', 'Perlis', 'Putrajaya', 'Sabah', 'Sarawak', 'Selangor', 'Terengganu',
     ],
   },
-  { code3: 'SGP', name: 'Singapore', phoneCode: '+65', postalLabel: 'Postal Code', timezone: 'Asia/Singapore' },
+  { code3: 'SGP', name: 'Singapore', phoneCode: '+65', postalLabel: 'Postal Code', postalMaxLength: 6, timezone: 'Asia/Singapore' },
   {
-    code3: 'PHL', name: 'Philippines', phoneCode: '+63', postalLabel: 'ZIP Code', timezone: 'Asia/Manila',
+    code3: 'PHL', name: 'Philippines', phoneCode: '+63', postalLabel: 'ZIP Code', postalMaxLength: 4, timezone: 'Asia/Manila',
   },
   {
-    code3: 'PAK', name: 'Pakistan', phoneCode: '+92', postalLabel: 'Postal Code', timezone: 'Asia/Karachi',
+    code3: 'PAK', name: 'Pakistan', phoneCode: '+92', postalLabel: 'Postal Code', postalMaxLength: 5, timezone: 'Asia/Karachi',
     states: ['Azad Kashmir', 'Balochistan', 'Gilgit-Baltistan', 'Islamabad', 'Khyber Pakhtunkhwa', 'Punjab', 'Sindh'],
   },
   {
-    code3: 'BGD', name: 'Bangladesh', phoneCode: '+880', postalLabel: 'Postal Code', timezone: 'Asia/Dhaka',
+    code3: 'BGD', name: 'Bangladesh', phoneCode: '+880', postalLabel: 'Postal Code', postalMaxLength: 4, timezone: 'Asia/Dhaka',
     states: ['Barishal', 'Chattogram', 'Dhaka', 'Khulna', 'Mymensingh', 'Rajshahi', 'Rangpur', 'Sylhet'],
   },
   {
-    code3: 'LKA', name: 'Sri Lanka', phoneCode: '+94', postalLabel: 'Postal Code', timezone: 'Asia/Colombo',
+    code3: 'LKA', name: 'Sri Lanka', phoneCode: '+94', postalLabel: 'Postal Code', postalMaxLength: 5, timezone: 'Asia/Colombo',
     states: ['Central', 'Eastern', 'North Central', 'Northern', 'North Western', 'Sabaragamuwa', 'Southern', 'Uva', 'Western'],
   },
   {
-    code3: 'NGA', name: 'Nigeria', phoneCode: '+234', postalLabel: 'Postal Code', timezone: 'Africa/Lagos',
+    code3: 'NGA', name: 'Nigeria', phoneCode: '+234', postalLabel: 'Postal Code', postalMaxLength: 6, timezone: 'Africa/Lagos',
   },
   {
-    code3: 'ZAF', name: 'South Africa', phoneCode: '+27', postalLabel: 'Postal Code', timezone: 'Africa/Johannesburg',
+    code3: 'ZAF', name: 'South Africa', phoneCode: '+27', postalLabel: 'Postal Code', postalMaxLength: 4, timezone: 'Africa/Johannesburg',
     states: ['Eastern Cape', 'Free State', 'Gauteng', 'KwaZulu-Natal', 'Limpopo', 'Mpumalanga', 'North West', 'Northern Cape', 'Western Cape'],
   },
-  { code3: 'KEN', name: 'Kenya', phoneCode: '+254', postalLabel: 'Postal Code', timezone: 'Africa/Nairobi' },
-  { code3: 'GHA', name: 'Ghana', phoneCode: '+233', postalLabel: 'Postal Code', timezone: 'Africa/Accra' },
+  { code3: 'KEN', name: 'Kenya', phoneCode: '+254', postalLabel: 'Postal Code', postalMaxLength: 5, timezone: 'Africa/Nairobi' },
+  { code3: 'GHA', name: 'Ghana', phoneCode: '+233', postalLabel: 'Postal Code', postalMaxLength: 10, timezone: 'Africa/Accra' },
   {
-    code3: 'NZL', name: 'New Zealand', phoneCode: '+64', postalLabel: 'Postcode', timezone: 'Pacific/Auckland',
+    code3: 'NZL', name: 'New Zealand', phoneCode: '+64', postalLabel: 'Postcode', postalMaxLength: 4, timezone: 'Pacific/Auckland',
   },
 ];
 
@@ -371,6 +372,7 @@ const SuperAdminCreateHospital: React.FC = () => {
   const selectedCountry = getCountry(form.country);
   const states = selectedCountry?.states ?? [];
   const postalLabel = selectedCountry?.postalLabel ?? 'Postal Code';
+  const postalMaxLength = selectedCountry?.postalMaxLength ?? 10;
 
   const Err: React.FC<{ field: keyof FormData }> = ({ field }) =>
     fieldErrors[field] ? (
@@ -470,8 +472,9 @@ const SuperAdminCreateHospital: React.FC = () => {
                 type="text"
                 className={inputClass}
                 placeholder="Government-issued registration number"
+                maxLength={14}
                 value={form.registration_number}
-                onChange={(e) => set('registration_number', e.target.value)}
+                onChange={(e) => set('registration_number', e.target.value.slice(0, 14))}
               />
               <p className={hintClass}>Required for compliance and regulatory reporting</p>
             </div>
@@ -617,9 +620,9 @@ const SuperAdminCreateHospital: React.FC = () => {
                 type="text"
                 className={inputClass}
                 placeholder={`e.g. ${selectedCountry?.code3 === 'IND' ? '600001' : '10001'}`}
-                maxLength={12}
+                maxLength={postalMaxLength}
                 value={form.postal_code}
-                onChange={(e) => set('postal_code', e.target.value)}
+                onChange={(e) => set('postal_code', e.target.value.slice(0, postalMaxLength))}
               />
               <p className={hintClass}>Postal / ZIP code for the hospital address</p>
             </div>

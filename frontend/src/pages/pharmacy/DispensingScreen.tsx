@@ -235,13 +235,13 @@ const DispensingScreen: React.FC = () => {
       try {
         // Build items array for preview API
         const itemsForPreview = dispensingItems
-          .filter((item) => !item.skip && !item.is_dispensed && item.dispensedQty > 0 && item.remainingQty > 0)
+          .filter((item) => !item.skip && !item.is_dispensed && item.dispensedQty > 0 && item.remainingQty > 0 && item.medicine_id !== null)
           .map((item) => {
             const selectedBatch = item.available_batches.find((b) => b.id === item.selectedBatchId);
             const fallbackBatch = selectedBatch || item.available_batches[0];
             return {
               prescription_item_id: item.id,
-              medicine_id: item.medicine_id,
+              medicine_id: item.medicine_id!,
               batch_id: item.selectedBatchId || '',
               quantity: item.dispensedQty,
               unit_price: Number(fallbackBatch?.selling_price || 0),

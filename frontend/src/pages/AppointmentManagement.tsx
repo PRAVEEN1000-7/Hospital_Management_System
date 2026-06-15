@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
 import appointmentService from '../services/appointmentService';
@@ -23,6 +23,7 @@ const formatMoney = (n: number) =>
 const AppointmentManagement: React.FC = () => {
   const toast = useToast();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const today = new Date().toISOString().split('T')[0];
 
@@ -114,6 +115,13 @@ const AppointmentManagement: React.FC = () => {
 
   const handleSearch = () => { setPage(1); setSearch(searchInput); };
   const handleKeyDown = (e: React.KeyboardEvent) => { if (e.key === 'Enter') handleSearch(); };
+
+  const openPrescription = (appt: Appointment) => {
+    const params = new URLSearchParams();
+    if (appt.patient_id) params.set('patient_id', appt.patient_id);
+    if (appt.id) params.set('appointment_id', appt.id);
+    navigate(`/prescriptions/new?${params.toString()}`);
+  };
 
   const handleStatusChange = async (id: string, status: string) => {
     try {
@@ -247,67 +255,101 @@ const AppointmentManagement: React.FC = () => {
       </div>
 
       {/* Stats Cards */}
-      {stats && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total</span>
-              <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center">
-                <span className="material-symbols-outlined text-lg text-blue-500">calendar_month</span>
-              </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+        {/* Total */}
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total</span>
+            <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center">
+              <span className="material-symbols-outlined text-lg text-blue-500">calendar_month</span>
             </div>
+          </div>
+          {stats ? (
             <p className="text-2xl font-bold text-slate-900">{stats.total_appointments}</p>
-          </div>
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Scheduled</span>
-              <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center">
-                <span className="material-symbols-outlined text-lg text-primary">event</span>
-              </div>
-            </div>
-            <p className="text-2xl font-bold text-slate-900">{stats.total_scheduled}</p>
-          </div>
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Completed</span>
-              <div className="w-8 h-8 bg-emerald-50 rounded-lg flex items-center justify-center">
-                <span className="material-symbols-outlined text-lg text-emerald-500">task_alt</span>
-              </div>
-            </div>
-            <p className="text-2xl font-bold text-emerald-600">{stats.total_completed}</p>
-            <p className="text-[10px] text-slate-400 mt-0.5">{stats.completion_rate.toFixed(1)}% rate</p>
-          </div>
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Pending</span>
-              <div className="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center">
-                <span className="material-symbols-outlined text-lg text-amber-500">hourglass_top</span>
-              </div>
-            </div>
-            <p className="text-2xl font-bold text-amber-600">{stats.total_pending}</p>
-          </div>
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Cancelled</span>
-              <div className="w-8 h-8 bg-red-50 rounded-lg flex items-center justify-center">
-                <span className="material-symbols-outlined text-lg text-red-500">cancel</span>
-              </div>
-            </div>
-            <p className="text-2xl font-bold text-red-500">{stats.total_cancelled}</p>
-            <p className="text-[10px] text-slate-400 mt-0.5">{stats.cancellation_rate.toFixed(1)}% rate</p>
-          </div>
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">No-Shows</span>
-              <div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center">
-                <span className="material-symbols-outlined text-lg text-slate-500">person_off</span>
-              </div>
-            </div>
-            <p className="text-2xl font-bold text-slate-600">{stats.total_no_shows}</p>
-            <p className="text-[10px] text-slate-400 mt-0.5">{stats.no_show_rate.toFixed(1)}% rate</p>
-          </div>
+          ) : (
+            <div className="h-8 w-10 bg-slate-100 rounded animate-pulse mt-1" />
+          )}
         </div>
-      )}
+        {/* Scheduled (status = scheduled / rescheduled — awaiting confirmation) */}
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Scheduled</span>
+            <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center">
+              <span className="material-symbols-outlined text-lg text-primary">event</span>
+            </div>
+          </div>
+          {stats ? (
+            <p className="text-2xl font-bold text-slate-900">{stats.total_scheduled}</p>
+          ) : (
+            <div className="h-8 w-10 bg-slate-100 rounded animate-pulse mt-1" />
+          )}
+        </div>
+        {/* Completed */}
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Completed</span>
+            <div className="w-8 h-8 bg-emerald-50 rounded-lg flex items-center justify-center">
+              <span className="material-symbols-outlined text-lg text-emerald-500">task_alt</span>
+            </div>
+          </div>
+          {stats ? (
+            <>
+              <p className="text-2xl font-bold text-emerald-600">{stats.total_completed}</p>
+              <p className="text-[10px] text-slate-400 mt-0.5">{stats.completion_rate.toFixed(1)}% rate</p>
+            </>
+          ) : (
+            <div className="h-8 w-10 bg-slate-100 rounded animate-pulse mt-1" />
+          )}
+        </div>
+        {/* In Progress (confirmed / in-progress / pending) */}
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">In Progress</span>
+            <div className="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center">
+              <span className="material-symbols-outlined text-lg text-amber-500">hourglass_top</span>
+            </div>
+          </div>
+          {stats ? (
+            <p className="text-2xl font-bold text-amber-600">{stats.total_pending}</p>
+          ) : (
+            <div className="h-8 w-10 bg-slate-100 rounded animate-pulse mt-1" />
+          )}
+        </div>
+        {/* Cancelled */}
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Cancelled</span>
+            <div className="w-8 h-8 bg-red-50 rounded-lg flex items-center justify-center">
+              <span className="material-symbols-outlined text-lg text-red-500">cancel</span>
+            </div>
+          </div>
+          {stats ? (
+            <>
+              <p className="text-2xl font-bold text-red-500">{stats.total_cancelled}</p>
+              <p className="text-[10px] text-slate-400 mt-0.5">{stats.cancellation_rate.toFixed(1)}% rate</p>
+            </>
+          ) : (
+            <div className="h-8 w-10 bg-slate-100 rounded animate-pulse mt-1" />
+          )}
+        </div>
+        {/* No-Shows */}
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">No-Shows</span>
+            <div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center">
+              <span className="material-symbols-outlined text-lg text-slate-500">person_off</span>
+            </div>
+          </div>
+          {stats ? (
+            <>
+              <p className="text-2xl font-bold text-slate-600">{stats.total_no_shows}</p>
+              <p className="text-[10px] text-slate-400 mt-0.5">{stats.no_show_rate.toFixed(1)}% rate</p>
+            </>
+          ) : (
+            <div className="h-8 w-10 bg-slate-100 rounded animate-pulse mt-1" />
+          )}
+        </div>
+      </div>
 
       {/* Filters */}
       <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6">
@@ -408,6 +450,11 @@ const AppointmentManagement: React.FC = () => {
                       </button>
                     </>
                   )}
+                  {(appt.status === 'in-progress' || appt.status === 'completed') && (
+                    <button onClick={() => openPrescription(appt)} className="p-1.5 text-purple-500 hover:text-purple-700 hover:bg-purple-50 rounded-lg" title="Write Prescription">
+                      <span className="material-symbols-outlined text-lg">clinical_notes</span>
+                    </button>
+                  )}
                   {canCollectFee && appt.status === 'completed' && !appt.consultation_fee_collected && (
                     <button onClick={() => openCollectFee(appt)} className="p-1.5 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg" title="Collect Fee">
                       <span className="material-symbols-outlined text-lg">payments</span>
@@ -474,6 +521,11 @@ const AppointmentManagement: React.FC = () => {
                               </button>
                             </>
                           )}
+                          {(appt.status === 'in-progress' || appt.status === 'completed') && (
+                            <button onClick={() => openPrescription(appt)} className="p-1.5 text-purple-500 hover:text-purple-700 hover:bg-purple-50 rounded-lg" title="Write Prescription">
+                              <span className="material-symbols-outlined text-lg">clinical_notes</span>
+                            </button>
+                          )}
                           {canCollectFee && appt.status === 'completed' && !appt.consultation_fee_collected && (
                             <button onClick={() => openCollectFee(appt)} className="p-1.5 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg" title="Collect Fee">
                               <span className="material-symbols-outlined text-lg">payments</span>
@@ -534,6 +586,17 @@ const AppointmentManagement: React.FC = () => {
                 <AppointmentStatusBadge status={detailAppt.status} />
               </div>
             </div>
+            {(detailAppt.status === 'in-progress' || detailAppt.status === 'completed') && (
+              <div className="mt-5 pt-4 border-t border-slate-100 flex gap-2">
+                <button
+                  onClick={() => { openPrescription(detailAppt); setDetailAppt(null); }}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-purple-600 rounded-xl hover:bg-purple-700 transition-colors shadow-sm"
+                >
+                  <span className="material-symbols-outlined text-base">clinical_notes</span>
+                  Write Prescription
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -495,7 +495,7 @@ def get_appointment_stats(
     
     appointments = q.all()
     total = len(appointments)
-    
+
     if total == 0:
         return {
             "total_appointments": 0,
@@ -508,15 +508,19 @@ def get_appointment_stats(
             "completion_rate": 0,
             "cancellation_rate": 0,
             "no_show_rate": 0,
+            "average_wait_time": 0,
         }
-    
+
     completed = sum(1 for a in appointments if a.status == "completed")
     cancelled = sum(1 for a in appointments if a.status == "cancelled")
-    no_shows = sum(1 for a in appointments if a.status == "no_show")
-    pending = sum(1 for a in appointments if a.status in ("scheduled", "confirmed"))
-    scheduled = sum(1 for a in appointments if a.appointment_type == "scheduled")
-    walk_ins = sum(1 for a in appointments if a.appointment_type == "walk_in")
-    
+    no_shows = sum(1 for a in appointments if a.status == "no-show")
+    # scheduled = newly booked, not yet confirmed/in-progress
+    scheduled = sum(1 for a in appointments if a.status in ("scheduled", "rescheduled"))
+    # pending = confirmed / actively being processed
+    pending = sum(1 for a in appointments if a.status in ("pending", "confirmed", "in-progress"))
+    # walk-ins by appointment type (hyphen is the stored value)
+    walk_ins = sum(1 for a in appointments if a.appointment_type == "walk-in")
+
     return {
         "total_appointments": total,
         "total_scheduled": scheduled,
@@ -528,6 +532,7 @@ def get_appointment_stats(
         "completion_rate": round(completed / total * 100, 1) if total else 0,
         "cancellation_rate": round(cancelled / total * 100, 1) if total else 0,
         "no_show_rate": round(no_shows / total * 100, 1) if total else 0,
+        "average_wait_time": 0,
     }
 
 

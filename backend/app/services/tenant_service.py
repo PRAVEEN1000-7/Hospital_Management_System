@@ -654,13 +654,13 @@ class TenantService:
 
         # Churn: subscriptions cancelled in the last 30 days
         recent_churn = db.query(TenantSubscription).filter(
-            TenantSubscription.status == 'canceled',
+            TenantSubscription.status == 'cancelled',
             TenantSubscription.cancelled_at >= thirty_days_ago
         ).count()
 
-        # Platform-wide totals
-        total_users = db.query(User).count()
-        total_patients = db.query(Patient).count()
+        # Platform-wide totals (active, non-deleted only)
+        total_users = db.query(User).filter(User.is_deleted == False).count()
+        total_patients = db.query(Patient).filter(Patient.is_deleted == False).count()
 
         return {
             'total_tenants': total,

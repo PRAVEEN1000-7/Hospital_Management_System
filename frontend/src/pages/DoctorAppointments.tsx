@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import appointmentService from '../services/appointmentService';
@@ -8,6 +9,7 @@ import type { Appointment } from '../types/appointment';
 const DoctorAppointments: React.FC = () => {
   const { user } = useAuth();
   const toast = useToast();
+  const navigate = useNavigate();
 
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -158,6 +160,21 @@ const DoctorAppointments: React.FC = () => {
                     <button onClick={() => handleStatusChange(appt.id, 'completed')}
                       className="px-3 py-1.5 text-xs font-semibold text-emerald-600 bg-emerald-50 rounded-lg hover:bg-emerald-100 transition-colors">
                       Complete
+                    </button>
+                  )}
+                  {(appt.status === 'in-progress' || appt.status === 'completed') && (
+                    <button
+                      onClick={() => {
+                        const p = new URLSearchParams();
+                        if (appt.patient_id) p.set('patient_id', appt.patient_id);
+                        if (appt.id) p.set('appointment_id', appt.id);
+                        navigate(`/prescriptions/new?${p.toString()}`);
+                      }}
+                      className="px-3 py-1.5 text-xs font-semibold text-white bg-purple-600 rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-1"
+                      title="Write Prescription"
+                    >
+                      <span className="material-symbols-outlined text-sm">clinical_notes</span>
+                      Rx
                     </button>
                   )}
                   {appt.status !== 'completed' && appt.status !== 'cancelled' && appt.status !== 'no-show' && (

@@ -164,6 +164,12 @@ def create_prescription(
     else:
         appointment_id = None
 
+    # Validate appointment belongs to the same hospital (multi-tenant guard)
+    if appointment_id:
+        appt = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+        if not appt or str(appt.hospital_id) != str(hospital_id):
+            raise ValueError("Appointment not found or belongs to a different hospital")
+
     # If no doctor_id provided, look up doctor by current user
     if not doctor_id:
         doctor = db.query(Doctor).filter(Doctor.user_id == created_by).first()

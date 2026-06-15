@@ -8,6 +8,7 @@ import {
 } from '../utils/constants';
 import patientService from '../services/patientService';
 import { useToast } from '../contexts/ToastContext';
+import { useDashboardRefresh } from '../contexts/DashboardRefreshContext';
 import feLogger from '../services/loggerService';
 
 const FIELD_LABELS: Partial<Record<string, string>> = {
@@ -46,6 +47,7 @@ type FD = {
 const Register: React.FC = () => {
   const navigate = useNavigate();
   const toast = useToast();
+  const { triggerRefresh } = useDashboardRefresh();
   const [serverError, setServerError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof FD, string>>>({}); 
   // Tracks whether Submit has been clicked at least once
@@ -191,7 +193,8 @@ const Register: React.FC = () => {
       const result = await patientService.createPatient(data as any);
       feLogger.info('patient_registration', `Patient registered: ${result.patient_reference_number}`);
       toast.success(`Patient registered successfully! ID: ${result.patient_reference_number}`);
-      
+      triggerRefresh();
+
       // Check if we came from walk-ins and should redirect back
       const returnUrl = sessionStorage.getItem('walkInReturnUrl');
       if (returnUrl) {

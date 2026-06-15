@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useToast } from '../contexts/ToastContext';
+import { useDashboardRefresh } from '../contexts/DashboardRefreshContext';
 import scheduleService from '../services/scheduleService';
 import appointmentService from '../services/appointmentService';
 import patientService from '../services/patientService';
@@ -36,6 +37,7 @@ const emptyReg = (): RegForm => ({
 
 const AppointmentBooking: React.FC = () => {
   const toast = useToast();
+  const { triggerRefresh } = useDashboardRefresh();
 
   // Step tracker
   const [step, setStep] = useState(1); // 1: Patient, 2: Doctor, 3: Slot, 4: Confirm
@@ -130,6 +132,7 @@ const AppointmentBooking: React.FC = () => {
       setShowRegModal(false);
       setRegForm(emptyReg());
       setRegSection('personal');
+      triggerRefresh();
     } catch (err: any) {
       const detail = err?.response?.data?.detail;
       toast.error(Array.isArray(detail) ? detail.map((d: any) => d.msg).join(', ') : detail || 'Registration failed');
@@ -195,6 +198,7 @@ const AppointmentBooking: React.FC = () => {
         chief_complaint: reason || undefined,
       });
       toast.success('Appointment booked successfully!');
+      triggerRefresh();
       // Reset
       setStep(1);
       setSelectedPatient(null);

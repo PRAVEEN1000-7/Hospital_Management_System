@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useToast } from '../contexts/ToastContext';
+import { useDashboardRefresh } from '../contexts/DashboardRefreshContext';
 import walkInService from '../services/walkInService';
 import scheduleService from '../services/scheduleService';
 import patientService from '../services/patientService';
@@ -35,6 +36,7 @@ const emptyReg = (): RegForm => ({
 
 const WalkInRegistration: React.FC = () => {
   const toast = useToast();
+  const { triggerRefresh } = useDashboardRefresh();
 
   const [doctors, setDoctors] = useState<DoctorOption[]>([]);
   const [selectedDoctorId, setSelectedDoctorId] = useState<string>('');
@@ -114,6 +116,7 @@ const WalkInRegistration: React.FC = () => {
         });
         toast.success('Walk-in registered successfully');
       }
+      triggerRefresh();
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || 'Registration failed');
     }
@@ -193,6 +196,7 @@ const WalkInRegistration: React.FC = () => {
       setPatientSearch(`${newPatient.first_name} ${newPatient.last_name}`);
       setPatients([]);
       closeRegModal();
+      triggerRefresh();
     } catch (err: any) {
       const detail = err?.response?.data?.detail;
       toast.error(Array.isArray(detail) ? detail.map((d: any) => d.msg).join(', ') : detail || 'Registration failed');

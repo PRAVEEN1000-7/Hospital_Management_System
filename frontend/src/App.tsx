@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { ConfirmProvider } from './contexts/ConfirmContext';
 import { SuperAdminProvider } from './contexts/SuperAdminContext';
+import { DashboardRefreshProvider } from './contexts/DashboardRefreshContext';
 import ToastContainer from './components/common/ToastContainer';
 import ProtectedRoute from './components/common/ProtectedRoute';
 import Layout from './components/common/Layout';
@@ -101,7 +102,8 @@ const App: React.FC = () => {
       <AuthProvider>
         <ToastProvider>
           <ConfirmProvider>
-            <ToastContainer />
+            <DashboardRefreshProvider>
+              <ToastContainer />
             <Routes>
             {/* Public */}
             <Route path="/login" element={<Login />} />
@@ -608,6 +610,7 @@ const App: React.FC = () => {
             <Route path="/change-password" element={<Navigate to="/profile" replace />} />
             <Route path="*" element={<DefaultRedirect />} />
             </Routes>
+            </DashboardRefreshProvider>
           </ConfirmProvider>
         </ToastProvider>
       </AuthProvider>

@@ -12,6 +12,7 @@ import {
   TrendingDown,
   UserCheck,
 } from 'lucide-react';
+import { useDashboardRefresh } from '../contexts/DashboardRefreshContext';
 import { superAdminApi } from '../services/superAdminApi';
 
 interface DashboardStats {
@@ -41,12 +42,13 @@ const planColor = (code: string) =>
   PLAN_COLORS[code.toLowerCase()] ?? 'bg-gray-400';
 
 const SuperAdminDashboard: React.FC = () => {
+  const { refreshTrigger } = useDashboardRefresh();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     loadStats();
-  }, []);
+  }, [refreshTrigger]);
 
   const loadStats = async () => {
     try {

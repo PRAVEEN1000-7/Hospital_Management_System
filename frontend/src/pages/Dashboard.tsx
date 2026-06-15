@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useDashboardRefresh } from '../contexts/DashboardRefreshContext';
 import { formatRole } from '../utils/constants';
 import patientService from '../services/patientService';
 import hospitalService from '../services/hospitalService';
@@ -170,6 +171,7 @@ const Dashboard: React.FC = () => {
   const { user, isModuleEnabled } = useAuth();
   const navigate = useNavigate();
   const toast = useToast();
+  const { refreshTrigger } = useDashboardRefresh();
   const [totalPatients, setTotalPatients] = useState<number>(0);
   const [activeUsers, setActiveUsers] = useState<number>(0);
   const [hospitalName, setHospitalName] = useState<string>('HMS Core');
@@ -267,7 +269,7 @@ const Dashboard: React.FC = () => {
     };
 
     fetchDashboardData();
-  }, [isDoctor, isNurse, isReceptionist, isAdmin, canAccessPatients]);
+  }, [isDoctor, isNurse, isReceptionist, isAdmin, canAccessPatients, refreshTrigger]);
 
   /* ── stat cards per role ── */
   const getStatCards = (): StatCard[] => {

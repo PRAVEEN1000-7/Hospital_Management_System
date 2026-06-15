@@ -65,7 +65,7 @@ async function getDashboardSummary(
     const stats: AppointmentStats = await appointmentService.getStats(
       filters.dateFrom,
       filters.dateTo,
-      filters.doctorId ? Number(filters.doctorId) : undefined,
+      filters.doctorId || undefined,
     );
 
     // For the analytics dashboard we overlay real appointment data onto KPIs.

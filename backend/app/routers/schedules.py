@@ -11,7 +11,7 @@ from datetime import date
 from ..database import get_db
 from ..models.user import User
 from ..dependencies import get_current_active_user, require_admin_or_super_admin
-from ..models.appointment import Doctor
+from ..models.appointment import Doctor, DoctorSchedule, DoctorLeave
 from ..schemas.appointment import (
     DoctorScheduleCreate,
     DoctorScheduleUpdate,
@@ -161,6 +161,18 @@ async def update_doctor_schedule(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
+    try:
+        schedule_uuid = uuid_mod.UUID(schedule_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    sched_check = (
+        db.query(DoctorSchedule)
+        .join(Doctor, DoctorSchedule.doctor_id == Doctor.id)
+        .filter(DoctorSchedule.id == schedule_uuid, Doctor.hospital_id == current_user.hospital_id)
+        .first()
+    )
+    if not sched_check:
+        raise HTTPException(status_code=404, detail="Schedule not found")
     sched = update_schedule(db, schedule_id, data.model_dump(exclude_unset=True))
     if not sched:
         raise HTTPException(status_code=404, detail="Schedule not found")
@@ -173,6 +185,18 @@ async def delete_doctor_schedule(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
+    try:
+        schedule_uuid = uuid_mod.UUID(schedule_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    sched_check = (
+        db.query(DoctorSchedule)
+        .join(Doctor, DoctorSchedule.doctor_id == Doctor.id)
+        .filter(DoctorSchedule.id == schedule_uuid, Doctor.hospital_id == current_user.hospital_id)
+        .first()
+    )
+    if not sched_check:
+        raise HTTPException(status_code=404, detail="Schedule not found")
     if not delete_schedule(db, schedule_id):
         raise HTTPException(status_code=404, detail="Schedule not found")
 
@@ -209,7 +233,14 @@ async def list_leaves(
     current_user: User = Depends(get_current_active_user),
 ):
     resolved = _resolve_doctor_id(doctor_id, db) if doctor_id else None
-    return get_doctor_leaves(db, resolved)
+    leaves_q = (
+        db.query(DoctorLeave)
+        .join(Doctor, DoctorLeave.doctor_id == Doctor.id)
+        .filter(Doctor.hospital_id == current_user.hospital_id)
+    )
+    if resolved:
+        leaves_q = leaves_q.filter(DoctorLeave.doctor_id == resolved)
+    return leaves_q.order_by(DoctorLeave.leave_date.desc()).all()
 
 
 @router.delete("/doctor-leaves/{leave_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -218,5 +249,17 @@ async def remove_leave(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
+    try:
+        leave_uuid = uuid_mod.UUID(leave_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Doctor leave not found")
+    leave_check = (
+        db.query(DoctorLeave)
+        .join(Doctor, DoctorLeave.doctor_id == Doctor.id)
+        .filter(DoctorLeave.id == leave_uuid, Doctor.hospital_id == current_user.hospital_id)
+        .first()
+    )
+    if not leave_check:
+        raise HTTPException(status_code=404, detail="Doctor leave not found")
     if not delete_doctor_leave(db, leave_id):
         raise HTTPException(status_code=404, detail="Doctor leave not found")

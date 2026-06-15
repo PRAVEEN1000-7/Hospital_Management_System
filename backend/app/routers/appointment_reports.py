@@ -42,4 +42,4 @@ async def enhanced_statistics(
     current_user: User = Depends(get_current_active_user),
 ):
     """Get comprehensive analytics: doctor utilization, department breakdown, trends, peak times, cancellation reasons."""
-    return get_enhanced_stats(db, date_from, date_to)
+    return get_enhanced_stats(db, date_from, date_to, hospital_id=current_user.hospital_id)

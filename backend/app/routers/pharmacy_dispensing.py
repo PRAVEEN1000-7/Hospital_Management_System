@@ -8,6 +8,7 @@ This router provides endpoints for:
 4. Generating dispensing invoices/bills
 """
 import logging
+import uuid as uuid_mod
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -15,6 +16,7 @@ from datetime import date
 
 from ..database import get_db
 from ..models.user import User
+from ..models.prescription import Medicine as MedicineModel, Prescription
 from ..dependencies import get_current_active_user
 from ..services import dispensing_service as svc
 
@@ -201,9 +203,17 @@ async def preview_dispensing_totals(
     - warnings: Any warnings
     """
     try:
+        rx_check = db.query(Prescription).filter(
+            Prescription.id == prescription_id,
+            Prescription.hospital_id == current_user.hospital_id,
+            Prescription.is_deleted == False,
+        ).first()
+        if not rx_check:
+            raise HTTPException(status_code=404, detail="Prescription not found")
+
         # Convert Pydantic models to dicts
         items = [item.model_dump() for item in request.items]
-        
+
         # Call service
         result = svc.preview_dispensing_totals(
             db=db,
@@ -328,6 +338,16 @@ async def get_available_batches_for_medicine(
     Returns batches sorted by expiry date (earliest first - FEFO principle).
     """
     try:
+        try:
+            med_uuid = uuid_mod.UUID(medicine_id)
+        except ValueError:
+            raise HTTPException(status_code=404, detail="Medicine not found")
+        med_check = db.query(MedicineModel).filter(
+            MedicineModel.id == med_uuid,
+            MedicineModel.hospital_id == current_user.hospital_id,
+        ).first()
+        if not med_check:
+            raise HTTPException(status_code=404, detail="Medicine not found")
         batches = svc.get_available_batches(
             db=db,
             medicine_id=medicine_id,
@@ -337,6 +357,8 @@ async def get_available_batches_for_medicine(
             "total": len(batches),
             "data": batches,
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error fetching batches: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch available batches")
@@ -360,10 +382,13 @@ async def get_dispensing_record(
             db=db,
             dispensing_id=dispensing_id,
         )
-        
+
         if not result:
             raise HTTPException(status_code=404, detail="Dispensing record not found")
-        
+
+        if str(result.get("hospital_id")) != str(current_user.hospital_id):
+            raise HTTPException(status_code=404, detail="Dispensing record not found")
+
         return result
         
     except HTTPException:

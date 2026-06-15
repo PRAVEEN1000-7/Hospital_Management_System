@@ -1,0 +1,588 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { useToast } from '../contexts/ToastContext';
+import { hospitalService } from '../services/hospitalService';
+import type { HospitalDetails, HospitalSettings as HospitalSettingsType } from '../services/hospitalService';
+
+// ── Types ────────────────────────────────────────────────────────────────────
+
+type Tab = 'profile' | 'system';
+
+// ── Operational setting groups (same config as AppointmentSettings) ──────────
+
+type SettingKey = keyof HospitalSettingsType;
+
+const settingGroups: {
+  title: string;
+  icon: string;
+  fields: {
+    key: SettingKey;
+    label: string;
+    description: string;
+    type: 'number' | 'text' | 'boolean';
+    suffix?: string;
+  }[];
+}[] = [
+  {
+    title: 'Appointment Configuration',
+    icon: 'event',
+    fields: [
+      { key: 'appointment_slot_duration_minutes', label: 'Slot Duration', description: 'Duration per appointment slot (5–120)', type: 'number', suffix: 'min' },
+      { key: 'appointment_buffer_minutes', label: 'Buffer Time', description: 'Buffer between appointments (0–60)', type: 'number', suffix: 'min' },
+      { key: 'max_daily_appointments_per_doctor', label: 'Max Daily Appointments', description: 'Maximum per doctor per day (1–100)', type: 'number' },
+      { key: 'consultation_fee_default', label: 'Default Consultation Fee', description: 'Default fee amount', type: 'number', suffix: '₹' },
+      { key: 'follow_up_validity_days', label: 'Follow-up Validity', description: 'Days a follow-up is valid (1–365)', type: 'number', suffix: 'days' },
+    ],
+  },
+  {
+    title: 'Notifications',
+    icon: 'notifications',
+    fields: [
+      { key: 'enable_email_notifications', label: 'Email Notifications', description: 'Send appointment notifications via email', type: 'boolean' },
+      { key: 'enable_sms_notifications', label: 'SMS Notifications', description: 'Send notifications via SMS', type: 'boolean' },
+      { key: 'enable_whatsapp_notifications', label: 'WhatsApp Notifications', description: 'Send notifications via WhatsApp', type: 'boolean' },
+    ],
+  },
+  {
+    title: 'ID Sequences',
+    icon: 'tag',
+    fields: [
+      { key: 'hospital_code', label: 'Hospital Code', description: '2 uppercase letters used in IDs (e.g., HC)', type: 'text' },
+      { key: 'patient_id_start_number', label: 'Patient ID Start', description: 'Starting number for patient IDs', type: 'number' },
+      { key: 'staff_id_start_number', label: 'Staff ID Start', description: 'Starting number for staff IDs', type: 'number' },
+      { key: 'invoice_prefix', label: 'Invoice Prefix', description: 'Prefix for invoice numbers (max 10 chars)', type: 'text' },
+      { key: 'prescription_prefix', label: 'Prescription Prefix', description: 'Prefix for prescription numbers (max 10 chars)', type: 'text' },
+    ],
+  },
+  {
+    title: 'Compliance & Retention',
+    icon: 'security',
+    fields: [
+      { key: 'data_retention_years', label: 'Data Retention', description: 'Years to retain patient data (1–99)', type: 'number', suffix: 'years' },
+    ],
+  },
+];
+
+// ── Timezones & currencies ───────────────────────────────────────────────────
+
+const TIMEZONES = [
+  'UTC', 'Asia/Kolkata', 'Asia/Dubai', 'Asia/Singapore', 'Asia/Tokyo',
+  'Europe/London', 'Europe/Paris', 'America/New_York', 'America/Chicago',
+  'America/Los_Angeles', 'Australia/Sydney', 'Pacific/Auckland',
+];
+
+const CURRENCIES = [
+  { code: 'INR', label: 'INR — Indian Rupee' },
+  { code: 'USD', label: 'USD — US Dollar' },
+  { code: 'EUR', label: 'EUR — Euro' },
+  { code: 'GBP', label: 'GBP — British Pound' },
+  { code: 'AED', label: 'AED — UAE Dirham' },
+  { code: 'SGD', label: 'SGD — Singapore Dollar' },
+  { code: 'AUD', label: 'AUD — Australian Dollar' },
+  { code: 'CAD', label: 'CAD — Canadian Dollar' },
+];
+
+// ── Sub-components ───────────────────────────────────────────────────────────
+
+const TabButton: React.FC<{ label: string; icon: string; active: boolean; onClick: () => void }> = ({
+  label, icon, active, onClick,
+}) => (
+  <button
+    onClick={onClick}
+    className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-lg transition-colors ${
+      active
+        ? 'bg-primary text-white shadow-sm'
+        : 'text-slate-600 hover:bg-slate-100'
+    }`}
+  >
+    <span className="material-symbols-outlined text-base">{icon}</span>
+    {label}
+  </button>
+);
+
+const FormField: React.FC<{
+  label: string;
+  hint?: string;
+  required?: boolean;
+  children: React.ReactNode;
+}> = ({ label, hint, required, children }) => (
+  <div className="space-y-1">
+    <label className="block text-sm font-medium text-slate-700">
+      {label} {required && <span className="text-red-500">*</span>}
+    </label>
+    {children}
+    {hint && <p className="text-xs text-slate-400">{hint}</p>}
+  </div>
+);
+
+// ── Profile Tab ──────────────────────────────────────────────────────────────
+
+const ProfileTab: React.FC = () => {
+  const toast = useToast();
+  const [profile, setProfile] = useState<Partial<HospitalDetails>>({});
+  const [original, setOriginal] = useState<Partial<HospitalDetails>>({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const fetchProfile = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await hospitalService.getFullHospitalDetails();
+      setProfile(data);
+      setOriginal(data);
+    } catch {
+      toast.error('Failed to load hospital profile');
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { fetchProfile(); }, [fetchProfile]);
+
+  const hasChanges = JSON.stringify(profile) !== JSON.stringify(original);
+
+  const set = (key: keyof HospitalDetails, value: string) =>
+    setProfile(prev => ({ ...prev, [key]: value }));
+
+  const handleSave = async () => {
+    if (!profile.name?.trim()) {
+      toast.error('Hospital name is required');
+      return;
+    }
+    setSaving(true);
+    try {
+      const updated = await hospitalService.updateHospitalDetails(profile);
+      setOriginal(updated);
+      setProfile(updated);
+      toast.success('Hospital profile updated');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to save profile');
+    }
+    setSaving(false);
+  };
+
+  const handleReset = () => setProfile(original);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20 text-slate-400">
+        <span className="material-symbols-outlined animate-spin text-4xl">progress_activity</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Save bar */}
+      {hasChanges && (
+        <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-5 py-3">
+          <p className="text-sm font-medium text-amber-800">You have unsaved changes</p>
+          <div className="flex gap-2">
+            <button
+              onClick={handleReset}
+              className="px-4 py-1.5 text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+            >
+              Discard
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="flex items-center gap-2 px-4 py-1.5 text-sm font-bold text-white bg-primary rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
+            >
+              {saving ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <span className="material-symbols-outlined text-base">save</span>}
+              Save
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Basic Info */}
+      <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-5">
+        <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
+          <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+            <span className="material-symbols-outlined text-primary text-lg">local_hospital</span>
+          </div>
+          <h2 className="font-bold text-slate-900">Basic Information</h2>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          <FormField label="Hospital Name" required>
+            <input
+              value={profile.name || ''}
+              onChange={e => set('name', e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+              placeholder="e.g. City General Hospital"
+            />
+          </FormField>
+          <FormField label="Registration Number" hint="Official hospital registration number">
+            <input
+              value={profile.registration_number || ''}
+              onChange={e => set('registration_number', e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+              placeholder="e.g. REG-2024-001"
+            />
+          </FormField>
+          <FormField label="Tax / GST ID">
+            <input
+              value={profile.tax_id || ''}
+              onChange={e => set('tax_id', e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+              placeholder="e.g. 22AAAAA0000A1Z5"
+            />
+          </FormField>
+          <FormField label="Logo URL" hint="Direct link to your hospital logo">
+            <input
+              value={profile.logo_url || ''}
+              onChange={e => set('logo_url', e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+              placeholder="https://..."
+            />
+          </FormField>
+        </div>
+      </div>
+
+      {/* Contact */}
+      <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-5">
+        <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
+          <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+            <span className="material-symbols-outlined text-primary text-lg">contact_phone</span>
+          </div>
+          <h2 className="font-bold text-slate-900">Contact Details</h2>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          <FormField label="Phone Number">
+            <input
+              value={profile.phone || ''}
+              onChange={e => set('phone', e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+              placeholder="+91 98765 43210"
+            />
+          </FormField>
+          <FormField label="Email Address">
+            <input
+              type="email"
+              value={profile.email || ''}
+              onChange={e => set('email', e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+              placeholder="admin@hospital.com"
+            />
+          </FormField>
+          <FormField label="Website" hint="Public-facing website URL">
+            <input
+              value={profile.website || ''}
+              onChange={e => set('website', e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+              placeholder="https://www.hospital.com"
+            />
+          </FormField>
+        </div>
+      </div>
+
+      {/* Address */}
+      <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-5">
+        <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
+          <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+            <span className="material-symbols-outlined text-primary text-lg">location_on</span>
+          </div>
+          <h2 className="font-bold text-slate-900">Address</h2>
+        </div>
+        <div className="grid grid-cols-1 gap-5">
+          <FormField label="Address Line 1">
+            <input
+              value={profile.address_line_1 || ''}
+              onChange={e => set('address_line_1', e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+              placeholder="Street address"
+            />
+          </FormField>
+          <FormField label="Address Line 2">
+            <input
+              value={profile.address_line_2 || ''}
+              onChange={e => set('address_line_2', e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+              placeholder="Area, landmark (optional)"
+            />
+          </FormField>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+            <FormField label="City">
+              <input
+                value={profile.city || ''}
+                onChange={e => set('city', e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                placeholder="City"
+              />
+            </FormField>
+            <FormField label="State / Province">
+              <input
+                value={profile.state_province || ''}
+                onChange={e => set('state_province', e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                placeholder="State"
+              />
+            </FormField>
+            <FormField label="Postal Code">
+              <input
+                value={profile.postal_code || ''}
+                onChange={e => set('postal_code', e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                placeholder="PIN / ZIP"
+              />
+            </FormField>
+          </div>
+          <FormField label="Country" hint="ISO 3-letter country code">
+            <input
+              value={profile.country || ''}
+              onChange={e => set('country', e.target.value.toUpperCase().slice(0, 3))}
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+              placeholder="IND"
+              maxLength={3}
+            />
+          </FormField>
+        </div>
+      </div>
+
+      {/* Regional */}
+      <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-5">
+        <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
+          <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+            <span className="material-symbols-outlined text-primary text-lg">language</span>
+          </div>
+          <h2 className="font-bold text-slate-900">Regional Settings</h2>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          <FormField label="Timezone">
+            <select
+              value={profile.timezone || 'UTC'}
+              onChange={e => set('timezone', e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none bg-white"
+            >
+              {TIMEZONES.map(tz => (
+                <option key={tz} value={tz}>{tz}</option>
+              ))}
+            </select>
+          </FormField>
+          <FormField label="Default Currency">
+            <select
+              value={profile.default_currency || 'INR'}
+              onChange={e => set('default_currency', e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none bg-white"
+            >
+              {CURRENCIES.map(c => (
+                <option key={c.code} value={c.code}>{c.label}</option>
+              ))}
+            </select>
+          </FormField>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── System Settings Tab ──────────────────────────────────────────────────────
+
+const SystemSettingsTab: React.FC = () => {
+  const toast = useToast();
+  const [settings, setSettings] = useState<HospitalSettingsType | null>(null);
+  const [editValues, setEditValues] = useState<Partial<HospitalSettingsType>>({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
+
+  const fetchSettings = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await hospitalService.getSettings();
+      setSettings(data);
+      setEditValues(data);
+      setHasChanges(false);
+    } catch {
+      toast.error('Failed to load system settings');
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { fetchSettings(); }, [fetchSettings]);
+
+  const handleChange = (key: SettingKey, value: string | number | boolean) => {
+    if (key === 'hospital_code' && typeof value === 'string') value = value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2);
+    if (key === 'data_retention_years' && typeof value === 'number') value = Math.max(1, Math.min(99, value));
+    if (key === 'appointment_slot_duration_minutes' && typeof value === 'number') value = Math.max(5, Math.min(120, value));
+    if (key === 'appointment_buffer_minutes' && typeof value === 'number') value = Math.max(0, Math.min(60, value));
+    if (key === 'max_daily_appointments_per_doctor' && typeof value === 'number') value = Math.max(1, Math.min(100, value));
+    if (key === 'follow_up_validity_days' && typeof value === 'number') value = Math.max(1, Math.min(365, value));
+    if (key === 'consultation_fee_default' && typeof value === 'number') value = Math.max(0, value);
+    if ((key === 'invoice_prefix' || key === 'prescription_prefix') && typeof value === 'string') value = value.slice(0, 10);
+    setEditValues(prev => ({ ...prev, [key]: value }));
+    setHasChanges(true);
+  };
+
+  const handleSave = async () => {
+    const hospitalCode = editValues.hospital_code;
+    if (typeof hospitalCode === 'string' && !/^[A-Z]{2}$/.test(hospitalCode)) {
+      toast.error('Hospital Code must be exactly 2 uppercase letters');
+      return;
+    }
+    setSaving(true);
+    try {
+      const updated = await hospitalService.updateSettings(editValues);
+      setSettings(updated);
+      setEditValues(updated);
+      setHasChanges(false);
+      toast.success('System settings saved');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to save settings');
+    }
+    setSaving(false);
+  };
+
+  const handleReset = () => {
+    if (settings) { setEditValues(settings); setHasChanges(false); }
+  };
+
+  const getValue = (key: SettingKey) => editValues[key] ?? '';
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20 text-slate-400">
+        <span className="material-symbols-outlined animate-spin text-4xl">progress_activity</span>
+      </div>
+    );
+  }
+
+  if (!settings) {
+    return (
+      <div className="text-center py-20">
+        <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <span className="material-symbols-outlined text-amber-600 text-3xl">warning</span>
+        </div>
+        <h2 className="text-lg font-bold text-slate-900 mb-2">Settings Not Found</h2>
+        <p className="text-sm text-slate-500 mb-4">Hospital settings have not been configured. Complete the hospital setup first.</p>
+        <a href="/hospital-setup" className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors">
+          <span className="material-symbols-outlined text-base">settings</span>
+          Go to Hospital Setup
+        </a>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {hasChanges && (
+        <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-5 py-3">
+          <p className="text-sm font-medium text-amber-800">You have unsaved changes</p>
+          <div className="flex gap-2">
+            <button onClick={handleReset} className="px-4 py-1.5 text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">Discard</button>
+            <button onClick={handleSave} disabled={saving} className="flex items-center gap-2 px-4 py-1.5 text-sm font-bold text-white bg-primary rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50">
+              {saving ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <span className="material-symbols-outlined text-base">save</span>}
+              Save
+            </button>
+          </div>
+        </div>
+      )}
+
+      {settingGroups.map(group => (
+        <div key={group.title} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="flex items-center gap-3 px-5 py-4 bg-slate-50/50 border-b border-slate-100">
+            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+              <span className="material-symbols-outlined text-primary text-lg">{group.icon}</span>
+            </div>
+            <h2 className="font-bold text-slate-900">{group.title}</h2>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {group.fields.map(field => {
+              const value = getValue(field.key);
+              const isBoolean = field.type === 'boolean';
+              const isOn = value === true || value === 'true';
+              return (
+                <div key={field.key} className="flex flex-col sm:flex-row sm:items-center gap-3 px-5 py-4">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-slate-900 text-sm">{field.label}</p>
+                    <p className="text-xs text-slate-400 mt-0.5">{field.description}</p>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {isBoolean ? (
+                      <button
+                        onClick={() => handleChange(field.key, !isOn)}
+                        className={`relative w-12 h-6 rounded-full transition-colors ${isOn ? 'bg-primary' : 'bg-slate-200'}`}
+                      >
+                        <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${isOn ? 'left-[26px]' : 'left-0.5'}`} />
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        {field.suffix === '₹' && <span className="text-sm text-slate-500 font-medium">₹</span>}
+                        <input
+                          type={field.type === 'number' ? 'number' : 'text'}
+                          value={String(value || '')}
+                          onChange={e => handleChange(field.key, field.type === 'number' ? Number(e.target.value) : e.target.value)}
+                          className={`px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none ${field.type === 'number' ? 'w-24 text-right' : 'w-40'}`}
+                        />
+                        {field.suffix && field.suffix !== '₹' && <span className="text-xs text-slate-400">{field.suffix}</span>}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+
+      {/* Read-only counters */}
+      <div className="bg-slate-50 rounded-xl border border-slate-200 p-5">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="material-symbols-outlined text-slate-400 text-lg">info</span>
+          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Sequence Counters (Read-only)</span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
+          {[
+            { value: settings.patient_id_sequence, label: 'Patient IDs' },
+            { value: settings.staff_id_sequence, label: 'Staff IDs' },
+            { value: settings.invoice_sequence, label: 'Invoices' },
+            { value: settings.prescription_sequence, label: 'Prescriptions' },
+          ].map(c => (
+            <div key={c.label} className="bg-white rounded-lg p-3 border border-slate-200">
+              <p className="text-2xl font-bold text-slate-900">{c.value}</p>
+              <p className="text-[10px] text-slate-400 uppercase font-medium mt-1">{c.label}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Main Page ────────────────────────────────────────────────────────────────
+
+const HospitalSettings: React.FC = () => {
+  const [activeTab, setActiveTab] = useState<Tab>('profile');
+
+  return (
+    <div className="max-w-4xl mx-auto">
+      {/* Page header */}
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-slate-900">Hospital Settings</h1>
+        <p className="text-slate-500 text-sm mt-1">
+          Manage your hospital profile, contact details, and system configuration
+        </p>
+      </div>
+
+      {/* Tab bar */}
+      <div className="flex gap-2 mb-6 bg-slate-100 rounded-xl p-1.5 w-fit">
+        <TabButton
+          label="Hospital Profile"
+          icon="local_hospital"
+          active={activeTab === 'profile'}
+          onClick={() => setActiveTab('profile')}
+        />
+        <TabButton
+          label="System Settings"
+          icon="settings"
+          active={activeTab === 'system'}
+          onClick={() => setActiveTab('system')}
+        />
+      </div>
+
+      {/* Tab content */}
+      {activeTab === 'profile' ? <ProfileTab /> : <SystemSettingsTab />}
+    </div>
+  );
+};
+
+export default HospitalSettings;

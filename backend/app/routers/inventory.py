@@ -140,7 +140,7 @@ async def get_supplier(
 ):
     """Get supplier by ID."""
     supplier = svc.get_supplier(db, supplier_id)
-    if not supplier:
+    if not supplier or str(supplier.hospital_id) != str(current_user.hospital_id):
         raise HTTPException(status_code=404, detail="Supplier not found")
     return SupplierResponse.model_validate(supplier)
 
@@ -153,6 +153,9 @@ async def update_supplier(
     current_user: User = Depends(inventory_manage_roles),
 ):
     """Update a supplier."""
+    existing = svc.get_supplier(db, supplier_id)
+    if not existing or str(existing.hospital_id) != str(current_user.hospital_id):
+        raise HTTPException(status_code=404, detail="Supplier not found")
     supplier = svc.update_supplier(db, supplier_id, payload)
     if not supplier:
         raise HTTPException(status_code=404, detail="Supplier not found")
@@ -166,6 +169,9 @@ async def delete_supplier(
     current_user: User = Depends(inventory_manage_roles),
 ):
     """Deactivate a supplier (soft delete)."""
+    existing = svc.get_supplier(db, supplier_id)
+    if not existing or str(existing.hospital_id) != str(current_user.hospital_id):
+        raise HTTPException(status_code=404, detail="Supplier not found")
     if not svc.delete_supplier(db, supplier_id):
         raise HTTPException(status_code=404, detail="Supplier not found")
 
@@ -213,7 +219,7 @@ async def get_purchase_order(
 ):
     """Get purchase order by ID."""
     po = svc.get_purchase_order(db, po_id)
-    if not po:
+    if not po or str(po.hospital_id) != str(current_user.hospital_id):
         raise HTTPException(status_code=404, detail="Purchase order not found")
     return svc._format_po_response(po, db)
 
@@ -226,6 +232,9 @@ async def update_purchase_order(
     current_user: User = Depends(inventory_manage_roles),
 ):
     """Update a purchase order (status, notes, etc.)."""
+    existing = svc.get_purchase_order(db, po_id)
+    if not existing or str(existing.hospital_id) != str(current_user.hospital_id):
+        raise HTTPException(status_code=404, detail="Purchase order not found")
     po = svc.update_purchase_order(db, po_id, payload, approver_id=current_user.id)
     if not po:
         raise HTTPException(status_code=404, detail="Purchase order not found")
@@ -276,7 +285,7 @@ async def get_grn(
 ):
     """Get GRN by ID."""
     grn = svc.get_grn(db, grn_id)
-    if not grn:
+    if not grn or str(grn.hospital_id) != str(current_user.hospital_id):
         raise HTTPException(status_code=404, detail="GRN not found")
     return svc._format_grn_response(grn, db)
 
@@ -289,6 +298,9 @@ async def update_grn(
     current_user: User = Depends(grn_verify_roles),
 ):
     """Update GRN status (verify / accept / reject)."""
+    existing = svc.get_grn(db, grn_id)
+    if not existing or str(existing.hospital_id) != str(current_user.hospital_id):
+        raise HTTPException(status_code=404, detail="GRN not found")
     grn = svc.update_grn(db, grn_id, payload, verifier_id=current_user.id)
     if not grn:
         raise HTTPException(status_code=404, detail="GRN not found")
@@ -358,6 +370,9 @@ async def approve_adjustment(
     current_user: User = Depends(inventory_manage_roles),
 ):
     """Approve or reject a stock adjustment."""
+    existing = svc.get_stock_adjustment(db, adjustment_id)
+    if not existing or str(existing.hospital_id) != str(current_user.hospital_id):
+        raise HTTPException(status_code=404, detail="Adjustment not found or already processed")
     adj = svc.approve_stock_adjustment(db, adjustment_id, payload, current_user.id)
     if not adj:
         raise HTTPException(status_code=404, detail="Adjustment not found or already processed")
@@ -404,7 +419,7 @@ async def get_cycle_count(
 ):
     """Get cycle count by ID."""
     cc = svc.get_cycle_count(db, cc_id)
-    if not cc:
+    if not cc or str(cc.hospital_id) != str(current_user.hospital_id):
         raise HTTPException(status_code=404, detail="Cycle count not found")
     return svc._format_cycle_count_response(cc, db)
 
@@ -417,6 +432,9 @@ async def update_cycle_count(
     current_user: User = Depends(inventory_manage_roles),
 ):
     """Update cycle count status (complete / verify)."""
+    existing = svc.get_cycle_count(db, cc_id)
+    if not existing or str(existing.hospital_id) != str(current_user.hospital_id):
+        raise HTTPException(status_code=404, detail="Cycle count not found")
     cc = svc.update_cycle_count(db, cc_id, payload, verifier_id=current_user.id)
     if not cc:
         raise HTTPException(status_code=404, detail="Cycle count not found")

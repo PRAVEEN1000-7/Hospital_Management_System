@@ -8,7 +8,7 @@ from typing import Optional
 from datetime import date, datetime
 
 from ..database import get_db
-from ..models.user import User
+from ..models.user import User, Hospital
 from ..models.appointment import Doctor
 from ..dependencies import get_current_active_user
 from ..schemas.appointment import (
@@ -72,6 +72,7 @@ async def book_appointment(
             from ..services.email_service import send_appointment_confirmation_email
             from ..models.patient import Patient
             patient = db.query(Patient).filter(Patient.id == appt.patient_id).first()
+            hospital = db.query(Hospital).filter(Hospital.id == current_user.hospital_id).first()
             if patient and getattr(patient, "email", None):
                 send_appointment_confirmation_email(
                     to_email=patient.email,
@@ -81,6 +82,11 @@ async def book_appointment(
                     appointment_time=str(appt.start_time or "TBD"),
                     appointment_number=appt.appointment_number,
                     consultation_type=appt.appointment_type,
+                    hospital_name=hospital.name if hospital else "",
+                    hospital_address=hospital.address_line_1 if hospital else "",
+                    hospital_city=hospital.city if hospital else "",
+                    hospital_phone=hospital.phone if hospital else "",
+                    hospital_email=hospital.email if hospital else "",
                 )
         except Exception as email_err:
             logger.warning(f"Failed to send confirmation email: {email_err}")
@@ -140,7 +146,8 @@ async def my_appointments(
             total=0, page=page, limit=limit, total_pages=0, data=[],
         )
     total, pg, lim, tp, rows = list_appointments(
-        db, page, limit, doctor_id=str(doctor.id), status=status_filter,
+        db, page, limit, hospital_id=current_user.hospital_id,
+        doctor_id=str(doctor.id), status=status_filter,
     )
     enriched = enrich_appointments(db, rows)
     return PaginatedAppointmentResponse(
@@ -157,7 +164,8 @@ async def doctor_today(
 ):
     today = date.today()
     _, _, _, _, rows = list_appointments(
-        db, 1, 100, doctor_id=doctor_id, date_from=today, date_to=today,
+        db, 1, 100, hospital_id=current_user.hospital_id,
+        doctor_id=doctor_id, date_from=today, date_to=today,
     )
     return enrich_appointments(db, rows)
 
@@ -181,6 +189,9 @@ async def update_appt(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
+    existing = get_appointment(db, appointment_id, hospital_id=current_user.hospital_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Appointment not found")
     appt = update_appointment(db, appointment_id, data.model_dump(exclude_unset=True), current_user.id)
     if not appt:
         raise HTTPException(status_code=404, detail="Appointment not found")
@@ -195,6 +206,9 @@ async def cancel_appt(
     current_user: User = Depends(get_current_active_user),
 ):
     try:
+        existing = get_appointment(db, appointment_id, hospital_id=current_user.hospital_id)
+        if not existing:
+            raise HTTPException(status_code=404, detail="Appointment not found")
         appt = cancel_appointment(db, appointment_id, current_user.id, reason)
         if not appt:
             raise HTTPException(status_code=404, detail="Appointment not found")
@@ -204,6 +218,7 @@ async def cancel_appt(
             from ..services.email_service import send_appointment_cancellation_email
             from ..models.patient import Patient
             patient = db.query(Patient).filter(Patient.id == appt.patient_id).first()
+            hospital = db.query(Hospital).filter(Hospital.id == current_user.hospital_id).first()
             if patient and getattr(patient, "email", None):
                 send_appointment_cancellation_email(
                     to_email=patient.email,
@@ -211,6 +226,11 @@ async def cancel_appt(
                     appointment_number=appt.appointment_number,
                     appointment_date=str(appt.appointment_date),
                     reason=reason or "",
+                    hospital_name=hospital.name if hospital else "",
+                    hospital_address=hospital.address_line_1 if hospital else "",
+                    hospital_city=hospital.city if hospital else "",
+                    hospital_phone=hospital.phone if hospital else "",
+                    hospital_email=hospital.email if hospital else "",
                 )
         except Exception as email_err:
             logger.warning(f"Failed to send cancellation email: {email_err}")
@@ -225,6 +245,9 @@ async def reschedule_appt(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
+    existing = get_appointment(db, appointment_id, hospital_id=current_user.hospital_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Appointment not found")
     appt = reschedule_appointment(
         db, appointment_id, data.new_date, data.new_time, current_user.id, data.reason,
     )
@@ -237,6 +260,7 @@ async def reschedule_appt(
         from ..services.email_service import send_appointment_reschedule_email
         from ..models.patient import Patient
         patient = db.query(Patient).filter(Patient.id == appt.patient_id).first()
+        hospital = db.query(Hospital).filter(Hospital.id == current_user.hospital_id).first()
         if patient and getattr(patient, "email", None):
             send_appointment_reschedule_email(
                 to_email=patient.email,
@@ -245,6 +269,11 @@ async def reschedule_appt(
                 appointment_number=appt.appointment_number,
                 new_date=str(data.new_date),
                 new_time=str(data.new_time or "TBD"),
+                hospital_name=hospital.name if hospital else "",
+                hospital_address=hospital.address_line_1 if hospital else "",
+                hospital_city=hospital.city if hospital else "",
+                hospital_phone=hospital.phone if hospital else "",
+                hospital_email=hospital.email if hospital else "",
             )
     except Exception as email_err:
         logger.warning(f"Failed to send reschedule email: {email_err}")
@@ -259,6 +288,9 @@ async def change_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
+    existing = get_appointment(db, appointment_id, hospital_id=current_user.hospital_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Appointment not found")
     appt = update_status(db, appointment_id, data.status, current_user.id)
     if not appt:
         raise HTTPException(status_code=404, detail="Appointment not found")
@@ -272,15 +304,21 @@ async def get_appointment_pdf(
     current_user: User = Depends(get_current_active_user),
 ):
     """Generate and return appointment details as a downloadable HTML document (printable as PDF)."""
-    from ..config import settings as app_settings
     from ..models.patient import Patient
 
-    appt = get_appointment(db, appointment_id)
+    appt = get_appointment(db, appointment_id, hospital_id=current_user.hospital_id)
     if not appt:
         raise HTTPException(status_code=404, detail="Appointment not found")
 
     enriched = enrich_appointment(db, appt)
     patient = db.query(Patient).filter(Patient.id == appt.patient_id).first()
+    hospital = db.query(Hospital).filter(Hospital.id == current_user.hospital_id).first()
+    hosp_name = (hospital.name if hospital else "") or "Hospital"
+    hosp_address = hospital.address_line_1 if hospital else ""
+    hosp_city = hospital.city if hospital else ""
+    hosp_state = hospital.state_province if hospital else ""
+    hosp_phone = hospital.phone if hospital else ""
+    hosp_email = hospital.email if hospital else ""
 
     def fmt_time(t):
         if not t:
@@ -321,9 +359,9 @@ td {{ font-size: 14px; }}
 </head>
 <body>
 <div class="header">
-    <h1>{app_settings.HOSPITAL_NAME}</h1>
-    <p>{app_settings.HOSPITAL_ADDRESS}, {app_settings.HOSPITAL_CITY}, {app_settings.HOSPITAL_STATE}</p>
-    <p>Phone: {app_settings.HOSPITAL_PHONE} | Email: {app_settings.HOSPITAL_EMAIL}</p>
+    <h1>{hosp_name}</h1>
+    <p>{hosp_address}, {hosp_city}, {hosp_state}</p>
+    <p>Phone: {hosp_phone} | Email: {hosp_email}</p>
 </div>
 <div class="appt-number">Appointment #{appt.appointment_number}</div>
 <p class="section-title">Appointment Details</p>
@@ -344,7 +382,7 @@ td {{ font-size: 14px; }}
     {"<tr><th>Chief Complaint</th><td>" + appt.chief_complaint + "</td></tr>" if appt.chief_complaint else ""}
 </table>''' if appt.chief_complaint else ""}
 <div class="footer">
-    <p>Generated on {datetime.now().strftime("%B %d, %Y at %I:%M %p")} | {app_settings.HOSPITAL_NAME}</p>
+    <p>Generated on {datetime.now().strftime("%B %d, %Y at %I:%M %p")} | {hosp_name}</p>
     <p>This is a computer-generated document. No signature required.</p>
 </div>
 </body>

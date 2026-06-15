@@ -110,11 +110,8 @@ async def get_current_user(
     if not is_super_admin:
         try:
             tenant = TenantValidator.get_tenant_for_user(user, db)
-            if not tenant:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Tenant not found for this hospital",
-                )
+            # None means hospital has no SaaS tenant linked → standalone mode, allow full access.
+            # get_tenant_for_user raises HTTPException 403 when tenant IS linked but suspended.
         except HTTPException:
             raise
         except Exception as e:

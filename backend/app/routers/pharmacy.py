@@ -3,6 +3,7 @@ Pharmacy router — medicines, batches, sales, stock adjustments, dashboard.
 Suppliers and Purchase Orders are managed in the Inventory module.
 """
 import logging
+import uuid as uuid_mod
 from datetime import date
 from decimal import Decimal
 from typing import Optional
@@ -11,6 +12,8 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models.user import User
+from ..models.prescription import Medicine as MedicineModel
+from ..models.pharmacy import MedicineBatch
 from ..dependencies import get_current_active_user, require_admin_or_super_admin
 from ..schemas.pharmacy import (
     # Medicine
@@ -129,6 +132,16 @@ async def update_medicine(
     current_user: User = Depends(get_current_active_user),
 ):
     try:
+        try:
+            med_uuid = uuid_mod.UUID(medicine_id)
+        except ValueError:
+            raise HTTPException(status_code=404, detail="Medicine not found")
+        med_check = db.query(MedicineModel).filter(
+            MedicineModel.id == med_uuid,
+            MedicineModel.hospital_id == current_user.hospital_id,
+        ).first()
+        if not med_check:
+            raise HTTPException(status_code=404, detail="Medicine not found")
         med = svc.update_medicine(db, medicine_id, data.model_dump(exclude_unset=True))
         if not med:
             raise HTTPException(status_code=404, detail="Medicine not found")
@@ -150,6 +163,16 @@ async def deactivate_medicine(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
+    try:
+        med_uuid = uuid_mod.UUID(medicine_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Medicine not found")
+    med_check = db.query(MedicineModel).filter(
+        MedicineModel.id == med_uuid,
+        MedicineModel.hospital_id == current_user.hospital_id,
+    ).first()
+    if not med_check:
+        raise HTTPException(status_code=404, detail="Medicine not found")
     if not svc.delete_medicine(db, medicine_id):
         raise HTTPException(status_code=404, detail="Medicine not found")
 
@@ -162,6 +185,16 @@ async def list_batches(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
+    try:
+        med_uuid = uuid_mod.UUID(medicine_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Medicine not found")
+    med_check = db.query(MedicineModel).filter(
+        MedicineModel.id == med_uuid,
+        MedicineModel.hospital_id == current_user.hospital_id,
+    ).first()
+    if not med_check:
+        raise HTTPException(status_code=404, detail="Medicine not found")
     batches = svc.list_batches(db, medicine_id, active_only)
     return [BatchResponse.model_validate(b) for b in batches]
 
@@ -173,8 +206,20 @@ async def create_batch(
     current_user: User = Depends(get_current_active_user),
 ):
     try:
+        try:
+            med_uuid = uuid_mod.UUID(str(data.medicine_id))
+        except ValueError:
+            raise HTTPException(status_code=404, detail="Medicine not found")
+        med_check = db.query(MedicineModel).filter(
+            MedicineModel.id == med_uuid,
+            MedicineModel.hospital_id == current_user.hospital_id,
+        ).first()
+        if not med_check:
+            raise HTTPException(status_code=404, detail="Medicine not found")
         batch = svc.create_batch(db, data.model_dump())
         return BatchResponse.model_validate(batch)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error creating batch: {e}", exc_info=True)
         db.rollback()
@@ -189,6 +234,18 @@ async def update_batch(
     current_user: User = Depends(get_current_active_user),
 ):
     try:
+        try:
+            batch_uuid = uuid_mod.UUID(batch_id)
+        except ValueError:
+            raise HTTPException(status_code=404, detail="Batch not found")
+        batch_check = (
+            db.query(MedicineBatch)
+            .join(MedicineModel, MedicineBatch.medicine_id == MedicineModel.id)
+            .filter(MedicineBatch.id == batch_uuid, MedicineModel.hospital_id == current_user.hospital_id)
+            .first()
+        )
+        if not batch_check:
+            raise HTTPException(status_code=404, detail="Batch not found")
         batch = svc.update_batch(db, batch_id, data.model_dump(exclude_unset=True))
         if not batch:
             raise HTTPException(status_code=404, detail="Batch not found")
@@ -247,6 +304,8 @@ async def get_sale(
 ):
     sale = svc.get_sale(db, sale_id)
     if not sale:
+        raise HTTPException(status_code=404, detail="Sale not found")
+    if str(sale.hospital_id) != str(current_user.hospital_id):
         raise HTTPException(status_code=404, detail="Sale not found")
     resp = SaleResponse.model_validate(sale)
     items = svc.get_sale_items(db, sale.id)

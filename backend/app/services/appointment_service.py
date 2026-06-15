@@ -560,11 +560,14 @@ def get_enhanced_stats(
     db: Session,
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
+    hospital_id: Optional[uuid.UUID] = None,
 ) -> dict:
     """Get comprehensive appointment analytics."""
     from sqlalchemy import func as sqlfunc, extract
 
     query = db.query(Appointment).filter(Appointment.is_deleted == False)
+    if hospital_id:
+        query = query.filter(Appointment.hospital_id == hospital_id)
     if date_from:
         query = query.filter(Appointment.appointment_date >= date_from)
     if date_to:

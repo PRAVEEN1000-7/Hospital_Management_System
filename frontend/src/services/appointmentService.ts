@@ -83,8 +83,8 @@ const appointmentService = {
     return res.data;
   },
 
-  async getStats(dateFrom?: string, dateTo?: string, doctorId?: number): Promise<AppointmentStats> {
-    const params: Record<string, string | number> = {};
+  async getStats(dateFrom?: string, dateTo?: string, doctorId?: string): Promise<AppointmentStats> {
+    const params: Record<string, string> = {};
     if (dateFrom) params.date_from = dateFrom;
     if (dateTo) params.date_to = dateTo;
     if (doctorId) params.doctor_id = doctorId;

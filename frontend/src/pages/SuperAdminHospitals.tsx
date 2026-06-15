@@ -421,7 +421,7 @@ const SuperAdminHospitals: React.FC = () => {
                       />
                       <div>
                         <div className="font-medium text-slate-900">{plan.name}</div>
-                        <div className="text-xs text-slate-500">${plan.base_price}/mo</div>
+                        <div className="text-xs text-slate-500">₹{plan.base_price}/mo</div>
                       </div>
                     </label>
                   ))}

@@ -288,7 +288,7 @@ const SuperAdminPlans: React.FC = () => {
       description: '',
       billing_cycle: 'monthly',
       base_price: 0,
-      currency: 'USD',
+      currency: 'INR',
       max_users: 10,
       max_patients: 1000,
       max_storage_gb: 5,
@@ -403,7 +403,7 @@ const SuperAdminPlans: React.FC = () => {
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-1">Base Price</label>
                       <div className="relative">
-                        <span className="absolute left-3 top-2.5 text-slate-400 text-sm">$</span>
+                        <span className="absolute left-3 top-2.5 text-slate-400 text-sm">₹</span>
                         <input
                           type="number"
                           required
@@ -598,7 +598,7 @@ const SuperAdminPlans: React.FC = () => {
               </div>
               <p className="text-white/80 text-xs font-bold uppercase mt-1 tracking-widest">{plan.code}</p>
               <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-3xl font-bold">${plan.base_price}</span>
+                <span className="text-3xl font-bold">₹{plan.base_price}</span>
                 <span className="text-white/80 text-sm">/{plan.billing_cycle}</span>
               </div>
             </div>
@@ -771,7 +771,7 @@ const SuperAdminPlans: React.FC = () => {
                       <p className="text-xs font-bold uppercase tracking-[0.24em] text-slate-400">Selected Plan</p>
                       <h3 className="mt-1 text-xl font-bold text-slate-900">{assignPlan.name}</h3>
                       <p className="mt-1 text-sm text-slate-600">
-                        {assignPlan.code} • ${assignPlan.base_price}/{assignPlan.billing_cycle}
+                        {assignPlan.code} • ₹{assignPlan.base_price}/{assignPlan.billing_cycle}
                       </p>
                       <div className="mt-3 flex flex-wrap gap-2">
                         <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">

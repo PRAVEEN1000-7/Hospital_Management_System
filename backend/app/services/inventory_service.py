@@ -1026,6 +1026,10 @@ def list_stock_adjustments(
     return {**_paginate(total, page, limit), "data": adjustments}
 
 
+def get_stock_adjustment(db: Session, adj_id: uuid.UUID) -> Optional[StockAdjustment]:
+    return db.query(StockAdjustment).filter(StockAdjustment.id == adj_id).first()
+
+
 def approve_stock_adjustment(
     db: Session, adj_id: uuid.UUID, data: StockAdjustmentUpdate,
     approver_id: uuid.UUID,

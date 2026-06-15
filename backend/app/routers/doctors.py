@@ -114,7 +114,7 @@ async def get_doctor(
     current_user: User = Depends(get_current_active_user),
 ):
     doctor = get_doctor_by_id(db, doctor_id)
-    if not doctor:
+    if not doctor or str(doctor.hospital_id) != str(current_user.hospital_id):
         raise HTTPException(status_code=404, detail="Doctor not found")
     resp = DoctorResponse.model_validate(doctor)
     if doctor.user:
@@ -150,6 +150,9 @@ async def update_existing_doctor(
 ):
     """Update a doctor profile (admin only)."""
     try:
+        existing = get_doctor_by_id(db, doctor_id)
+        if not existing or str(existing.hospital_id) != str(current_user.hospital_id):
+            raise HTTPException(status_code=404, detail="Doctor not found")
         doctor = update_doctor(db, doctor_id, data.model_dump(exclude_unset=True))
         if not doctor:
             raise HTTPException(status_code=404, detail="Doctor not found")
@@ -169,5 +172,8 @@ async def deactivate_doctor(
     current_user: User = Depends(require_admin_or_super_admin),
 ):
     """Soft-delete a doctor profile (admin only)."""
+    existing = get_doctor_by_id(db, doctor_id)
+    if not existing or str(existing.hospital_id) != str(current_user.hospital_id):
+        raise HTTPException(status_code=404, detail="Doctor not found")
     if not delete_doctor(db, doctor_id):
         raise HTTPException(status_code=404, detail="Doctor not found")

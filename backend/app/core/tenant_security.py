@@ -138,7 +138,12 @@ class TenantValidator:
             Tenant.status.in_(['active', 'trialing'])
         ).first()
 
-        # Tenant record missing or suspended → return None so caller can decide
+        if not tenant:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Tenant is inactive or suspended",
+            )
+
         return tenant
 
 

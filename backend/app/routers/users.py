@@ -55,16 +55,24 @@ async def create_new_user(
             if tenant:
                 UserCapacityValidator.validate_user_creation(tenant.id, db)
 
-        # Check username uniqueness
-        existing = db.query(User).filter(User.username == user_data.username.lower()).first()
+        # Check username uniqueness within this hospital
+        existing = db.query(User).filter(
+            User.username == user_data.username.lower(),
+            User.hospital_id == current_user.hospital_id,
+            User.is_deleted == False,
+        ).first()
         if existing:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Username already exists",
             )
 
-        # Check email uniqueness
-        existing = db.query(User).filter(User.email == user_data.email).first()
+        # Check email uniqueness within this hospital
+        existing = db.query(User).filter(
+            User.email == user_data.email,
+            User.hospital_id == current_user.hospital_id,
+            User.is_deleted == False,
+        ).first()
         if existing:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -181,10 +189,14 @@ async def check_username_exists(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin_or_super_admin),
 ):
-    """Check if a username already exists (for real-time form validation)"""
+    """Check if a username already exists within the current hospital."""
     existing = (
         db.query(User)
-        .filter(User.username == username.lower(), User.is_deleted == False)
+        .filter(
+            User.username == username.lower(),
+            User.hospital_id == current_user.hospital_id,
+            User.is_deleted == False,
+        )
         .first()
     )
     return {"exists": existing is not None}
@@ -229,11 +241,16 @@ async def update_existing_user(
                 detail="Only Super Admin can modify Super Admin accounts",
             )
 
-        # Check email uniqueness if email is being changed
+        # Check email uniqueness within this hospital if email is being changed
         if user_data.email and user_data.email != target_user.email:
             existing = (
                 db.query(User)
-                .filter(User.email == user_data.email, User.id != target_user.id)
+                .filter(
+                    User.email == user_data.email,
+                    User.hospital_id == current_user.hospital_id,
+                    User.id != target_user.id,
+                    User.is_deleted == False,
+                )
                 .first()
             )
             if existing:

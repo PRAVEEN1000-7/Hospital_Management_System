@@ -12,6 +12,7 @@ import uuid as uuid_mod
 from ..database import get_db
 from ..models.user import User
 from ..models.appointment import Doctor, Appointment, AppointmentQueue
+from ..models.prescription import Medicine as MedicineModel, PrescriptionTemplate
 from ..dependencies import get_current_active_user
 from ..schemas.prescription import (
     PrescriptionCreate,
@@ -180,6 +181,9 @@ async def update_rx(
 ):
     """Update prescription (only drafts)."""
     try:
+        rx_check = get_prescription(db, prescription_id, hospital_id=current_user.hospital_id)
+        if not rx_check:
+            raise HTTPException(status_code=404, detail="Prescription not found")
         rx = update_prescription(
             db, prescription_id,
             data.model_dump(exclude_unset=True),
@@ -200,6 +204,9 @@ async def finalize_rx(
 ):
     """Finalize a prescription (lock it for dispensing)."""
     try:
+        rx_check = get_prescription(db, prescription_id, hospital_id=current_user.hospital_id)
+        if not rx_check:
+            raise HTTPException(status_code=404, detail="Prescription not found")
         rx = finalize_prescription(db, prescription_id, current_user.id)
         if not rx:
             raise HTTPException(status_code=404, detail="Prescription not found")
@@ -252,6 +259,9 @@ async def finalize_and_complete_queue(
     """Finalize a prescription AND complete the linked queue entry + appointment in one call.
     Used by the consultation flow: Save & Complete button."""
     try:
+        rx_check = get_prescription(db, prescription_id, hospital_id=current_user.hospital_id)
+        if not rx_check:
+            raise HTTPException(status_code=404, detail="Prescription not found")
         # 1. Finalize the prescription
         rx = finalize_prescription(db, prescription_id, current_user.id)
         if not rx:
@@ -335,6 +345,9 @@ async def delete_rx(
 ):
     """Soft-delete a prescription (only drafts)."""
     try:
+        rx_check = get_prescription(db, prescription_id, hospital_id=current_user.hospital_id)
+        if not rx_check:
+            raise HTTPException(status_code=404, detail="Prescription not found")
         rx = delete_prescription(db, prescription_id, current_user.id)
         if not rx:
             raise HTTPException(status_code=404, detail="Prescription not found")
@@ -349,6 +362,9 @@ async def get_rx_versions(
     current_user: User = Depends(get_current_active_user),
 ):
     """Get version history for a prescription."""
+    rx_check = get_prescription(db, prescription_id, hospital_id=current_user.hospital_id)
+    if not rx_check:
+        raise HTTPException(status_code=404, detail="Prescription not found")
     versions = get_prescription_versions(db, prescription_id)
     return versions
 
@@ -361,8 +377,8 @@ async def get_prescription_pdf(
     current_user: User = Depends(get_current_active_user),
 ):
     """Generate prescription as printable HTML with multi-language support."""
-    from ..config import settings as app_settings
     from ..models.patient import Patient
+    from ..models.user import Hospital
     from ..utils.prescription_translations import get_labels, SUPPORTED_LANGUAGES
 
     if lang not in SUPPORTED_LANGUAGES:
@@ -376,6 +392,12 @@ async def get_prescription_pdf(
 
     enriched = enrich_prescription(db, rx)
     patient = db.query(Patient).filter(Patient.id == rx.patient_id).first()
+    hospital = db.query(Hospital).filter(Hospital.id == current_user.hospital_id).first()
+    hosp_name = (hospital.name if hospital else "") or "Hospital"
+    hosp_address = hospital.address_line_1 if hospital else ""
+    hosp_city = hospital.city if hospital else ""
+    hosp_phone = hospital.phone if hospital else ""
+    hosp_email = hospital.email if hospital else ""
 
     doctor = db.query(Doctor).filter(Doctor.id == rx.doctor_id).first()
     doctor_name = doctor.user.full_name if doctor and doctor.user else "—"
@@ -435,9 +457,9 @@ td {{ font-size:13px; }}
 </head>
 <body>
 <div class="header">
-    <h1>{app_settings.HOSPITAL_NAME}</h1>
-    <p>{app_settings.HOSPITAL_ADDRESS}, {app_settings.HOSPITAL_CITY}</p>
-    <p>{t['phone']}: {app_settings.HOSPITAL_PHONE} | {t['email']}: {app_settings.HOSPITAL_EMAIL}</p>
+    <h1>{hosp_name}</h1>
+    <p>{hosp_address}, {hosp_city}</p>
+    <p>{t['phone']}: {hosp_phone} | {t['email']}: {hosp_email}</p>
 </div>
 
 <div class="rx-info">
@@ -553,6 +575,16 @@ async def update_med(
     current_user: User = Depends(get_current_active_user),
 ):
     """Update a medicine."""
+    try:
+        med_uuid = uuid_mod.UUID(medicine_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Medicine not found")
+    med_check = db.query(MedicineModel).filter(
+        MedicineModel.id == med_uuid,
+        MedicineModel.hospital_id == current_user.hospital_id,
+    ).first()
+    if not med_check:
+        raise HTTPException(status_code=404, detail="Medicine not found")
     med = update_medicine(db, medicine_id, data.model_dump(exclude_unset=True))
     if not med:
         raise HTTPException(status_code=404, detail="Medicine not found")
@@ -605,6 +637,18 @@ async def update_tmpl(
     current_user: User = Depends(get_current_active_user),
 ):
     """Update a template."""
+    try:
+        tmpl_uuid = uuid_mod.UUID(template_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Template not found")
+    tmpl_check = (
+        db.query(PrescriptionTemplate)
+        .join(Doctor, PrescriptionTemplate.doctor_id == Doctor.id)
+        .filter(PrescriptionTemplate.id == tmpl_uuid, Doctor.hospital_id == current_user.hospital_id)
+        .first()
+    )
+    if not tmpl_check:
+        raise HTTPException(status_code=404, detail="Template not found")
     tmpl = update_template(db, template_id, data.model_dump(exclude_unset=True))
     if not tmpl:
         raise HTTPException(status_code=404, detail="Template not found")
@@ -618,6 +662,18 @@ async def delete_tmpl(
     current_user: User = Depends(get_current_active_user),
 ):
     """Delete a template."""
+    try:
+        tmpl_uuid = uuid_mod.UUID(template_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Template not found")
+    tmpl_check = (
+        db.query(PrescriptionTemplate)
+        .join(Doctor, PrescriptionTemplate.doctor_id == Doctor.id)
+        .filter(PrescriptionTemplate.id == tmpl_uuid, Doctor.hospital_id == current_user.hospital_id)
+        .first()
+    )
+    if not tmpl_check:
+        raise HTTPException(status_code=404, detail="Template not found")
     if not delete_template(db, template_id):
         raise HTTPException(status_code=404, detail="Template not found")
 
@@ -629,5 +685,17 @@ async def use_template(
     current_user: User = Depends(get_current_active_user),
 ):
     """Increment usage counter when template is used."""
+    try:
+        tmpl_uuid = uuid_mod.UUID(template_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Template not found")
+    tmpl_check = (
+        db.query(PrescriptionTemplate)
+        .join(Doctor, PrescriptionTemplate.doctor_id == Doctor.id)
+        .filter(PrescriptionTemplate.id == tmpl_uuid, Doctor.hospital_id == current_user.hospital_id)
+        .first()
+    )
+    if not tmpl_check:
+        raise HTTPException(status_code=404, detail="Template not found")
     increment_template_usage(db, template_id)
     return {"message": "Template usage recorded"}

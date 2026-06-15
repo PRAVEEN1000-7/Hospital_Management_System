@@ -21,9 +21,9 @@ class TenantBase(BaseModel):
     city: Optional[str] = Field(None, max_length=100)
     state_province: Optional[str] = Field(None, max_length=100)
     postal_code: Optional[str] = Field(None, max_length=20)
-    country: str = Field(default="USA", max_length=3)
-    timezone: str = Field(default="UTC", max_length=50)
-    default_currency: str = Field(default="USD", max_length=3)
+    country: str = Field(default="IND", max_length=3)
+    timezone: str = Field(default="Asia/Kolkata", max_length=50)
+    default_currency: str = Field(default="INR", max_length=3)
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -195,7 +195,7 @@ class SubscriptionPlanBase(BaseModel):
     description: Optional[str] = None
     billing_cycle: str = Field(default="monthly", max_length=20)
     base_price: Decimal = Field(default=Decimal("0.00"))
-    currency: str = Field(default="USD", max_length=3)
+    currency: str = Field(default="INR", max_length=3)
     max_users: Optional[int] = None
     max_patients: Optional[int] = None
     max_storage_gb: Optional[int] = None

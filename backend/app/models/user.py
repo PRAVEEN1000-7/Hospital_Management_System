@@ -32,7 +32,7 @@ class Hospital(Base):
     email = Column(String(255))
     website = Column(String(255))
     timezone = Column(String(50), default="UTC")
-    default_currency = Column(String(3), default="USD")
+    default_currency = Column(String(3), default="INR")
     tax_id = Column(String(50))
     registration_number = Column(String(50))
     is_active = Column(Boolean, default=True)

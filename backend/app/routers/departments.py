@@ -48,7 +48,7 @@ async def get_department(
     current_user: User = Depends(get_current_active_user),
 ):
     dept = get_department_by_id(db, department_id)
-    if not dept:
+    if not dept or str(dept.hospital_id) != str(current_user.hospital_id):
         raise HTTPException(status_code=404, detail="Department not found")
     return DepartmentResponse.model_validate(dept)
 
@@ -78,6 +78,9 @@ async def update_existing_department(
 ):
     """Update a department (admin only)."""
     try:
+        existing = get_department_by_id(db, department_id)
+        if not existing or str(existing.hospital_id) != str(current_user.hospital_id):
+            raise HTTPException(status_code=404, detail="Department not found")
         dept = update_department(db, department_id, data.model_dump(exclude_unset=True))
         if not dept:
             raise HTTPException(status_code=404, detail="Department not found")
@@ -97,5 +100,8 @@ async def deactivate_department(
     current_user: User = Depends(require_admin_or_super_admin),
 ):
     """Deactivate a department (admin only)."""
+    existing = get_department_by_id(db, department_id)
+    if not existing or str(existing.hospital_id) != str(current_user.hospital_id):
+        raise HTTPException(status_code=404, detail="Department not found")
     if not delete_department(db, department_id):
         raise HTTPException(status_code=404, detail="Department not found")

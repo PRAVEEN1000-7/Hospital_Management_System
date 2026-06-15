@@ -5,7 +5,9 @@ import { ToastProvider } from './contexts/ToastContext';
 import { ConfirmProvider } from './contexts/ConfirmContext';
 import { SuperAdminProvider } from './contexts/SuperAdminContext';
 import { DashboardRefreshProvider } from './contexts/DashboardRefreshContext';
+import { NotificationProvider } from './contexts/NotificationContext';
 import ToastContainer from './components/common/ToastContainer';
+import NotificationContainer from './components/common/NotificationContainer';
 import ProtectedRoute from './components/common/ProtectedRoute';
 import Layout from './components/common/Layout';
 import Login from './pages/Login';
@@ -30,6 +32,7 @@ import UserManagement from './pages/UserManagement';
 import StaffDirectory from './pages/StaffDirectory';
 import Profile from './pages/Profile';
 import HospitalSetup from './pages/HospitalSetup';
+import HospitalSettings from './pages/HospitalSettings';
 import Subscription from './pages/Subscription';
 
 // Appointment pages
@@ -96,6 +99,21 @@ const DefaultRedirect: React.FC = () => {
   return <Navigate to={user?.roles?.includes('super_admin') ? '/superadmin' : '/dashboard'} replace />;
 };
 
+// Wrapper component to get auth context values for NotificationProvider
+const AppWithNotifications: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user } = useAuth();
+
+  return (
+    <NotificationProvider
+      userId={user?.id}
+      userRole={user?.roles?.[0]}
+      userRoles={user?.roles}
+    >
+      {children}
+    </NotificationProvider>
+  );
+};
+
 const App: React.FC = () => {
   return (
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
@@ -103,8 +121,10 @@ const App: React.FC = () => {
         <ToastProvider>
           <ConfirmProvider>
             <DashboardRefreshProvider>
-              <ToastContainer />
-            <Routes>
+              <AppWithNotifications>
+                <ToastContainer />
+                <NotificationContainer />
+                <Routes>
             {/* Public */}
             <Route path="/login" element={<Login />} />
             <Route path="/reset-password" element={<ResetPassword />} />
@@ -155,13 +175,18 @@ const App: React.FC = () => {
                 </ProtectedRoute>
               } />
               <Route path="/user-management" element={
-                <ProtectedRoute allowedRoles={['super_admin']}>
+                <ProtectedRoute allowedRoles={['super_admin', 'admin']}>
                   <UserManagement />
                 </ProtectedRoute>
               } />
               <Route path="/hospital-setup" element={
                 <ProtectedRoute allowedRoles={['super_admin']}>
                   <HospitalSetup />
+                </ProtectedRoute>
+              } />
+              <Route path="/settings" element={
+                <ProtectedRoute allowedRoles={['super_admin', 'admin']}>
+                  <HospitalSettings />
                 </ProtectedRoute>
               } />
 
@@ -610,6 +635,7 @@ const App: React.FC = () => {
             <Route path="/change-password" element={<Navigate to="/profile" replace />} />
             <Route path="*" element={<DefaultRedirect />} />
             </Routes>
+              </AppWithNotifications>
             </DashboardRefreshProvider>
           </ConfirmProvider>
         </ToastProvider>

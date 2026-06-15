@@ -454,11 +454,13 @@ const Layout: React.FC = () => {
       { to: '/multitenant', label: 'Multi-Tenant Control', icon: 'hub' },
       { to: '/hospital-setup', label: 'Hospital Setup', icon: 'local_hospital' },
       { to: '/user-management', label: 'User Management', icon: 'admin_panel_settings' },
+      { to: '/settings', label: 'Settings', icon: 'settings' },
     );
   } else if (hasRole('admin')) {
     systemNavItems.push(
       { to: '/subscription', label: 'Subscription', icon: 'credit_card' },
       { to: '/user-management', label: 'User Management', icon: 'admin_panel_settings' },
+      { to: '/settings', label: 'Settings', icon: 'settings' },
     );
   }
 

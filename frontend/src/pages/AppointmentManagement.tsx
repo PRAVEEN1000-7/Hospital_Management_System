@@ -56,6 +56,21 @@ const AppointmentManagement: React.FC = () => {
   const canCollectFee = ['receptionist', 'cashier', 'admin', 'super_admin'].includes(role);
   const canProgressConsultation = role !== 'receptionist';
 
+  const fetchStats = useCallback(async () => {
+    try {
+      const data = await appointmentService.getStats(
+        filterDate || undefined,
+        filterDate || undefined,
+        filterDoctor || undefined,
+      );
+      setStats(data);
+    } catch {
+      // silently fail — stats are supplementary
+    }
+  }, [filterDate, filterDoctor]);
+
+  useEffect(() => { fetchStats(); }, [fetchStats]);
+
   const fetchAppointments = useCallback(async () => {
     setLoading(true);
     try {
@@ -96,14 +111,6 @@ const AppointmentManagement: React.FC = () => {
     }
   }, [search, setSearchParams]);
 
-  // Fetch stats
-  useEffect(() => {
-    appointmentService.getStats(
-      filterDate || undefined,
-      filterDate || undefined,
-      filterDoctor ? parseInt(filterDoctor) : undefined
-    ).then(setStats).catch(() => {});
-  }, [filterDate, filterDoctor]);
 
   const handleSearch = () => { setPage(1); setSearch(searchInput); };
   const handleKeyDown = (e: React.KeyboardEvent) => { if (e.key === 'Enter') handleSearch(); };
@@ -113,6 +120,7 @@ const AppointmentManagement: React.FC = () => {
       await appointmentService.updateStatus(id, status);
       toast.success(`Status updated`);
       fetchAppointments();
+      fetchStats();
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || 'Failed to update');
     }
@@ -126,6 +134,7 @@ const AppointmentManagement: React.FC = () => {
       setCancelId(null);
       setCancelReason('');
       fetchAppointments();
+      fetchStats();
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || 'Failed to cancel');
     }
@@ -202,6 +211,7 @@ const AppointmentManagement: React.FC = () => {
           : 'Payment recorded (partial)'
       );
       fetchAppointments();
+      fetchStats();
       closeCollectFee();
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || 'Failed to record payment');

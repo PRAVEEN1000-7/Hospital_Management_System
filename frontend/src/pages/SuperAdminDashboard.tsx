@@ -141,7 +141,7 @@ const SuperAdminDashboard: React.FC = () => {
         />
         <StatCard
           title="Monthly Revenue"
-          value={`$${Number(stats.mrr).toLocaleString()}`}
+          value={`₹${Number(stats.mrr).toLocaleString()}`}
           subtitle="MRR"
           icon={CreditCard}
           color="bg-green-600"

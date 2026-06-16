@@ -394,15 +394,24 @@ async def get_prescription_pdf(
     patient = db.query(Patient).filter(Patient.id == rx.patient_id).first()
     hospital = db.query(Hospital).filter(Hospital.id == current_user.hospital_id).first()
     hosp_name = (hospital.name if hospital else "") or "Hospital"
-    hosp_address = hospital.address_line_1 if hospital else ""
-    hosp_city = hospital.city if hospital else ""
-    hosp_phone = hospital.phone if hospital else ""
-    hosp_email = hospital.email if hospital else ""
+    hosp_address = (hospital.address_line_1 if hospital else "") or ""
+    hosp_city = (hospital.city if hospital else "") or ""
+    hosp_phone = (hospital.phone if hospital else "") or ""
+    hosp_email = (hospital.email if hospital else "") or ""
 
     doctor = db.query(Doctor).filter(Doctor.id == rx.doctor_id).first()
-    doctor_name = doctor.user.full_name if doctor and doctor.user else "—"
-    doctor_spec = doctor.specialization if doctor else ""
-    doctor_reg = doctor.registration_number if doctor else ""
+    doctor_name = (doctor.user.full_name if doctor and doctor.user else "") or "—"
+    doctor_spec = (doctor.specialization if doctor else "") or ""
+    doctor_reg = (doctor.registration_number if doctor else "") or ""
+
+    # Build clean header lines so empty fields never render as "None" or stray commas
+    addr_line = ", ".join(p for p in (hosp_address, hosp_city) if p)
+    contact_bits = []
+    if hosp_phone:
+        contact_bits.append(f"{t['phone']}: {hosp_phone}")
+    if hosp_email:
+        contact_bits.append(f"{t['email']}: {hosp_email}")
+    contact_line = " | ".join(contact_bits)
 
     def fmt_date(d):
         if not d:
@@ -448,18 +457,24 @@ th {{ background:#f1f5f9; padding:10px 8px; text-align:left; font-size:13px; fon
 td {{ font-size:13px; }}
 .diagnosis {{ background:#eff6ff; padding:16px; border-radius:8px; margin-bottom:20px; }}
 .advice {{ background:#f0fdf4; padding:16px; border-radius:8px; margin-bottom:20px; }}
-.footer {{ margin-top:60px; display:flex; justify-content:space-between; }}
+.footer {{ margin-top:40px; display:flex; justify-content:space-between; page-break-inside:avoid; }}
 .signature {{ text-align:right; }}
 .signature p {{ margin:4px 0; font-size:13px; }}
-@media print {{ body {{ padding:20px; }} }}
+@page {{ size: A4; margin: 12mm; }}
+@media print {{
+  html, body {{ margin:0; padding:0; height:auto; -webkit-print-color-adjust:exact; print-color-adjust:exact; }}
+  .footer {{ margin-top:30px; }}
+  table, tr, td, th {{ page-break-inside:avoid; }}
+  .patient-box, .diagnosis, .advice {{ page-break-inside:avoid; }}
+}}
 </style>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;600;700&family=Noto+Sans+Devanagari:wght@400;600;700&family=Noto+Sans+Kannada:wght@400;600;700&family=Noto+Sans+Malayalam:wght@400;600;700&family=Noto+Sans+Tamil:wght@400;600;700&family=Noto+Sans+Telugu:wght@400;600;700&display=swap">
 </head>
 <body>
 <div class="header">
     <h1>{hosp_name}</h1>
-    <p>{hosp_address}, {hosp_city}</p>
-    <p>{t['phone']}: {hosp_phone} | {t['email']}: {hosp_email}</p>
+    {f'<p>{addr_line}</p>' if addr_line else ''}
+    {f'<p>{contact_line}</p>' if contact_line else ''}
 </div>
 
 <div class="rx-info">
@@ -508,8 +523,8 @@ td {{ font-size:13px; }}
     <div class="signature">
         <p style="margin-bottom:40px;"><strong>{t['prescribing_doctor']}</strong></p>
         <p><strong>Dr. {doctor_name}</strong></p>
-        <p style="color:#64748b;">{doctor_spec}</p>
-        <p style="color:#64748b;">{t['reg_no']} {doctor_reg}</p>
+        {f'<p style="color:#64748b;">{doctor_spec}</p>' if doctor_spec else ''}
+        {f'<p style="color:#64748b;">{t["reg_no"]} {doctor_reg}</p>' if doctor_reg else ''}
     </div>
 </div>
 </body>

@@ -113,10 +113,11 @@ const PrescriptionBuilder: React.FC = () => {
   const navigate = useNavigate();
   const { id: editId } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
-  const { user } = useAuth();
+  const { user, isModuleEnabled } = useAuth();
   const { showToast } = useToast();
 
   const isEditMode = Boolean(editId);
+  const pharmacyEnabled = isModuleEnabled('pharmacy');
 
   // Form state
   const [patientId, setPatientId] = useState(searchParams.get('patient_id') || '');
@@ -591,8 +592,15 @@ const PrescriptionBuilder: React.FC = () => {
         navigate('/appointments/queue');
       } else if (finalize) {
         await prescriptionService.finalizePrescription(rxId);
-        showToast('success', 'Prescription finalized & sent to pharmacy!');
-        navigate('/prescriptions');
+        showToast(
+          'success',
+          pharmacyEnabled
+            ? 'Prescription finalized & sent to pharmacy!'
+            : 'Prescription finalized — ready to print/download',
+        );
+        // Land on the detail page so the doctor can immediately print or download
+        // the prescription to hand to the patient.
+        navigate(`/prescriptions/${rxId}`);
       } else {
         showToast('success', isEditMode ? 'Prescription updated' : 'Prescription saved as draft');
         if (!isEditMode) navigate('/prescriptions');
@@ -1196,8 +1204,10 @@ const PrescriptionBuilder: React.FC = () => {
                   disabled={saving}
                   className="bg-primary hover:bg-primary/90 text-white px-6 py-2 rounded-lg text-sm font-medium flex items-center gap-2 disabled:opacity-50 transition-colors"
                 >
-                  <span className="material-symbols-outlined text-sm">send</span>
-                  {saving ? 'Saving...' : 'Save & Send to Pharmacy'}
+                  <span className="material-symbols-outlined text-sm">{pharmacyEnabled ? 'send' : 'verified'}</span>
+                  {saving
+                    ? 'Saving...'
+                    : pharmacyEnabled ? 'Save & Send to Pharmacy' : 'Save & Finalize'}
                 </button>
               )}
             </div>

@@ -24,13 +24,22 @@ async def get_settings(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    """Get hospital settings for the current user's hospital."""
+    """Get hospital settings for the current user's hospital. Auto-creates defaults if missing."""
     settings = get_hospital_settings(db, current_user.hospital_id)
     if not settings:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Hospital settings not found. Run initial setup first.",
+        # Auto-create default settings — derive 2-char code from the hospital record
+        from ..models.user import Hospital
+        import uuid as _uuid
+        hospital = db.query(Hospital).filter(Hospital.id == current_user.hospital_id).first()
+        raw_code = (hospital.code or hospital.name or "HC")[:2].upper() if hospital else "HC"
+        hospital_code = ''.join(c for c in raw_code if c.isalpha()).ljust(2, 'X')[:2]
+        settings = create_hospital_settings(
+            db,
+            hospital_id=current_user.hospital_id if isinstance(current_user.hospital_id, _uuid.UUID)
+                        else _uuid.UUID(str(current_user.hospital_id)),
+            hospital_code=hospital_code,
         )
+        logger.info("Auto-created hospital_settings for hospital %s", current_user.hospital_id)
     # Return all setting columns as a dict
     result = {}
     for col in settings.__table__.columns:

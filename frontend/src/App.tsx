@@ -22,6 +22,7 @@ import SuperAdminHospitalDetail from './pages/SuperAdminHospitalDetail';
 import SuperAdminHospitalEdit from './pages/SuperAdminHospitalEdit';
 import SuperAdminPlans from './pages/SuperAdminPlans';
 import SuperAdminProfile from './pages/SuperAdminProfile';
+import SuperAdminAudit from './pages/SuperAdminAudit';
 import MultiTenantControl from './pages/MultiTenantControl';
 import Dashboard from './pages/Dashboard';
 import Register from './pages/Register';
@@ -146,6 +147,7 @@ const App: React.FC = () => {
                 <Route path="hospitals/:id" element={<SuperAdminHospitalDetail />} />
                 <Route path="hospitals/:id/edit" element={<SuperAdminHospitalEdit />} />
                 <Route path="plans" element={<SuperAdminPlans />} />
+                <Route path="audit" element={<SuperAdminAudit />} />
                 <Route path="profile" element={<SuperAdminProfile />} />
               </Route>
               <Route path="/multitenant" element={<MultiTenantControl />} />

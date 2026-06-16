@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../contexts/ConfirmContext';
 import prescriptionService from '../services/prescriptionService';
+import { htmlStringToPdf } from '../utils/pdf';
 import type { PrescriptionListItem, PaginatedResponse } from '../types/prescription';
 
 const STATUS_OPTIONS = [
@@ -106,6 +107,22 @@ const PrescriptionList: React.FC = () => {
       setSearchParams({}, { replace: true });
     }
   }, [search, setSearchParams]);
+
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+  const handleDownload = async (id: string, rxNumber: string) => {
+    if (downloadingId) return;
+    setDownloadingId(id);
+    try {
+      const html = await prescriptionService.getPrescriptionPdfUrl(id, 'en');
+      await htmlStringToPdf(html, `Prescription_${rxNumber || id}.pdf`);
+      showToast('success', 'Prescription downloaded');
+    } catch {
+      showToast('error', 'Failed to download prescription');
+    } finally {
+      setDownloadingId(null);
+    }
+  };
 
   const handleDelete = async (id: string) => {
     const ok = await confirm({
@@ -236,6 +253,16 @@ const PrescriptionList: React.FC = () => {
                           title="View"
                         >
                           <span className="material-symbols-outlined text-sm">visibility</span>
+                        </button>
+                        <button
+                          onClick={() => handleDownload(rx.id, rx.prescription_number)}
+                          disabled={downloadingId === rx.id}
+                          className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-primary transition-colors disabled:opacity-50"
+                          title="Download PDF"
+                        >
+                          <span className={`material-symbols-outlined text-sm ${downloadingId === rx.id ? 'animate-spin' : ''}`}>
+                            {downloadingId === rx.id ? 'progress_activity' : 'download'}
+                          </span>
                         </button>
                         {!rx.is_finalized && (
                           <>

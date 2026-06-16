@@ -29,6 +29,39 @@ from ..services.subscription_service import SubscriptionService
 router = APIRouter(prefix="/superadmin", tags=["Super Admin"])
 
 
+def _write_audit(
+    db: Session,
+    admin: User,
+    *,
+    action: str,
+    entity_type: str,
+    entity_id=None,
+    entity_name: Optional[str] = None,
+    tenant_id=None,
+    old_values: Optional[dict] = None,
+    new_values: Optional[dict] = None,
+    commit: bool = True,
+):
+    """Write a super-admin audit log entry. Best-effort — never breaks the request."""
+    from ..models.tenant import AuditLog
+    try:
+        db.add(AuditLog(
+            tenant_id=tenant_id,
+            user_id=admin.id,
+            user_type='superadmin',
+            action=action,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            entity_name=entity_name,
+            old_values=old_values,
+            new_values=new_values,
+        ))
+        if commit:
+            db.commit()
+    except Exception:
+        db.rollback()
+
+
 # ============================================================================
 # Authentication
 # ============================================================================
@@ -318,6 +351,11 @@ def create_plan(
         is_active=request.is_active,
         sort_order=request.sort_order
     )
+    _write_audit(
+        db, admin, action='plan_created', entity_type='SubscriptionPlan',
+        entity_id=plan.id, entity_name=plan.name,
+        new_values={'code': plan.code, 'base_price': str(plan.base_price)},
+    )
     return plan
 
 
@@ -376,6 +414,11 @@ def update_plan(
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
 
+    _write_audit(
+        db, admin, action='plan_updated', entity_type='SubscriptionPlan',
+        entity_id=plan.id, entity_name=plan.name,
+        new_values={k: str(v) for k, v in update_data.items()},
+    )
     return plan
 
 
@@ -402,9 +445,17 @@ def delete_plan(
             detail=f"Cannot delete plan: {assigned_count} hospital(s) have been assigned to this plan"
         )
 
+    plan_name = plan.name
+    plan_code = plan.code
     db.delete(plan)
+    _write_audit(
+        db, admin, action='plan_deleted', entity_type='SubscriptionPlan',
+        entity_id=plan_id, entity_name=plan_name,
+        old_values={'code': plan_code},
+        commit=False,
+    )
     db.commit()
-    return {"message": f"Plan '{plan.name}' deleted successfully"}
+    return {"message": f"Plan '{plan_name}' deleted successfully"}
 
 
 # ============================================================================
@@ -663,6 +714,12 @@ def reset_admin_password(
         raise HTTPException(status_code=404, detail="Admin user not found")
 
     admin_user.hashed_password = get_password_hash(request.new_password)
+    _write_audit(
+        db, admin, action='admin_password_reset', entity_type='User',
+        entity_id=admin_user.id, entity_name=admin_user.username,
+        tenant_id=tenant_id,
+        commit=False,
+    )
     db.commit()
 
     return {"message": f"Password reset successfully for admin '{admin_user.username}'"}

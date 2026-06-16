@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../contexts/ConfirmContext';
 import prescriptionService from '../services/prescriptionService';
+import { htmlStringToPdf } from '../utils/pdf';
 import type { Prescription, PrescriptionListItem } from '../types/prescription';
 
 const PrescriptionDetail: React.FC = () => {
@@ -99,6 +100,22 @@ const PrescriptionDetail: React.FC = () => {
     }
   };
 
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownload = async (lang?: string) => {
+    if (!id || downloading) return;
+    setDownloading(true);
+    try {
+      const html = await prescriptionService.getPrescriptionPdfUrl(id, lang || printLang);
+      await htmlStringToPdf(html, `Prescription_${prescription?.prescription_number || id}.pdf`);
+      showToast('success', 'Prescription downloaded');
+    } catch {
+      showToast('error', 'Failed to download prescription');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   const statusColor: Record<string, string> = {
     draft: 'bg-yellow-100 text-yellow-700 border-yellow-300',
     finalized: 'bg-blue-100 text-blue-700 border-blue-300',
@@ -183,6 +200,16 @@ const PrescriptionDetail: React.FC = () => {
               </div>
             )}
           </div>
+          <button
+            onClick={() => handleDownload()}
+            disabled={downloading}
+            className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-medium hover:bg-slate-50 flex items-center gap-2 disabled:opacity-50"
+          >
+            <span className={`material-symbols-outlined text-sm ${downloading ? 'animate-spin' : ''}`}>
+              {downloading ? 'progress_activity' : 'download'}
+            </span>
+            {downloading ? 'Preparing…' : 'Download PDF'}
+          </button>
           {canEdit && (
             <button
               onClick={() => navigate(`/prescriptions/${id}/edit`)}
@@ -488,6 +515,16 @@ const PrescriptionDetail: React.FC = () => {
                 className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm font-medium hover:bg-slate-50 flex items-center gap-2"
               >
                 <span className="material-symbols-outlined text-sm">print</span> Print Prescription
+              </button>
+              <button
+                onClick={() => handleDownload()}
+                disabled={downloading}
+                className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm font-medium hover:bg-slate-50 flex items-center gap-2 mt-2 disabled:opacity-50"
+              >
+                <span className={`material-symbols-outlined text-sm ${downloading ? 'animate-spin' : ''}`}>
+                  {downloading ? 'progress_activity' : 'download'}
+                </span>
+                {downloading ? 'Preparing PDF…' : 'Download PDF'}
               </button>
               <button
                 onClick={() => navigate(`/patients/${rx.patient_id}`)}

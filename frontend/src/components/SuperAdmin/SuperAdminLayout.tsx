@@ -31,6 +31,7 @@ const SuperAdminLayout: React.FC = () => {
 
   const systemNavItems = [
     { to: '/multitenant', label: 'Control Center', icon: 'hub', exact: false },
+    { to: '/superadmin/audit', label: 'Audit Logs', icon: 'history', exact: false },
   ];
 
   useEffect(() => {
@@ -56,6 +57,7 @@ const SuperAdminLayout: React.FC = () => {
     if (location.pathname.startsWith('/superadmin/plans')) return 'Subscription Plans';
     if (location.pathname.startsWith('/superadmin/profile')) return 'My Profile';
     if (location.pathname.startsWith('/multitenant')) return 'Control Center';
+    if (location.pathname.startsWith('/superadmin/audit')) return 'Audit Logs';
     return 'HMS Control Center';
   };
 

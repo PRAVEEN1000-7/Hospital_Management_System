@@ -173,7 +173,15 @@ class TenantService:
         )
         db.add(hospital)
         db.flush()
-        
+
+        # 1b. Create default HospitalSettings for this hospital
+        from ..models.hospital_settings import HospitalSettings as HospitalSettingsModel
+        hospital_settings = HospitalSettingsModel(
+            hospital_id=hospital.id,
+            hospital_code=code,
+        )
+        db.add(hospital_settings)
+
         # 2. Create Hospital Admin User
         admin_password = admin_user_data.get('password')
         if not admin_password:

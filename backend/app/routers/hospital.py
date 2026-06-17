@@ -24,14 +24,19 @@ router = APIRouter(prefix="/hospital", tags=["Hospital"])
 _optional_auth = HTTPBearer(auto_error=False)
 
 
-def _hospital_id_from_token(credentials) -> str | None:
-    """Return the hospital_id embedded in a bearer token, or None if absent/invalid."""
+def _hospital_id_from_token(credentials):
+    """Return the hospital_id (UUID) embedded in a bearer token, or None if absent/invalid."""
+    import uuid as _uuid
     if not credentials:
         return None
     payload = decode_access_token(credentials.credentials)
     if not payload:
         return None
-    return payload.get("hospital_id")
+    raw = payload.get("hospital_id")
+    try:
+        return _uuid.UUID(str(raw)) if raw else None
+    except (ValueError, TypeError):
+        return None
 
 
 @router.get("/status", response_model=dict)

@@ -107,7 +107,7 @@ export const superAdminApi = {
     api.get(`/superadmin/tenants/${tenantId}/usage`),
 
   // Audit Logs
-  getAuditLogs: (params?: { tenant_id?: string; action?: string; limit?: number }) =>
+  getAuditLogs: (params?: { tenant_id?: string; action?: string; entity_type?: string; search?: string; limit?: number }) =>
     api.get('/superadmin/audit-logs', { params }),
 };
 

@@ -555,33 +555,84 @@ def get_tenant_usage(
 def get_audit_logs(
     tenant_id: Optional[uuid.UUID] = None,
     action: Optional[str] = None,
-    limit: int = Query(50, ge=1, le=200),
+    entity_type: Optional[str] = None,
+    search: Optional[str] = None,
+    limit: int = Query(100, ge=1, le=500),
     admin: User = Depends(require_superadmin),
     db: Session = Depends(get_db)
 ):
-    """Get audit logs"""
-    from ..models.tenant import AuditLog
-    
+    """Get audit logs enriched with hospital name (from hospital settings) and actor."""
+    from ..models.tenant import AuditLog, Tenant
+    from ..models.user import Hospital, User as UserModel
+
     query = db.query(AuditLog)
-    
+
     if tenant_id:
         query = query.filter(AuditLog.tenant_id == tenant_id)
-    
     if action:
         query = query.filter(AuditLog.action == action)
-    
+    if entity_type:
+        query = query.filter(AuditLog.entity_type == entity_type)
+    if search:
+        like = f"%{search.strip()}%"
+        query = query.filter(
+            or_(
+                AuditLog.action.ilike(like),
+                AuditLog.entity_type.ilike(like),
+                AuditLog.entity_name.ilike(like),
+                AuditLog.request_path.ilike(like),
+            )
+        )
+
     logs = query.order_by(AuditLog.created_at.desc()).limit(limit).all()
-    
+
+    # Resolve names in bulk to avoid N+1 queries.
+    tenant_ids = {log.tenant_id for log in logs if log.tenant_id}
+    user_ids = {log.user_id for log in logs if log.user_id}
+
+    # Prefer the hospital's own (settings) name; fall back to the tenant name.
+    hospital_names: dict = {}
+    if tenant_ids:
+        for tid, hname in db.query(Hospital.tenant_id, Hospital.name).filter(
+            Hospital.tenant_id.in_(tenant_ids)
+        ).all():
+            hospital_names[tid] = hname
+        for tid, tname in db.query(Tenant.id, Tenant.name).filter(
+            Tenant.id.in_(tenant_ids)
+        ).all():
+            hospital_names.setdefault(tid, tname)
+
+    user_names: dict = {}
+    if user_ids:
+        for u in db.query(UserModel).filter(UserModel.id.in_(user_ids)).all():
+            full = f"{u.first_name or ''} {u.last_name or ''}".strip()
+            user_names[u.id] = full or u.username
+
+    def _meta(log, key):
+        return log.new_values.get(key) if isinstance(log.new_values, dict) else None
+
     return {
         "total": len(logs),
         "logs": [
             {
                 "id": str(log.id),
                 "tenant_id": str(log.tenant_id) if log.tenant_id else None,
+                "hospital_name": (
+                    hospital_names.get(log.tenant_id)
+                    if log.tenant_id
+                    else ("Platform" if log.user_type == "superadmin" else None)
+                ),
+                "user_id": str(log.user_id) if log.user_id else None,
+                "user_name": user_names.get(log.user_id),
+                "user_type": log.user_type,
                 "action": log.action,
                 "entity_type": log.entity_type,
                 "entity_name": log.entity_name,
-                "created_at": log.created_at
+                "method": _meta(log, "method"),
+                "status": _meta(log, "status"),
+                "request_path": log.request_path,
+                "ip_address": log.ip_address,
+                "created_at": log.created_at,
             }
             for log in logs
         ]

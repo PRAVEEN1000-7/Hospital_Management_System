@@ -90,6 +90,33 @@ async def log_requests(request: Request, call_next):
     return response
 
 
+# ── Audit Logging Middleware ─────────────────────────────────────────────────
+# Persists every mutating (POST/PUT/PATCH/DELETE) API action to the cross-tenant
+# audit_logs table so the super admin can review all activity across the site.
+from starlette.concurrency import run_in_threadpool
+from .core.audit_middleware import record_audit_event, AUDIT_METHODS, _client_ip
+
+
+@app.middleware("http")
+async def audit_mutations(request: Request, call_next):
+    response = await call_next(request)
+    if request.method in AUDIT_METHODS:
+        # Snapshot request data before handing off — run the DB write in a
+        # threadpool so it never blocks the event loop.
+        try:
+            await run_in_threadpool(
+                record_audit_event,
+                request.method,
+                request.url.path,
+                dict(request.headers),
+                _client_ip(request),
+                response.status_code,
+            )
+        except Exception:
+            pass
+    return response
+
+
 # ---------- Global Exception Handlers ----------
 def _cors_headers(request: Request) -> dict:
     """Build CORS headers matching CORSMiddleware config so error responses include them."""

@@ -88,9 +88,10 @@ const AppointmentReports: React.FC = () => {
           {/* Overview Section */}
           {activeSection === 'overview' && (
             <>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
                 {[
                   { label: 'Total Appointments', value: stats.total_appointments, icon: 'calendar_month', lightColor: 'bg-blue-50 text-blue-600' },
+                  { label: 'In Progress', value: stats.total_pending, icon: 'clinical_notes', lightColor: 'bg-amber-50 text-amber-600' },
                   { label: 'Completed', value: stats.total_completed, icon: 'task_alt', lightColor: 'bg-emerald-50 text-emerald-600' },
                   { label: 'Cancelled', value: stats.total_cancelled, icon: 'cancel', lightColor: 'bg-red-50 text-red-600' },
                   { label: 'No Shows', value: stats.total_no_shows, icon: 'person_off', lightColor: 'bg-slate-100 text-slate-600' },

@@ -21,7 +21,7 @@ const Layout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [hospitalName, setHospitalName] = useState('HMS Core');
+  const [hospitalName, setHospitalName] = useState(user?.hospital_name || 'HMS Core');
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -83,6 +83,14 @@ const Layout: React.FC = () => {
   const canAccessOptical       = hasRole('super_admin', 'admin', 'doctor') && isModuleEnabled('optical');
 
   useEffect(() => {
+    // Prefer the tenant-scoped hospital name carried in the auth context — this is
+    // the name set in Hospital Settings for THIS hospital. Falling back to the API
+    // only when it is unavailable (the /hospital endpoint is now tenant-scoped too).
+    if (user?.hospital_name) {
+      setHospitalName(user.hospital_name);
+      document.title = `${user.hospital_name} | Hospital Management System`;
+      return;
+    }
     hospitalService.getHospitalDetails()
       .then(res => {
         setHospitalName(res.name);
@@ -91,7 +99,7 @@ const Layout: React.FC = () => {
       .catch(() => {
         // Keep default on error
       });
-  }, []);
+  }, [user?.hospital_name]);
 
   // Fetch pending prescription count for pharmacy badge
   useEffect(() => {

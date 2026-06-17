@@ -1,7 +1,9 @@
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from ..database import get_db
+from ..utils.security import decode_access_token
 from ..schemas.hospital import (
     HospitalCreate,
     HospitalUpdate,
@@ -17,6 +19,20 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/hospital", tags=["Hospital"])
 
+# Optional auth — lets the public hospital endpoint scope to the caller's hospital
+# when a valid token is present, without rejecting unauthenticated callers.
+_optional_auth = HTTPBearer(auto_error=False)
+
+
+def _hospital_id_from_token(credentials) -> str | None:
+    """Return the hospital_id embedded in a bearer token, or None if absent/invalid."""
+    if not credentials:
+        return None
+    payload = decode_access_token(credentials.credentials)
+    if not payload:
+        return None
+    return payload.get("hospital_id")
+
 
 @router.get("/status", response_model=dict)
 async def check_hospital_status(db: Session = Depends(get_db)):
@@ -29,9 +45,18 @@ async def check_hospital_status(db: Session = Depends(get_db)):
 
 
 @router.get("", response_model=HospitalPublicInfo)
-async def get_hospital(db: Session = Depends(get_db)):
-    """Get hospital details (public info for ID cards, etc.)"""
-    hospital = hospital_service.get_hospital(db)
+async def get_hospital(
+    db: Session = Depends(get_db),
+    credentials: HTTPAuthorizationCredentials = Depends(_optional_auth),
+):
+    """Get hospital details (public info for ID cards, etc.).
+
+    When called with a valid token the result is scoped to the caller's own
+    hospital so invoices, ID cards and prescriptions never show another
+    tenant's name. Unauthenticated callers fall back to the first hospital.
+    """
+    hospital_id = _hospital_id_from_token(credentials)
+    hospital = hospital_service.get_hospital(db, hospital_id=hospital_id)
     if not hospital:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

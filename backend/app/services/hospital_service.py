@@ -96,9 +96,13 @@ def delete_logo(db: Session, hospital_id=None) -> dict:
     return {"message": "Logo deleted successfully"}
 
 
-def save_hospital_logo(db: Session, file: UploadFile, user_id: int) -> dict:
+def save_hospital_logo(db: Session, file: UploadFile, hospital_id=None) -> dict:
+    """Save an uploaded hospital logo file and persist its URL, scoped to the hospital."""
+    import time
     ensure_upload_directory()
-    file_ext = os.path.splitext(file.filename)[1].lower()
+    file_ext = os.path.splitext(file.filename or "")[1].lower()
+    if file_ext == ".jpeg":
+        file_ext = ".jpg"
     if file_ext not in ALLOWED_LOGO_EXTENSIONS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -112,10 +116,14 @@ def save_hospital_logo(db: Session, file: UploadFile, user_id: int) -> dict:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"File too large. Maximum size: {MAX_LOGO_SIZE_MB}MB",
         )
-    db_hospital = db.query(Hospital).first()
+    q = db.query(Hospital)
+    if hospital_id is not None:
+        q = q.filter(Hospital.id == hospital_id)
+    db_hospital = q.first()
     if not db_hospital:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Hospital not found")
-    filename = f"hospital_logo{file_ext}"
+    # Unique, per-hospital filename so it cache-busts and never collides across tenants.
+    filename = f"hospital_{db_hospital.id}_{int(time.time())}{file_ext}"
     file_path = os.path.join(UPLOAD_DIR, filename)
     try:
         with open(file_path, "wb") as buffer:

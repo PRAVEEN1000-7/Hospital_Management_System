@@ -62,13 +62,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static files for uploads
+# Mount static files for uploads.
+# Create the directory (and common subfolders) up-front and mount unconditionally —
+# otherwise, on a fresh checkout where ./uploads does not yet exist, the mount would
+# be skipped at startup and every /uploads/* request (avatars, logos) returns 404
+# even after files are later written.
 uploads_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
-if os.path.exists(uploads_dir):
-    app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
-    logger.info(f"Mounted uploads directory: {uploads_dir}")
-else:
-    logger.warning(f"Uploads directory not found: {uploads_dir}")
+for _sub in ("photos", "hospital"):
+    os.makedirs(os.path.join(uploads_dir, _sub), exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
+logger.info(f"Mounted uploads directory: {uploads_dir}")
 
 
 # ── Request Logging Middleware ───────────────────────────────────────────────

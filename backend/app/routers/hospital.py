@@ -1,5 +1,5 @@
 import logging
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from ..database import get_db
@@ -161,6 +161,28 @@ async def update_logo(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update logo. Please try again.",
+        )
+
+
+@router.post("/logo/upload", response_model=HospitalLogoUpload)
+async def upload_logo(
+    logo: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_or_super_admin),
+):
+    """Upload a hospital logo image file (admin/super_admin only)."""
+    try:
+        result = hospital_service.save_hospital_logo(db, logo, hospital_id=current_user.hospital_id)
+        logger.info(f"Hospital logo uploaded by user {current_user.username}")
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error uploading logo: {e}", exc_info=True)
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to upload logo. Please try again.",
         )
 
 

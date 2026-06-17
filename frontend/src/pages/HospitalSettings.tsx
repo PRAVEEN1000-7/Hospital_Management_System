@@ -1,6 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useToast } from '../contexts/ToastContext';
+import { useAuth } from '../contexts/AuthContext';
 import { hospitalService } from '../services/hospitalService';
+import HospitalLogo from '../components/common/HospitalLogo';
 import type { HospitalDetails, HospitalSettings as HospitalSettingsType } from '../services/hospitalService';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -118,6 +120,7 @@ const FormField: React.FC<{
 
 const ProfileTab: React.FC = () => {
   const toast = useToast();
+  const { updateUser } = useAuth();
   const [profile, setProfile] = useState<Partial<HospitalDetails>>({});
   const [original, setOriginal] = useState<Partial<HospitalDetails>>({});
   const [loading, setLoading] = useState(true);
@@ -142,6 +145,41 @@ const ProfileTab: React.FC = () => {
   const set = (key: keyof HospitalDetails, value: string) =>
     setProfile(prev => ({ ...prev, [key]: value }));
 
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingLogo(true);
+    try {
+      const res = await hospitalService.uploadLogo(file);
+      // The endpoint persists logo_url immediately, so sync both states.
+      setProfile(prev => ({ ...prev, logo_url: res.logo_url }));
+      setOriginal(prev => ({ ...prev, logo_url: res.logo_url }));
+      window.dispatchEvent(new Event('hospital:updated')); // refresh sidebar logo live
+      toast.success('Logo uploaded');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to upload logo');
+    } finally {
+      setUploadingLogo(false);
+      if (logoInputRef.current) logoInputRef.current.value = '';
+    }
+  };
+
+  const handleLogoRemove = async () => {
+    if (!profile.logo_url) return;
+    try {
+      await hospitalService.deleteLogo();
+      setProfile(prev => ({ ...prev, logo_url: '' }));
+      setOriginal(prev => ({ ...prev, logo_url: '' }));
+      window.dispatchEvent(new Event('hospital:updated'));
+      toast.success('Logo removed');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to remove logo');
+    }
+  };
+
   const handleSave = async () => {
     if (!profile.name?.trim()) {
       toast.error('Hospital name is required');
@@ -152,6 +190,9 @@ const ProfileTab: React.FC = () => {
       const updated = await hospitalService.updateHospitalDetails(profile);
       setOriginal(updated);
       setProfile(updated);
+      // Reflect the new name immediately in the sidebar / top-left without re-login.
+      if (updated.name) updateUser({ hospital_name: updated.name });
+      window.dispatchEvent(new Event('hospital:updated'));
       toast.success('Hospital profile updated');
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || 'Failed to save profile');
@@ -227,13 +268,44 @@ const ProfileTab: React.FC = () => {
               placeholder="e.g. 22AAAAA0000A1Z5"
             />
           </FormField>
-          <FormField label="Logo URL" hint="Direct link to your hospital logo">
-            <input
-              value={profile.logo_url || ''}
-              onChange={e => set('logo_url', e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-              placeholder="https://..."
-            />
+          <FormField label="Hospital Logo" hint="PNG, JPG or SVG up to 2MB. Shown in the sidebar and on documents.">
+            <div className="flex items-center gap-4">
+              <HospitalLogo
+                logoUrl={profile.logo_url}
+                name={profile.name}
+                className="w-16 h-16 rounded-xl shrink-0"
+                textClassName="text-xl"
+              />
+              <div className="flex flex-col gap-2">
+                <input
+                  ref={logoInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/jpg,image/svg+xml"
+                  onChange={handleLogoUpload}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => logoInputRef.current?.click()}
+                  disabled={uploadingLogo}
+                  className="px-3 py-1.5 text-sm font-semibold text-primary border border-primary/30 rounded-lg hover:bg-primary/5 disabled:opacity-50 flex items-center gap-1.5 w-fit"
+                >
+                  <span className={`material-symbols-outlined text-base ${uploadingLogo ? 'animate-spin' : ''}`}>
+                    {uploadingLogo ? 'progress_activity' : 'upload'}
+                  </span>
+                  {uploadingLogo ? 'Uploading…' : 'Upload Logo'}
+                </button>
+                {profile.logo_url && (
+                  <button
+                    type="button"
+                    onClick={handleLogoRemove}
+                    className="text-xs text-red-500 hover:underline text-left"
+                  >
+                    Remove logo
+                  </button>
+                )}
+              </div>
+            </div>
           </FormField>
         </div>
       </div>
@@ -552,15 +624,40 @@ const SystemSettingsTab: React.FC = () => {
 
 const HospitalSettings: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>('profile');
+  const [brand, setBrand] = useState<{ name: string; logo_url: string | null }>({ name: '', logo_url: null });
+
+  // Load the hospital brand (name + logo) once for the shared header so it shows
+  // identically on both the Hospital Profile and System Settings tabs, and refresh
+  // it live whenever the logo/profile is updated.
+  const loadBrand = useCallback(() => {
+    hospitalService.getHospitalDetails()
+      .then(res => setBrand({ name: res.name || '', logo_url: res.logo_url || null }))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => { loadBrand(); }, [loadBrand]);
+  useEffect(() => {
+    const handler = () => loadBrand();
+    window.addEventListener('hospital:updated', handler);
+    return () => window.removeEventListener('hospital:updated', handler);
+  }, [loadBrand]);
 
   return (
     <div className="max-w-4xl mx-auto">
-      {/* Page header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900">Hospital Settings</h1>
-        <p className="text-slate-500 text-sm mt-1">
-          Manage your hospital profile, contact details, and system configuration
-        </p>
+      {/* Page header with hospital brand — shown on both tabs */}
+      <div className="flex items-center gap-4 mb-6">
+        <HospitalLogo
+          logoUrl={brand.logo_url}
+          name={brand.name}
+          className="w-14 h-14 rounded-2xl shrink-0"
+          textClassName="text-xl"
+        />
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold text-slate-900 truncate">{brand.name || 'Hospital Settings'}</h1>
+          <p className="text-slate-500 text-sm mt-1">
+            Manage your hospital profile, contact details, and system configuration
+          </p>
+        </div>
       </div>
 
       {/* Tab bar */}

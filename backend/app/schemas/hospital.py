@@ -37,6 +37,7 @@ class HospitalUpdate(BaseModel):
     default_currency: Optional[str] = Field(None, max_length=10)
     tax_id: Optional[str] = Field(None, max_length=50)
     registration_number: Optional[str] = Field(None, max_length=50)
+    logo_url: Optional[str] = Field(None, max_length=500)
 
 
 class HospitalResponse(BaseModel):

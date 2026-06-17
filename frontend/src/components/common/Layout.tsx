@@ -1,11 +1,12 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import TrialBanner from './TrialBanner';
+import HospitalLogo from './HospitalLogo';
+import UserAvatar from './UserAvatar';
 import { NavLink, useNavigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { formatRole, ROLE_ICONS } from '../../utils/constants';
+import { formatRole } from '../../utils/constants';
 import hospitalService from '../../services/hospitalService';
-import userService from '../../services/userService';
 import pharmacyService from '../../services/pharmacyService';
 import notificationsService, { type AppNotification } from '../../services/notificationsService';
 import {
@@ -22,6 +23,7 @@ const Layout: React.FC = () => {
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [hospitalName, setHospitalName] = useState(user?.hospital_name || 'HMS Core');
+  const [hospitalLogo, setHospitalLogo] = useState<string | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -82,24 +84,37 @@ const Layout: React.FC = () => {
   const canAccessAnalytics     = hasRole('super_admin', 'admin') && isModuleEnabled('analytics');
   const canAccessOptical       = hasRole('super_admin', 'admin', 'doctor') && isModuleEnabled('optical');
 
+  // Fetch the current hospital's name + logo from the tenant-scoped /hospital endpoint.
+  const loadBranding = useCallback(() => {
+    hospitalService.getHospitalDetails()
+      .then(res => {
+        if (res.name) {
+          setHospitalName(res.name);
+          document.title = `${res.name} | Hospital Management System`;
+        }
+        setHospitalLogo(res.logo_url || null);
+      })
+      .catch(() => {
+        // Keep defaults on error
+      });
+  }, []);
+
   useEffect(() => {
-    // Prefer the tenant-scoped hospital name carried in the auth context — this is
-    // the name set in Hospital Settings for THIS hospital. Falling back to the API
-    // only when it is unavailable (the /hospital endpoint is now tenant-scoped too).
+    // Prefer the tenant-scoped name from the auth context for an instant, correct
+    // first render, then refresh name + logo from the API.
     if (user?.hospital_name) {
       setHospitalName(user.hospital_name);
       document.title = `${user.hospital_name} | Hospital Management System`;
-      return;
     }
-    hospitalService.getHospitalDetails()
-      .then(res => {
-        setHospitalName(res.name);
-        document.title = `${res.name} | Hospital Management System`;
-      })
-      .catch(() => {
-        // Keep default on error
-      });
-  }, [user?.hospital_name]);
+    loadBranding();
+  }, [user?.hospital_name, loadBranding]);
+
+  // Refresh branding live when the hospital profile/logo is updated in Settings.
+  useEffect(() => {
+    const handler = () => loadBranding();
+    window.addEventListener('hospital:updated', handler);
+    return () => window.removeEventListener('hospital:updated', handler);
+  }, [loadBranding]);
 
   // Fetch pending prescription count for pharmacy badge
   useEffect(() => {
@@ -497,13 +512,6 @@ const Layout: React.FC = () => {
 
   const fullName = user ? `${user.first_name} ${user.last_name}`.trim() : '';
 
-  const initials = fullName
-    ?.split(' ')
-    .map((n: string) => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2) || 'U';
-
   return (
     <div className="flex h-screen overflow-hidden">
       {/* Sidebar */}
@@ -515,14 +523,24 @@ const Layout: React.FC = () => {
         aria-label="Main navigation"
       >
         {/* Brand */}
-        <div className="h-16 flex items-center px-6 border-b border-slate-100">
-          <div className="w-8 h-8 bg-primary rounded flex items-center justify-center text-white mr-3 shrink-0">
-            <span className="material-icons text-xl">health_and_safety</span>
-          </div>
-          <div className="min-w-0">
-            <span className="font-bold text-sm tracking-tight text-slate-900 truncate block leading-none">{hospitalName}</span>
+        <div className="min-h-[4rem] flex items-center gap-2.5 px-4 py-2.5 border-b border-slate-100">
+          <HospitalLogo
+            logoUrl={hospitalLogo}
+            name={hospitalName}
+            className="w-9 h-9 rounded-lg shrink-0"
+            textClassName="text-sm"
+          />
+          <div className="min-w-0 flex-1">
+            <span
+              className="font-bold text-[13px] leading-snug tracking-tight text-slate-900 line-clamp-2 break-words"
+              title={hospitalName}
+            >
+              {hospitalName}
+            </span>
             {user?.hospital_code && (
-              <span className="text-[10px] font-bold text-primary uppercase mt-1 block">Code: {user.hospital_code}</span>
+              <span className="text-[10px] font-bold text-primary uppercase block leading-none mt-0.5">
+                Code: {user.hospital_code}
+              </span>
             )}
           </div>
         </div>
@@ -868,12 +886,12 @@ const Layout: React.FC = () => {
         {/* User Card at Bottom */}
         <div className="p-4 border-t border-slate-100 space-y-2">
           <div className="flex items-center gap-3 p-2 rounded-lg bg-slate-50">
-            <div className="w-8 h-8 rounded-full overflow-hidden bg-primary/10 text-primary flex items-center justify-center text-xs font-bold shrink-0">
-              {user?.avatar_url
-                ? <img src={userService.getPhotoUrl(user.avatar_url) ?? ''} alt={fullName} className="w-full h-full object-cover" />
-                : <span className="material-symbols-outlined text-[16px]">{ROLE_ICONS[user?.roles?.[0] || ''] || 'person'}</span>
-              }
-            </div>
+            <UserAvatar
+              avatarUrl={user?.avatar_url}
+              name={fullName}
+              className="w-8 h-8 rounded-full shrink-0"
+              textClassName="text-xs"
+            />
             <div className="flex-1 overflow-hidden">
               <p className="text-xs font-bold text-slate-900 truncate">{fullName}</p>
               <p className="text-[10px] text-slate-500">{formatRole(user?.roles?.[0] || '')}</p>
@@ -1086,13 +1104,12 @@ const Layout: React.FC = () => {
                 aria-label="User menu"
                 aria-expanded={userMenuOpen}
               >
-                <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-bold">
-                  {user?.avatar_url ? (
-                    <img src={userService.getPhotoUrl(user.avatar_url) ?? ''} alt={fullName} className="w-full h-full object-cover rounded-full" />
-                  ) : (
-                    initials
-                  )}
-                </div>
+                <UserAvatar
+                  avatarUrl={user?.avatar_url}
+                  name={fullName}
+                  className="w-8 h-8 rounded-full"
+                  textClassName="text-sm"
+                />
                 <span className="material-icons text-sm text-slate-400">expand_more</span>
               </button>
 

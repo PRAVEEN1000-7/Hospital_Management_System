@@ -95,14 +95,14 @@ export const hospitalService = {
     return response.data;
   },
 
-  async updateLogo(file: File): Promise<HospitalDetails> {
+  async uploadLogo(file: File): Promise<{ logo_url: string; message: string }> {
     const formData = new FormData();
     formData.append('logo', file);
-    const response = await api.post<HospitalDetails>('/hospital/logo', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
+    const response = await api.post<{ logo_url: string; message: string }>(
+      '/hospital/logo/upload',
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } },
+    );
     return response.data;
   },
 

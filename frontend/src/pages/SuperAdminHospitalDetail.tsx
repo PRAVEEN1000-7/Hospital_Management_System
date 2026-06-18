@@ -24,6 +24,7 @@ import {
 import { superAdminApi } from '../services/superAdminApi';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../contexts/ConfirmContext';
+import userService from '../services/userService';
 
 interface Tenant {
   id: string;
@@ -50,6 +51,9 @@ interface Tenant {
   onboarding_completed: boolean;
   onboarding_step: string;
   admin_user_id?: string;
+  admin_username?: string;
+  admin_email?: string;
+  admin_name?: string;
   created_at: string;
   updated_at: string;
   // Subscription-computed fields
@@ -347,7 +351,7 @@ const SuperAdminHospitalDetail: React.FC = () => {
           <div className="flex items-center gap-4">
             <div className="w-16 h-16 bg-primary/10 rounded-xl flex items-center justify-center overflow-hidden">
               {tenant.logo_url ? (
-                <img src={tenant.logo_url} alt={tenant.name} className="w-full h-full object-contain" />
+                <img src={userService.getPhotoUrl(tenant.logo_url) || ''} alt={tenant.name} className="w-full h-full object-contain" />
               ) : (
                 <Building2 className="w-8 h-8 text-primary" />
               )}
@@ -355,15 +359,9 @@ const SuperAdminHospitalDetail: React.FC = () => {
             <div>
               <h1 className="text-2xl font-bold text-slate-900">{tenant.name}</h1>
               <div className="flex items-center gap-3 mt-1 flex-wrap">
-                <span className="text-slate-500 text-sm">{tenant.slug}</span>
-                <span className="text-slate-300">•</span>
-                <span className="font-mono text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded">{tenant.code}</span>
-                {tenant.registration_number && (
-                  <>
-                    <span className="text-slate-300">•</span>
-                    <span className="text-slate-500 text-sm">Reg: {tenant.registration_number}</span>
-                  </>
-                )}
+                <span className="font-mono text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded">
+                  Code: {tenant.code}
+                </span>
               </div>
             </div>
           </div>
@@ -421,6 +419,21 @@ const SuperAdminHospitalDetail: React.FC = () => {
               <InfoRow label="Email" value={tenant.email} />
               <InfoRow label="Phone" value={tenant.phone} />
               <InfoRow label="Registration No." value={tenant.registration_number} />
+            </SectionCard>
+
+            {/* Hospital admin login */}
+            <SectionCard title="Hospital Admin Login" icon={<KeyRound className="w-4 h-4" />}>
+              <InfoRow label="Username" value={tenant.admin_username || 'Not set'} mono />
+              <InfoRow label="Admin Name" value={tenant.admin_name} />
+              <InfoRow label="Admin Email" value={tenant.admin_email} />
+              <div className="pt-2">
+                <button
+                  onClick={() => setShowResetPasswordModal(true)}
+                  className="text-sm font-semibold text-primary hover:underline flex items-center gap-1.5"
+                >
+                  <KeyRound className="w-3.5 h-3.5" /> Reset admin password
+                </button>
+              </div>
             </SectionCard>
 
             {/* Address */}
@@ -545,13 +558,6 @@ const SuperAdminHospitalDetail: React.FC = () => {
               <InfoRow label="Currency" value={tenant.default_currency} />
               <InfoRow label="Created" value={fmt(tenant.created_at)} />
               <InfoRow label="Last Updated" value={fmt(tenant.updated_at)} />
-              <button
-                onClick={() => setShowResetPasswordModal(true)}
-                className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-sm font-semibold transition-colors"
-              >
-                <KeyRound className="w-4 h-4" />
-                Reset Admin Password
-              </button>
             </SectionCard>
 
             {/* Module summary */}

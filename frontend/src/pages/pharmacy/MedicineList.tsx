@@ -218,11 +218,8 @@ const MedicineList: React.FC = () => {
             categoryValue = '';
           }
 
-          // Validate category after auto-correction
-          if (categoryValue && !VALID_CATEGORIES.includes(categoryValue.toLowerCase())) {
-            rowErrors.push(`Row ${rowNumber}: invalid category '${categoryValue}'. Valid categories: ${VALID_CATEGORIES.join(', ')}.`);
-            return null;
-          }
+          // No longer strictly validating against VALID_CATEGORIES to allow therapeutic classes
+          // like Analgesic, Antibiotic, etc.
 
           if (unitValue && !TEMPLATE_UNITS.includes(unitValue)) {
             rowErrors.push(`Row ${rowNumber}: invalid unit '${unitValue}'.`);

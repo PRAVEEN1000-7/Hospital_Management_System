@@ -44,17 +44,17 @@ class HospitalResponse(BaseModel):
     id: str
     name: str
     code: Optional[str] = None
-    phone: str
+    phone: Optional[str] = None
     email: str
     website: Optional[str] = None
-    address_line_1: str
+    address_line_1: Optional[str] = None
     address_line_2: Optional[str] = None
-    city: str
-    state_province: str
-    country: str
-    postal_code: str
-    timezone: str
-    default_currency: str
+    city: Optional[str] = None
+    state_province: Optional[str] = None
+    country: Optional[str] = None
+    postal_code: Optional[str] = None
+    timezone: Optional[str] = None
+    default_currency: Optional[str] = None
     tax_id: Optional[str] = None
     registration_number: Optional[str] = None
     logo_url: Optional[str] = None
@@ -82,15 +82,15 @@ class HospitalResponse(BaseModel):
 class HospitalPublicInfo(BaseModel):
     id: str
     name: str
-    phone: str
+    phone: Optional[str] = None
     email: str
     website: Optional[str] = None
-    address_line_1: str
+    address_line_1: Optional[str] = None
     address_line_2: Optional[str] = None
-    city: str
-    state_province: str
-    country: str
-    postal_code: str
+    city: Optional[str] = None
+    state_province: Optional[str] = None
+    country: Optional[str] = None
+    postal_code: Optional[str] = None
     logo_url: Optional[str] = None
     registration_number: Optional[str] = None
 

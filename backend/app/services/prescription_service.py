@@ -106,34 +106,52 @@ def calculate_prescribed_quantity(
 
 def generate_prescription_number(db: Session, hospital_id: uuid.UUID) -> str:
     """
-    Generate unique sequential prescription number: {PREFIX}-{YY}-{NNNNN}
-    
-    Format: RX-26-00001, RX-26-00002, etc.
-    Uses hospital_settings.prescription_sequence with row-level locking.
+    Generate a globally-unique prescription number: {PREFIX}-{HOSPITAL_CODE}-{YY}-{NNNNN}
+
+    Format e.g. RX-PF-26-00001.
+
+    The `prescriptions_prescription_number_key` constraint is global, so the
+    number MUST embed the per-hospital code — otherwise two tenants both using
+    the default "RX" prefix collide. Uses hospital_settings.prescription_sequence
+    with a row-level lock (serialises per hospital) plus an existence check that
+    self-heals when the counter has drifted behind real data.
     """
-    # Get hospital settings with row-level lock to prevent race conditions
+    # Lock the hospital's settings row to serialise concurrent prescription creates.
     settings = db.query(HospitalSettings).filter(
         HospitalSettings.hospital_id == hospital_id
     ).with_for_update().first()
-    
+
     if not settings:
-        # Fallback if no settings exist - use default
-        logger.warning(f"No hospital settings found for hospital_id={hospital_id}, using defaults")
-        prefix = "RX"
-        sequence = 1
-    else:
-        # Get prefix and increment sequence atomically
-        prefix = settings.prescription_prefix or "RX"
-        sequence = settings.prescription_sequence + 1
-        # Update the sequence counter
-        settings.prescription_sequence = sequence
-        db.flush()  # Ensure the update is visible within this transaction
-    
-    # Format: PREFIX-YY-NNNNN (e.g., RX-26-00001)
+        # No settings row yet — create a default one so we have a lockable counter.
+        from ..models.user import Hospital
+        logger.warning(f"No hospital settings found for hospital_id={hospital_id}; creating defaults")
+        hospital = db.query(Hospital).filter(Hospital.id == hospital_id).first()
+        raw_code = (getattr(hospital, "code", None) or getattr(hospital, "name", None) or "HC")
+        hcode = "".join(c for c in str(raw_code) if c.isalnum()).upper().ljust(2, "X")[:2]
+        settings = HospitalSettings(hospital_id=hospital_id, hospital_code=hcode)
+        db.add(settings)
+        db.flush()
+
+    prefix = (settings.prescription_prefix or "RX").strip() or "RX"
+    hcode = (settings.hospital_code or "HC").strip() or "HC"
     year_code = date.today().strftime("%y")  # 2-digit year
-    formatted_sequence = f"{sequence:05d}"  # 5-digit sequence with leading zeros
-    
-    return f"{prefix}-{year_code}-{formatted_sequence}"
+    sequence = settings.prescription_sequence or 0
+
+    # Advance until we land on a number that is not already taken. This recovers
+    # gracefully if the counter is behind the real maximum for any reason.
+    while True:
+        sequence += 1
+        candidate = f"{prefix}-{hcode}-{year_code}-{sequence:05d}"
+        exists = db.query(Prescription.id).filter(
+            Prescription.prescription_number == candidate
+        ).first()
+        if not exists:
+            break
+
+    settings.prescription_sequence = sequence
+    db.flush()  # Persist the counter within this transaction
+
+    return candidate
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -765,7 +783,25 @@ def list_medicines(
         q = q.filter(Medicine.is_active == True)
 
     if hospital_id:
-        q = q.filter(Medicine.hospital_id == hospital_id)
+        from ..models.tenant import TenantModule, Module
+        enabled_modules = (
+            db.query(Module.code)
+            .join(TenantModule, TenantModule.module_id == Module.id)
+            .filter(
+                TenantModule.tenant_id == hospital_id,
+                TenantModule.is_enabled == True,
+                Module.code.in_(['pharmacy', 'inventory'])
+            )
+            .all()
+        )
+        enabled_codes = {m[0] for m in enabled_modules}
+        
+        if 'pharmacy' in enabled_codes or 'inventory' in enabled_codes:
+            # If hospital has pharmacy (or inventory), show ONLY their own medicines
+            q = q.filter(Medicine.hospital_id == hospital_id)
+        else:
+            # Otherwise, show ONLY common/global medicines
+            q = q.filter(Medicine.is_global == True)
 
     if category:
         q = q.filter(Medicine.category == category)
@@ -853,6 +889,81 @@ def update_medicine(
     db.commit()
     db.refresh(med)
     return med
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Common (global) medicines — managed by the super admin, usable by every hospital
+# ═══════════════════════════════════════════════════════════════════════════
+
+def create_global_medicine(db: Session, data: dict) -> Medicine:
+    """Create a platform-wide common medicine (hospital_id NULL, is_global True)."""
+    med = Medicine(
+        hospital_id=None,
+        is_global=True,
+        name=data["name"],
+        generic_name=data["generic_name"],
+        category=data.get("category"),
+        manufacturer=data.get("manufacturer"),
+        composition=data.get("composition"),
+        strength=data.get("strength"),
+        unit_of_measure=data.get("unit_of_measure", "strip"),
+        units_per_pack=data.get("units_per_pack", 1),
+        requires_prescription=data.get("requires_prescription", True),
+        is_controlled=data.get("is_controlled", False),
+        # Common medicines are for prescribing, not selling — price is optional.
+        selling_price=data.get("selling_price") or 0,
+        purchase_price=data.get("purchase_price"),
+        tax_config_id=data.get("tax_config_id"),
+        reorder_level=data.get("reorder_level", 0),
+        storage_instructions=data.get("storage_instructions"),
+        is_active=True,
+    )
+    db.add(med)
+    db.commit()
+    db.refresh(med)
+    return med
+
+
+def list_global_medicines(
+    db: Session,
+    page: int = 1,
+    limit: int = 20,
+    search: Optional[str] = None,
+    category: Optional[str] = None,
+    active_only: bool = False,
+):
+    """List the shared common (global) medicine formulary."""
+    q = db.query(Medicine).filter(Medicine.is_global == True)
+
+    if active_only:
+        q = q.filter(Medicine.is_active == True)
+    if category:
+        q = q.filter(Medicine.category == category)
+    if search:
+        term = f"%{search}%"
+        q = q.filter(
+            or_(
+                Medicine.name.ilike(term),
+                Medicine.generic_name.ilike(term),
+                Medicine.manufacturer.ilike(term),
+            )
+        )
+
+    total = q.count()
+    offset = (page - 1) * limit
+    rows = q.order_by(Medicine.name).offset(offset).limit(limit).all()
+    total_pages = ceil(total / limit) if total > 0 else 0
+    return total, page, limit, total_pages, rows
+
+
+def get_global_medicine(db: Session, medicine_id: str | uuid.UUID) -> Optional[Medicine]:
+    """Fetch a single global medicine by id (guards against touching hospital ones)."""
+    if isinstance(medicine_id, str):
+        medicine_id = uuid.UUID(medicine_id)
+    return db.query(Medicine).filter(
+        Medicine.id == medicine_id,
+        Medicine.is_global == True,
+    ).first()
 
 
 # ═══════════════════════════════════════════════════════════════════════════

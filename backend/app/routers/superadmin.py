@@ -23,6 +23,7 @@ from ..schemas.tenant import (
     UsageQuotaResponse, AssignPlanRequest
 )
 from ..models.tenant import SubscriptionPlan
+from ..schemas.prescription import GlobalMedicineCreate, MedicineUpdate
 from ..services.superadmin_service import SuperAdminService
 from ..services.tenant_service import TenantService
 from ..services.subscription_service import SubscriptionService
@@ -215,6 +216,16 @@ def get_tenant(
     # Build response
     response = TenantDetailResponse.model_validate(tenant)
     response.modules = [TenantModuleResponse.model_validate(m) for m in modules]
+
+    # Enrich with the hospital admin's login details so the super admin can see
+    # (and share) the account username for this hospital.
+    if tenant.admin_user_id:
+        admin_user = db.query(User).filter(User.id == tenant.admin_user_id).first()
+        if admin_user:
+            response.admin_username = admin_user.username
+            response.admin_email = admin_user.email
+            full = f"{admin_user.first_name or ''} {admin_user.last_name or ''}".strip()
+            response.admin_name = full or None
 
     return response
 
@@ -549,6 +560,83 @@ def get_tenant_usage(
 
 
 # ============================================================================
+# Common (global) Medicines — shared formulary for hospitals without inventory
+# ============================================================================
+
+@router.get("/medicines")
+def list_common_medicines(
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=200),
+    search: Optional[str] = None,
+    category: Optional[str] = None,
+    admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+):
+    """List the platform-wide common medicines."""
+    from ..services.prescription_service import list_global_medicines
+    from ..schemas.prescription import MedicineResponse
+
+    total, pg, lim, tp, rows = list_global_medicines(
+        db, page=page, limit=limit, search=search, category=category, active_only=False,
+    )
+    return {
+        "total": total,
+        "page": pg,
+        "limit": lim,
+        "total_pages": tp,
+        "data": [MedicineResponse.model_validate(m) for m in rows],
+    }
+
+
+@router.post("/medicines")
+def create_common_medicine(
+    request: GlobalMedicineCreate,
+    admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+):
+    """Create a platform-wide common medicine."""
+    from ..services.prescription_service import create_global_medicine
+    from ..schemas.prescription import MedicineResponse
+
+    med = create_global_medicine(db, request.model_dump())
+    return MedicineResponse.model_validate(med)
+
+
+@router.put("/medicines/{medicine_id}")
+def update_common_medicine(
+    medicine_id: uuid.UUID,
+    request: MedicineUpdate,
+    admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+):
+    """Update a common medicine (only global ones)."""
+    from ..services.prescription_service import get_global_medicine, update_medicine
+    from ..schemas.prescription import MedicineResponse
+
+    existing = get_global_medicine(db, medicine_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Common medicine not found")
+    med = update_medicine(db, medicine_id, request.model_dump(exclude_unset=True))
+    return MedicineResponse.model_validate(med)
+
+
+@router.delete("/medicines/{medicine_id}")
+def delete_common_medicine(
+    medicine_id: uuid.UUID,
+    admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+):
+    """Deactivate (soft-delete) a common medicine."""
+    from ..services.prescription_service import get_global_medicine, update_medicine
+
+    existing = get_global_medicine(db, medicine_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Common medicine not found")
+    update_medicine(db, medicine_id, {"is_active": False})
+    return {"message": "Common medicine deactivated"}
+
+
+# ============================================================================
 # Audit Logs
 # ============================================================================
 
@@ -765,7 +853,7 @@ def reset_admin_password(
     if not admin_user:
         raise HTTPException(status_code=404, detail="Admin user not found")
 
-    admin_user.hashed_password = get_password_hash(request.new_password)
+    admin_user.password_hash = get_password_hash(request.new_password)
     _write_audit(
         db, admin, action='admin_password_reset', entity_type='User',
         entity_id=admin_user.id, entity_name=admin_user.username,

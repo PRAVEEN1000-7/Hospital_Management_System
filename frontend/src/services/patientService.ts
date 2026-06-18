@@ -82,7 +82,13 @@ export const patientService = {
 
   getPhotoUrl(photoUrl: string | null): string | null {
     if (!photoUrl) return null;
-    return API_BASE_URL.replace('/api/v1', '') + photoUrl;
+    if (photoUrl.startsWith('http://') || photoUrl.startsWith('https://')) return photoUrl;
+    
+    let photoPath = photoUrl.startsWith('/') ? photoUrl.substring(1) : photoUrl;
+    if (photoPath.startsWith('uploads/')) {
+      photoPath = photoPath.substring(8);
+    }
+    return `${API_BASE_URL}/uploads/${photoPath}`;
   },
 };
 

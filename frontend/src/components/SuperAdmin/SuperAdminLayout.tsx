@@ -27,6 +27,7 @@ const SuperAdminLayout: React.FC = () => {
     { to: '/superadmin', label: 'Overview', icon: 'dashboard', exact: true },
     { to: '/superadmin/hospitals', label: 'Hospitals', icon: 'local_hospital', exact: false },
     { to: '/superadmin/plans', label: 'Subscription Plans', icon: 'card_membership', exact: false },
+    { to: '/superadmin/medicines', label: 'Common Medicines', icon: 'medication', exact: false },
   ];
 
   const systemNavItems = [
@@ -55,6 +56,7 @@ const SuperAdminLayout: React.FC = () => {
     if (location.pathname === '/superadmin') return 'Overview';
     if (location.pathname.startsWith('/superadmin/hospitals')) return 'Hospitals';
     if (location.pathname.startsWith('/superadmin/plans')) return 'Subscription Plans';
+    if (location.pathname.startsWith('/superadmin/medicines')) return 'Common Medicines';
     if (location.pathname.startsWith('/superadmin/profile')) return 'My Profile';
     if (location.pathname.startsWith('/multitenant')) return 'Control Center';
     if (location.pathname.startsWith('/superadmin/audit')) return 'Audit Logs';

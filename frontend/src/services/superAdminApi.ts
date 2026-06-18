@@ -109,6 +109,16 @@ export const superAdminApi = {
   // Audit Logs
   getAuditLogs: (params?: { tenant_id?: string; action?: string; entity_type?: string; search?: string; limit?: number }) =>
     api.get('/superadmin/audit-logs', { params }),
+
+  // Common (global) medicines — shared formulary for hospitals without inventory
+  getCommonMedicines: (params?: { page?: number; limit?: number; search?: string; category?: string }) =>
+    api.get('/superadmin/medicines', { params }),
+
+  createCommonMedicine: (data: any) => api.post('/superadmin/medicines', data),
+
+  updateCommonMedicine: (id: string, data: any) => api.put(`/superadmin/medicines/${id}`, data),
+
+  deleteCommonMedicine: (id: string) => api.delete(`/superadmin/medicines/${id}`),
 };
 
 export default api;

@@ -18,7 +18,10 @@ class Medicine(Base):
     __tablename__ = "medicines"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=False)
+    # Null hospital_id + is_global=True ⇒ a platform-wide "common" medicine that
+    # every hospital (especially those without the inventory module) can prescribe.
+    hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=True)
+    is_global = Column(Boolean, default=False, nullable=False)
     name = Column(String(200), nullable=False)
     generic_name = Column(String(200), nullable=False)
     category = Column(String(50))  # 'tablet','capsule','syrup','injection','cream','drops'

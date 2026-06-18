@@ -75,17 +75,21 @@ export const userService = {
     if (photoUrl.startsWith('http://') || photoUrl.startsWith('https://')) {
       return photoUrl;
     }
-    // For relative URLs starting with /uploads, use the API base URL
-    const baseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000').replace('/api/v1', '');
-    // Remove leading slash if present to avoid double slashes
-    const photoPath = photoUrl.startsWith('/') ? photoUrl.substring(1) : photoUrl;
+    // Use the API base URL to route uploads through the backend (avoids Nginx proxy misses)
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+    // Remove leading slash or "uploads/" if present to avoid double slashes
+    let photoPath = photoUrl.startsWith('/') ? photoUrl.substring(1) : photoUrl;
+    if (photoPath.startsWith('uploads/')) {
+      photoPath = photoPath.substring(8);
+    }
+    
     // Use a static cache-busting timestamp (session-based) to allow browser caching
     // This prevents the image from being requested on every render while still allowing cache invalidation on page reload
     const timestamp = sessionStorage.getItem('photo_cache_timestamp');
     if (!timestamp) {
       sessionStorage.setItem('photo_cache_timestamp', Date.now().toString());
     }
-    return `${baseUrl}/${photoPath}?t=${sessionStorage.getItem('photo_cache_timestamp')}`;
+    return `${baseUrl}/uploads/${photoPath}?t=${sessionStorage.getItem('photo_cache_timestamp')}`;
   },
 };
 

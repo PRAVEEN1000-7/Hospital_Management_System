@@ -90,6 +90,13 @@ def create_appointment(
 
     appointment_type = data.get("appointment_type", "scheduled")
 
+    # appointments.start_time is NOT NULL in the database. Some creation paths
+    # (e.g. follow-ups generated on prescription finalize, or walk-ins without an
+    # explicit slot) omit it — default to the current time so the insert succeeds.
+    start_time = data.get("start_time")
+    if start_time is None:
+        start_time = datetime.now().time().replace(microsecond=0)
+
     appt = Appointment(
         hospital_id=hospital_id,
         appointment_number=appt_number,
@@ -98,7 +105,7 @@ def create_appointment(
         department_id=department_id,
         parent_appointment_id=parent_appointment_id,
         appointment_date=data.get("appointment_date"),
-        start_time=data.get("start_time"),
+        start_time=start_time,
         end_time=data.get("end_time"),
         appointment_type=appointment_type,
         visit_type=data.get("visit_type", "new"),

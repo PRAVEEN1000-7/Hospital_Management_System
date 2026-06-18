@@ -71,6 +71,7 @@ uploads_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads"
 for _sub in ("photos", "hospital"):
     os.makedirs(os.path.join(uploads_dir, _sub), exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=uploads_dir), name="uploads")
+app.mount("/api/v1/uploads", StaticFiles(directory=uploads_dir), name="api_uploads")
 logger.info(f"Mounted uploads directory: {uploads_dir}")
 
 

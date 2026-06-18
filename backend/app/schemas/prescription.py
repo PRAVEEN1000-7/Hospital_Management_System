@@ -50,12 +50,28 @@ class MedicineCreate(BaseModel):
     reorder_level: int = Field(default=10, ge=0)
     storage_instructions: Optional[str] = None
 
-    @field_validator("category")
-    @classmethod
-    def validate_category(cls, v: Optional[str]) -> Optional[str]:
-        if v and v not in VALID_MEDICINE_CATEGORIES:
-            raise ValueError(f"Must be one of: {', '.join(VALID_MEDICINE_CATEGORIES)}")
-        return v
+
+
+
+class GlobalMedicineCreate(BaseModel):
+    """Super-admin payload for a platform-wide common medicine (price optional)."""
+    name: str = Field(..., max_length=200)
+    generic_name: str = Field(..., max_length=200)
+    category: Optional[str] = None
+    manufacturer: Optional[str] = None
+    composition: Optional[str] = None
+    strength: Optional[str] = None
+    unit_of_measure: str = Field(default="strip", max_length=20)
+    units_per_pack: int = Field(default=1, ge=1)
+    requires_prescription: bool = True
+    is_controlled: bool = False
+    selling_price: Optional[float] = Field(default=0, ge=0)
+    purchase_price: Optional[float] = None
+    reorder_level: Optional[int] = Field(default=10, ge=0)
+    tax_config_id: Optional[str] = None
+    storage_instructions: Optional[str] = None
+
+
 
 
 class MedicineUpdate(BaseModel):
@@ -75,7 +91,8 @@ class MedicineUpdate(BaseModel):
 
 class MedicineResponse(BaseModel):
     id: str
-    hospital_id: str
+    hospital_id: Optional[str] = None
+    is_global: bool = False
     name: str
     generic_name: str
     category: Optional[str] = None

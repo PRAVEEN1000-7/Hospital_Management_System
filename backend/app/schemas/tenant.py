@@ -75,8 +75,11 @@ class TenantResponse(TenantBase):
     admin_user_id: Optional[uuid.UUID]
     created_at: datetime
     updated_at: datetime
-    
+
     # Computed fields
+    admin_username: Optional[str] = None
+    admin_email: Optional[str] = None
+    admin_name: Optional[str] = None
     display_status: Optional[str] = None
     subscription_status: Optional[str] = None
     plan_name: Optional[str] = None

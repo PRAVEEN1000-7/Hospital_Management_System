@@ -60,7 +60,9 @@ class MedicineCreate(BaseModel):
     storage_conditions: Optional[str] = Field(None, max_length=200)
     drug_interaction_notes: Optional[str] = None
     side_effects: Optional[str] = None
-    selling_price: Decimal = Field(..., gt=0)
+    # Optional so catalog/bulk imports (which carry no price) succeed; defaults to 0
+    # and can be set later via the medicine form or batch pricing.
+    selling_price: Decimal = Field(default=Decimal("0"), ge=0)
     purchase_price: Optional[Decimal] = Field(None, ge=0)
     is_active: bool = True
 

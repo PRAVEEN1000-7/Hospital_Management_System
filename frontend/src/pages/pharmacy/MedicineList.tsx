@@ -218,18 +218,11 @@ const MedicineList: React.FC = () => {
             categoryValue = '';
           }
 
-          // No longer strictly validating against VALID_CATEGORIES to allow therapeutic classes
-          // like Analgesic, Antibiotic, etc.
-
-          if (unitValue && !TEMPLATE_UNITS.includes(unitValue)) {
-            rowErrors.push(`Row ${rowNumber}: invalid unit '${unitValue}'.`);
-            return null;
-          }
-
-          if (scheduleType && !TEMPLATE_SCHEDULES.includes(scheduleType)) {
-            rowErrors.push(`Row ${rowNumber}: invalid schedule_type '${scheduleType}'.`);
-            return null;
-          }
+          // Be lenient: category, unit and schedule are coerced to safe values rather
+          // than aborting the whole upload. Unknown categories (e.g. therapeutic classes
+          // like "Analgesic") are kept as-is; unknown units fall back to a default and
+          // unknown schedules are dropped — so one odd cell never blocks the import.
+          const matchedUnit = TEMPLATE_UNITS.find((u) => u.toLowerCase() === unitValue.toLowerCase());
 
           return {
             name,
@@ -242,7 +235,7 @@ const MedicineList: React.FC = () => {
             hsn_code: asOptionalText(row.hsn_code),
             sku: asOptionalText(row.sku),
             barcode: asOptionalText(row.barcode),
-            unit: unitValue || 'Nos',
+            unit: matchedUnit || 'Nos',
             description: asOptionalText(row.description),
             reorder_level: Number.isFinite(reorderLevel) && reorderLevel >= 0 ? reorderLevel : 10,
             max_stock_level: asOptionalNumber(row.max_stock_level),

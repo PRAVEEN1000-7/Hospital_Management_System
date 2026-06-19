@@ -49,11 +49,19 @@ export async function htmlStringToPdf(html: string, filename: string): Promise<v
       /* fonts API unavailable — proceed with system fonts */
     }
 
+    // Capture only the actual content height — NOT the fixed A4 iframe viewport —
+    // otherwise the blank space below a short prescription gets rasterised and
+    // produces a trailing empty page.
+    const contentHeight = Math.max(doc.body.scrollHeight, doc.documentElement.scrollHeight);
+    iframe.style.height = `${contentHeight}px`;
+
     const canvas = await html2canvas(doc.body, {
       scale: 2,
       useCORS: true,
       backgroundColor: '#ffffff',
       windowWidth: A4_WIDTH_PX,
+      windowHeight: contentHeight,
+      height: contentHeight,
     });
 
     const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
@@ -68,7 +76,9 @@ export async function htmlStringToPdf(html: string, filename: string): Promise<v
     pdf.addImage(imgData, 'PNG', 0, position, imgW, imgH);
     heightLeft -= pageH;
 
-    while (heightLeft > 0) {
+    // Only add another page when a meaningful amount of content remains; a tiny
+    // sub-millimetre remainder from rounding must never create a blank page.
+    while (heightLeft > 2) {
       position -= pageH;
       pdf.addPage();
       pdf.addImage(imgData, 'PNG', 0, position, imgW, imgH);

@@ -403,6 +403,26 @@ async def get_prescription_pdf(
     doctor_name = (doctor.user.full_name if doctor and doctor.user else "") or "—"
     doctor_spec = (doctor.specialization if doctor else "") or ""
     doctor_reg = (doctor.registration_number if doctor else "") or ""
+    doctor_qual = (doctor.qualification if doctor else "") or ""
+    # Doctor name with qualifications appended (e.g. "Dr. Hari Ram, MBBS, MD").
+    doctor_display = f"Dr. {doctor_name}" + (f", {doctor_qual}" if doctor_qual else "")
+
+    # Patient age — prefer the stored value, otherwise derive it from the DOB.
+    def _compute_age(p):
+        if not p:
+            return "—"
+        if getattr(p, "age_years", None):
+            return f"{p.age_years} yrs"
+        dob = getattr(p, "date_of_birth", None)
+        if dob:
+            today = date.today()
+            yrs = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+            if yrs >= 0:
+                return f"{yrs} yrs"
+        return "—"
+    patient_age = _compute_age(patient)
+    patient_weight = (rx.vitals_weight or "").strip() if rx.vitals_weight else ""
+    weight_label = t.get("weight", "Weight")
 
     # Build clean header lines so empty fields never render as "None" or stray commas
     addr_line = ", ".join(p for p in (hosp_address, hosp_city) if p)
@@ -457,9 +477,10 @@ th {{ background:#f1f5f9; padding:10px 8px; text-align:left; font-size:13px; fon
 td {{ font-size:13px; }}
 .diagnosis {{ background:#eff6ff; padding:16px; border-radius:8px; margin-bottom:20px; }}
 .advice {{ background:#f0fdf4; padding:16px; border-radius:8px; margin-bottom:20px; }}
-.footer {{ margin-top:40px; display:flex; justify-content:space-between; page-break-inside:avoid; }}
+.footer {{ margin-top:40px; display:flex; justify-content:flex-end; page-break-inside:avoid; }}
 .signature {{ text-align:right; }}
 .signature p {{ margin:4px 0; font-size:13px; }}
+.generated-note {{ text-align:center; margin-top:48px; font-size:11px; color:#94a3b8; }}
 @page {{ size: A4; margin: 12mm; }}
 @media print {{
   html, body {{ margin:0; padding:0; height:auto; -webkit-print-color-adjust:exact; print-color-adjust:exact; }}
@@ -474,7 +495,7 @@ td {{ font-size:13px; }}
 <div class="header">
     <h1>{hosp_name}</h1>
     {f'<p>{addr_line}</p>' if addr_line else ''}
-    {f'<p>{contact_line}</p>' if contact_line else ''}
+    {f'<p style="white-space:nowrap;">{contact_line}</p>' if contact_line else ''}
 </div>
 
 <div class="rx-info">
@@ -491,9 +512,10 @@ td {{ font-size:13px; }}
 <div class="patient-box">
     <p><strong>{t['patient']}:</strong> {patient.full_name if patient else '—'}</p>
     <p><strong>{t['prn']}:</strong> {patient.patient_reference_number if patient else '—'} |
-       <strong>{t['age']}:</strong> {patient.age_years if patient and patient.age_years else '—'} |
+       <strong>{t['age']}:</strong> {patient_age} |
        <strong>{t['gender']}:</strong> {patient.gender if patient else '—'} |
-       <strong>{t['blood_group']}:</strong> {patient.blood_group if patient and patient.blood_group else '—'}</p>
+       <strong>{t['blood_group']}:</strong> {patient.blood_group if patient and patient.blood_group else '—'}
+       {f" | <strong>{weight_label}:</strong> {patient_weight} kg" if patient_weight else ""}</p>
     {f'<p><strong>{t["allergies"]}:</strong> <span style="color:#dc2626;">{patient.known_allergies}</span></p>' if patient and patient.known_allergies else ''}
 </div>
 
@@ -517,16 +539,15 @@ td {{ font-size:13px; }}
 {f'<div class="advice"><strong>{t["advice"]}:</strong> {rx.advice}</div>' if rx.advice else ''}
 
 <div class="footer">
-    <div>
-        <p style="font-size:11px;color:#94a3b8;">{t['computer_generated']}</p>
-    </div>
     <div class="signature">
         <p style="margin-bottom:40px;"><strong>{t['prescribing_doctor']}</strong></p>
-        <p><strong>Dr. {doctor_name}</strong></p>
+        <p><strong>{doctor_display}</strong></p>
         {f'<p style="color:#64748b;">{doctor_spec}</p>' if doctor_spec else ''}
         {f'<p style="color:#64748b;">{t["reg_no"]} {doctor_reg}</p>' if doctor_reg else ''}
     </div>
 </div>
+
+<div class="generated-note">{t['computer_generated']}</div>
 </body>
 </html>"""
 

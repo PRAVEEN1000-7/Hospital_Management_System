@@ -65,6 +65,7 @@ const SuperAdminPlans: React.FC = () => {
   const [isLoadingHospitals, setIsLoadingHospitals] = useState(false);
   const [isAssigning, setIsAssigning] = useState(false);
   const [usedPlanCodes, setUsedPlanCodes] = useState<Set<string>>(new Set());
+  const [planCounts, setPlanCounts] = useState<Record<string, number>>({});
   const [isDeletingPlanId, setIsDeletingPlanId] = useState<string | null>(null);
   const toast = useToast();
   const confirm = useConfirm();
@@ -117,6 +118,13 @@ const SuperAdminPlans: React.FC = () => {
           .filter(Boolean) as string[]
       );
       setUsedPlanCodes(codes);
+
+      // Count how many hospitals are currently enrolled on each plan.
+      const counts: Record<string, number> = {};
+      (tenantsRes.data.data || []).forEach((t: HospitalOption) => {
+        if (t.plan_code) counts[t.plan_code] = (counts[t.plan_code] || 0) + 1;
+      });
+      setPlanCounts(counts);
     } catch (error) {
       console.error('Failed to load data:', error);
       toast.error('Failed to load plans or modules');
@@ -632,25 +640,28 @@ const SuperAdminPlans: React.FC = () => {
                 </div>
               </div>
 
-              {/* Modules */}
+              {/* Modules — show only the extra (non-core) modules added to this plan.
+                  Core modules are included in every plan by default and are hidden here. */}
               <div className="space-y-3">
-                <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Included Modules</h4>
+                <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Add-on Modules</h4>
                 <div className="flex flex-wrap gap-1.5">
-                  {plan.modules_included.length > 0 ? (
-                    plan.modules_included.map((moduleId) => {
-                      const module = modules.find(m => m.id === moduleId);
-                      return (
+                  {(() => {
+                    const extraModules = plan.modules_included
+                      .map((moduleId) => modules.find(m => m.id === moduleId))
+                      .filter((m): m is Module => Boolean(m) && !m.is_core);
+                    return extraModules.length > 0 ? (
+                      extraModules.map((module) => (
                         <span
-                          key={moduleId}
+                          key={module.id}
                           className="px-2 py-0.5 bg-slate-100 text-slate-700 text-[10px] font-bold uppercase rounded border border-slate-200"
                         >
-                          {module ? module.name.replace(/_/g, ' ') : 'Unknown Module'}
+                          {module.name.replace(/_/g, ' ')}
                         </span>
-                      );
-                    })
-                  ) : (
-                    <span className="text-xs text-slate-400 italic">No modules assigned</span>
-                  )}
+                      ))
+                    ) : (
+                      <span className="text-xs text-slate-400 italic">No add-on modules — core modules only</span>
+                    );
+                  })()}
                 </div>
               </div>
 
@@ -720,7 +731,9 @@ const SuperAdminPlans: React.FC = () => {
                     </span>
                   )}
                 </div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Order: {plan.sort_order}</span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                  {(planCounts[plan.code] || 0)} {(planCounts[plan.code] || 0) === 1 ? 'hospital' : 'hospitals'} enrolled
+                </span>
               </div>
             </div>
           </div>

@@ -42,10 +42,10 @@ class HospitalUpdate(BaseModel):
 
 class HospitalResponse(BaseModel):
     id: str
-    name: str
+    name: Optional[str] = None
     code: Optional[str] = None
     phone: Optional[str] = None
-    email: str
+    email: Optional[str] = None
     website: Optional[str] = None
     address_line_1: Optional[str] = None
     address_line_2: Optional[str] = None
@@ -81,9 +81,9 @@ class HospitalResponse(BaseModel):
 
 class HospitalPublicInfo(BaseModel):
     id: str
-    name: str
+    name: Optional[str] = None
     phone: Optional[str] = None
-    email: str
+    email: Optional[str] = None
     website: Optional[str] = None
     address_line_1: Optional[str] = None
     address_line_2: Optional[str] = None

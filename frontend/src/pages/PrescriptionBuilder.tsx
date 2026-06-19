@@ -87,7 +87,7 @@ const emptyItem = (): PrescriptionItemCreate => ({
   frequency: '',
   duration_value: undefined,
   duration_unit: 'days',
-  route: '',
+  route: undefined,
   instructions: '',
   quantity: undefined,
   allow_substitution: true,

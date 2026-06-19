@@ -185,7 +185,8 @@ const SuperAdminMedicines: React.FC = () => {
 
       const payloads = rows.map((row) => {
         const categoryValue = String(row.category ?? '').trim().toLowerCase();
-        const unitValue = String(row.unit_of_measure ?? '').trim().toLowerCase();
+        // Accept either `unit_of_measure` (this page's template) or `unit` (pharmacy template).
+        const unitValue = String(row.unit_of_measure ?? row.unit ?? '').trim().toLowerCase();
         const unitsPerPack = Number(row.units_per_pack ?? 1);
         const sellingPrice = Number(row.selling_price ?? 0);
         const purchasePrice = row.purchase_price ? Number(row.purchase_price) : undefined;
@@ -194,7 +195,7 @@ const SuperAdminMedicines: React.FC = () => {
         return {
           name: String(row.name ?? '').trim(),
           generic_name: String(row.generic_name ?? '').trim(),
-          category: String(row.category ?? '').trim() || undefined,
+          category: categoryValue || undefined,
           manufacturer: String(row.manufacturer ?? '').trim() || undefined,
           strength: String(row.strength ?? '').trim() || undefined,
           unit_of_measure: UNITS.includes(unitValue) ? unitValue : 'strip',

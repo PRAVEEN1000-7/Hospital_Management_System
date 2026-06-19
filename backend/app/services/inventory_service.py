@@ -1434,12 +1434,23 @@ def get_inventory_aging_analytics(
 #  INVOICE INTEGRATION — MEDICINE LOOKUP
 # ═══════════════════════════════════════════════════════════════════════════
 
-def get_medicine_for_invoice(db: Session, medicine_id: uuid.UUID) -> Optional[dict]:
-    """STEP 1: Medicine lookup for invoice line items."""
-    medicine = db.query(Medicine).filter(
+def get_medicine_for_invoice(
+    db: Session, medicine_id: uuid.UUID, hospital_id: Optional[uuid.UUID] = None
+) -> Optional[dict]:
+    """STEP 1: Medicine lookup for invoice line items.
+
+    Scoped to the caller's hospital (plus shared common/global medicines) so one
+    tenant can never look up another tenant's medicine by ID.
+    """
+    query = db.query(Medicine).filter(
         Medicine.id == medicine_id,
         Medicine.is_active == True,
-    ).first()
+    )
+    if hospital_id is not None:
+        query = query.filter(
+            or_(Medicine.hospital_id == hospital_id, Medicine.is_global == True)
+        )
+    medicine = query.first()
     if not medicine:
         logger.warning(f"Medicine lookup failed: ID {medicine_id} not found or inactive")
         return None

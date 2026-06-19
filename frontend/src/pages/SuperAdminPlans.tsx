@@ -648,7 +648,7 @@ const SuperAdminPlans: React.FC = () => {
                   {(() => {
                     const extraModules = plan.modules_included
                       .map((moduleId) => modules.find(m => m.id === moduleId))
-                      .filter((m): m is Module => Boolean(m) && !m.is_core);
+                      .filter((m): m is Module => m != null && !m.is_core);
                     return extraModules.length > 0 ? (
                       extraModules.map((module) => (
                         <span

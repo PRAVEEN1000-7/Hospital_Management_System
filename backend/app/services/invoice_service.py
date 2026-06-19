@@ -86,11 +86,17 @@ def _validate_medicine_stock(
 
     effective_requested_qty = quantity + reserved_qty
     
-    # Check medicine exists
-    medicine = db.query(Medicine).filter(
+    # Check medicine exists — scoped to the invoice's hospital (plus shared common
+    # medicines) so a cross-tenant medicine_id can never be billed/deducted.
+    med_query = db.query(Medicine).filter(
         Medicine.id == medicine_id,
         Medicine.is_active == True,
-    ).first()
+    )
+    if invoice is not None and getattr(invoice, "hospital_id", None):
+        med_query = med_query.filter(
+            or_(Medicine.hospital_id == invoice.hospital_id, Medicine.is_global == True)
+        )
+    medicine = med_query.first()
     if not medicine:
         raise ValueError(f"Medicine not found or inactive: {medicine_id}")
     

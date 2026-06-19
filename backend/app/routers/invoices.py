@@ -92,7 +92,7 @@ async def get_medicine_lookup(
         )
     
     try:
-        medicine_data = get_medicine_for_invoice(db, medicine_uuid)
+        medicine_data = get_medicine_for_invoice(db, medicine_uuid, current_user.hospital_id)
         if not medicine_data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

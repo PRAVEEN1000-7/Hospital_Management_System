@@ -399,6 +399,29 @@ async def get_prescription_pdf(
     hosp_phone = (hospital.phone if hospital else "") or ""
     hosp_email = (hospital.email if hospital else "") or ""
 
+    # Hospital logo → embed as a base64 data URI so it renders in BOTH the print
+    # window and the html2canvas PDF download (relative /uploads paths and external
+    # URLs don't resolve reliably in those contexts). Used as a faint full-page
+    # watermark plus a small header logo for branding.
+    def _logo_data_uri(logo_url: str) -> str:
+        if not logo_url:
+            return ""
+        if logo_url.startswith("http://") or logo_url.startswith("https://"):
+            return logo_url
+        import os as _os, base64 as _b64, mimetypes as _mt
+        backend_root = _os.path.dirname(_os.path.dirname(_os.path.dirname(__file__)))
+        fpath = _os.path.join(backend_root, logo_url.lstrip("/").replace("/", _os.sep))
+        if not _os.path.exists(fpath):
+            return ""
+        mime = _mt.guess_type(fpath)[0] or "image/png"
+        try:
+            with open(fpath, "rb") as fh:
+                data = _b64.b64encode(fh.read()).decode("ascii")
+            return f"data:{mime};base64,{data}"
+        except Exception:
+            return ""
+    logo_uri = _logo_data_uri(hospital.logo_url if hospital else "")
+
     doctor = db.query(Doctor).filter(Doctor.id == rx.doctor_id).first()
     doctor_name = (doctor.user.full_name if doctor and doctor.user else "") or "—"
     doctor_spec = (doctor.specialization if doctor else "") or ""
@@ -464,8 +487,11 @@ async def get_prescription_pdf(
 <meta charset="UTF-8">
 <title>{t['prescription']} - {rx.prescription_number}</title>
 <style>
-body {{ font-family: 'Noto Sans', Arial, sans-serif; margin:0; padding:40px; color:#1e293b; }}
+body {{ font-family: 'Noto Sans', Arial, sans-serif; margin:0; padding:40px; color:#1e293b; position:relative; }}
+.watermark {{ position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:55%; max-width:420px; opacity:0.06; z-index:0; pointer-events:none; }}
+.content {{ position:relative; z-index:1; }}
 .header {{ text-align:center; margin-bottom:30px; padding-bottom:20px; border-bottom:3px solid #137fec; }}
+.header-logo {{ height:60px; max-width:220px; object-fit:contain; margin-bottom:6px; }}
 .header h1 {{ margin:0; color:#137fec; font-size:24px; }}
 .header p {{ margin:4px 0; color:#64748b; font-size:13px; }}
 .rx-info {{ display:flex; justify-content:space-between; margin-bottom:20px; }}
@@ -492,7 +518,10 @@ td {{ font-size:13px; }}
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;600;700&family=Noto+Sans+Devanagari:wght@400;600;700&family=Noto+Sans+Kannada:wght@400;600;700&family=Noto+Sans+Malayalam:wght@400;600;700&family=Noto+Sans+Tamil:wght@400;600;700&family=Noto+Sans+Telugu:wght@400;600;700&display=swap">
 </head>
 <body>
+{f'<img class="watermark" src="{logo_uri}" alt="" />' if logo_uri else ''}
+<div class="content">
 <div class="header">
+    {f'<img class="header-logo" src="{logo_uri}" alt="{hosp_name}" />' if logo_uri else ''}
     <h1>{hosp_name}</h1>
     {f'<p>{addr_line}</p>' if addr_line else ''}
     {f'<p style="white-space:nowrap;">{contact_line}</p>' if contact_line else ''}
@@ -504,8 +533,7 @@ td {{ font-size:13px; }}
         <strong>{t['date']}:</strong> {fmt_date(rx.created_at)}
     </div>
     <div style="text-align:right;">
-        <strong>{t['status']}:</strong> {rx.status.upper()}<br/>
-        <strong>{t['valid_until']}:</strong> {fmt_date(rx.valid_until) if rx.valid_until else '—'}
+        <strong>{t['status']}:</strong> {rx.status.upper()}
     </div>
 </div>
 
@@ -548,6 +576,7 @@ td {{ font-size:13px; }}
 </div>
 
 <div class="generated-note">{t['computer_generated']}</div>
+</div>
 </body>
 </html>"""
 

@@ -84,10 +84,10 @@ const emptyItem = (): PrescriptionItemCreate => ({
   medicine_name: '',
   generic_name: '',
   dosage: '',
-  frequency: '1-0-1',
-  duration_value: 7,
+  frequency: '',
+  duration_value: undefined,
   duration_unit: 'days',
-  route: 'oral',
+  route: '',
   instructions: '',
   quantity: undefined,
   allow_substitution: true,
@@ -767,6 +767,11 @@ const PrescriptionBuilder: React.FC = () => {
 
               {/* MEDICAL HISTORY SECTION */}
               <div className="px-6 py-5">
+                {/* Only show chronic conditions / allergies when actually recorded —
+                    walk-in registration does not capture these fields, so don't imply
+                    a clinical assessment was made when nothing was entered. */}
+                {(patient.chronic_conditions || patient.known_allergies) && (
+                <>
                 <h3 className="text-base font-bold mb-4 flex items-center gap-2 text-indigo-800">
                   <span className="material-symbols-outlined text-indigo-600">history</span>
                   Patient Medical History
@@ -823,6 +828,8 @@ const PrescriptionBuilder: React.FC = () => {
                     )}
                   </div>
                 </div>
+                </>
+                )}
 
                 {/* Patient Quick Info */}
                 <div className="mt-4 rounded-lg border-2 border-indigo-200 p-4 bg-indigo-50/70 shadow-sm">
@@ -988,6 +995,7 @@ const PrescriptionBuilder: React.FC = () => {
                             onChange={e => updateItem(blockIdx, itemIdx, 'frequency', e.target.value)}
                             className="w-full px-1 py-1.5 border border-slate-200 rounded text-xs bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
                           >
+                            <option value="">Select</option>
                             {FREQUENCY_OPTIONS.map(f => (
                               <option key={f} value={f}>{f}</option>
                             ))}
@@ -1031,10 +1039,11 @@ const PrescriptionBuilder: React.FC = () => {
                         {/* Route */}
                         <div className="pr-1">
                           <select
-                            value={item.route || 'oral'}
+                            value={item.route || ''}
                             onChange={e => updateItem(blockIdx, itemIdx, 'route', e.target.value)}
                             className="w-full px-1 py-1.5 border border-slate-200 rounded text-xs bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
                           >
+                            <option value="">Select</option>
                             {ROUTE_OPTIONS.map(r => (
                               <option key={r} value={r}>{r}</option>
                             ))}

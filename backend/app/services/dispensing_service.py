@@ -20,6 +20,7 @@ from ..models.pharmacy import (
 )
 from ..models.patient import Patient
 from ..models.appointment import Doctor
+from ..models.inventory import StockMovement
 from .prescription_service import calculate_prescribed_quantity
 
 logger = logging.getLogger(__name__)
@@ -620,6 +621,30 @@ def dispense_prescription(
                 medicine_name=rx_item.medicine_name,
             )
             db.add(dispensing_item)
+
+            # Record the stock-out in the movement ledger so inventory reports and
+            # the stock audit trail stay consistent with the reduced batch quantity.
+            db.flush()  # ensure the batch deduction is visible to the balance query
+            balance_after = db.query(
+                func.coalesce(func.sum(MedicineBatch.quantity), 0)
+            ).filter(
+                MedicineBatch.medicine_id == medicine_id,
+                MedicineBatch.is_active == True,
+            ).scalar() or 0
+            db.add(StockMovement(
+                hospital_id=hospital_id,
+                item_type="medicine",
+                item_id=medicine_id,
+                batch_id=alloc_batch.id,
+                movement_type="dispensing",
+                reference_type="dispensing",
+                reference_id=dispensing.id,
+                quantity=-int(alloc_qty),
+                balance_after=int(balance_after),
+                unit_cost=effective_unit_price,
+                notes=f"Pharmacy dispense {dispensing.invoice_number}",
+                performed_by=user_id,
+            ))
 
         processed_items_count += 1
 

@@ -56,7 +56,8 @@ export async function htmlStringToPdf(html: string, filename: string): Promise<v
     iframe.style.height = `${contentHeight}px`;
 
     const canvas = await html2canvas(doc.body, {
-      scale: 2,
+      // Higher scale → sharper text/logo in the downloaded/printed PDF.
+      scale: Math.min(3, (window.devicePixelRatio || 1) * 2),
       useCORS: true,
       backgroundColor: '#ffffff',
       windowWidth: A4_WIDTH_PX,

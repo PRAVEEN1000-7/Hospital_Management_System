@@ -103,7 +103,10 @@ async def create_waitlist_entry(
             patient_id = uuid.UUID(data.patient_id)
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid patient_id")
-        patient = db.query(Patient).filter(Patient.id == patient_id).first()
+        patient = db.query(Patient).filter(
+            Patient.id == patient_id,
+            Patient.hospital_id == current_user.hospital_id,
+        ).first()
         if not patient:
             raise HTTPException(status_code=404, detail="Patient not found")
 
@@ -112,7 +115,10 @@ async def create_waitlist_entry(
             doctor_id = uuid.UUID(data.doctor_id)
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid doctor_id")
-        doctor = db.query(Doctor).filter(Doctor.id == doctor_id).first()
+        doctor = db.query(Doctor).filter(
+            Doctor.id == doctor_id,
+            Doctor.hospital_id == current_user.hospital_id,
+        ).first()
         if not doctor:
             raise HTTPException(status_code=404, detail="Doctor not found")
 
@@ -230,7 +236,10 @@ async def book_from_waitlist(
                 override_uuid = uuid.UUID(payload.doctor_id)
             except ValueError:
                 raise HTTPException(status_code=400, detail="Invalid doctor_id format")
-            override_doc = db.query(Doctor).filter(Doctor.id == override_uuid).first()
+            override_doc = db.query(Doctor).filter(
+                Doctor.id == override_uuid,
+                Doctor.hospital_id == entry.hospital_id,
+            ).first()
             if not override_doc:
                 raise HTTPException(status_code=404, detail="Selected doctor not found")
             target_doctor_id = override_uuid

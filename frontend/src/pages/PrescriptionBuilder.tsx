@@ -354,14 +354,29 @@ const PrescriptionBuilder: React.FC = () => {
     medicineOptionRefs.current[activeMedResultIdx]?.scrollIntoView({ block: 'nearest' });
   }, [activeMedResultIdx, medicineResults]);
 
-  // Recompute portal dropdown position whenever results arrive or active input changes
+  // Recompute portal dropdown position whenever results arrive or the active
+  // input changes, AND keep it glued to the input while the page (or any nested
+  // scroll container) scrolls or the window resizes. Without this, the
+  // fixed-position dropdown stays put and detaches from the field on scroll.
   useEffect(() => {
     if (activeMedBlockIdx === null || activeMedItemIdx === null || !activeMedInputRef.current) {
       setMedDropdownPos(null);
       return;
     }
-    const rect = activeMedInputRef.current.getBoundingClientRect();
-    setMedDropdownPos({ top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, 288) });
+    const reposition = () => {
+      const el = activeMedInputRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      setMedDropdownPos({ top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, 288) });
+    };
+    reposition();
+    // capture=true so scrolls inside nested overflow containers are caught too.
+    window.addEventListener('scroll', reposition, true);
+    window.addEventListener('resize', reposition);
+    return () => {
+      window.removeEventListener('scroll', reposition, true);
+      window.removeEventListener('resize', reposition);
+    };
   }, [activeMedBlockIdx, activeMedItemIdx, medicineResults]);
 
   const selectPatient = (p: Patient) => {

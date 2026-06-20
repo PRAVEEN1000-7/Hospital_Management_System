@@ -75,7 +75,18 @@ def _is_assigned_doctor(db: Session, user: User, queue_entry: "AppointmentQueue"
 
 
 def _require_queue_actor(db: Session, user: User, qe: "AppointmentQueue"):
-    """Raise 403 unless the user is the assigned doctor or an admin."""
+    """Raise unless the user is the assigned doctor or an admin OF THE SAME HOSPITAL.
+
+    AppointmentQueue has no hospital_id column, so tenant isolation is enforced via
+    the queue entry's doctor. Without this, a hospital admin could act on another
+    hospital's queue entries by id.
+    """
+    # Tenant isolation for hospital-scoped users (admins + doctors). Platform
+    # super admins have no hospital_id and are not constrained here.
+    if getattr(user, "hospital_id", None):
+        doctor = db.query(Doctor).filter(Doctor.id == qe.doctor_id).first()
+        if not doctor or str(doctor.hospital_id) != str(user.hospital_id):
+            raise HTTPException(status_code=404, detail="Queue entry not found")
     if _is_admin_or_super(user):
         return
     if _is_assigned_doctor(db, user, qe):
@@ -163,7 +174,10 @@ async def register_walk_in(
                 status_code=400,
                 detail=f"Invalid doctor_id format: {raw_doctor!r}",
             )
-        doctor = db.query(Doctor).filter(Doctor.id == doctor_id).first()
+        doctor = db.query(Doctor).filter(
+            Doctor.id == doctor_id,
+            Doctor.hospital_id == current_user.hospital_id,
+        ).first()
         if not doctor:
             raise HTTPException(status_code=404, detail="Doctor not found")
 

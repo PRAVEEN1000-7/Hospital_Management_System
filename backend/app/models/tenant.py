@@ -73,10 +73,12 @@ class Tenant(Base):
     @property
     def active_subscription(self) -> Optional["TenantSubscription"]:
         """Get the currently active subscription"""
-        subscription_model = self.subscriptions.property.mapper.class_
-
+        # `self.subscriptions` is a dynamic relationship (AppenderQuery) at the
+        # instance level, so reference the mapped class directly (resolved from the
+        # module namespace at call time) instead of `.property.mapper.class_`,
+        # which only exists on the class-level relationship descriptor.
         return self.subscriptions.filter(
-            subscription_model.status.in_(["trialing", "active", "past_due"])
+            TenantSubscription.status.in_(["trialing", "active", "past_due"])
         ).first()
     
     @property

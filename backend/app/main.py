@@ -121,6 +121,40 @@ async def audit_mutations(request: Request, call_next):
     return response
 
 
+# ── Rate Limiting Middleware ─────────────────────────────────────────────────
+# Throttles authenticated API requests per-user (so one account can't hammer the
+# API) using the configured limits. Fail-open: any limiter error allows the
+# request. NOTE: the in-memory limiter is per-process — use a Redis-backed
+# limiter when running multiple workers/instances.
+import uuid as _uuid_rl
+from .utils.security import decode_access_token as _decode_token_rl
+
+
+@app.middleware("http")
+async def rate_limit(request: Request, call_next):
+    if settings.RATE_LIMIT_ENABLED:
+        path = request.url.path
+        # Skip auth (separately throttled), health, static uploads and non-API paths.
+        if path.startswith("/api/v1/") and not path.startswith("/api/v1/auth/"):
+            auth_header = request.headers.get("authorization", "")
+            if auth_header.lower().startswith("bearer "):
+                try:
+                    payload = _decode_token_rl(auth_header[7:])
+                    subject = (payload or {}).get("user_id") or (payload or {}).get("tenant_id")
+                    if subject:
+                        from .core.rate_limiter import get_rate_limiter
+                        allowed, _stats = get_rate_limiter().check_limit(_uuid_rl.UUID(str(subject)))
+                        if not allowed:
+                            return JSONResponse(
+                                status_code=429,
+                                content={"detail": "Too many requests. Please slow down and try again shortly."},
+                                headers={**_cors_headers(request), "Retry-After": "60"},
+                            )
+                except Exception:
+                    pass  # fail-open — never block a request because of the limiter
+    return await call_next(request)
+
+
 # ---------- Global Exception Handlers ----------
 def _cors_headers(request: Request) -> dict:
     """Build CORS headers matching CORSMiddleware config so error responses include them."""

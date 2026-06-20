@@ -551,12 +551,13 @@ def dispense_prescription(
             logger.warning(f"Skipping item {rx_item.medicine_name} with quantity {quantity}")
             continue
 
-        # Get batch and validate stock
+        # Get batch and validate stock. Row-lock the batch (SELECT ... FOR UPDATE)
+        # so two concurrent dispenses of the same batch cannot oversell.
         batch = db.query(MedicineBatch).filter(
             MedicineBatch.id == batch_id,
             MedicineBatch.medicine_id == medicine_id,
             MedicineBatch.is_active == True,
-        ).first()
+        ).with_for_update().first()
 
         if not batch:
             raise ValueError(f"Batch not found for medicine {rx_item.medicine_name}")
@@ -582,7 +583,7 @@ def dispense_prescription(
                 MedicineBatch.id != batch.id,
                 MedicineBatch.quantity > 0,
                 MedicineBatch.expiry_date >= date.today(),
-            ).order_by(MedicineBatch.expiry_date.asc()).all()
+            ).with_for_update().order_by(MedicineBatch.expiry_date.asc()).all()
 
             for extra_batch in additional_batches:
                 if remaining_to_allocate <= 0:

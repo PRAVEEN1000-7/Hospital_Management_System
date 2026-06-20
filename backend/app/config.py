@@ -19,10 +19,11 @@ class Settings(BaseSettings):
     # Application
     APP_NAME: str = "Hospital Management System"
     APP_VERSION: str = "1.0.0"
-    DEBUG: bool = True
+    # Production-safe default. Set DEBUG=true in backend/.env for local development.
+    DEBUG: bool = False
 
-    # Database
-    DATABASE_URL: str = "postgresql://hms_user:HMS%402026@localhost:5432/hms_db"
+    # Database — MUST be provided via backend/.env (no real credentials in source).
+    DATABASE_URL: str = "postgresql://hms_user:CHANGE_ME@localhost:5432/hms_db"
     DB_ECHO: bool = False
 
     # Security — MUST be overridden via backend/.env (never commit real keys)
@@ -72,6 +73,8 @@ class Settings(BaseSettings):
 settings = Settings()
 
 _INSECURE_KEY = "CHANGE-ME-generate-with-secrets-token-hex-32"
+_log = logging.getLogger(__name__)
+
 if settings.SECRET_KEY == _INSECURE_KEY:
     if not settings.DEBUG:
         raise RuntimeError(
@@ -79,6 +82,17 @@ if settings.SECRET_KEY == _INSECURE_KEY:
             "Generate one: python -c \"import secrets; print(secrets.token_hex(32))\" "
             "and set it in backend/.env"
         )
-    logging.getLogger(__name__).warning(
+    _log.warning(
         "SECRET_KEY is using the insecure default — set a real value in .env before production."
+    )
+
+# Refuse to run in production with the placeholder DB credential left in source.
+if "CHANGE_ME" in settings.DATABASE_URL:
+    if not settings.DEBUG:
+        raise RuntimeError(
+            "DATABASE_URL still contains the placeholder credential. "
+            "Set a real DATABASE_URL in backend/.env"
+        )
+    _log.warning(
+        "DATABASE_URL is using the placeholder credential — set a real value in .env before production."
     )

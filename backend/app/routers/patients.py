@@ -147,7 +147,7 @@ async def update_existing_patient(
 ):
     """Update patient information"""
     try:
-        db_patient = get_patient_by_id(db, patient_id)
+        db_patient = get_patient_by_id(db, patient_id, hospital_id=current_user.hospital_id)
         if not db_patient:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -186,7 +186,7 @@ async def delete_patient(
 ):
     """Soft delete a patient"""
     try:
-        patient = get_patient_by_id(db, patient_id)
+        patient = get_patient_by_id(db, patient_id, hospital_id=current_user.hospital_id)
         if not patient:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

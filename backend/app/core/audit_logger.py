@@ -128,9 +128,42 @@ class AuditLogger:
             logger.warning(log_message)
         else:
             logger.info(log_message)
-        
-        # TODO: Persist to database table for queryable audit trail
-        # This is a starting point - in production, also save to audit_log table
+
+        # Persist to the queryable audit_logs table so login/security events are
+        # visible in the super-admin audit view. Best-effort and on its OWN session
+        # so it never interferes with (or commits) the caller's transaction.
+        try:
+            from ..database import SessionLocal
+            from ..models.tenant import AuditLog
+
+            roles = getattr(user, "roles", None) or []
+            user_type = "superadmin" if "super_admin" in roles else "hospital"
+
+            new_vals = dict(new_values or {})
+            if metadata:
+                new_vals.update(metadata)
+            if error:
+                new_vals["error"] = error
+
+            _audit_db = SessionLocal()
+            try:
+                _audit_db.add(AuditLog(
+                    tenant_id=getattr(tenant, "id", None),
+                    user_id=getattr(user, "id", None),
+                    user_type=user_type,
+                    action=str(action.value)[:50],
+                    entity_type=(resource_type or "system")[:50],
+                    entity_id=resource_id,
+                    old_values=old_values or None,
+                    new_values=new_vals or None,
+                    ip_address=ip_address,
+                ))
+                _audit_db.commit()
+            finally:
+                _audit_db.close()
+        except Exception:
+            # Auditing must never break the operation it is recording.
+            pass
     
     @staticmethod
     def log_login(
@@ -138,15 +171,16 @@ class AuditLogger:
         success: bool,
         tenant: Optional[Tenant] = None,
         ip_address: Optional[str] = None,
-        error: Optional[str] = None
+        error: Optional[str] = None,
+        user: Optional[User] = None,
     ):
         """Log login attempt"""
         action = AuditAction.LOGIN if success else AuditAction.FAILED_LOGIN
         severity = AuditSeverity.INFO if success else AuditSeverity.WARNING
-        
+
         AuditLogger.log(
             action=action,
-            user=None,
+            user=user,
             tenant=tenant,
             resource_type="authentication",
             ip_address=ip_address,

@@ -404,13 +404,14 @@ def _deduct_invoice_medicine_stock(db: Session, invoice: Invoice) -> None:
 
         batch_num = (line.batch_number or "").strip()
         if batch_num:
-            # Specific batch requested — use it directly
+            # Specific batch requested — row-lock it (FOR UPDATE) to prevent
+            # concurrent invoice/dispense deductions from overselling.
             batches = db.query(MedicineBatch).filter(
                 MedicineBatch.medicine_id == medicine_id,
                 MedicineBatch.batch_number == batch_num,
                 MedicineBatch.is_active == True,
                 MedicineBatch.is_expired == False,
-            ).all()
+            ).with_for_update().all()
             if not batches:
                 raise ValueError(
                     f"Batch '{batch_num}' not found for medicine line item {line.id}"
@@ -422,7 +423,7 @@ def _deduct_invoice_medicine_stock(db: Session, invoice: Invoice) -> None:
                 MedicineBatch.is_active == True,
                 MedicineBatch.is_expired == False,
                 MedicineBatch.quantity > 0,
-            ).order_by(MedicineBatch.expiry_date.asc()).all()
+            ).with_for_update().order_by(MedicineBatch.expiry_date.asc()).all()
             if not batches:
                 raise ValueError(
                     f"No stock available for medicine in line item {line.id}"

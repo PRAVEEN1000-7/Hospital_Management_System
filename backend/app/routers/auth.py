@@ -163,7 +163,8 @@ async def login(
             username=user.username,
             success=True,
             tenant=tenant,
-            ip_address=ip_address
+            ip_address=ip_address,
+            user=user,
         )
 
         return TokenResponse(

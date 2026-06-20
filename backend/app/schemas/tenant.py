@@ -237,7 +237,9 @@ class SubscriptionPlanResponse(SubscriptionPlanBase):
     modules_included: List[uuid.UUID]
     created_at: datetime
     updated_at: datetime
-    
+    # Number of hospitals currently enrolled on this plan (active/trialing/past_due).
+    subscriber_count: int = 0
+
     model_config = ConfigDict(from_attributes=True)
 
 

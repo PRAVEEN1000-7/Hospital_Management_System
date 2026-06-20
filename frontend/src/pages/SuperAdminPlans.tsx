@@ -40,6 +40,7 @@ interface Plan {
   is_public: boolean;
   is_active: boolean;
   sort_order: number;
+  subscriber_count?: number;
 }
 
 interface HospitalOption {
@@ -731,9 +732,16 @@ const SuperAdminPlans: React.FC = () => {
                     </span>
                   )}
                 </div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                  {(planCounts[plan.code] || 0)} {(planCounts[plan.code] || 0) === 1 ? 'hospital' : 'hospitals'} enrolled
-                </span>
+                {(() => {
+                  // Prefer the authoritative count from the API; fall back to the
+                  // client-derived count if an older backend doesn't send it.
+                  const enrolled = plan.subscriber_count ?? planCounts[plan.code] ?? 0;
+                  return (
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                      {enrolled} {enrolled === 1 ? 'hospital' : 'hospitals'} enrolled
+                    </span>
+                  );
+                })()}
               </div>
             </div>
           </div>

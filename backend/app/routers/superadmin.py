@@ -333,9 +333,26 @@ def list_plans(
     admin: User = Depends(require_superadmin),
     db: Session = Depends(get_db)
 ):
-    """List subscription plans"""
+    """List subscription plans, each enriched with its enrolled-hospital count."""
+    from ..models.tenant import TenantSubscription
+    from sqlalchemy import func as _func
+
     plans = SubscriptionService.list_plans(db, include_inactive)
-    return plans
+
+    # Count currently-enrolled hospitals per plan (active/trialing/past_due).
+    counts = dict(
+        db.query(TenantSubscription.plan_id, _func.count(TenantSubscription.id))
+        .filter(TenantSubscription.status.in_(['trialing', 'active', 'past_due']))
+        .group_by(TenantSubscription.plan_id)
+        .all()
+    )
+
+    result = []
+    for plan in plans:
+        resp = SubscriptionPlanResponse.model_validate(plan)
+        resp.subscriber_count = int(counts.get(plan.id, 0))
+        result.append(resp)
+    return result
 
 
 @router.post("/plans", response_model=SubscriptionPlanResponse)

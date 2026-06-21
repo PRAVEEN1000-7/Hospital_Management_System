@@ -8,6 +8,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -220,6 +221,12 @@ async def create_batch(
         return BatchResponse.model_validate(batch)
     except HTTPException:
         raise
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Batch number '{data.batch_number}' already exists for this medicine. Use a different batch number.",
+        )
     except Exception as e:
         logger.error(f"Error creating batch: {e}", exc_info=True)
         db.rollback()
@@ -252,6 +259,12 @@ async def update_batch(
         return BatchResponse.model_validate(batch)
     except HTTPException:
         raise
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Another batch with this batch number already exists for this medicine.",
+        )
     except Exception as e:
         logger.error(f"Error updating batch: {e}", exc_info=True)
         db.rollback()

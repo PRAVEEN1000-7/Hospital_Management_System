@@ -23,7 +23,12 @@ logger = logging.getLogger(__name__)
 
 
 def _filter_model_data(model, data: dict) -> dict:
-    valid_keys = {col.key for col in model.__mapper__.columns}
+    # Use the mapped Python attribute names (e.g. "mfg_date", "quantity"), not the
+    # underlying DB column names (e.g. "manufactured_date", "current_quantity") —
+    # several columns are declared as Column("db_name", ...) with a different
+    # attribute name, and model.__mapper__.columns is keyed by the DB name, which
+    # silently dropped those fields (mfg_date, quantity) from every payload.
+    valid_keys = {prop.key for prop in model.__mapper__.column_attrs}
     return {k: v for k, v in data.items() if k in valid_keys and v is not None}
 
 

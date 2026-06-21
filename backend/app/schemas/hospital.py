@@ -37,7 +37,8 @@ class HospitalUpdate(BaseModel):
     default_currency: Optional[str] = Field(None, max_length=10)
     tax_id: Optional[str] = Field(None, max_length=50)
     registration_number: Optional[str] = Field(None, max_length=50)
-    logo_url: Optional[str] = Field(None, max_length=500)
+    # logo_url intentionally excluded — it must only be set via the dedicated
+    # file-upload endpoint (POST /hospital/logo/upload), never as a raw string.
 
 
 class HospitalResponse(BaseModel):

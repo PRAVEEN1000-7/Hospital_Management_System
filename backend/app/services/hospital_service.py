@@ -69,19 +69,6 @@ def update_hospital(db: Session, hospital_data: HospitalUpdate, hospital_id=None
     return db_hospital
 
 
-def update_logo_url(db: Session, logo_url: str, hospital_id=None) -> dict:
-    q = db.query(Hospital)
-    if hospital_id is not None:
-        q = q.filter(Hospital.id == hospital_id)
-    db_hospital = q.first()
-    if not db_hospital:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Hospital not found")
-    db_hospital.logo_url = logo_url
-    db.commit()
-    db.refresh(db_hospital)
-    return {"logo_url": logo_url, "message": "Logo updated successfully"}
-
-
 def delete_logo(db: Session, hospital_id=None) -> dict:
     q = db.query(Hospital)
     if hospital_id is not None:

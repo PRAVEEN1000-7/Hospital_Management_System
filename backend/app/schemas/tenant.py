@@ -50,7 +50,8 @@ class TenantUpdate(BaseModel):
     country: Optional[str] = Field(None, max_length=3)
     timezone: Optional[str] = Field(None, max_length=50)
     default_currency: Optional[str] = Field(None, max_length=3)
-    logo_url: Optional[str] = Field(None, max_length=500)
+    # logo_url intentionally excluded — branding logos must be set via file
+    # upload (see hospital.py's /hospital/logo/upload), never as a raw string.
     primary_color: Optional[str] = Field(None, max_length=7)
     secondary_color: Optional[str] = Field(None, max_length=7)
     status: Optional[str] = Field(None, max_length=20)

@@ -485,32 +485,37 @@ async def get_prescription_pdf(
 <html lang="{lang}">
 <head>
 <meta charset="UTF-8">
+<meta name="color-scheme" content="light only">
 <title>{t['prescription']} - {rx.prescription_number}</title>
 <style>
-body {{ font-family: 'Noto Sans', Arial, sans-serif; margin:0; padding:40px; color:#1e293b; position:relative; }}
+/* Force light rendering regardless of OS/browser dark mode — this document is
+   meant to look identical to its printed form, never auto-darkened. */
+:root {{ color-scheme: light only; }}
+html {{ background:#ffffff; }}
+body {{ font-family: 'Noto Sans', Arial, sans-serif; margin:0; padding:28px; color:#1e293b; background:#ffffff; position:relative; }}
 .watermark {{ position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:55%; max-width:420px; opacity:0.06; z-index:0; pointer-events:none; }}
 .content {{ position:relative; z-index:1; }}
-.header {{ text-align:center; margin-bottom:30px; padding-bottom:20px; border-bottom:3px solid #137fec; }}
+.header {{ text-align:center; margin-bottom:18px; padding-bottom:14px; border-bottom:3px solid #137fec; }}
 .header-logo {{ height:60px; max-width:220px; object-fit:contain; margin-bottom:6px; }}
 .header h1 {{ margin:0; color:#137fec; font-size:24px; }}
 .header p {{ margin:4px 0; color:#64748b; font-size:13px; }}
-.rx-info {{ display:flex; justify-content:space-between; margin-bottom:20px; }}
+.rx-info {{ display:flex; justify-content:space-between; margin-bottom:14px; }}
 .rx-info div {{ font-size:13px; }}
-.patient-box {{ background:#f1f5f9; padding:16px; border-radius:8px; margin-bottom:20px; }}
+.patient-box {{ background:#f1f5f9; padding:14px 16px; border-radius:8px; margin-bottom:14px; }}
 .patient-box p {{ margin:4px 0; font-size:13px; }}
-table {{ width:100%; border-collapse:collapse; margin-bottom:20px; }}
+table {{ width:100%; border-collapse:collapse; margin-bottom:14px; }}
 th {{ background:#f1f5f9; padding:10px 8px; text-align:left; font-size:13px; font-weight:600; border-bottom:2px solid #e2e8f0; }}
 td {{ font-size:13px; }}
-.diagnosis {{ background:#eff6ff; padding:16px; border-radius:8px; margin-bottom:20px; }}
-.advice {{ background:#f0fdf4; padding:16px; border-radius:8px; margin-bottom:20px; }}
-.footer {{ margin-top:40px; display:flex; justify-content:flex-end; page-break-inside:avoid; }}
+.diagnosis {{ background:#eff6ff; padding:14px 16px; border-radius:8px; margin-bottom:14px; }}
+.advice {{ background:#f0fdf4; padding:14px 16px; border-radius:8px; margin-bottom:14px; }}
+.footer {{ margin-top:24px; display:flex; justify-content:flex-end; page-break-inside:avoid; }}
 .signature {{ text-align:right; }}
 .signature p {{ margin:4px 0; font-size:13px; }}
-.generated-note {{ text-align:center; margin-top:48px; font-size:11px; color:#94a3b8; }}
+.generated-note {{ text-align:center; margin-top:24px; font-size:11px; color:#94a3b8; }}
 @page {{ size: A4; margin: 12mm; }}
 @media print {{
-  html, body {{ margin:0; padding:0; height:auto; -webkit-print-color-adjust:exact; print-color-adjust:exact; }}
-  .footer {{ margin-top:30px; }}
+  html, body {{ margin:0; padding:0; height:auto; background:#ffffff; -webkit-print-color-adjust:exact; print-color-adjust:exact; }}
+  .footer {{ margin-top:20px; }}
   table, tr, td, th {{ page-break-inside:avoid; }}
   .patient-box, .diagnosis, .advice {{ page-break-inside:avoid; }}
 }}
@@ -568,7 +573,7 @@ td {{ font-size:13px; }}
 
 <div class="footer">
     <div class="signature">
-        <p style="margin-bottom:40px;"><strong>{t['prescribing_doctor']}</strong></p>
+        <p style="margin-bottom:28px;"><strong>{t['prescribing_doctor']}</strong></p>
         <p><strong>{doctor_display}</strong></p>
         {f'<p style="color:#64748b;">{doctor_spec}</p>' if doctor_spec else ''}
         {f'<p style="color:#64748b;">{t["reg_no"]} {doctor_reg}</p>' if doctor_reg else ''}

@@ -77,9 +77,10 @@ export async function htmlStringToPdf(html: string, filename: string): Promise<v
     pdf.addImage(imgData, 'PNG', 0, position, imgW, imgH);
     heightLeft -= pageH;
 
-    // Only add another page when a meaningful amount of content remains; a tiny
-    // sub-millimetre remainder from rounding must never create a blank page.
-    while (heightLeft > 2) {
+    // Only add another page when a meaningful amount of content remains; a few
+    // millimetres of remainder (canvas-scale rounding, font-metric variance) is
+    // never real content and must not spawn a near-blank trailing page.
+    while (heightLeft > 6) {
       position -= pageH;
       pdf.addPage();
       pdf.addImage(imgData, 'PNG', 0, position, imgW, imgH);

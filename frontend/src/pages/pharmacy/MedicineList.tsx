@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useDeferredValue } from 'react
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import pharmacyService from '../../services/pharmacyService';
-import type { Medicine, MedicineCreateData } from '../../types/pharmacy';
+import type { Medicine, MedicineCreateData, BatchCreateData } from '../../types/pharmacy';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -116,6 +116,13 @@ const MedicineList: React.FC = () => {
       'storage_conditions',
       'drug_interaction_notes',
       'side_effects',
+      'batch_number',
+      'mfg_date',
+      'expiry_date',
+      'quantity',
+      'purchase_price',
+      'selling_price',
+      'mrp',
     ];
     const guideRows = [
       {
@@ -133,6 +140,22 @@ const MedicineList: React.FC = () => {
       {
         field: 'requires_prescription',
         allowed_values: 'true/false, yes/no, 1/0',
+      },
+      {
+        field: 'quantity',
+        allowed_values: 'Opening stock for this medicine. Leave blank or 0 to create the medicine with no stock batch.',
+      },
+      {
+        field: 'expiry_date',
+        allowed_values: 'Format YYYY-MM-DD. Required only when quantity is greater than 0.',
+      },
+      {
+        field: 'batch_number / mfg_date',
+        allowed_values: 'Optional. batch_number is auto-generated when left blank.',
+      },
+      {
+        field: 'purchase_price / selling_price / mrp',
+        allowed_values: 'Optional opening-batch pricing. Defaults to 0 when left blank.',
       },
       {
         field: 'required_field',
@@ -174,6 +197,19 @@ const MedicineList: React.FC = () => {
     return /^\d+(\.\d+)?\s*(mg|g|mcg|ml|l|iu|units?|%|x)?$/i.test(text);
   };
 
+  // Excel date-formatted cells arrive as Date objects (cellDates:true below); plain
+  // text cells arrive as strings. Normalize both to YYYY-MM-DD for the batch API.
+  const asDateString = (value: unknown): string | undefined => {
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+      return value.toISOString().slice(0, 10);
+    }
+    const text = String(value ?? '').trim();
+    if (!text) return undefined;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+    const parsed = new Date(text);
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString().slice(0, 10);
+  };
+
   const handleBulkMedicineUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -181,7 +217,9 @@ const MedicineList: React.FC = () => {
     setBulkUploading(true);
     try {
       const buffer = await file.arrayBuffer();
-      const workbook = XLSX.read(buffer, { type: 'array' });
+      // cellDates:true so Excel date-formatted cells parse as JS Date objects
+      // instead of raw serial numbers (needed for expiry_date/mfg_date below).
+      const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' });
 
@@ -192,8 +230,13 @@ const MedicineList: React.FC = () => {
 
       const rowErrors: string[] = [];
 
-      const payloads = rows
-        .map((row, index): MedicineCreateData | null => {
+      type BulkRow = {
+        medicine: MedicineCreateData;
+        batch: Omit<BatchCreateData, 'medicine_id'> | null;
+      };
+
+      const parsedRows = rows
+        .map((row, index): BulkRow | null => {
           const rowNumber = index + 2; // +2 because row 1 is header
           const name = String(row.name ?? '').trim();
           if (!name) {
@@ -224,7 +267,7 @@ const MedicineList: React.FC = () => {
           // unknown schedules are dropped — so one odd cell never blocks the import.
           const matchedUnit = TEMPLATE_UNITS.find((u) => u.toLowerCase() === unitValue.toLowerCase());
 
-          return {
+          const medicine: MedicineCreateData = {
             name,
             generic_name: asOptionalText(row.generic_name),
             brand: asOptionalText(row.brand),
@@ -246,8 +289,32 @@ const MedicineList: React.FC = () => {
             drug_interaction_notes: asOptionalText(row.drug_interaction_notes),
             side_effects: asOptionalText(row.side_effects),
           };
+
+          // Opening stock is optional and only attempted when a quantity is supplied —
+          // without this, every bulk-uploaded medicine would land with zero stock and
+          // zero price, indistinguishable from a catalog-only placeholder.
+          const quantity = Math.floor(asOptionalNumber(row.quantity) ?? 0);
+          let batch: Omit<BatchCreateData, 'medicine_id'> | null = null;
+          if (quantity > 0) {
+            const expiryDate = asDateString(row.expiry_date);
+            if (!expiryDate) {
+              rowErrors.push(`Row ${rowNumber}: 'expiry_date' is required when 'quantity' is provided.`);
+              return null;
+            }
+            batch = {
+              batch_number: asOptionalText(row.batch_number) || `BULK-${rowNumber}-${Date.now().toString(36)}`,
+              mfg_date: asDateString(row.mfg_date),
+              expiry_date: expiryDate,
+              quantity,
+              purchase_price: asOptionalNumber(row.purchase_price) ?? 0,
+              selling_price: asOptionalNumber(row.selling_price) ?? 0,
+              mrp: asOptionalNumber(row.mrp),
+            };
+          }
+
+          return { medicine, batch };
         })
-        .filter((item): item is MedicineCreateData => Boolean(item));
+        .filter((item): item is BulkRow => Boolean(item));
 
       if (rowErrors.length > 0) {
         const preview = rowErrors.slice(0, 5).join(' ');
@@ -257,17 +324,40 @@ const MedicineList: React.FC = () => {
         return;
       }
 
-      if (payloads.length === 0) {
+      if (parsedRows.length === 0) {
         toast.error('No valid rows found. Use the medicine template format.');
         return;
       }
 
-      const results = await Promise.allSettled(payloads.map((payload) => pharmacyService.createMedicine(payload)));
-      const createdCount = results.filter((r) => r.status === 'fulfilled').length;
-      const failedCount = results.length - createdCount;
+      const medicineResults = await Promise.allSettled(
+        parsedRows.map((row) => pharmacyService.createMedicine(row.medicine))
+      );
+      const failedCount = medicineResults.filter((r) => r.status === 'rejected').length;
+
+      // Opening-stock batches must be created after the medicine exists (they need its
+      // generated id), so this runs as a second pass over the medicines that succeeded.
+      let createdCount = 0;
+      let stockedCount = 0;
+      let stockFailedCount = 0;
+      const batchJobs: Promise<void>[] = [];
+      medicineResults.forEach((result, i) => {
+        if (result.status !== 'fulfilled') return;
+        createdCount += 1;
+        const batchInfo = parsedRows[i].batch;
+        if (!batchInfo) return;
+        batchJobs.push(
+          pharmacyService
+            .createBatch({ ...batchInfo, medicine_id: result.value.id })
+            .then(() => { stockedCount += 1; })
+            .catch(() => { stockFailedCount += 1; })
+        );
+      });
+      await Promise.allSettled(batchJobs);
 
       if (createdCount > 0) {
-        toast.success(`Created ${createdCount} medicine(s)${failedCount ? `, failed ${failedCount}` : ''}`);
+        const stockNote = stockedCount > 0 ? `, ${stockedCount} with opening stock` : '';
+        const stockFailNote = stockFailedCount > 0 ? `, ${stockFailedCount} opening-stock batch(es) failed` : '';
+        toast.success(`Created ${createdCount} medicine(s)${stockNote}${stockFailNote}${failedCount ? `, failed ${failedCount}` : ''}`);
         fetchMedicines();
       } else {
         toast.error('Bulk upload failed for all rows. Please verify the template and required fields.');
@@ -415,7 +505,7 @@ const MedicineList: React.FC = () => {
                   <td className="px-4 py-3 text-slate-600">{med.strength || '—'}</td>
                   <td className="px-4 py-3 text-slate-600">{med.unit || med.unit_of_measure || '—'}</td>
                   <td className="px-4 py-3 text-right">
-                    <span className={`font-semibold ${(med.total_stock ?? 0) < 10 ? 'text-red-500' : 'text-emerald-600'}`}>
+                    <span className={`font-semibold ${(med.total_stock ?? 0) <= (med.reorder_level ?? 10) ? 'text-red-500' : 'text-emerald-600'}`}>
                       {med.total_stock ?? 0}
                     </span>
                   </td>

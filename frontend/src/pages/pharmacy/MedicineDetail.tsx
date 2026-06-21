@@ -83,7 +83,7 @@ const MedicineDetail: React.FC = () => {
           ))}
           <div>
             <p className="text-xs text-slate-400 font-medium uppercase">Total Stock</p>
-            <p className={`text-lg font-bold ${totalStock < 10 ? 'text-red-500' : 'text-emerald-600'}`}>{totalStock}</p>
+            <p className={`text-lg font-bold ${totalStock <= (medicine.reorder_level ?? 10) ? 'text-red-500' : 'text-emerald-600'}`}>{totalStock}</p>
           </div>
         </div>
         {medicine.description && (

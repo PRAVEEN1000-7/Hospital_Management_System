@@ -954,19 +954,30 @@ def get_pharmacy_dashboard(db: Session, hospital_id: uuid.UUID) -> dict:
     today = date.today()
     thirty_days = today + timedelta(days=30)
 
-    total_medicines = db.query(func.count(Medicine.id)).filter(
+    medicines = db.query(Medicine.id, Medicine.reorder_level).filter(
         Medicine.hospital_id == hospital_id, Medicine.is_active == True
-    ).scalar() or 0
+    ).all()
+    total_medicines = len(medicines)
 
-    # Low stock: batches with qty > 0 and < 10
-    low_stock = db.query(func.count(func.distinct(MedicineBatch.medicine_id))).join(
-        Medicine, Medicine.id == MedicineBatch.medicine_id
-    ).filter(
-        Medicine.hospital_id == hospital_id,
-        MedicineBatch.is_active == True,
-        MedicineBatch.quantity > 0,
-        MedicineBatch.quantity < 10,
-    ).scalar() or 0
+    # Low stock: total on-hand quantity (summed across all of a medicine's batches)
+    # at or below that medicine's own reorder_level — not a hardcoded "<10" that
+    # ignored the per-medicine reorder level set on the medicine form, and not a
+    # per-batch check that miscounted medicines split across several batches.
+    med_ids = [m.id for m in medicines]
+    stock_map: dict[uuid.UUID, int] = {}
+    if med_ids:
+        stock_rows = (
+            db.query(MedicineBatch.medicine_id, func.coalesce(func.sum(MedicineBatch.quantity), 0))
+            .filter(MedicineBatch.medicine_id.in_(med_ids), MedicineBatch.is_active == True)
+            .group_by(MedicineBatch.medicine_id)
+            .all()
+        )
+        stock_map = {row[0]: int(row[1]) for row in stock_rows}
+
+    low_stock = sum(
+        1 for m in medicines
+        if 0 < stock_map.get(m.id, 0) <= (m.reorder_level or 10)
+    )
 
     # Expiring within 30 days
     expiring = db.query(func.count(MedicineBatch.id)).join(

@@ -31,6 +31,7 @@ from ..services.waitlist_service import (
     get_waitlist_count_for_doctor,
 )
 from ..services.appointment_service import generate_appointment_number, enrich_appointment
+from ..services.schedule_service import is_doctor_on_leave, get_available_slots
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -245,6 +246,23 @@ async def book_from_waitlist(
             target_doctor_id = override_uuid
 
         today = date.today()
+
+        # Ensure the target doctor actually has room today before promoting —
+        # without this check, "Book" would silently assign the patient even
+        # when the doctor is on leave or every slot/queue capacity is full.
+        if is_doctor_on_leave(db, target_doctor_id, today):
+            raise HTTPException(
+                status_code=400,
+                detail="Selected doctor is on leave today and cannot accept this patient",
+            )
+        slots = get_available_slots(db, target_doctor_id, today)
+        has_available = any(s["available"] for s in slots) if slots else True
+        if slots and not has_available:
+            raise HTTPException(
+                status_code=400,
+                detail="Selected doctor has no available slot today. Please choose another doctor or try again later.",
+            )
+
         from datetime import timezone as tz
         now = __import__("datetime").datetime.now(tz.utc)
 

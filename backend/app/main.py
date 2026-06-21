@@ -91,6 +91,16 @@ async def log_requests(request: Request, call_next):
             "%s %s → %s (%.0fms)",
             request.method, path, response.status_code, duration_ms,
         )
+    # Surface missing upload files distinctly from ordinary 404s — this is the
+    # signal that lets ops tell a genuinely-missing file (deleted, never saved,
+    # wrong DB path) apart from a misconfigured reverse proxy upstream of us.
+    if response.status_code == 404 and "/uploads/" in path:
+        relative = path.split("/uploads/", 1)[1]
+        resolved = os.path.join(uploads_dir, relative)
+        logger.warning(
+            "Upload file not found: requested=%s resolved_path=%s exists_on_disk=%s",
+            path, resolved, os.path.exists(resolved),
+        )
     return response
 
 

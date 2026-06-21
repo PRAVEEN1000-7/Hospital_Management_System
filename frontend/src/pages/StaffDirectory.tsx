@@ -488,7 +488,20 @@ const StaffDirectory: React.FC = () => {
                     <td className="px-3 py-4">
                       <div className="flex items-center gap-3 cursor-pointer" onClick={() => setViewUser(user)}>
                         <div className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs flex-shrink-0 overflow-hidden">
-                          {user.avatar_url ? <img src={userService.getPhotoUrl(user.avatar_url) || ''} alt={`${user.first_name} ${user.last_name}`} className="w-full h-full object-cover" /> : getInitials(`${user.first_name} ${user.last_name}`)}
+                          {user.avatar_url ? (
+                            <img
+                              src={userService.getPhotoUrl(user.avatar_url) || ''}
+                              alt={`${user.first_name} ${user.last_name}`}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                                const parent = e.currentTarget.parentElement;
+                                if (parent) parent.textContent = getInitials(`${user.first_name} ${user.last_name}`);
+                              }}
+                            />
+                          ) : (
+                            getInitials(`${user.first_name} ${user.last_name}`)
+                          )}
                         </div>
                         <div className="min-w-0">
                           <p className="text-sm font-semibold text-slate-900 truncate">{`${user.first_name} ${user.last_name}`}</p>
@@ -562,7 +575,20 @@ const StaffDirectory: React.FC = () => {
         <Drawer title="Staff Profile" onClose={() => setViewUser(null)}>
           <div className="flex flex-col items-center mb-6">
             <div className="w-20 h-20 rounded-full bg-primary/10 text-primary flex items-center justify-center text-2xl font-bold mb-3 overflow-hidden">
-              {viewUser.avatar_url ? <img src={userService.getPhotoUrl(viewUser.avatar_url) || ''} alt={`${viewUser.first_name} ${viewUser.last_name}`} className="w-full h-full object-cover" /> : getInitials(`${viewUser.first_name} ${viewUser.last_name}`)}
+              {viewUser.avatar_url ? (
+                <img
+                  src={userService.getPhotoUrl(viewUser.avatar_url) || ''}
+                  alt={`${viewUser.first_name} ${viewUser.last_name}`}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                    const parent = e.currentTarget.parentElement;
+                    if (parent) parent.textContent = getInitials(`${viewUser.first_name} ${viewUser.last_name}`);
+                  }}
+                />
+              ) : (
+                getInitials(`${viewUser.first_name} ${viewUser.last_name}`)
+              )}
             </div>
             <h3 className="text-lg font-bold text-slate-900">{`${viewUser.first_name} ${viewUser.last_name}`}</h3>
             <p className="text-sm text-slate-500 mb-2">@{viewUser.username}</p>

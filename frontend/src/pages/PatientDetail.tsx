@@ -14,6 +14,7 @@ const PatientDetail: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [fetchError, setFetchError] = useState('');
+  const [photoFailed, setPhotoFailed] = useState(false);
 
   useEffect(() => {
     const fetchPatient = async () => {
@@ -28,6 +29,11 @@ const PatientDetail: React.FC = () => {
     };
     fetchPatient();
   }, [id]);
+
+  // Reset the broken-image flag whenever the photo actually changes (e.g. after a new upload).
+  useEffect(() => {
+    setPhotoFailed(false);
+  }, [patient?.photo_url]);
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -101,8 +107,13 @@ const PatientDetail: React.FC = () => {
         <div className="flex flex-col sm:flex-row items-center gap-6">
           <div className="relative group">
             <div className="w-24 h-24 rounded-full overflow-hidden bg-white/20 border-4 border-white/30 flex items-center justify-center">
-              {photoUrl ? (
-                <img src={photoUrl} alt={`${patient.first_name} ${patient.last_name}`} className="w-full h-full object-cover" />
+              {photoUrl && !photoFailed ? (
+                <img
+                  src={photoUrl}
+                  alt={`${patient.first_name} ${patient.last_name}`}
+                  className="w-full h-full object-cover"
+                  onError={() => setPhotoFailed(true)}
+                />
               ) : (
                 <span className="text-3xl font-bold text-white/80">{initials}</span>
               )}

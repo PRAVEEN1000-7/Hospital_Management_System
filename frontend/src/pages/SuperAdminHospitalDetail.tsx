@@ -145,6 +145,7 @@ const SuperAdminHospitalDetail: React.FC = () => {
   const [usage, setUsage] = useState<Usage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'modules' | 'usage'>('overview');
+  const [logoFailed, setLogoFailed] = useState(false);
 
   const [pendingChanges, setPendingChanges] = useState<Record<string, boolean>>({});
   const [isSaving, setIsSaving] = useState(false);
@@ -156,6 +157,11 @@ const SuperAdminHospitalDetail: React.FC = () => {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
+
+  // Reset the broken-image flag whenever the tenant's logo actually changes.
+  useEffect(() => {
+    setLogoFailed(false);
+  }, [tenant?.logo_url]);
 
   // Manual plan activation
   const [allPlans, setAllPlans] = useState<{ id: string; name: string; code: string }[]>([]);
@@ -350,8 +356,13 @@ const SuperAdminHospitalDetail: React.FC = () => {
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-4">
             <div className="w-16 h-16 bg-primary/10 rounded-xl flex items-center justify-center overflow-hidden">
-              {tenant.logo_url ? (
-                <img src={userService.getPhotoUrl(tenant.logo_url) || ''} alt={tenant.name} className="w-full h-full object-contain" />
+              {tenant.logo_url && !logoFailed ? (
+                <img
+                  src={userService.getPhotoUrl(tenant.logo_url) || ''}
+                  alt={tenant.name}
+                  className="w-full h-full object-contain"
+                  onError={() => setLogoFailed(true)}
+                />
               ) : (
                 <Building2 className="w-8 h-8 text-primary" />
               )}

@@ -25,6 +25,7 @@ const Profile: React.FC = () => {
   const [showConfirm, setShowConfirm] = useState(false);
   const [doctorProfile, setDoctorProfile] = useState<DoctorProfileType | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [photoFailed, setPhotoFailed] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isDoctor = user?.roles?.includes('doctor');
@@ -34,6 +35,11 @@ const Profile: React.FC = () => {
       doctorService.getMyProfile().then(setDoctorProfile).catch(() => {});
     }
   }, [isDoctor]);
+
+  // Reset the broken-image flag whenever the avatar actually changes (e.g. after a new upload).
+  useEffect(() => {
+    setPhotoFailed(false);
+  }, [user?.avatar_url]);
 
   const { register, handleSubmit, formState: { errors, isSubmitting }, reset, watch } = useForm<ChangePasswordData>({
     resolver: zodResolver(changePasswordSchema),
@@ -106,13 +112,14 @@ const Profile: React.FC = () => {
         {/* Avatar with camera overlay */}
         <div className="relative inline-block mb-4">
           <div className={`w-24 h-24 rounded-full flex items-center justify-center mx-auto overflow-hidden ring-4 ring-white/30 ${
-            user?.avatar_url ? '' : 'bg-white/20'
+            user?.avatar_url && !photoFailed ? '' : 'bg-white/20'
           }`}>
-            {user?.avatar_url ? (
+            {user?.avatar_url && !photoFailed ? (
               <img
                 src={userService.getPhotoUrl(user.avatar_url) ?? ''}
                 alt={fullName}
                 className="w-full h-full object-cover"
+                onError={() => setPhotoFailed(true)}
               />
             ) : (
               <span className="material-symbols-outlined text-5xl text-white">

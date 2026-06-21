@@ -40,6 +40,7 @@ const PatientIdCard: React.FC = () => {
   const [hospital, setHospital] = useState<HospitalDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [photoFailed, setPhotoFailed] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -58,6 +59,11 @@ const PatientIdCard: React.FC = () => {
     };
     fetchData();
   }, [id, toast]);
+
+  // Reset the broken-image flag whenever the photo actually changes.
+  useEffect(() => {
+    setPhotoFailed(false);
+  }, [patient?.photo_url]);
 
   const generatePDF = async (): Promise<jsPDF | null> => {
     if (!frontRef.current || !backRef.current) return null;
@@ -238,8 +244,13 @@ const PatientIdCard: React.FC = () => {
             <div style={{ padding: '12px 18px', display: 'flex', gap: 14, alignItems: 'flex-start' }}>
               {/* Photo */}
               <div style={{ width: 80, height: 94, background: '#e2e8f0', borderRadius: 10, overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #93c5fd', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
-                {photoUrl ? (
-                  <img src={photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                {photoUrl && !photoFailed ? (
+                  <img
+                    src={photoUrl}
+                    alt=""
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    onError={() => setPhotoFailed(true)}
+                  />
                 ) : (
                   <span style={{ fontSize: 28, color: '#94a3b8', fontWeight: 'bold' }}>
                     {patient.first_name[0]}{patient.last_name[0]}

@@ -67,6 +67,18 @@ import PendingPrescriptions from './pages/pharmacy/PendingPrescriptions';
 import DispensingScreen from './pages/pharmacy/DispensingScreen';
 import DispensingBilling from './pages/pharmacy/DispensingBilling';
 
+// Optical Store pages
+import OpticalDashboard from './pages/optical/OpticalDashboard';
+import OpticalProductList from './pages/optical/OpticalProductList';
+import OpticalProductDetail from './pages/optical/OpticalProductDetail';
+import OpticalProductForm from './pages/optical/OpticalProductForm';
+import OpticalBatchForm from './pages/optical/OpticalBatchForm';
+import OpticalPrescriptions from './pages/optical/OpticalPrescriptions';
+import OpticalPrescriptionDetail from './pages/optical/OpticalPrescriptionDetail';
+import OpticalSales from './pages/optical/OpticalSales';
+import NewOpticalSale from './pages/optical/NewOpticalSale';
+import OpticalStockAdjustments from './pages/optical/OpticalStockAdjustments';
+
 // Inventory pages
 import InventoryDashboard from './pages/inventory/InventoryDashboard';
 import SuppliersPage from './pages/inventory/SuppliersPage';
@@ -439,6 +451,96 @@ const App: React.FC = () => {
                   requiredModule="pharmacy"
                 >
                   <DispensingBilling />
+                </ProtectedRoute>
+              } />
+
+              {/* ── Optical Store module ── */}
+              <Route path="/optical" element={
+                <ProtectedRoute
+                  allowedRoles={['super_admin', 'admin', 'doctor', 'optical_staff']}
+                  requiredModule="optical"
+                >
+                  <OpticalDashboard />
+                </ProtectedRoute>
+              } />
+              <Route path="/optical/products" element={
+                <ProtectedRoute
+                  allowedRoles={['super_admin', 'admin', 'doctor', 'optical_staff']}
+                  requiredModule="optical"
+                >
+                  <OpticalProductList />
+                </ProtectedRoute>
+              } />
+              <Route path="/optical/products/new" element={
+                <ProtectedRoute
+                  allowedRoles={['super_admin', 'admin', 'optical_staff']}
+                  requiredModule="optical"
+                >
+                  <OpticalProductForm />
+                </ProtectedRoute>
+              } />
+              <Route path="/optical/products/:id" element={
+                <ProtectedRoute
+                  allowedRoles={['super_admin', 'admin', 'doctor', 'optical_staff']}
+                  requiredModule="optical"
+                >
+                  <OpticalProductDetail />
+                </ProtectedRoute>
+              } />
+              <Route path="/optical/products/:id/edit" element={
+                <ProtectedRoute
+                  allowedRoles={['super_admin', 'admin', 'optical_staff']}
+                  requiredModule="optical"
+                >
+                  <OpticalProductForm />
+                </ProtectedRoute>
+              } />
+              <Route path="/optical/batches/new" element={
+                <ProtectedRoute
+                  allowedRoles={['super_admin', 'admin', 'optical_staff']}
+                  requiredModule="optical"
+                >
+                  <OpticalBatchForm />
+                </ProtectedRoute>
+              } />
+              <Route path="/optical/prescriptions" element={
+                <ProtectedRoute
+                  allowedRoles={['super_admin', 'admin', 'doctor', 'optical_staff']}
+                  requiredModule="optical"
+                >
+                  <OpticalPrescriptions />
+                </ProtectedRoute>
+              } />
+              <Route path="/optical/prescriptions/:id" element={
+                <ProtectedRoute
+                  allowedRoles={['super_admin', 'admin', 'doctor', 'optical_staff']}
+                  requiredModule="optical"
+                >
+                  <OpticalPrescriptionDetail />
+                </ProtectedRoute>
+              } />
+              <Route path="/optical/sales" element={
+                <ProtectedRoute
+                  allowedRoles={['super_admin', 'admin', 'doctor', 'optical_staff']}
+                  requiredModule="optical"
+                >
+                  <OpticalSales />
+                </ProtectedRoute>
+              } />
+              <Route path="/optical/sales/new" element={
+                <ProtectedRoute
+                  allowedRoles={['super_admin', 'admin', 'optical_staff']}
+                  requiredModule="optical"
+                >
+                  <NewOpticalSale />
+                </ProtectedRoute>
+              } />
+              <Route path="/optical/stock-adjustments" element={
+                <ProtectedRoute
+                  allowedRoles={['super_admin', 'admin', 'optical_staff']}
+                  requiredModule="optical"
+                >
+                  <OpticalStockAdjustments />
                 </ProtectedRoute>
               } />
 

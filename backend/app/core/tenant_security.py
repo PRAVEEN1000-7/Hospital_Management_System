@@ -380,7 +380,7 @@ class UsageTracker:
 MODULE_DEPENDENCIES = {
     "pharmacy": ["patients", "users"],
     "inventory": ["suppliers", "appointments"],
-    "optical": ["patients", "prescriptions"],
+    "optical": ["patients"],
     "billing": ["invoices", "insurance", "patients"],
     "reports": ["patients", "appointments"],
 }

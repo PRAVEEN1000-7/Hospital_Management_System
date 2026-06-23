@@ -456,6 +456,16 @@ const CreateUserModal: React.FC<{ onClose: () => void; onSuccess: () => void; on
   const showDepartment = roleDeptConfig.depts.length > 0;
   const isDoctorRole = selectedRole === 'doctor';
 
+  // Fetch selectable specializations for doctor role — same controlled list the
+  // Edit form already uses, so create/edit don't drift into inconsistent free-text
+  // spellings (e.g. "Eye Doctor" vs "Ophthalmology").
+  const [specializations, setSpecializations] = useState<string[]>([]);
+  useEffect(() => {
+    if (isDoctorRole) {
+      doctorService.getSpecializations().then(setSpecializations).catch(() => {});
+    }
+  }, [isDoctorRole]);
+
   // Fetch departments from DB for doctor role
   const [departments, setDepartments] = useState<{ id: string; name: string }[]>([]);
   useEffect(() => {
@@ -590,7 +600,10 @@ const CreateUserModal: React.FC<{ onClose: () => void; onSuccess: () => void; on
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <Field label="Specialization *" error={(errors as any).specialization?.message}>
-                  <input {...register('specialization')} className="input-field" placeholder="e.g. Cardiology" />
+                  <select {...register('specialization')} className="input-field">
+                    <option value="">Select specialization</option>
+                    {specializations.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
                 </Field>
                 <Field label="Qualification *" error={(errors as any).qualification?.message}>
                   <input {...register('qualification')} className="input-field" placeholder="e.g. MBBS, MD" />

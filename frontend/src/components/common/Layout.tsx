@@ -82,7 +82,7 @@ const Layout: React.FC = () => {
   // Receptionist can view invoices/payments at front desk; doctor can view their patient billing
   const canAccessBilling       = hasRole('super_admin', 'admin', 'cashier', 'pharmacist', 'doctor', 'receptionist') && isModuleEnabled('billing');
   const canAccessAnalytics     = hasRole('super_admin', 'admin') && isModuleEnabled('analytics');
-  const canAccessOptical       = hasRole('super_admin', 'admin', 'doctor') && isModuleEnabled('optical');
+  const canAccessOptical       = hasRole('super_admin', 'admin', 'doctor', 'optical_staff') && isModuleEnabled('optical');
 
   // Fetch the current hospital's name + logo from the tenant-scoped /hospital endpoint.
   const loadBranding = useCallback(() => {
@@ -437,9 +437,11 @@ const Layout: React.FC = () => {
   const opticalItems: { to: string; label: string; icon: string }[] = [];
   if (canAccessOptical) {
     opticalItems.push(
-      { to: '/optical/inventory', label: 'Optical Inventory', icon: 'visibility' },
-      { to: '/optical/sales', label: 'Optical Sales', icon: 'shopping_cart' },
-      { to: '/optical/reports', label: 'Optical Reports', icon: 'analytics' },
+      { to: '/optical', label: 'Dashboard', icon: 'dashboard' },
+      { to: '/optical/products', label: 'Products', icon: 'visibility' },
+      { to: '/optical/prescriptions', label: 'Prescriptions', icon: 'description' },
+      { to: '/optical/sales', label: 'Sales', icon: 'point_of_sale' },
+      { to: '/optical/stock-adjustments', label: 'Stock Adjustments', icon: 'tune' },
     );
   }
 

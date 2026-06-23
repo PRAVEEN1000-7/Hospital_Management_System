@@ -50,7 +50,7 @@ async def get_specializations(
     common = {
         "Cardiology", "Dermatology", "ENT", "General Medicine",
         "General Surgery", "Gynecology", "Neurology", "Ophthalmology",
-        "Orthopedics", "Pediatrics", "Psychiatry", "Pulmonology",
+        "Optometry", "Orthopedics", "Pediatrics", "Psychiatry", "Pulmonology",
         "Radiology", "Urology",
     }
     return sorted(existing | common)

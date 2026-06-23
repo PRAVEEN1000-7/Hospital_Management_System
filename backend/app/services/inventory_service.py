@@ -17,7 +17,7 @@ from ..models.inventory import (
     StockAdjustment, CycleCount, CycleCountItem,
 )
 from ..models.prescription import Medicine
-from ..models.optical import OpticalProduct
+from ..models.optical import OpticalProduct, OpticalBatch
 from ..models.notification import Notification
 from ..models.pharmacy import MedicineBatch
 from ..models.user import User, Role, UserRole
@@ -744,6 +744,30 @@ def _process_grn_acceptance(db: Session, grn: GoodsReceiptNote):
                     is_active=True,
                 )
                 db.add(batch)
+        elif item.item_type == "optical_product":
+            batch = db.query(OpticalBatch).filter(
+                OpticalBatch.product_id == item.item_id,
+                OpticalBatch.batch_number == item.batch_number,
+            ).first()
+
+            if batch:
+                batch.quantity += accepted
+                batch.initial_quantity += accepted
+            else:
+                # expiry_date is nullable on GRNItem already — passes through as
+                # None for non-expiring categories (frames, solutions, accessories).
+                batch = OpticalBatch(
+                    product_id=item.item_id,
+                    batch_number=item.batch_number or f"GRN-{grn.id.hex[:8]}",
+                    mfg_date=item.manufactured_date,
+                    expiry_date=item.expiry_date,
+                    initial_quantity=accepted,
+                    quantity=accepted,
+                    purchase_price=float(item.unit_price),
+                    selling_price=float(item.unit_price),
+                    is_active=True,
+                )
+                db.add(batch)
 
         # Update PO item received quantity if this GRN links to a PO
         if grn.purchase_order_id:
@@ -934,6 +958,38 @@ def get_low_stock_items(db: Session, hospital_id: uuid.UUID, limit: int = 20) ->
                 "current_stock": current,
                 "reorder_level": reorder,
                 "purchase_price": float(med.purchase_price or 0),
+            })
+
+    # Optical products use the same OpticalBatch-totals-vs-reorder_level pattern,
+    # so Inventory's "Low Stock" view stays accurate once Optical is enabled too
+    # — without this, it would silently stay medicine-only forever.
+    products = (
+        db.query(OpticalProduct.id, OpticalProduct.name, OpticalProduct.reorder_level, OpticalProduct.purchase_price)
+        .filter(OpticalProduct.hospital_id == hospital_id, OpticalProduct.is_active == True)
+        .all()
+    )
+    product_ids = [p.id for p in products]
+    optical_stock_map: dict[uuid.UUID, int] = {}
+    if product_ids:
+        rows = (
+            db.query(OpticalBatch.product_id, func.coalesce(func.sum(OpticalBatch.quantity), 0))
+            .filter(OpticalBatch.product_id.in_(product_ids), OpticalBatch.is_active == True)
+            .group_by(OpticalBatch.product_id)
+            .all()
+        )
+        optical_stock_map = {row[0]: int(row[1]) for row in rows}
+
+    for product in products:
+        current = optical_stock_map.get(product.id, 0)
+        reorder = product.reorder_level or 5
+        if current <= reorder:
+            low_stock.append({
+                "item_id": str(product.id),
+                "item_type": "optical_product",
+                "item_name": product.name,
+                "current_stock": current,
+                "reorder_level": reorder,
+                "purchase_price": float(product.purchase_price or 0),
             })
 
     low_stock.sort(key=lambda x: (x["current_stock"], x["item_name"] or ""))

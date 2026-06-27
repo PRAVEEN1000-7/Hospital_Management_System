@@ -18,7 +18,7 @@ import {
 } from '../../utils/notificationUtils';
 
 const Layout: React.FC = () => {
-  const { user, logout, isModuleEnabled } = useAuth();
+  const { user, logout, isModuleEnabled, isEyeHospitalFeatureEnabled } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -82,7 +82,8 @@ const Layout: React.FC = () => {
   // Receptionist can view invoices/payments at front desk; doctor can view their patient billing
   const canAccessBilling       = hasRole('super_admin', 'admin', 'cashier', 'pharmacist', 'doctor', 'receptionist') && isModuleEnabled('billing');
   const canAccessAnalytics     = hasRole('super_admin', 'admin') && isModuleEnabled('analytics');
-  const canAccessOptical       = hasRole('super_admin', 'admin', 'doctor', 'optical_staff') && isModuleEnabled('optical');
+  // Optical is clinically eye-specific — matches the backend specialty gate in tenant_security.py.
+  const canAccessOptical       = hasRole('super_admin', 'admin', 'doctor', 'optical_staff') && isModuleEnabled('optical') && isEyeHospitalFeatureEnabled;
 
   // Fetch the current hospital's name + logo from the tenant-scoped /hospital endpoint.
   const loadBranding = useCallback(() => {
@@ -341,13 +342,22 @@ const Layout: React.FC = () => {
   }
 
   // ── Appointment navigation ── fully role-driven
-  const appointmentItems: { to: string; label: string; icon: string }[] = [];
+  const appointmentItems: { to: string; label: string; icon: string; external?: boolean }[] = [];
 
   if (canAccessAppointments) {
     if (hasRole('super_admin', 'admin')) {
       appointmentItems.push(
         { to: '/appointments/walk-in', label: 'Walk-in Registration', icon: 'directions_walk' },
         { to: '/appointments/queue', label: 'Walk-in Queue', icon: 'queue' },
+      );
+      // Queue Display (BRD v1.1 §3) — positioned below Walk-in Queue, above Doctor
+      // Schedule, eye-hospital feature pack only. Public, unauthenticated kiosk
+      // page (no sidebar/login) — opens in a new tab so the admin doesn't lose
+      // their own session view.
+      if (isEyeHospitalFeatureEnabled && user?.hospital_code) {
+        appointmentItems.push({ to: `/public/queue/${user.hospital_code}`, label: 'Queue Display', icon: 'tv', external: true });
+      }
+      appointmentItems.push(
         { to: '/appointments/doctor-schedule', label: 'Doctor Schedule', icon: 'calendar_month' },
         { to: '/appointments/manage', label: 'Manage Appointments', icon: 'event_note' },
         { to: '/appointments/waitlist', label: 'Waitlist', icon: 'playlist_add' },
@@ -410,8 +420,11 @@ const Layout: React.FC = () => {
           icon: 'queue',
           badge: pendingPrescriptionCount > 0 ? pendingPrescriptionCount : undefined,
         },
-        { to: '/pharmacy/sales', label: 'Sales', icon: 'point_of_sale' }
+        { to: '/pharmacy/sales', label: 'Sales', icon: 'point_of_sale' },
       );
+      if (isEyeHospitalFeatureEnabled) {
+        pharmacyItems.push({ to: '/pharmacy/queue', label: 'Pharmacy Queue', icon: 'queue' });
+      }
     } else if (hasRole('cashier')) {
       pharmacyItems.push(
         { to: '/pharmacy/sales', label: 'Sales', icon: 'point_of_sale' },
@@ -428,12 +441,15 @@ const Layout: React.FC = () => {
           badge: pendingPrescriptionCount > 0 ? pendingPrescriptionCount : undefined,
         },
         { to: '/pharmacy/sales', label: 'Sales', icon: 'point_of_sale' },
-        { to: '/pharmacy/stock-adjustments', label: 'Stock Adjustments', icon: 'tune' },
       );
+      if (isEyeHospitalFeatureEnabled) {
+        pharmacyItems.push({ to: '/pharmacy/queue', label: 'Pharmacy Queue', icon: 'queue' });
+      }
+      pharmacyItems.push({ to: '/pharmacy/stock-adjustments', label: 'Stock Adjustments', icon: 'tune' });
     }
   }
 
-  // ── Optical navigation ──
+  // ── Optical navigation —— eye-hospital feature pack only (canAccessOptical already gates this) ──
   const opticalItems: { to: string; label: string; icon: string }[] = [];
   if (canAccessOptical) {
     opticalItems.push(
@@ -441,6 +457,7 @@ const Layout: React.FC = () => {
       { to: '/optical/products', label: 'Products', icon: 'visibility' },
       { to: '/optical/prescriptions', label: 'Prescriptions', icon: 'description' },
       { to: '/optical/sales', label: 'Sales', icon: 'point_of_sale' },
+      { to: '/optical/queue', label: 'Dispensing Queue', icon: 'queue' },
       { to: '/optical/stock-adjustments', label: 'Stock Adjustments', icon: 'tune' },
     );
   }
@@ -575,7 +592,19 @@ const Layout: React.FC = () => {
               <div className="px-6 mb-1">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Appointments</span>
               </div>
-              {appointmentItems.map((item) => (
+              {appointmentItems.map((item) => item.external ? (
+                <a
+                  key={item.to}
+                  href={item.to}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center px-6 py-3 text-sm font-medium transition-all text-slate-500 hover:text-primary hover:bg-slate-50"
+                >
+                  <span className="material-symbols-outlined mr-3 text-[20px]">{item.icon}</span>
+                  {item.label}
+                  <span className="material-symbols-outlined ml-1 text-[14px]">open_in_new</span>
+                </a>
+              ) : (
                 <NavLink
                   key={item.to}
                   to={item.to}
@@ -615,7 +644,19 @@ const Layout: React.FC = () => {
                 </span>
               </button>
               <div id="appointments-menu" className={`overflow-hidden transition-all duration-200 ${appointmentsOpen ? 'max-h-[700px] opacity-100' : 'max-h-0 opacity-0'}`}>
-                {appointmentItems.map((item) => (
+                {appointmentItems.map((item) => item.external ? (
+                  <a
+                    key={item.to}
+                    href={item.to}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center whitespace-nowrap pl-10 pr-6 py-2.5 text-[13px] font-medium transition-all text-slate-400 hover:text-primary hover:bg-slate-50"
+                  >
+                    <span className="material-symbols-outlined mr-3 flex-shrink-0 text-[18px]">{item.icon}</span>
+                    {item.label}
+                    <span className="material-symbols-outlined ml-1 text-[12px]">open_in_new</span>
+                  </a>
+                ) : (
                   <NavLink
                     key={item.to}
                     to={item.to}

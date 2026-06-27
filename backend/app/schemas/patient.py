@@ -1,3 +1,4 @@
+from decimal import Decimal
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator, computed_field
 from typing import Optional, Any
 from datetime import date, datetime
@@ -39,6 +40,12 @@ class PatientBase(BaseModel):
     emergency_contact_phone: Optional[str] = Field(None, pattern=r"^\d{10}$")
     emergency_contact_country_code: Optional[str] = Field(None, pattern=r"^\+[0-9]{1,4}$")
     emergency_contact_relation: Optional[str] = None
+    # Patient History block (BRD v1.1 §2) — eye-hospital feature pack only;
+    # silently stripped server-side for hospitals without that specialty.
+    reason_for_visit: Optional[str] = Field(None, max_length=2000)
+    symptoms: Optional[list[str]] = None
+    blood_sugar_value: Optional[Decimal] = Field(None, ge=0, le=1000)
+    blood_sugar_unit: Optional[str] = Field(None, pattern="^(mg/dL|mmol/L)$")
 
     @field_validator("title")
     @classmethod
@@ -164,6 +171,10 @@ class PatientResponse(BaseModel):
     emergency_contact_phone: Optional[str] = None
     emergency_contact_country_code: Optional[str] = None
     emergency_contact_relation: Optional[str] = None
+    reason_for_visit: Optional[str] = None
+    symptoms: Optional[list[str]] = None
+    blood_sugar_value: Optional[Decimal] = None
+    blood_sugar_unit: Optional[str] = None
     photo_url: Optional[str] = None
     is_active: bool
     is_deleted: bool = False

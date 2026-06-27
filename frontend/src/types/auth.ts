@@ -15,6 +15,7 @@ export interface User {
   hospital_id?: string;
   hospital_name?: string;
   hospital_code?: string;
+  hospital_specialty?: string; // 'general' | 'eye_hospital' | 'multi_specialty'
   reference_number?: string;
   avatar_url?: string | null;
 }

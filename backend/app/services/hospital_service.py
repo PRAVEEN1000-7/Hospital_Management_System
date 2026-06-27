@@ -30,6 +30,24 @@ def get_hospital_details(db: Session, hospital_id=None) -> Optional[Hospital]:
 get_hospital = get_hospital_details
 
 
+def list_tenant_hospitals(db: Session, hospital_id) -> list[Hospital]:
+    """
+    All hospitals under the same tenant as `hospital_id` (including itself) —
+    backs the Prescription/Pharmacy "institution" dual-letterhead selector
+    (e.g. BALAJI EYE FOUNDATION / BALAJI HEALTH FOUNDATION), which are two
+    Hospital records sharing one Tenant.
+    """
+    hospital = get_hospital_details(db, hospital_id=hospital_id)
+    if not hospital or not hospital.tenant_id:
+        return [hospital] if hospital else []
+    return (
+        db.query(Hospital)
+        .filter(Hospital.tenant_id == hospital.tenant_id, Hospital.is_active == True)
+        .order_by(Hospital.name.asc())
+        .all()
+    )
+
+
 def is_hospital_configured(db: Session, hospital_id=None) -> bool:
     hospital = get_hospital_details(db, hospital_id=hospital_id)
     return hospital is not None and hospital.is_active

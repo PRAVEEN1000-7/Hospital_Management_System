@@ -16,7 +16,7 @@ from ..database import Base
 # Import shared models from inventory
 from .inventory import Supplier, PurchaseOrder, PurchaseOrderItem, StockAdjustment
 
-__all__ = ["Supplier", "PurchaseOrder", "PurchaseOrderItem", "StockAdjustment", "MedicineBatch", "PharmacySale", "PharmacySaleItem"]
+__all__ = ["Supplier", "PurchaseOrder", "PurchaseOrderItem", "StockAdjustment", "MedicineBatch", "PharmacySale", "PharmacySaleItem", "PharmacyQueueEntry"]
 
 
 # ══════════════════════════════════════════════════
@@ -73,9 +73,19 @@ class PharmacySale(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    # API compatibility defaults (not persisted in 01 schema tables).
-    payment_method = "cash"
-    payment_status = "paid"
+    # Payment — shared shape with OpticalSale (see billing_queue_service.py).
+    payment_method = Column(String(20), default="cash")
+    payment_status = Column(String(20), default="pending")
+    amount_tendered = Column(Numeric(12, 2), default=0)
+    advance_amount = Column(Numeric(12, 2), default=0)
+    paid_amount = Column(Numeric(12, 2), default=0)
+    balance_amount = Column(Numeric(12, 2), default=0)
+    consultation_fee = Column(Numeric(12, 2), default=0)
+
+    # Dispensing queue — shared shape with OpticalSale.
+    queue_token = Column(Integer)
+    queue_status = Column(String(20), default="waiting")
+    queue_called_at = Column(DateTime(timezone=True))
 
     hospital = relationship("Hospital", foreign_keys=[hospital_id])
     patient = relationship("Patient", foreign_keys=[patient_id])
@@ -101,3 +111,35 @@ class PharmacySaleItem(Base):
     sale = relationship("PharmacySale", foreign_keys=[sale_id])
     medicine = relationship("Medicine", foreign_keys=[medicine_id])
     batch = relationship("MedicineBatch", foreign_keys=[batch_id])
+
+
+# ──────────────────────────────────────────────────
+# PharmacyQueueEntry — BRD v1.1 Pharmacy Queue (PQ-01..06)
+# ──────────────────────────────────────────────────
+class PharmacyQueueEntry(Base):
+    """
+    Pre-billing dispensing queue. Decoupled from PharmacySale on purpose: a
+    token is assigned the moment a doctor finalizes a prescription with
+    medicines (or staff manually add a walk-in) — before any bill exists.
+    Linked to the PharmacySale once dispensing/billing actually happens for
+    that patient.
+    """
+    __tablename__ = "pharmacy_queue_entries"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=False)
+    queue_token = Column(Integer, nullable=False)
+    prescription_id = Column(UUID(as_uuid=True), ForeignKey("prescriptions.id"), nullable=True)
+    patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id"), nullable=True)
+    patient_name = Column(String(200))  # free-text fallback for walk-ins with no patient record
+    doctor_name = Column(String(200))   # denormalized at enqueue time
+    status = Column(String(20), nullable=False, default="waiting")  # waiting | being_served | collected
+    sale_id = Column(UUID(as_uuid=True), ForeignKey("pharmacy_dispensing.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    queue_called_at = Column(DateTime(timezone=True))
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    hospital = relationship("Hospital", foreign_keys=[hospital_id])
+    prescription = relationship("Prescription", foreign_keys=[prescription_id])
+    patient = relationship("Patient", foreign_keys=[patient_id])
+    sale = relationship("PharmacySale", foreign_keys=[sale_id])

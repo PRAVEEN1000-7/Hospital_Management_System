@@ -282,6 +282,13 @@ export interface Sale {
   total_amount: number;
   payment_method: string;
   payment_status: string;
+  amount_tendered: number;
+  advance_amount: number;
+  paid_amount: number;
+  balance_amount: number;
+  consultation_fee: number;
+  queue_token: number | null;
+  queue_status: string | null;
   status: string;
   notes: string | null;
   created_at: string;
@@ -309,6 +316,8 @@ export interface SaleCreateData {
   prescription_date?: string;
   discount_amount?: number;
   payment_method?: string;
+  amount_tendered?: number;
+  consultation_fee?: number;
   notes?: string;
   items: SaleItemCreate[];
 }
@@ -319,6 +328,30 @@ export interface SaleListResponse {
   limit: number;
   total_pages: number;
   data: Sale[];
+}
+
+// ── Pharmacy Queue (BRD v1.1 PQ-01..06) ──
+// Token assigned at prescription finalize (or manual walk-in add), decoupled
+// from billing — see backend billing_queue_service.py.
+export type PharmacyQueueStatus = 'waiting' | 'being_served' | 'collected';
+
+export interface PharmacyQueueEntry {
+  id: string;
+  queue_token: number | null;
+  patient_name: string | null;
+  doctor_name: string | null;
+  prescription_id: string | null;
+  prescription_number: string | null;
+  sale_id: string | null;
+  status: PharmacyQueueStatus;
+  created_at: string;
+  queue_called_at: string | null;
+}
+
+export interface PharmacyQueueManualAddData {
+  patient_id?: string;
+  patient_name?: string;
+  doctor_name?: string;
 }
 
 // ── Stock Adjustment ──

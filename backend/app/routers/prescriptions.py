@@ -393,11 +393,17 @@ async def get_prescription_pdf(
     enriched = enrich_prescription(db, rx)
     patient = db.query(Patient).filter(Patient.id == rx.patient_id).first()
     hospital = db.query(Hospital).filter(Hospital.id == current_user.hospital_id).first()
-    hosp_name = (hospital.name if hospital else "") or "Hospital"
-    hosp_address = (hospital.address_line_1 if hospital else "") or ""
-    hosp_city = (hospital.city if hospital else "") or ""
-    hosp_phone = (hospital.phone if hospital else "") or ""
-    hosp_email = (hospital.email if hospital else "") or ""
+    
+    # Support dual-letterhead via institution_id
+    institution = None
+    if rx.institution_id:
+        institution = db.query(Hospital).filter(Hospital.id == rx.institution_id).first()
+    
+    hosp_name = (institution.name if institution else hospital.name if hospital else "") or "Hospital"
+    hosp_address = (institution.address_line_1 if institution else hospital.address_line_1 if hospital else "") or ""
+    hosp_city = (institution.city if institution else hospital.city if hospital else "") or ""
+    hosp_phone = (institution.phone if institution else hospital.phone if hospital else "") or ""
+    hosp_email = (institution.email if institution else hospital.email if hospital else "") or ""
 
     # Hospital logo → embed as a base64 data URI so it renders in BOTH the print
     # window and the html2canvas PDF download (relative /uploads paths and external
@@ -420,7 +426,7 @@ async def get_prescription_pdf(
             return f"data:{mime};base64,{data}"
         except Exception:
             return ""
-    logo_uri = _logo_data_uri(hospital.logo_url if hospital else "")
+    logo_uri = _logo_data_uri(institution.logo_url if institution else hospital.logo_url if hospital else "")
 
     doctor = db.query(Doctor).filter(Doctor.id == rx.doctor_id).first()
     doctor_name = (doctor.user.full_name if doctor and doctor.user else "") or "—"
@@ -477,6 +483,8 @@ async def get_prescription_pdf(
             <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:center;">
                 {f"{item['duration_value']} {item.get('duration_unit','')}" if item.get('duration_value') else '—'}
             </td>
+            <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:center;">{item.get('quantity','') or '—'}</td>
+            <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:center;">{item.get('route','') or '—'}</td>
             <td style="padding:8px;border-bottom:1px solid #e2e8f0;">{item.get('instructions','') or '—'}</td>
         </tr>"""
 
@@ -552,18 +560,33 @@ td {{ font-size:13px; }}
     {f'<p><strong>{t["allergies"]}:</strong> <span style="color:#dc2626;">{patient.known_allergies}</span></p>' if patient and patient.known_allergies else ''}
 </div>
 
+{f'<div class="diagnosis"><strong>Patient History:</strong> {"Blood Sugar: " + rx.vitals_blood_sugar if rx.vitals_blood_sugar else ""}{" | Symptoms: " + ", ".join(patient.symptoms) if patient and patient.symptoms else ""}</div>' if rx.vitals_blood_sugar or (patient and patient.symptoms) else ''}
+
 {f'<div class="diagnosis"><strong>{t["diagnosis"]}:</strong> {rx.diagnosis}</div>' if rx.diagnosis else ''}
 {f'<div class="diagnosis"><strong>{t["clinical_notes"]}:</strong> {rx.clinical_notes}</div>' if rx.clinical_notes else ''}
+
+{f'''<div class="diagnosis" style="background:#fef3c7;position:relative;padding-right:100px;">
+    <strong>Ophthalmology Examination:</strong><br/>{rx.opthal_notes}
+    <svg width="80" height="54" viewBox="0 0 90 60" style="position:absolute;top:8px;right:8px;">
+        <ellipse cx="45" cy="30" rx="42" ry="22" fill="none" stroke="#1e293b" stroke-width="2" />
+        <circle cx="45" cy="30" r="13" fill="none" stroke="#1e293b" stroke-width="2" />
+        <circle cx="45" cy="30" r="6" fill="#1e293b" />
+        <path d="M3 30 Q45 8 87 30" fill="none" stroke="#1e293b" stroke-width="1.5" />
+        <path d="M3 30 Q45 52 87 30" fill="none" stroke="#1e293b" stroke-width="1.5" />
+    </svg>
+</div>''' if rx.is_opthal and rx.opthal_notes else ''}
 
 <table>
 <thead>
 <tr>
-    <th style="width:5%;">{t['sl_no']}</th>
-    <th style="width:25%;">{t['medicine']}</th>
-    <th style="width:12%;text-align:center;">{t['dosage']}</th>
-    <th style="width:12%;text-align:center;">{t['frequency']}</th>
-    <th style="width:15%;text-align:center;">{t['duration']}</th>
-    <th style="width:25%;">{t['instructions']}</th>
+    <th style="width:4%;">{t['sl_no']}</th>
+    <th style="width:22%;">{t['medicine']}</th>
+    <th style="width:10%;text-align:center;">{t['dosage']}</th>
+    <th style="width:10%;text-align:center;">{t['frequency']}</th>
+    <th style="width:12%;text-align:center;">{t['duration']}</th>
+    <th style="width:8%;text-align:center;">Qty</th>
+    <th style="width:10%;text-align:center;">Route</th>
+    <th style="width:24%;">{t['instructions']}</th>
 </tr>
 </thead>
 <tbody>{items_html}</tbody>

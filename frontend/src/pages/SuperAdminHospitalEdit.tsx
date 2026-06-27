@@ -187,6 +187,7 @@ interface EditForm {
   phone_code: string;
   phone_number: string;
   registration_number: string;
+  specialty: string;
   address_line_1: string;
   address_line_2: string;
   city: string;
@@ -245,6 +246,7 @@ const SuperAdminHospitalEdit: React.FC = () => {
     phone_code: '+1',
     phone_number: '',
     registration_number: '',
+    specialty: 'general',
     address_line_1: '',
     address_line_2: '',
     city: '',
@@ -269,6 +271,7 @@ const SuperAdminHospitalEdit: React.FC = () => {
           phone_code: code,
           phone_number: number,
           registration_number: t.registration_number || '',
+          specialty: t.specialty || 'general',
           address_line_1: t.address_line_1 || '',
           address_line_2: t.address_line_2 || '',
           city: t.city || '',
@@ -340,6 +343,7 @@ const SuperAdminHospitalEdit: React.FC = () => {
         email: form.email,
         phone,
         registration_number: form.registration_number || null,
+        specialty: form.specialty,
         address_line_1: form.address_line_1 || null,
         address_line_2: form.address_line_2 || null,
         city: form.city || null,
@@ -476,6 +480,21 @@ const SuperAdminHospitalEdit: React.FC = () => {
                 onChange={(e) => set('registration_number', e.target.value.slice(0, 14))}
               />
               <p className={hintClass}>Required for compliance and regulatory reporting</p>
+            </div>
+
+            {/* Specialty */}
+            <div>
+              <label className={labelClass}>Hospital Specialty</label>
+              <select
+                className={selectClass}
+                value={form.specialty}
+                onChange={(e) => set('specialty', e.target.value)}
+              >
+                <option value="general">General</option>
+                <option value="eye_hospital">Eye Hospital</option>
+                <option value="multi_specialty">Multi-Specialty (incl. Eye Care)</option>
+              </select>
+              <p className={hintClass}>Determines which clinical modules (e.g. Optical/Ophthalmology) this hospital can use</p>
             </div>
 
             {/* Phone — full width */}

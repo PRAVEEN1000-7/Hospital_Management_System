@@ -46,6 +46,10 @@ def create_patient(
         emergency_contact_phone=patient_data.emergency_contact_phone,
         emergency_contact_country_code=getattr(patient_data, 'emergency_contact_country_code', None) or '+91',
         emergency_contact_relation=patient_data.emergency_contact_relation,
+        reason_for_visit=getattr(patient_data, 'reason_for_visit', None),
+        symptoms=getattr(patient_data, 'symptoms', None),
+        blood_sugar_value=getattr(patient_data, 'blood_sugar_value', None),
+        blood_sugar_unit=getattr(patient_data, 'blood_sugar_unit', None),
         created_by=user_id,
         updated_by=user_id,
     )

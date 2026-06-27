@@ -274,6 +274,9 @@ class OpticalSaleCreate(BaseModel):
     right_lens_product_id: Optional[str] = None
     left_lens_product_id: Optional[str] = None
     discount_amount: Decimal = Field(default=Decimal("0"), ge=0)
+    payment_method: str = Field(default="cash", pattern="^(cash|card|upi|bank_transfer|insurance)$")
+    amount_tendered: Decimal = Field(default=Decimal("0"), ge=0)
+    advance_amount: Decimal = Field(default=Decimal("0"), ge=0)
     notes: Optional[str] = None
     items: list[OpticalSaleItemCreate] = Field(..., min_length=1)
 
@@ -312,7 +315,13 @@ class OpticalSaleResponse(BaseModel):
     tax_amount: Decimal = Decimal("0")
     total_amount: Decimal = Decimal("0")
     payment_method: str = "cash"
-    payment_status: str = "paid"
+    payment_status: str = "pending"
+    amount_tendered: Decimal = Decimal("0")
+    advance_amount: Decimal = Decimal("0")
+    paid_amount: Decimal = Decimal("0")
+    balance_amount: Decimal = Decimal("0")
+    queue_token: Optional[int] = None
+    queue_status: Optional[str] = None
     notes: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
@@ -335,6 +344,26 @@ class OpticalSaleListResponse(BaseModel):
     limit: int
     total_pages: int
     data: list[OpticalSaleResponse]
+
+
+# ══════════════════════════════════════════════════
+# Dispensing Queue — sale-triggered (unlike Pharmacy's prescription-triggered
+# PharmacyQueueEntryResponse/PharmacyQueueStatusUpdate in schemas/pharmacy.py).
+# ══════════════════════════════════════════════════
+class OpticalQueueEntryResponse(BaseModel):
+    id: str
+    invoice_number: str
+    patient_name: Optional[str] = None
+    queue_token: Optional[int] = None
+    queue_status: str = "waiting"
+    total_amount: Decimal = Decimal("0")
+    payment_status: str = "pending"
+    created_at: datetime
+    queue_called_at: Optional[datetime] = None
+
+
+class OpticalQueueStatusUpdate(BaseModel):
+    queue_status: str = Field(..., pattern="^(waiting|being_served|ready|collected)$")
 
 
 # ══════════════════════════════════════════════════

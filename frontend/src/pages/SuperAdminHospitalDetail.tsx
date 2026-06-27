@@ -46,6 +46,7 @@ interface Tenant {
   primary_color: string;
   secondary_color: string;
   registration_number?: string;
+  specialty: string;
   is_verified: boolean;
   verified_at?: string;
   onboarding_completed: boolean;
@@ -430,6 +431,7 @@ const SuperAdminHospitalDetail: React.FC = () => {
               <InfoRow label="Email" value={tenant.email} />
               <InfoRow label="Phone" value={tenant.phone} />
               <InfoRow label="Registration No." value={tenant.registration_number} />
+              <InfoRow label="Hospital Specialty" value={tenant.specialty.replace('_', ' ').toUpperCase()} />
             </SectionCard>
 
             {/* Hospital admin login */}

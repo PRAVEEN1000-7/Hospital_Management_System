@@ -3,9 +3,9 @@ Patient model — matches new hms_db UUID schema.
 """
 import uuid
 from sqlalchemy import (
-    Column, String, Boolean, DateTime, Date, Integer, Text, ForeignKey, UniqueConstraint
+    Column, String, Boolean, DateTime, Date, Integer, Text, ForeignKey, UniqueConstraint, Numeric
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from ..database import Base
@@ -46,6 +46,11 @@ class Patient(Base):
     known_allergies = Column(Text)
     chronic_conditions = Column(Text)
     notes = Column(Text)
+    # Patient History Block fields (BRD v1.1)
+    reason_for_visit = Column(Text)
+    symptoms = Column(JSONB)  # Array of symptom strings (multi-select + custom entries)
+    blood_sugar_value = Column(Numeric(10, 2))
+    blood_sugar_unit = Column(String(10))  # 'mg/dL' or 'mmol/L'
     preferred_language = Column(String(10), default="en")
     is_active = Column(Boolean, default=True)
     registered_at = Column(DateTime(timezone=True), server_default=func.now())

@@ -45,6 +45,47 @@ def _next_queue_position(db: Session, doctor_id: uuid.UUID, queue_date: date) ->
     return (active or 0) + 1
 
 
+# Appointment types that get a Queue Display token — kept here so booking,
+# cancel, and reschedule all agree on the same set.
+QUEUE_SUPPORTED_TYPES = {"scheduled", "follow-up", "follow_up", "referral"}
+
+
+def _create_queue_entry(db: Session, appt: Appointment) -> None:
+    """Assign a queue token for today-or-later appointments so the patient
+    shows up on the Doctor 1/2 Queue Display columns. No-op for past dates,
+    walk-ins (handled separately in walk_ins.py), or unsupported types."""
+    if not (
+        appt.doctor_id
+        and appt.appointment_date
+        and appt.appointment_date >= date.today()
+        and appt.appointment_type in QUEUE_SUPPORTED_TYPES
+    ):
+        return
+    db.flush()
+    db.add(
+        AppointmentQueue(
+            appointment_id=appt.id,
+            doctor_id=appt.doctor_id,
+            queue_date=appt.appointment_date,
+            queue_number=_next_queue_number(db, appt.doctor_id, appt.appointment_date),
+            position=_next_queue_position(db, appt.doctor_id, appt.appointment_date),
+            status="waiting",
+        )
+    )
+
+
+def _skip_queue_entry(db: Session, appointment_id: uuid.UUID) -> None:
+    """Mark this appointment's queue entry (if any) skipped — used on cancel/
+    reschedule so a stale token doesn't sit on the Queue Display forever."""
+    entry = (
+        db.query(AppointmentQueue)
+        .filter(AppointmentQueue.appointment_id == appointment_id)
+        .first()
+    )
+    if entry and entry.status not in ("completed", "skipped"):
+        entry.status = "skipped"
+
+
 # ── Number generation ──────────────────────────────────────────────────────
 
 def generate_appointment_number(appointment_type: str = "scheduled") -> str:
@@ -118,25 +159,11 @@ def create_appointment(
     )
     db.add(appt)
 
-    # Upcoming view should include future scheduled, follow-up and referral appointments.
-    queue_supported_types = {"scheduled", "follow-up", "follow_up", "referral"}
-    if (
-        doctor_id
-        and appt.appointment_date
-        and appt.appointment_date > date.today()
-        and appointment_type in queue_supported_types
-    ):
-        db.flush()
-        db.add(
-            AppointmentQueue(
-                appointment_id=appt.id,
-                doctor_id=doctor_id,
-                queue_date=appt.appointment_date,
-                queue_number=_next_queue_number(db, doctor_id, appt.appointment_date),
-                position=_next_queue_position(db, doctor_id, appt.appointment_date),
-                status="waiting",
-            )
-        )
+    # Assign a queue token immediately at booking time (not just for walk-ins)
+    # — see _create_queue_entry. Previously this only ran for STRICTLY future
+    # dates (`> date.today()`), so a same-day booking never got a token at all
+    # and would never appear on the Queue Display.
+    _create_queue_entry(db, appt)
 
     db.commit()
     db.refresh(appt)
@@ -308,7 +335,10 @@ def cancel_appointment(
     old_status = appt.status
     appt.status = "cancelled"
     appt.cancel_reason = reason
-    
+    # Without this, a cancelled appointment's token kept sitting on the Queue
+    # Display marked "waiting" forever, since nothing else ever touches it.
+    _skip_queue_entry(db, appt.id)
+
     db.commit()
     db.refresh(appt)
     _log_status_change(db, appt.id, old_status, "cancelled", cancelled_by, reason)
@@ -331,12 +361,19 @@ def reschedule_appointment(
         return None
     
     old_status = appt.status
+    # Drop the token under the old date before moving it — otherwise the old
+    # slot keeps showing "waiting" on the Queue Display under a date the
+    # appointment no longer occupies.
+    _skip_queue_entry(db, appt.id)
     appt.appointment_date = new_date
     appt.start_time = new_time
     appt.status = "rescheduled"
     appt.reschedule_count = (appt.reschedule_count or 0) + 1
     appt.reschedule_reason = reason
-    
+    # Re-issue a token under the new date so it still shows up on the Queue
+    # Display for whichever day it now falls on.
+    _create_queue_entry(db, appt)
+
     db.commit()
     db.refresh(appt)
     _log_status_change(db, appt.id, old_status, "rescheduled", performed_by, reason)

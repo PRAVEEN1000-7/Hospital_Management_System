@@ -7,6 +7,7 @@ import prescriptionService from '../services/prescriptionService';
 import patientService from '../services/patientService';
 import walkInService from '../services/walkInService';
 import scheduleService from '../services/scheduleService';
+import hospitalService, { type HospitalInstitutionOption } from '../services/hospitalService';
 import type { PrescriptionItemCreate, Medicine, PrescriptionTemplate } from '../types/prescription';
 import type { Patient } from '../types/patient';
 import type { DoctorOption } from '../types/appointment';
@@ -127,9 +128,25 @@ const PrescriptionBuilder: React.FC = () => {
   const [patient, setPatient] = useState<Patient | null>(null);
   const [clinicalNotes, setClinicalNotes] = useState('');
   const [advice, setAdvice] = useState('');
+  const [isOpthal, setIsOpthal] = useState(user?.hospital_specialty === 'eye_hospital');
+  const [opthalNotes, setOpthalNotes] = useState('');
   const [blocks, setBlocks] = useState<DiagnosisBlock[]>([createBlock()]);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // Check if hospital is eye hospital or multi-specialty
+  const isEyeHospital = user?.hospital_specialty === 'eye_hospital' || user?.hospital_specialty === 'multi_specialty';
+
+  // Institution dual-letterhead selector (BRD §4.2) + Patient History auto-fill (BRD §4.4)
+  const [institutionId, setInstitutionId] = useState('');
+  const [institutions, setInstitutions] = useState<HospitalInstitutionOption[]>([]);
+  const [vitalsBloodSugar, setVitalsBloodSugar] = useState('');
+  const [historySymptoms, setHistorySymptoms] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!isEyeHospital) return;
+    hospitalService.getInstitutions().then(setInstitutions).catch(() => {});
+  }, [isEyeHospital]);
 
   // Vitals state
   const [vitalsBp, setVitalsBp] = useState('');
@@ -203,10 +220,20 @@ const PrescriptionBuilder: React.FC = () => {
   useEffect(() => {
     if (patientId) {
       patientService.getPatient(patientId)
-        .then(p => { setPatient(p); setShowPatientSearch(false); })
+        .then(p => {
+          setPatient(p);
+          setShowPatientSearch(false);
+          // Patient History auto-fill (BRD §2.5/§4.4) — only for a brand-new
+          // prescription; editing an existing one keeps what was saved on it.
+          if (isEyeHospital && !editId) {
+            if (p.blood_sugar_value != null) setVitalsBloodSugar(`${p.blood_sugar_value} ${p.blood_sugar_unit || 'mg/dL'}`);
+            if (p.symptoms?.length) setHistorySymptoms(p.symptoms);
+            if (p.reason_for_visit) setClinicalNotes(prev => prev || p.reason_for_visit || '');
+          }
+        })
         .catch(() => showToast('error', 'Patient not found'));
     }
-  }, [patientId]);
+  }, [patientId, isEyeHospital, editId]);
 
   // Load existing prescription in edit mode
   useEffect(() => {
@@ -223,6 +250,10 @@ const PrescriptionBuilder: React.FC = () => {
         setAppointmentId(rx.appointment_id || '');
         setClinicalNotes(rx.clinical_notes || '');
         setAdvice(rx.advice || '');
+        setIsOpthal(rx.is_opthal || false);
+        setOpthalNotes(rx.opthal_notes || '');
+        setInstitutionId(rx.institution_id || '');
+        setVitalsBloodSugar(rx.vitals_blood_sugar || '');
         setVitalsBp(rx.vitals_bp || '');
         setVitalsPulse(rx.vitals_pulse || '');
         setVitalsTemp(rx.vitals_temp || '');
@@ -568,8 +599,10 @@ const PrescriptionBuilder: React.FC = () => {
       vitals_temp: vitalsTemp || undefined,
       vitals_weight: vitalsWeight || undefined,
       vitals_spo2: vitalsSpo2 || undefined,
+      vitals_blood_sugar: isEyeHospital ? (vitalsBloodSugar || undefined) : undefined,
       follow_up_date: followUpDate || undefined,
     };
+    const institutionPayload = isEyeHospital ? { institution_id: institutionId || undefined } : {};
 
     setSaving(true);
     try {
@@ -581,6 +614,9 @@ const PrescriptionBuilder: React.FC = () => {
           diagnosis: allDiagnoses || undefined,
           clinical_notes: clinicalNotes || undefined,
           advice: advice || undefined,
+          is_opthal: isEyeHospital ? isOpthal : undefined,
+          opthal_notes: isEyeHospital ? (opthalNotes || undefined) : undefined,
+          ...institutionPayload,
           ...vitalsPayload,
           items: validItems,
         });
@@ -594,6 +630,9 @@ const PrescriptionBuilder: React.FC = () => {
           diagnosis: allDiagnoses || undefined,
           clinical_notes: clinicalNotes || undefined,
           advice: advice || undefined,
+          is_opthal: isEyeHospital ? isOpthal : undefined,
+          opthal_notes: isEyeHospital ? (opthalNotes || undefined) : undefined,
+          ...institutionPayload,
           ...vitalsPayload,
           items: validItems,
         });
@@ -1111,6 +1150,59 @@ const PrescriptionBuilder: React.FC = () => {
             </div>
           ))}
 
+          {/* Institution selector (BRD §4.2) — eye-hospital feature pack only */}
+          {isEyeHospital && institutions.length > 1 && (
+            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+              <h3 className="font-semibold mb-3 flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-sm">corporate_fare</span> Institution Letterhead
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {institutions.map((inst: HospitalInstitutionOption) => (
+                  <button
+                    key={inst.id}
+                    type="button"
+                    onClick={() => setInstitutionId(inst.id)}
+                    className={`px-4 py-2 text-sm font-semibold rounded-lg border transition-colors ${
+                      institutionId === inst.id
+                        ? 'bg-primary text-white border-primary'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    {inst.name.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Patient History — auto-filled from registration (BRD §2.5/§4.4) */}
+          {isEyeHospital && (historySymptoms.length > 0 || vitalsBloodSugar) && (
+            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+              <h3 className="font-semibold mb-4 flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-sm">history</span> Patient History
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase mb-1.5 block">Blood Sugar</label>
+                  <input
+                    value={vitalsBloodSugar}
+                    onChange={e => setVitalsBloodSugar(e.target.value)}
+                    className="input-field"
+                    placeholder="e.g. 110 mg/dL"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase mb-1.5 block">Symptoms</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {historySymptoms.map(s => (
+                      <span key={s} className="px-2.5 py-1 text-xs font-medium rounded-full bg-slate-100 text-slate-700">{s}</span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Clinical Notes */}
           <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
             <h3 className="font-semibold mb-4 flex items-center gap-2">
@@ -1124,6 +1216,45 @@ const PrescriptionBuilder: React.FC = () => {
               placeholder="Patient presents with..."
             />
           </div>
+
+          {/* Opthal toggle + notes (BRD §4.5) — eye-hospital feature pack only */}
+          {isEyeHospital && (
+            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold flex items-center gap-2">
+                  <span className="material-symbols-outlined text-primary text-sm">visibility</span>
+                  {isOpthal ? 'Opthal Notes' : 'Ophthalmology'}
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setIsOpthal(v => !v)}
+                  className={`px-4 py-1.5 text-xs font-bold rounded-lg border transition-colors ${
+                    isOpthal ? 'bg-primary text-white border-primary' : 'bg-white text-primary border-primary/30 hover:bg-primary/5'
+                  }`}
+                >
+                  {isOpthal ? 'OPTHAL ✓' : 'ADD OPTHAL'}
+                </button>
+              </div>
+              {isOpthal && (
+                <div className="flex gap-4">
+                  <textarea
+                    rows={4}
+                    value={opthalNotes}
+                    onChange={e => setOpthalNotes(e.target.value)}
+                    className="input-field flex-1"
+                    placeholder="Eye examination findings, diagnosis, lens/IOP details..."
+                  />
+                  <svg width="90" height="60" viewBox="0 0 90 60" className="flex-shrink-0 self-start mt-1">
+                    <ellipse cx="45" cy="30" rx="42" ry="22" fill="none" stroke="#1e293b" strokeWidth="2" />
+                    <circle cx="45" cy="30" r="13" fill="none" stroke="#1e293b" strokeWidth="2" />
+                    <circle cx="45" cy="30" r="6" fill="#1e293b" />
+                    <path d="M3 30 Q45 8 87 30" fill="none" stroke="#1e293b" strokeWidth="1.5" />
+                    <path d="M3 30 Q45 52 87 30" fill="none" stroke="#1e293b" strokeWidth="1.5" />
+                  </svg>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Advice */}
           <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">

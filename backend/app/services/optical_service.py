@@ -325,6 +325,8 @@ def create_sale(db: Session, hospital_id: uuid.UUID, data: dict, user_id: uuid.U
                     f"An eye prescription is required to sell {product.name} ({product.category})"
                 )
 
+    from .billing_queue_service import generate_daily_queue_token
+
     sale = OpticalSale(
         hospital_id=hospital_id,
         invoice_number=_generate_order_number(db, hospital_id),
@@ -337,6 +339,11 @@ def create_sale(db: Session, hospital_id: uuid.UUID, data: dict, user_id: uuid.U
         left_lens_product_id=uuid.UUID(data["left_lens_product_id"]) if data.get("left_lens_product_id") else None,
         discount_amount=data.get("discount_amount", Decimal("0")),
         notes=data.get("notes"),
+        payment_method=data.get("payment_method", "cash"),
+        amount_tendered=Decimal(str(data.get("amount_tendered", 0))),
+        advance_amount=Decimal(str(data.get("advance_amount", 0))),
+        queue_token=generate_daily_queue_token(db, hospital_id, OpticalSale),
+        queue_status="waiting",
     )
     db.add(sale)
     db.flush()
@@ -439,6 +446,55 @@ def create_sale(db: Session, hospital_id: uuid.UUID, data: dict, user_id: uuid.U
     sale.subtotal = subtotal
     sale.tax_amount = tax_total
     sale.total_amount = subtotal - sale.discount_amount + tax_total
+
+    from .billing_queue_service import compute_payment_breakdown
+    breakdown = compute_payment_breakdown(
+        sale.total_amount, advance_amount=sale.advance_amount, amount_tendered=sale.amount_tendered
+    )
+    sale.paid_amount = breakdown["paid_amount"]
+    sale.balance_amount = breakdown["balance_amount"]
+    sale.payment_status = breakdown["payment_status"]
+
+    db.commit()
+    db.refresh(sale)
+    return sale
+
+
+def list_optical_queue(db: Session, hospital_id: uuid.UUID) -> list[dict]:
+    """Today's optical sales ordered by queue token — the Waiting/Being Served/Ready/Collected board."""
+    today = date.today()
+    sales = (
+        db.query(OpticalSale)
+        .filter(
+            OpticalSale.hospital_id == hospital_id,
+            func.date(OpticalSale.created_at) == today,
+        )
+        .order_by(OpticalSale.queue_token.asc())
+        .all()
+    )
+    return [
+        {
+            "id": str(s.id),
+            "invoice_number": s.invoice_number,
+            "patient_name": s.patient.full_name if getattr(s, "patient", None) else None,
+            "queue_token": s.queue_token,
+            "queue_status": s.queue_status,
+            "total_amount": s.total_amount,
+            "payment_status": s.payment_status,
+            "created_at": s.created_at,
+            "queue_called_at": s.queue_called_at,
+        }
+        for s in sales
+    ]
+
+
+def update_optical_queue_status(db: Session, sale_id: str | uuid.UUID, new_status: str) -> Optional[OpticalSale]:
+    from .billing_queue_service import advance_queue_status
+
+    sale = get_sale(db, sale_id)
+    if not sale:
+        return None
+    advance_queue_status(sale, new_status)
     db.commit()
     db.refresh(sale)
     return sale
@@ -503,7 +559,13 @@ def list_sales(
             "tax_amount": sale.tax_amount,
             "total_amount": sale.total_amount,
             "payment_method": getattr(sale, "payment_method", "cash"),
-            "payment_status": getattr(sale, "payment_status", "paid"),
+            "payment_status": getattr(sale, "payment_status", "pending"),
+            "amount_tendered": sale.amount_tendered,
+            "advance_amount": sale.advance_amount,
+            "paid_amount": sale.paid_amount,
+            "balance_amount": sale.balance_amount,
+            "queue_token": sale.queue_token,
+            "queue_status": sale.queue_status,
             "notes": sale.notes,
             "created_at": sale.created_at,
             "updated_at": sale.updated_at,

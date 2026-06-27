@@ -19,6 +19,7 @@ from ..schemas.patient import (
 from ..models.patient import Patient
 from ..models.user import User
 from ..dependencies import get_current_active_user, require_any_role
+from ..core.tenant_security import is_eye_hospital_feature_enabled
 from ..services.patient_service import (
     create_patient,
     get_patient_by_id,
@@ -65,6 +66,14 @@ async def create_new_patient(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="A patient with this phone number already exists in this hospital",
             )
+
+        # Patient History block is part of the eye-hospital feature pack —
+        # ignore it for hospitals not classified eye_hospital/multi_specialty.
+        if not is_eye_hospital_feature_enabled(current_user.hospital):
+            patient.reason_for_visit = None
+            patient.symptoms = None
+            patient.blood_sugar_value = None
+            patient.blood_sugar_unit = None
 
         db_patient = create_patient(
             db,
@@ -164,6 +173,12 @@ async def update_existing_patient(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Phone number already exists in this hospital",
                 )
+
+        if not is_eye_hospital_feature_enabled(current_user.hospital):
+            patient_data.reason_for_visit = None
+            patient_data.symptoms = None
+            patient_data.blood_sugar_value = None
+            patient_data.blood_sugar_unit = None
 
         updated = update_patient(db, patient_id, patient_data, current_user.id)
         return PatientResponse.model_validate(updated)

@@ -26,6 +26,11 @@ export interface Patient {
   photo_url: string | null;
   known_allergies: string | null;
   chronic_conditions: string | null;
+  // Patient History block (BRD v1.1 §2) — eye-hospital feature pack only
+  reason_for_visit: string | null;
+  symptoms: string[] | null;
+  blood_sugar_value: number | null;
+  blood_sugar_unit: string | null;
   is_deleted: boolean;
   created_by: string | null;
   updated_by: string | null;
@@ -78,4 +83,8 @@ export interface PatientCreateData {
   emergency_contact_phone?: string;
   emergency_contact_country_code?: string;
   emergency_contact_relation?: string;
+  reason_for_visit?: string;
+  symptoms?: string[];
+  blood_sugar_value?: number;
+  blood_sugar_unit?: string;
 }

@@ -333,6 +333,13 @@ async def get_queue_status(
             Appointment.appointment_date == target_date,
         )
     )
+    # Tenant isolation: without this, omitting doctor_id (e.g. the receptionist
+    # "all doctors" view, or any caller that doesn't pass one) returned every
+    # hospital's walk-in queue mixed together — AppointmentQueue has no
+    # hospital_id column of its own, so it must be scoped via Appointment.
+    # Platform super admins (no hospital_id) intentionally see everything.
+    if getattr(current_user, "hospital_id", None):
+        query = query.filter(Appointment.hospital_id == current_user.hospital_id)
     if resolved_doctor_id:
         query = query.filter(AppointmentQueue.doctor_id == resolved_doctor_id)
 

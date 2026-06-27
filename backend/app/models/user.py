@@ -21,6 +21,7 @@ class Hospital(Base):
     name = Column(String(200), nullable=False)
     code = Column(String(20), unique=True, nullable=False)
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("saas_core.tenants.id"))
+    specialty = Column(String(30), nullable=False, default="general")  # 'general' | 'eye_hospital' | 'multi_specialty'
     logo_url = Column(String(500))
     address_line_1 = Column(String(255))
     address_line_2 = Column(String(255))

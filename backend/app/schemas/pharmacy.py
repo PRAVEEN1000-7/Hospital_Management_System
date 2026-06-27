@@ -395,7 +395,9 @@ class SaleCreate(BaseModel):
     prescription_number: Optional[str] = Field(None, max_length=50)
     prescription_date: Optional[date] = None
     discount_amount: Decimal = Field(default=Decimal("0"), ge=0)
-    payment_method: str = Field(default="cash", pattern="^(cash|card|upi|insurance)$")
+    payment_method: str = Field(default="cash", pattern="^(cash|card|upi|bank_transfer|insurance)$")
+    amount_tendered: Decimal = Field(default=Decimal("0"), ge=0)
+    consultation_fee: Decimal = Field(default=Decimal("0"), ge=0)
     notes: Optional[str] = None
     items: list[SaleItemCreate] = Field(..., min_length=1)
 
@@ -441,7 +443,14 @@ class SaleResponse(BaseModel):
     tax_amount: Decimal = Decimal("0")
     total_amount: Decimal = Decimal("0")
     payment_method: str = "cash"
-    payment_status: str = "paid"
+    payment_status: str = "pending"
+    amount_tendered: Decimal = Decimal("0")
+    advance_amount: Decimal = Decimal("0")
+    paid_amount: Decimal = Decimal("0")
+    balance_amount: Decimal = Decimal("0")
+    consultation_fee: Decimal = Decimal("0")
+    queue_token: Optional[int] = None
+    queue_status: Optional[str] = None
     status: str = "completed"
     notes: Optional[str] = None
     created_at: datetime
@@ -463,6 +472,41 @@ class SaleListResponse(BaseModel):
     limit: int
     total_pages: int
     data: list[SaleResponse]
+
+
+# ══════════════════════════════════════════════════
+# Pharmacy Queue — BRD v1.1 PQ-01..06. A token is assigned when a doctor
+# finalizes a prescription with medicines (or staff manually add a walk-in),
+# decoupled from billing — see billing_queue_service.py.
+# ══════════════════════════════════════════════════
+class PharmacyQueueEntryResponse(BaseModel):
+    id: str
+    queue_token: Optional[int] = None
+    patient_name: Optional[str] = None
+    doctor_name: Optional[str] = None
+    prescription_id: Optional[str] = None
+    prescription_number: Optional[str] = None
+    sale_id: Optional[str] = None
+    status: str = "waiting"
+    created_at: datetime
+    queue_called_at: Optional[datetime] = None
+
+
+class PharmacyQueueStatusUpdate(BaseModel):
+    status: str = Field(..., pattern="^(waiting|being_served|collected)$")
+
+
+class PharmacyQueueManualAdd(BaseModel):
+    """Manual 'walk-in' add (BRD PQ-03) — either an existing patient or a free-text name."""
+    patient_id: Optional[str] = None
+    patient_name: Optional[str] = Field(None, max_length=200)
+    doctor_name: Optional[str] = Field(None, max_length=200)
+
+    @model_validator(mode="after")
+    def require_identity(self) -> "PharmacyQueueManualAdd":
+        if not self.patient_id and not (self.patient_name and self.patient_name.strip()):
+            raise ValueError("Provide either patient_id or patient_name")
+        return self
 
 
 # ══════════════════════════════════════════════════

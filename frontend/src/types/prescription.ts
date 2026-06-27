@@ -59,8 +59,13 @@ export interface Prescription {
   vitals_temp: string | null;
   vitals_weight: string | null;
   vitals_spo2: string | null;
+  vitals_blood_sugar: string | null;
   follow_up_date: string | null;
   queue_id: string | null;
+  institution_id: string | null;
+  institution_name?: string | null;
+  is_opthal: boolean | null;
+  opthal_notes: string | null;
   version: number;
   status: PrescriptionStatus;
   is_finalized: boolean;
@@ -120,9 +125,13 @@ export interface PrescriptionCreate {
   vitals_temp?: string | null;
   vitals_weight?: string | null;
   vitals_spo2?: string | null;
+  vitals_blood_sugar?: string | null;
   follow_up_date?: string | null;
   queue_id?: string | null;
   valid_until?: string | null;
+  institution_id?: string | null;
+  is_opthal?: boolean | null;
+  opthal_notes?: string | null;
   items: PrescriptionItemCreate[];
 }
 
@@ -135,8 +144,12 @@ export interface PrescriptionUpdate {
   vitals_temp?: string | null;
   vitals_weight?: string | null;
   vitals_spo2?: string | null;
+  vitals_blood_sugar?: string | null;
   follow_up_date?: string | null;
   valid_until?: string | null;
+  institution_id?: string | null;
+  is_opthal?: boolean | null;
+  opthal_notes?: string | null;
   items?: PrescriptionItemCreate[] | null;
 }
 

@@ -5,6 +5,7 @@ import type {
   Sale, SaleCreateData, SaleListResponse,
   StockAdjustment, StockAdjustmentCreate,
   PharmacyDashboard,
+  PharmacyQueueEntry, PharmacyQueueStatus, PharmacyQueueManualAddData,
 } from '../types/pharmacy';
 
 // Types for dispensing
@@ -181,6 +182,22 @@ export const pharmacyService = {
 
   async createSale(data: SaleCreateData): Promise<Sale> {
     const res = await api.post<Sale>('/pharmacy/sales', data);
+    return res.data;
+  },
+
+  // ═══ Dispensing Queue ═══
+  async getQueue(): Promise<PharmacyQueueEntry[]> {
+    const res = await api.get<PharmacyQueueEntry[]>('/pharmacy/queue');
+    return res.data;
+  },
+
+  async addManualQueueEntry(data: PharmacyQueueManualAddData): Promise<PharmacyQueueEntry> {
+    const res = await api.post<PharmacyQueueEntry>('/pharmacy/queue', data);
+    return res.data;
+  },
+
+  async updateQueueStatus(entryId: string, status: PharmacyQueueStatus): Promise<PharmacyQueueEntry> {
+    const res = await api.put<PharmacyQueueEntry>(`/pharmacy/queue/${entryId}/status`, { status });
     return res.data;
   },
 

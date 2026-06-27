@@ -173,6 +173,7 @@ def create_tenant(
         },
         phone=request.phone,
         registration_number=request.registration_number,
+        specialty=request.specialty,
         address_line_1=request.address_line_1,
         address_line_2=request.address_line_2,
         city=request.city,

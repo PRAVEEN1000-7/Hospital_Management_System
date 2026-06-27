@@ -19,6 +19,7 @@ class HospitalCreate(BaseModel):
     default_currency: str = Field(default="INR", max_length=10)
     tax_id: Optional[str] = Field(None, max_length=50)
     registration_number: Optional[str] = Field(None, max_length=50)
+    specialty: str = Field(default="general", pattern="^(general|eye_hospital|multi_specialty)$")
 
 
 class HospitalUpdate(BaseModel):
@@ -37,6 +38,7 @@ class HospitalUpdate(BaseModel):
     default_currency: Optional[str] = Field(None, max_length=10)
     tax_id: Optional[str] = Field(None, max_length=50)
     registration_number: Optional[str] = Field(None, max_length=50)
+    specialty: Optional[str] = Field(None, pattern="^(general|eye_hospital|multi_specialty)$")
     # logo_url intentionally excluded — it must only be set via the dedicated
     # file-upload endpoint (POST /hospital/logo/upload), never as a raw string.
 
@@ -58,6 +60,7 @@ class HospitalResponse(BaseModel):
     default_currency: Optional[str] = None
     tax_id: Optional[str] = None
     registration_number: Optional[str] = None
+    specialty: Optional[str] = None
     logo_url: Optional[str] = None
     is_active: bool = True
     created_at: datetime
@@ -107,6 +110,22 @@ class HospitalPublicInfo(BaseModel):
         if isinstance(data, dict):
             if "id" in data and not isinstance(data["id"], str):
                 data["id"] = str(data["id"])
+        return data
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class HospitalInstitutionOption(BaseModel):
+    """One entry in the institution dual-letterhead selector (BRD §4.2/§5.3)."""
+    id: str
+    name: str
+    specialty: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def transform_fields(cls, data: Any) -> Any:
+        if hasattr(data, "__table__"):
+            return {"id": str(data.id), "name": data.name, "specialty": data.specialty}
         return data
 
     model_config = ConfigDict(from_attributes=True)

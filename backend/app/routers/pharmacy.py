@@ -16,6 +16,7 @@ from ..models.user import User
 from ..models.prescription import Medicine as MedicineModel
 from ..models.pharmacy import MedicineBatch
 from ..dependencies import get_current_active_user, require_admin_or_super_admin
+from ..core.tenant_security import is_eye_hospital_feature_enabled
 from ..schemas.pharmacy import (
     # Medicine
     MedicineCreate, MedicineUpdate, MedicineResponse, MedicineListResponse,
@@ -29,8 +30,11 @@ from ..schemas.pharmacy import (
     PharmacyDashboard,
     # Analytics
     PharmacySalesAnalytics, TopSellingMedicineAnalytics,
+    # Queue
+    PharmacyQueueEntryResponse, PharmacyQueueStatusUpdate, PharmacyQueueManualAdd,
 )
 from ..services import pharmacy_service as svc
+from ..services import billing_queue_service as queue_svc
 
 logger = logging.getLogger(__name__)
 
@@ -344,6 +348,71 @@ async def create_sale(
         logger.error(f"Error creating sale: {e}", exc_info=True)
         db.rollback()
         raise HTTPException(status_code=500, detail="Failed to create sale")
+
+
+# ──────────────────────────────────────────────────
+# Pharmacy Queue (BRD v1.1 PQ-01..06) — eye-hospital feature pack only.
+# Token assigned at prescription finalize (or manual walk-in add), decoupled
+# from billing. See billing_queue_service.py.
+# ──────────────────────────────────────────────────
+def _require_eye_hospital_queue(current_user: User) -> None:
+    if not is_eye_hospital_feature_enabled(current_user.hospital):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="The Pharmacy Queue is only available to hospitals classified as an eye hospital or multi-specialty hospital.",
+        )
+
+
+@router.get("/queue", response_model=list[PharmacyQueueEntryResponse])
+async def get_pharmacy_queue(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    _require_eye_hospital_queue(current_user)
+    return queue_svc.list_pharmacy_queue_entries(db, current_user.hospital_id)
+
+
+@router.post("/queue", response_model=PharmacyQueueEntryResponse, status_code=status.HTTP_201_CREATED)
+async def add_manual_pharmacy_queue_entry(
+    data: PharmacyQueueManualAdd,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Manually add a walk-in pharmacy patient to the queue (BRD PQ-03)."""
+    _require_eye_hospital_queue(current_user)
+    patient_id = None
+    if data.patient_id:
+        from ..services.patient_service import get_patient_by_id
+        patient = get_patient_by_id(db, data.patient_id, hospital_id=current_user.hospital_id)
+        if not patient:
+            raise HTTPException(status_code=404, detail="Patient not found")
+        patient_id = patient.id
+    entry = queue_svc.enqueue_pharmacy_queue_entry(
+        db,
+        hospital_id=current_user.hospital_id,
+        patient_id=patient_id,
+        patient_name=data.patient_name,
+        doctor_name=data.doctor_name,
+    )
+    db.commit()
+    return queue_svc.serialize_pharmacy_queue_entry(entry)
+
+
+@router.put("/queue/{entry_id}/status", response_model=PharmacyQueueEntryResponse)
+async def update_pharmacy_queue_status(
+    entry_id: str,
+    data: PharmacyQueueStatusUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    _require_eye_hospital_queue(current_user)
+    try:
+        result = queue_svc.advance_pharmacy_queue_entry_status(db, entry_id, data.status)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not result:
+        raise HTTPException(status_code=404, detail="Queue entry not found")
+    return result
 
 
 # ──────────────────────────────────────────────────

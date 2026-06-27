@@ -138,7 +138,8 @@ class TenantService:
         # Create tenant
         tenant_data = kwargs.copy()
         trial_days = tenant_data.pop('trial_days', 14)
-        
+        specialty = tenant_data.pop('specialty', 'general')
+
         tenant = Tenant(
             name=name,
             slug=slug,
@@ -149,6 +150,7 @@ class TenantService:
             verified_at=datetime.utcnow(),
             onboarding_completed=False,
             onboarding_step='plan',
+            specialty=specialty,
             **tenant_data
         )
         db.add(tenant)
@@ -162,6 +164,7 @@ class TenantService:
             email=email,
             phone=tenant_data.get('phone'),
             registration_number=tenant_data.get('registration_number'),
+            specialty=specialty,
             address_line_1=tenant_data.get('address_line_1'),
             address_line_2=tenant_data.get('address_line_2'),
             city=tenant_data.get('city'),
@@ -491,10 +494,21 @@ class TenantService:
         # Track changes for audit
         old_values = {}
         
+        # Extract specialty if present to update hospital
+        specialty = updates.pop('specialty', None)
+        
         for key, value in updates.items():
             if hasattr(tenant, key) and value is not None:
                 old_values[key] = getattr(tenant, key)
                 setattr(tenant, key, value)
+        
+        # Also update hospital record if specialty is provided
+        if specialty is not None:
+            old_values['specialty'] = getattr(tenant, 'specialty', None)
+            setattr(tenant, 'specialty', specialty)
+            hospital = db.query(Hospital).filter(Hospital.tenant_id == tenant_id).first()
+            if hospital:
+                hospital.specialty = specialty
         
         tenant.updated_at = datetime.utcnow()
         
@@ -507,7 +521,7 @@ class TenantService:
                 entity_id=tenant_id,
                 entity_name=tenant.name,
                 old_values=old_values,
-                new_values=updates
+                new_values=dict(updates, specialty=specialty) if specialty else updates
             )
             db.add(audit)
         

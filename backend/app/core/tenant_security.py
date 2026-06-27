@@ -19,6 +19,17 @@ from ..config import settings
 
 logger = logging.getLogger(__name__)
 
+# Hospital specialties that unlock the BRD v1.1 "eye hospital" feature pack:
+# Patient History block, Queue Display, Prescription Opthal toggle + dual
+# letterhead, Pharmacy Queue + payment tracking, Optical/Opthal Billing.
+# Gated together as one pack, not module-by-module.
+EYE_HOSPITAL_SPECIALTIES = ("eye_hospital", "multi_specialty")
+
+
+def is_eye_hospital_feature_enabled(hospital) -> bool:
+    """True when `hospital.specialty` qualifies for the BRD v1.1 feature pack."""
+    return getattr(hospital, "specialty", None) in EYE_HOSPITAL_SPECIALTIES
+
 
 class TenantValidator:
     """Validates tenant relationships and data isolation"""
@@ -210,6 +221,18 @@ class SubscriptionValidator:
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail=f"Module '{module_name}' is not enabled for your subscription plan"
                 )
+
+            # Optical/ophthalmology is clinically specific — even with the module
+            # enabled on the subscription, only hospitals actually classified as
+            # eye-focused may use it. Catches the case where a general hospital
+            # in a multi-hospital tenant shouldn't get optical just because some
+            # other hospital under the same tenant subscribed to it.
+            if module_name == 'optical':
+                if not is_eye_hospital_feature_enabled(current_user.hospital):
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="The Optical/Ophthalmology module is only available to hospitals classified as an eye hospital or multi-specialty hospital."
+                    )
 
             return True
 

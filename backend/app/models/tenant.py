@@ -48,6 +48,7 @@ class Tenant(Base):
     # Registration info
     registration_number = Column(String(100))
     tax_id = Column(String(50))
+    specialty = Column(String(50), default="general")
     
     # Status
     status = Column(String(20), default="pending")

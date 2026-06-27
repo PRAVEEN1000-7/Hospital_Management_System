@@ -6,6 +6,7 @@ import type {
   OpticalSale, OpticalSaleCreateData, OpticalSaleListResponse,
   OpticalStockAdjustment, OpticalStockAdjustmentCreate,
   OpticalDashboard,
+  OpticalQueueEntry, OpticalQueueStatus,
 } from '../types/optical';
 
 export interface OpticalSalesTrendPoint {
@@ -144,6 +145,17 @@ export const opticalService = {
 
   async createSale(data: OpticalSaleCreateData): Promise<OpticalSale> {
     const res = await api.post<OpticalSale>('/optical/sales', data);
+    return res.data;
+  },
+
+  // ═══ Dispensing Queue ═══
+  async getQueue(): Promise<OpticalQueueEntry[]> {
+    const res = await api.get<OpticalQueueEntry[]>('/optical/queue');
+    return res.data;
+  },
+
+  async updateQueueStatus(saleId: string, queueStatus: OpticalQueueStatus): Promise<OpticalQueueEntry> {
+    const res = await api.put<OpticalQueueEntry>(`/optical/queue/${saleId}/status`, { queue_status: queueStatus });
     return res.data;
   },
 

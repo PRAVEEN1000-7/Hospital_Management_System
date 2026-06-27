@@ -18,6 +18,8 @@ from ..models.pharmacy import (
     PharmacySale, PharmacySaleItem,
     StockAdjustment,
 )
+from ..models.user import Hospital
+from ..core.tenant_security import is_eye_hospital_feature_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -536,10 +538,22 @@ def _generate_invoice_number(db: Session, hospital_id: uuid.UUID) -> str:
 def create_sale(
     db: Session, hospital_id: uuid.UUID, data: dict, user_id: uuid.UUID
 ) -> PharmacySale:
+    hospital = db.query(Hospital).filter(Hospital.id == hospital_id).first()
+    eye_features = is_eye_hospital_feature_enabled(hospital)
+
     items_data = data.pop("items", [])
     patient_id = data.get("patient_id")
     if patient_id:
         patient_id = uuid.UUID(patient_id)
+
+    # Eye-hospital feature pack: if this patient has an open Pharmacy Queue
+    # entry (auto-enqueued at prescription finalize, or manually added — see
+    # billing_queue_service.py), link this counter sale to it so the queue
+    # token shows on the bill and the queue entry advances to Collected.
+    queue_entry = None
+    if eye_features and patient_id:
+        from .billing_queue_service import find_open_pharmacy_queue_entry_for_patient
+        queue_entry = find_open_pharmacy_queue_entry_for_patient(db, hospital_id, patient_id)
 
     sale = PharmacySale(
         hospital_id=hospital_id,
@@ -551,6 +565,11 @@ def create_sale(
         discount_amount=data.get("discount_amount", Decimal("0")),
         notes=data.get("notes"),
         created_by=user_id,
+        payment_method=data.get("payment_method", "cash") if eye_features else "cash",
+        amount_tendered=Decimal(str(data.get("amount_tendered", 0))) if eye_features else Decimal("0"),
+        consultation_fee=Decimal(str(data.get("consultation_fee", 0))) if eye_features else Decimal("0"),
+        queue_token=queue_entry.queue_token if queue_entry else None,
+        queue_status="collected" if queue_entry else None,
     )
     db.add(sale)
     db.flush()
@@ -654,7 +673,26 @@ def create_sale(
 
     sale.subtotal = subtotal
     sale.tax_amount = tax_total
-    sale.total_amount = subtotal - sale.discount_amount + tax_total
+    sale.total_amount = subtotal - sale.discount_amount + tax_total + sale.consultation_fee
+
+    if eye_features:
+        from .billing_queue_service import compute_payment_breakdown
+        breakdown = compute_payment_breakdown(sale.total_amount, amount_tendered=sale.amount_tendered)
+        sale.paid_amount = breakdown["paid_amount"]
+        sale.balance_amount = breakdown["balance_amount"]
+        sale.payment_status = breakdown["payment_status"]
+    else:
+        # Legacy behavior for general hospitals — no payment/queue tracking.
+        sale.paid_amount = sale.total_amount
+        sale.balance_amount = Decimal("0")
+        sale.payment_status = "paid"
+
+    if queue_entry:
+        queue_entry.sale_id = sale.id
+        queue_entry.status = "collected"
+        if not queue_entry.queue_called_at:
+            queue_entry.queue_called_at = datetime.now(timezone.utc)
+
     db.commit()
     db.refresh(sale)
     return sale
@@ -751,7 +789,14 @@ def list_sales(
             "tax_amount": sale.tax_amount,
             "total_amount": sale.total_amount,
             "payment_method": getattr(sale, "payment_method", "cash"),
-            "payment_status": getattr(sale, "payment_status", "paid"),
+            "payment_status": getattr(sale, "payment_status", "pending"),
+            "amount_tendered": sale.amount_tendered,
+            "advance_amount": sale.advance_amount,
+            "paid_amount": sale.paid_amount,
+            "balance_amount": sale.balance_amount,
+            "consultation_fee": sale.consultation_fee,
+            "queue_token": sale.queue_token,
+            "queue_status": sale.queue_status,
             "status": sale.status,
             "notes": sale.notes,
             "created_at": sale.created_at,

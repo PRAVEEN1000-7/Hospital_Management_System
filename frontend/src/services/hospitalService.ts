@@ -23,10 +23,23 @@ export interface HospitalDetails {
   updated_at: string;
 }
 
+export interface HospitalInstitutionOption {
+  id: string;
+  name: string;
+  specialty: string | null;
+}
+
 export interface HospitalSettings {
   id: string;
   hospital_id: string;
   hospital_code: string;
+  // Queue Display customization (BRD v1.1 §3.4, QD-04/05/06)
+  queue_display_show_doctor2?: boolean;
+  queue_display_show_pharmacy?: boolean;
+  queue_display_show_opthal?: boolean;
+  queue_display_refresh_seconds?: number;
+  queue_display_doctor1_id?: string | null;
+  queue_display_doctor2_id?: string | null;
   patient_id_start_number: number;
   patient_id_sequence: number;
   staff_id_start_number: number;
@@ -128,7 +141,13 @@ export const hospitalService = {
       console.error('Failed to fetch modules:', error);
       return [];
     }
-  }
+  },
+
+  /** Sibling hospitals under the same tenant — the institution dual-letterhead selector (BRD §4.2). */
+  async getInstitutions(): Promise<HospitalInstitutionOption[]> {
+    const response = await api.get<HospitalInstitutionOption[]>('/hospital/institutions');
+    return response.data;
+  },
 };
 
 export default hospitalService;

@@ -361,6 +361,13 @@ class HospitalSettingsUpdate(BaseModel):
     prescription_prefix: Optional[str] = Field(None, max_length=10)
     # Compliance
     data_retention_years: Optional[int] = Field(None, ge=1, le=99)
+    # Queue Display customization (BRD v1.1 §3.4, QD-04/05/06) — eye-hospital feature pack only
+    queue_display_show_doctor2: Optional[bool] = None
+    queue_display_show_pharmacy: Optional[bool] = None
+    queue_display_show_opthal: Optional[bool] = None
+    queue_display_refresh_seconds: Optional[int] = Field(None, ge=5, le=120)
+    queue_display_doctor1_id: Optional[str] = None
+    queue_display_doctor2_id: Optional[str] = None
 
     @field_validator("hospital_code")
     @classmethod

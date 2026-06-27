@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import pharmacyService from '../../services/pharmacyService';
 import type { Medicine, MedicineBatch, SaleItemCreate, SaleCreateData } from '../../types/pharmacy';
 import { useToast } from '../../contexts/ToastContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { format } from 'date-fns';
 
 interface CartItem extends SaleItemCreate {
@@ -18,6 +19,7 @@ interface CartItem extends SaleItemCreate {
 const NewSale: React.FC = () => {
   const navigate = useNavigate();
   const toast = useToast();
+  const { isEyeHospitalFeatureEnabled } = useAuth();
 
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [batchMap, setBatchMap] = useState<Record<string, MedicineBatch[]>>({});
@@ -28,6 +30,8 @@ const NewSale: React.FC = () => {
   const [prescriptionDate, setPrescriptionDate] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [discountAmount, setDiscountAmount] = useState(0);
+  const [amountTendered, setAmountTendered] = useState(0);
+  const [consultationFee, setConsultationFee] = useState(0);
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -114,7 +118,9 @@ const NewSale: React.FC = () => {
     return s + afterDisc * (it.tax_percent || 0) / 100;
   }, 0);
 
-  const grandTotal = subtotal + taxTotal - discountAmount;
+  const grandTotal = subtotal + taxTotal - discountAmount + (isEyeHospitalFeatureEnabled ? consultationFee : 0);
+  // Positive = change to hand back to the patient; negative = still owed.
+  const changeOrDue = amountTendered - grandTotal;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -134,9 +140,11 @@ const NewSale: React.FC = () => {
         doctor_name: doctorName || undefined,
         prescription_number: prescriptionNumber || undefined,
         prescription_date: prescriptionDate || undefined,
-        payment_method: paymentMethod,
         discount_amount: discountAmount,
         notes: notes || undefined,
+        ...(isEyeHospitalFeatureEnabled
+          ? { payment_method: paymentMethod, amount_tendered: amountTendered, consultation_fee: consultationFee }
+          : {}),
         items: cart.map(({ medicine_id, batch_id, quantity, unit_price, discount_percent, tax_percent, dosage_instructions, duration_days }) => ({
           medicine_id, batch_id: batch_id || undefined, quantity, unit_price,
           discount_percent: discount_percent || undefined, tax_percent: tax_percent || undefined,
@@ -176,16 +184,19 @@ const NewSale: React.FC = () => {
               <input value={doctorName} onChange={e => setDoctorName(e.target.value)}
                 className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Payment Method</label>
-              <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}
-                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary">
-                <option value="cash">Cash</option>
-                <option value="card">Card</option>
-                <option value="upi">UPI</option>
-                <option value="insurance">Insurance</option>
-              </select>
-            </div>
+            {isEyeHospitalFeatureEnabled && (
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Payment Method</label>
+                <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary">
+                  <option value="cash">Cash</option>
+                  <option value="card">Card</option>
+                  <option value="upi">UPI</option>
+                  <option value="bank_transfer">Bank Transfer</option>
+                  <option value="insurance">Insurance</option>
+                </select>
+              </div>
+            )}
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
             <div>
@@ -200,6 +211,17 @@ const NewSale: React.FC = () => {
                 className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
             </div>
           </div>
+          {isEyeHospitalFeatureEnabled && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Consultation Fee</label>
+                <input type="number" min={0} step={0.01} value={consultationFee}
+                  onChange={e => setConsultationFee(parseFloat(e.target.value) || 0)}
+                  placeholder="Flows to bill as first line item"
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Add Item */}
@@ -330,10 +352,30 @@ const NewSale: React.FC = () => {
                   onChange={e => setDiscountAmount(parseFloat(e.target.value) || 0)}
                   className="w-24 px-2 py-1 text-sm text-right border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
               </div>
+              {isEyeHospitalFeatureEnabled && consultationFee > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500">Consultation Fee</span>
+                  <span className="font-medium text-slate-700">₹{consultationFee.toFixed(2)}</span>
+                </div>
+              )}
               <div className="flex justify-between text-base font-bold pt-2 border-t border-slate-200">
                 <span>Grand Total</span>
                 <span className="text-primary">₹{grandTotal.toFixed(2)}</span>
               </div>
+              {isEyeHospitalFeatureEnabled && (
+                <>
+                  <div className="flex justify-between text-sm items-center pt-2 border-t border-slate-200">
+                    <span className="text-slate-500">{paymentMethod === 'cash' ? 'Cash' : paymentMethod === 'upi' ? 'UPI' : paymentMethod === 'bank_transfer' ? 'Bank Transfer' : 'Amount'} Received</span>
+                    <input type="number" min={0} step={0.01} value={amountTendered}
+                      onChange={e => setAmountTendered(parseFloat(e.target.value) || 0)}
+                      className="w-24 px-2 py-1 text-sm text-right border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
+                  </div>
+                  <div className="flex justify-between text-sm font-semibold">
+                    <span className={changeOrDue >= 0 ? 'text-slate-500' : 'text-red-500'}>{changeOrDue >= 0 ? 'Balance Returned' : 'Amount Due'}</span>
+                    <span className={changeOrDue >= 0 ? 'text-emerald-600' : 'text-red-600'}>₹{Math.abs(changeOrDue).toFixed(2)}</span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>

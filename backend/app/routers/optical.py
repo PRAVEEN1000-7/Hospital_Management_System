@@ -28,6 +28,8 @@ from ..schemas.optical import (
     OpticalDashboard,
     # Analytics
     OpticalSalesAnalytics, TopSellingOpticalProductAnalytics,
+    # Queue
+    OpticalQueueEntryResponse, OpticalQueueStatusUpdate,
 )
 from ..services import optical_service as svc
 
@@ -620,6 +622,44 @@ async def create_optical_sale(
         logger.error(f"Error creating optical sale: {e}", exc_info=True)
         db.rollback()
         raise HTTPException(status_code=500, detail="Failed to create sale")
+
+
+# ──────────────────────────────────────────────────
+# Dispensing Queue — same Waiting/Being Served/Ready/Collected board as Pharmacy
+# ──────────────────────────────────────────────────
+@router.get("/queue", response_model=list[OpticalQueueEntryResponse])
+async def get_optical_queue(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    return svc.list_optical_queue(db, current_user.hospital_id)
+
+
+@router.put("/queue/{sale_id}/status", response_model=OpticalQueueEntryResponse)
+async def update_optical_queue_status_route(
+    sale_id: str,
+    data: OpticalQueueStatusUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    sale = svc.get_sale(db, sale_id)
+    if not sale or str(sale.hospital_id) != str(current_user.hospital_id):
+        raise HTTPException(status_code=404, detail="Sale not found")
+    try:
+        sale = svc.update_optical_queue_status(db, sale_id, data.queue_status)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {
+        "id": str(sale.id),
+        "invoice_number": sale.invoice_number,
+        "patient_name": sale.patient.full_name if getattr(sale, "patient", None) else None,
+        "queue_token": sale.queue_token,
+        "queue_status": sale.queue_status,
+        "total_amount": sale.total_amount,
+        "payment_status": sale.payment_status,
+        "created_at": sale.created_at,
+        "queue_called_at": sale.queue_called_at,
+    }
 
 
 # ──────────────────────────────────────────────────

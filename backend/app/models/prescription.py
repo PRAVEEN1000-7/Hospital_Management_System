@@ -56,6 +56,7 @@ class Prescription(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=False)
+    institution_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=True)  # For dual-letterhead support
     prescription_number = Column(String(30), unique=True, nullable=False, index=True)
     appointment_id = Column(UUID(as_uuid=True), ForeignKey("appointments.id"), nullable=True)
     patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id"), nullable=False)
@@ -69,6 +70,10 @@ class Prescription(Base):
     vitals_temp = Column(String(10))     # e.g. "98.6"
     vitals_weight = Column(String(10))   # e.g. "70"
     vitals_spo2 = Column(String(10))     # e.g. "98"
+    vitals_blood_sugar = Column(String(20))  # e.g. "120 mg/dL"
+    # Opthal-specific fields
+    is_opthal = Column(Boolean, default=False)  # Toggle for ophthalmology prescriptions
+    opthal_notes = Column(Text)  # Opthal-specific clinical notes/eye diagram data
     follow_up_date = Column(Date)
     queue_id = Column(UUID(as_uuid=True), ForeignKey("appointment_queue.id"), nullable=True)
     version = Column(Integer, default=1)
@@ -83,6 +88,7 @@ class Prescription(Base):
 
     # Relationships
     hospital = relationship("Hospital", foreign_keys=[hospital_id])
+    institution = relationship("Hospital", foreign_keys=[institution_id])
     patient = relationship("Patient", backref="prescriptions")
     doctor = relationship("Doctor", foreign_keys=[doctor_id], backref="prescriptions")
     appointment = relationship("Appointment", foreign_keys=[appointment_id], backref="prescriptions")

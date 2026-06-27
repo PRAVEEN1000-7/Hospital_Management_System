@@ -177,6 +177,12 @@ export interface OpticalSale {
   total_amount: number;
   payment_method: string;
   payment_status: string;
+  amount_tendered: number;
+  advance_amount: number;
+  paid_amount: number;
+  balance_amount: number;
+  queue_token: number | null;
+  queue_status: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -202,8 +208,26 @@ export interface OpticalSaleCreateData {
   right_lens_product_id?: string;
   left_lens_product_id?: string;
   discount_amount?: number;
+  payment_method?: string;
+  amount_tendered?: number;
+  advance_amount?: number;
   notes?: string;
   items: OpticalSaleItemCreate[];
+}
+
+// ── Dispensing Queue (same shape as Pharmacy's) ──
+export type OpticalQueueStatus = 'waiting' | 'being_served' | 'ready' | 'collected';
+
+export interface OpticalQueueEntry {
+  id: string;
+  invoice_number: string;
+  patient_name: string | null;
+  queue_token: number | null;
+  queue_status: OpticalQueueStatus;
+  total_amount: number;
+  payment_status: string;
+  created_at: string;
+  queue_called_at: string | null;
 }
 
 export interface OpticalSaleListResponse {

@@ -20,7 +20,9 @@ from ..models.appointment import Doctor, Appointment
 from ..models.patient import Patient
 from ..models.user import User
 from ..models.hospital_settings import HospitalSettings
-from ..models.pharmacy import PharmacySale, PharmacySaleItem
+from ..models.pharmacy import PharmacySale, PharmacySaleItem, PharmacyQueueEntry
+from ..models.user import Hospital
+from ..core.tenant_security import is_eye_hospital_feature_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -158,6 +160,11 @@ def generate_prescription_number(db: Session, hospital_id: uuid.UUID) -> str:
 # Prescription CRUD
 # ═══════════════════════════════════════════════════════════════════════════
 
+def _eye_hospital_features_enabled(db: Session, hospital_id: uuid.UUID) -> bool:
+    hospital = db.query(Hospital).filter(Hospital.id == hospital_id).first()
+    return is_eye_hospital_feature_enabled(hospital) if hospital else False
+
+
 def create_prescription(
     db: Session,
     data: dict,
@@ -166,6 +173,7 @@ def create_prescription(
 ) -> Prescription:
     """Create a new prescription with optional items."""
     rx_number = generate_prescription_number(db, hospital_id)
+    eye_features = _eye_hospital_features_enabled(db, hospital_id)
 
     # Convert string UUIDs
     patient_id = data.get("patient_id")
@@ -210,9 +218,13 @@ def create_prescription(
         vitals_temp=data.get("vitals_temp"),
         vitals_weight=data.get("vitals_weight"),
         vitals_spo2=data.get("vitals_spo2"),
+        vitals_blood_sugar=data.get("vitals_blood_sugar") if eye_features else None,
         follow_up_date=data.get("follow_up_date"),
         queue_id=uuid.UUID(data["queue_id"]) if data.get("queue_id") else None,
         valid_until=data.get("valid_until"),
+        institution_id=(uuid.UUID(data["institution_id"]) if data.get("institution_id") else None) if eye_features else None,
+        is_opthal=data.get("is_opthal") if eye_features else False,
+        opthal_notes=data.get("opthal_notes") if eye_features else None,
         status="draft",
         created_by=created_by,
     )
@@ -368,12 +380,22 @@ def update_prescription(
     if rx.is_finalized:
         raise ValueError("Cannot update a finalized prescription")
 
+    eye_features = _eye_hospital_features_enabled(db, rx.hospital_id)
+
     # Update top-level fields
     for k in ["diagnosis", "clinical_notes", "advice", "valid_until",
               "vitals_bp", "vitals_pulse", "vitals_temp", "vitals_weight", "vitals_spo2",
               "follow_up_date"]:
-        if k in data and data[k] is not None:
+        if k in data:
             setattr(rx, k, data[k])
+
+    # Eye-hospital feature pack only — silently ignored for general hospitals.
+    if eye_features:
+        for k in ["vitals_blood_sugar", "is_opthal", "opthal_notes"]:
+            if k in data:
+                setattr(rx, k, data[k])
+        if "institution_id" in data:
+            rx.institution_id = uuid.UUID(data["institution_id"]) if data["institution_id"] else None
 
     # Replace items if provided
     if "items" in data and data["items"] is not None:
@@ -503,6 +525,20 @@ def finalize_prescription(
     rx.finalized_at = datetime.now(timezone.utc)
     rx.version = (rx.version or 1) + 1
 
+    # Pharmacy Queue (BRD v1.1 PQ-02) — eye-hospital feature pack only.
+    # A token is assigned right here, at submission, well before any bill
+    # exists — see billing_queue_service.enqueue_pharmacy_queue_entry.
+    if _eye_hospital_features_enabled(db, rx.hospital_id) and any(item.medicine_id for item in items):
+        from .billing_queue_service import enqueue_pharmacy_queue_entry
+        doctor = db.query(Doctor).filter(Doctor.id == rx.doctor_id).first()
+        enqueue_pharmacy_queue_entry(
+            db,
+            hospital_id=rx.hospital_id,
+            prescription=rx,
+            patient_id=rx.patient_id,
+            doctor_name=doctor.user.full_name if doctor and doctor.user else None,
+        )
+
     db.commit()
     db.refresh(rx)
 
@@ -539,9 +575,16 @@ def enrich_prescription(db: Session, rx: Prescription) -> dict:
 
     # Stringify UUIDs
     for uuid_col in ["id", "hospital_id", "patient_id", "doctor_id",
-                      "appointment_id", "queue_id", "created_by"]:
+                      "appointment_id", "queue_id", "created_by", "institution_id"]:
         if d.get(uuid_col):
             d[uuid_col] = str(d[uuid_col])
+
+    if rx.institution_id:
+        from ..models.user import Hospital
+        institution = db.query(Hospital).filter(Hospital.id == rx.institution_id).first()
+        d["institution_name"] = institution.name if institution else None
+    else:
+        d["institution_name"] = None
 
     # Patient name + PRN + full details
     patient = db.query(Patient).filter(Patient.id == rx.patient_id).first()

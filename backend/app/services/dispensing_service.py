@@ -750,7 +750,12 @@ def dispense_prescription(
     dispensing.subtotal = total_amount
     dispensing.tax_amount = tax_amount
     dispensing.net_amount = total_amount
-    
+
+    # Pharmacy Queue (BRD v1.1 PQ-04) — auto-advance the matching queue entry
+    # (if any) to Collected and link it to this bill, now that dispensing is done.
+    from .billing_queue_service import link_pharmacy_queue_entry_to_sale
+    link_pharmacy_queue_entry_to_sale(db, prescription_id, dispensing)
+
     db.commit()
     db.refresh(dispensing)
     

@@ -35,6 +35,9 @@ const NewOpticalSale: React.FC = () => {
   const [prescriptionId, setPrescriptionId] = useState('');
 
   const [discountAmount, setDiscountAmount] = useState(0);
+  const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [advanceAmount, setAdvanceAmount] = useState(0);
+  const [amountTendered, setAmountTendered] = useState(0);
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -93,6 +96,37 @@ const NewOpticalSale: React.FC = () => {
     setSelectedProduct('');
   };
 
+  const quickAddByCategory = async (category: string) => {
+    const product = products.find(p => p.category === category && (p.total_stock ?? 0) > 0);
+    if (!product) {
+      toast.error(`No available ${category} products in stock`);
+      return;
+    }
+
+    const batches = await loadBatches(product.id);
+    const validBatches = batches.filter(b => b.quantity > 0 && (!b.expiry_date || new Date(b.expiry_date) > new Date()));
+    const batch = validBatches[0];
+
+    if (!batch) {
+      toast.error(`No available stock for ${product.name}`);
+      return;
+    }
+
+    setCart(prev => [...prev, {
+      product_id: product.id,
+      product_name: `${product.name}${product.brand ? ` (${product.brand})` : ''}`,
+      category: product.category,
+      batch_id: batch?.id,
+      quantity: 1,
+      unit_price: batch?.selling_price ?? product.selling_price ?? 0,
+      discount_percent: 0,
+      tax_percent: 0,
+      available_qty: batch?.quantity || 0,
+      batch_number: batch?.batch_number,
+      expiry_date: batch?.expiry_date,
+    }]);
+  };
+
   const updateCartItem = (idx: number, field: string, value: string | number) => {
     setCart(prev => prev.map((it, i) => {
       if (i !== idx) return it;
@@ -127,6 +161,8 @@ const NewOpticalSale: React.FC = () => {
   }, 0);
 
   const grandTotal = subtotal + taxTotal - discountAmount;
+  // Positive = still owed (advance + amount received fall short of total); negative = change due back.
+  const remainingDue = grandTotal - advanceAmount - amountTendered;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -151,6 +187,9 @@ const NewOpticalSale: React.FC = () => {
         patient_id: patientId,
         prescription_id: prescriptionId || undefined,
         discount_amount: discountAmount,
+        payment_method: paymentMethod,
+        advance_amount: advanceAmount,
+        amount_tendered: amountTendered,
         notes: notes || undefined,
         items: cart.map(({ product_id, batch_id, quantity, unit_price, discount_percent, tax_percent }) => ({
           product_id, batch_id: batch_id || undefined, quantity, unit_price,
@@ -221,6 +260,18 @@ const NewOpticalSale: React.FC = () => {
         {/* Add Item */}
         <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
           <h2 className="text-lg font-semibold text-slate-900">Items</h2>
+
+          {/* Quick Add Buttons */}
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => quickAddByCategory('frame')}
+              className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">
+              + Add Frame
+            </button>
+            <button type="button" onClick={() => quickAddByCategory('lens')}
+              className="px-3 py-1.5 text-xs font-medium text-white bg-green-600 rounded-lg hover:bg-green-700">
+              + Add Lens
+            </button>
+          </div>
 
           <div className="flex gap-2">
             <select value={selectedProduct} onChange={e => setSelectedProduct(e.target.value)}
@@ -314,10 +365,23 @@ const NewOpticalSale: React.FC = () => {
         {/* Summary */}
         <div className="bg-white rounded-xl border border-slate-200 p-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Notes</label>
-              <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
-                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary resize-none" />
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Notes</label>
+                <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary resize-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Payment Method</label>
+                <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary">
+                  <option value="cash">Cash</option>
+                  <option value="card">Card</option>
+                  <option value="upi">UPI</option>
+                  <option value="bank_transfer">Bank Transfer</option>
+                  <option value="insurance">Insurance</option>
+                </select>
+              </div>
             </div>
             <div className="space-y-2 text-right">
               <div className="flex justify-between text-sm">
@@ -337,6 +401,22 @@ const NewOpticalSale: React.FC = () => {
               <div className="flex justify-between text-base font-bold pt-2 border-t border-slate-200">
                 <span>Grand Total</span>
                 <span className="text-primary">₹{grandTotal.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-sm items-center pt-2 border-t border-slate-200">
+                <span className="text-slate-500">Advance Paid</span>
+                <input type="number" min={0} step={0.01} value={advanceAmount}
+                  onChange={e => setAdvanceAmount(parseFloat(e.target.value) || 0)}
+                  className="w-24 px-2 py-1 text-sm text-right border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
+              </div>
+              <div className="flex justify-between text-sm items-center">
+                <span className="text-slate-500">Amount Received Now</span>
+                <input type="number" min={0} step={0.01} value={amountTendered}
+                  onChange={e => setAmountTendered(parseFloat(e.target.value) || 0)}
+                  className="w-24 px-2 py-1 text-sm text-right border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
+              </div>
+              <div className="flex justify-between text-sm font-semibold">
+                <span className={remainingDue > 0 ? 'text-red-500' : 'text-slate-500'}>{remainingDue > 0 ? 'Remaining Amount' : 'Change Due'}</span>
+                <span className={remainingDue > 0 ? 'text-red-600' : 'text-emerald-600'}>₹{Math.abs(remainingDue).toFixed(2)}</span>
               </div>
             </div>
           </div>

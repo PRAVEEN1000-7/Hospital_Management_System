@@ -16,6 +16,13 @@ interface AuthContextType extends AuthState {
   enabledModules: string[];
   /** Check if a module is enabled for the current tenant. */
   isModuleEnabled: (moduleCode: string) => boolean;
+  /**
+   * True when the current hospital is classified eye_hospital/multi_specialty —
+   * gates the whole BRD v1.1 feature pack (Patient History block, Queue
+   * Display, Prescription Opthal toggle + dual letterhead, Pharmacy Queue +
+   * payment tracking, Optical/Opthal Billing). Super admins always pass.
+   */
+  isEyeHospitalFeatureEnabled: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -131,6 +138,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [state.user, enabledModules],
   );
 
+  const isEyeHospitalFeatureEnabled =
+    state.user?.roles.includes('super_admin') ||
+    state.user?.hospital_specialty === 'eye_hospital' ||
+    state.user?.hospital_specialty === 'multi_specialty' ||
+    false;
+
   // Sync when another tab clears localStorage (e.g. 401 interceptor)
   useEffect(() => {
     const handleStorage = () => {
@@ -150,7 +163,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [state.isAuthenticated]);
 
   return (
-    <AuthContext.Provider value={{ ...state, login, logout, updateUser, hasPermission, hasRole, enabledModules, isModuleEnabled }}>
+    <AuthContext.Provider value={{ ...state, login, logout, updateUser, hasPermission, hasRole, enabledModules, isModuleEnabled, isEyeHospitalFeatureEnabled }}>
       {children}
     </AuthContext.Provider>
   );

@@ -117,7 +117,7 @@ class MedicineResponse(BaseModel):
     def transform(cls, data: Any) -> Any:
         return _orm_to_dict(data)
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
 
 
 class PaginatedMedicineResponse(BaseModel):
@@ -199,7 +199,7 @@ class PrescriptionItemResponse(BaseModel):
     def transform(cls, data: Any) -> Any:
         return _orm_to_dict(data)
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -218,9 +218,13 @@ class PrescriptionCreate(BaseModel):
     vitals_temp: Optional[str] = None
     vitals_weight: Optional[str] = None
     vitals_spo2: Optional[str] = None
+    vitals_blood_sugar: Optional[str] = None
     follow_up_date: Optional[date] = None
     queue_id: Optional[str] = None
     valid_until: Optional[date] = None
+    institution_id: Optional[str] = None
+    is_opthal: Optional[bool] = None
+    opthal_notes: Optional[str] = None
     items: list[PrescriptionItemCreate] = Field(default_factory=list)
 
 
@@ -233,8 +237,12 @@ class PrescriptionUpdate(BaseModel):
     vitals_temp: Optional[str] = None
     vitals_weight: Optional[str] = None
     vitals_spo2: Optional[str] = None
+    vitals_blood_sugar: Optional[str] = None
     follow_up_date: Optional[date] = None
     valid_until: Optional[date] = None
+    institution_id: Optional[str] = None
+    is_opthal: Optional[bool] = None
+    opthal_notes: Optional[str] = None
     items: Optional[list[PrescriptionItemCreate]] = None
 
 
@@ -253,8 +261,13 @@ class PrescriptionResponse(BaseModel):
     vitals_temp: Optional[str] = None
     vitals_weight: Optional[str] = None
     vitals_spo2: Optional[str] = None
+    vitals_blood_sugar: Optional[str] = None
     follow_up_date: Optional[date] = None
     queue_id: Optional[str] = None
+    institution_id: Optional[str] = None
+    institution_name: Optional[str] = None
+    is_opthal: Optional[bool] = None
+    opthal_notes: Optional[str] = None
     version: int = 1
     status: str = "draft"
     is_finalized: bool = False
@@ -291,7 +304,7 @@ class PrescriptionResponse(BaseModel):
             return data
         return _orm_to_dict(data)
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
 
 
 class PrescriptionListItem(BaseModel):
@@ -302,6 +315,8 @@ class PrescriptionListItem(BaseModel):
     diagnosis: Optional[str] = None
     status: str = "draft"
     is_finalized: bool = False
+    is_opthal: Optional[bool] = None
+    opthal_notes: Optional[str] = None
     item_count: int = 0
     created_at: datetime
     updated_at: datetime
@@ -317,7 +332,7 @@ class PrescriptionListItem(BaseModel):
             return data
         return _orm_to_dict(data)
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
 
 
 class PaginatedPrescriptionResponse(BaseModel):
@@ -375,7 +390,7 @@ class PrescriptionTemplateResponse(BaseModel):
     def transform(cls, data: Any) -> Any:
         return _orm_to_dict(data)
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -396,4 +411,4 @@ class PrescriptionVersionResponse(BaseModel):
     def transform(cls, data: Any) -> Any:
         return _orm_to_dict(data)
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="ignore")

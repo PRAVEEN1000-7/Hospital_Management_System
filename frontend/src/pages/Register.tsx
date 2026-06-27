@@ -9,7 +9,15 @@ import {
 import patientService from '../services/patientService';
 import { useToast } from '../contexts/ToastContext';
 import { useDashboardRefresh } from '../contexts/DashboardRefreshContext';
+import { useAuth } from '../contexts/AuthContext';
 import feLogger from '../services/loggerService';
+
+// BRD v1.1 §2.4 — Patient History symptom dropdown (multi-select + custom entries)
+const SYMPTOM_OPTIONS = [
+  'Itching', 'Irritation', 'Distance Vision (Both Eyes)', 'Near Vision (Both Eyes)',
+  'Redness', 'Swelling', 'Delgium', 'Cataract', 'Eye Injury', 'Eye Pressure',
+  'Watering', 'Glaucoma', 'Diabetic Retinopathy',
+];
 
 const FIELD_LABELS: Partial<Record<string, string>> = {
   title: 'Title',
@@ -48,7 +56,24 @@ const Register: React.FC = () => {
   const navigate = useNavigate();
   const toast = useToast();
   const { triggerRefresh } = useDashboardRefresh();
+  const { isEyeHospitalFeatureEnabled } = useAuth();
   const [serverError, setServerError] = useState<string | null>(null);
+
+  // Patient History block (BRD v1.1 §2) — eye-hospital feature pack only
+  const [reasonForVisit, setReasonForVisit] = useState('');
+  const [symptoms, setSymptoms] = useState<string[]>([]);
+  const [customSymptom, setCustomSymptom] = useState('');
+  const [bloodSugarValue, setBloodSugarValue] = useState('');
+  const [bloodSugarUnit, setBloodSugarUnit] = useState('mg/dL');
+
+  const toggleSymptom = (symptom: string) => {
+    setSymptoms(prev => prev.includes(symptom) ? prev.filter(s => s !== symptom) : [...prev, symptom]);
+  };
+  const addCustomSymptom = () => {
+    const value = customSymptom.trim();
+    if (value && !symptoms.includes(value)) setSymptoms(prev => [...prev, value]);
+    setCustomSymptom('');
+  };
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof FD, string>>>({}); 
   // Tracks whether Submit has been clicked at least once
   // Before first submit: no inline errors ever shown (clean UX)
@@ -190,7 +215,14 @@ const Register: React.FC = () => {
     setServerError(null);
     feLogger.info('patient_registration', 'Submitting patient registration form');
     try {
-      const result = await patientService.createPatient(data as any);
+      const payload: Record<string, unknown> = { ...data };
+      if (isEyeHospitalFeatureEnabled) {
+        payload.reason_for_visit = reasonForVisit || undefined;
+        payload.symptoms = symptoms.length ? symptoms : undefined;
+        payload.blood_sugar_value = bloodSugarValue ? Number(bloodSugarValue) : undefined;
+        payload.blood_sugar_unit = bloodSugarValue ? bloodSugarUnit : undefined;
+      }
+      const result = await patientService.createPatient(payload as any);
       feLogger.info('patient_registration', `Patient registered: ${result.patient_reference_number}`);
       toast.success(`Patient registered successfully! ID: ${result.patient_reference_number}`);
       triggerRefresh();
@@ -411,6 +443,89 @@ const Register: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* Patient History block (BRD v1.1 §2) — eye-hospital feature pack only */}
+        {isEyeHospitalFeatureEnabled && (
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+            <div className="flex items-center gap-2 mb-5">
+              <span className="w-8 h-[2px] bg-primary/20 rounded-full"></span>
+              <h2 className="text-sm font-bold text-primary uppercase tracking-wider">Patient History</h2>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className={labelClass}>Reason for Visit</label>
+                <textarea
+                  value={reasonForVisit}
+                  onChange={(e) => setReasonForVisit(e.target.value)}
+                  className={inputClass}
+                  rows={2}
+                  placeholder="Primary reason the patient has come to the hospital"
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Symptoms</label>
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {SYMPTOM_OPTIONS.map(symptom => (
+                    <button
+                      key={symptom}
+                      type="button"
+                      onClick={() => toggleSymptom(symptom)}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-full border transition-colors ${
+                        symptoms.includes(symptom)
+                          ? 'bg-primary text-white border-primary'
+                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      {symptom}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    value={customSymptom}
+                    onChange={(e) => setCustomSymptom(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomSymptom(); } }}
+                    className={inputClass}
+                    placeholder="Type a custom symptom and press Enter"
+                  />
+                  <button type="button" onClick={addCustomSymptom} className="px-4 py-2.5 text-sm font-semibold text-primary border border-primary/30 rounded-lg hover:bg-primary/5">
+                    Add
+                  </button>
+                </div>
+                {symptoms.filter(s => !SYMPTOM_OPTIONS.includes(s)).length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {symptoms.filter(s => !SYMPTOM_OPTIONS.includes(s)).map(s => (
+                      <span key={s} className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-full bg-primary text-white">
+                        {s}
+                        <button type="button" onClick={() => toggleSymptom(s)} className="hover:opacity-75">×</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className={labelClass}>Blood Sugar</label>
+                  <input
+                    type="number"
+                    value={bloodSugarValue}
+                    onChange={(e) => setBloodSugarValue(e.target.value)}
+                    className={inputClass}
+                    placeholder="e.g. 110"
+                    min={0}
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>Unit</label>
+                  <select value={bloodSugarUnit} onChange={(e) => setBloodSugarUnit(e.target.value)} className={selectClass}>
+                    <option value="mg/dL">mg/dL</option>
+                    <option value="mmol/L">mmol/L</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Section 3: Address */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">

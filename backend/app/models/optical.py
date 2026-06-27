@@ -136,10 +136,18 @@ class OpticalSale(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    # API-compatibility defaults — optical_orders has no payment columns today,
-    # same posture as PharmacySale.payment_method/payment_status.
-    payment_method = "cash"
-    payment_status = "paid"
+    # Payment — shared shape with PharmacySale (see billing_queue_service.py).
+    payment_method = Column(String(20), default="cash")
+    payment_status = Column(String(20), default="pending")
+    amount_tendered = Column(Numeric(12, 2), default=0)
+    advance_amount = Column(Numeric(12, 2), default=0)
+    paid_amount = Column(Numeric(12, 2), default=0)
+    balance_amount = Column(Numeric(12, 2), default=0)
+
+    # Dispensing queue — shared shape with PharmacySale.
+    queue_token = Column(Integer)
+    queue_status = Column(String(20), default="waiting")
+    queue_called_at = Column(DateTime(timezone=True))
 
     hospital = relationship("Hospital", foreign_keys=[hospital_id])
     patient = relationship("Patient", foreign_keys=[patient_id])

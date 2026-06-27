@@ -10,6 +10,7 @@ from ..schemas.hospital import (
     HospitalResponse,
     HospitalPublicInfo,
     HospitalLogoUpload,
+    HospitalInstitutionOption,
 )
 from ..models.user import User
 from ..dependencies import get_current_active_user, require_super_admin, require_admin_or_super_admin
@@ -141,6 +142,18 @@ async def update_hospital(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update hospital record. Please try again.",
         )
+
+
+@router.get("/institutions", response_model=list[HospitalInstitutionOption])
+async def list_institutions(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Sibling hospitals under the caller's tenant — backs the institution
+    dual-letterhead selector on Prescription/Pharmacy (BRD §4.2/§5.3).
+    """
+    return hospital_service.list_tenant_hospitals(db, current_user.hospital_id)
 
 
 @router.post("/logo/upload", response_model=HospitalLogoUpload)

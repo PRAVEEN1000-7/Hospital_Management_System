@@ -41,6 +41,13 @@ class HospitalSettings(Base):
     branding_secondary_color = Column(String(7), default="#3B82F6")
     print_header_text = Column(Text)
     print_footer_text = Column(Text)
+    # Queue Display customization (BRD v1.1 §3.4, QD-04/05/06) — eye-hospital feature pack only
+    queue_display_show_doctor2 = Column(Boolean, default=True)
+    queue_display_show_pharmacy = Column(Boolean, default=True)
+    queue_display_show_opthal = Column(Boolean, default=True)
+    queue_display_refresh_seconds = Column(Integer, default=10)
+    queue_display_doctor1_id = Column(UUID(as_uuid=True), ForeignKey("doctors.id"))
+    queue_display_doctor2_id = Column(UUID(as_uuid=True), ForeignKey("doctors.id"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

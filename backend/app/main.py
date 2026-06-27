@@ -25,6 +25,7 @@ from .routers import (
     invoices, payments, refunds, settlements, tax_configurations,
 )
 from .routers import logs as logs_router  # frontend log ingestion endpoint
+from .routers import public_queue  # unauthenticated public Queue Display
 
 # Multi-tenant routers
 from .routers import superadmin, tenant_admin
@@ -200,6 +201,7 @@ async def generic_exception_handler(request: Request, exc: Exception):
 
 # Include routers
 app.include_router(auth.router, prefix="/api/v1")
+app.include_router(public_queue.router, prefix="/api/v1")  # unauthenticated — see security notes in the router module
 app.include_router(hospital.router, prefix="/api/v1")
 app.include_router(users.router, prefix="/api/v1")
 app.include_router(patients.router, prefix="/api/v1")

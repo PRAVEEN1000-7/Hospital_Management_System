@@ -24,6 +24,7 @@ class TenantBase(BaseModel):
     country: str = Field(default="IND", max_length=3)
     timezone: str = Field(default="Asia/Kolkata", max_length=50)
     default_currency: str = Field(default="INR", max_length=3)
+    specialty: str = Field(default="general", max_length=50)
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -55,6 +56,7 @@ class TenantUpdate(BaseModel):
     primary_color: Optional[str] = Field(None, max_length=7)
     secondary_color: Optional[str] = Field(None, max_length=7)
     status: Optional[str] = Field(None, max_length=20)
+    specialty: Optional[str] = Field(None, max_length=50)
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -477,6 +479,7 @@ class TenantOnboardingRequest(BaseModel):
     email: str = Field(..., min_length=1, max_length=255)
     phone: Optional[str] = Field(None, max_length=20)
     registration_number: Optional[str] = Field(None, max_length=100)
+    specialty: str = Field(default="general", pattern="^(general|eye_hospital|multi_specialty)$")
     # Location
     address_line_1: Optional[str] = Field(None, max_length=255)
     address_line_2: Optional[str] = Field(None, max_length=255)

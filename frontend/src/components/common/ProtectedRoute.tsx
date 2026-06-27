@@ -8,6 +8,11 @@ interface ProtectedRouteProps {
   allowedRoles?: string[];
   /** If provided, the route is inaccessible when the module is disabled for this tenant. */
   requiredModule?: string;
+  /**
+   * If true, the route requires the hospital to be classified eye_hospital/
+   * multi_specialty — gates the BRD v1.1 feature pack (Queue Display, etc.).
+   */
+  requireEyeHospitalFeature?: boolean;
 }
 
 const MODULE_LABELS: Record<string, string> = {
@@ -21,8 +26,8 @@ const MODULE_LABELS: Record<string, string> = {
   optical:       'Optical Store',
 };
 
-const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles, requiredModule }) => {
-  const { isAuthenticated, user, isModuleEnabled } = useAuth();
+const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles, requiredModule, requireEyeHospitalFeature }) => {
+  const { isAuthenticated, user, isModuleEnabled, isEyeHospitalFeatureEnabled } = useAuth();
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
@@ -35,6 +40,27 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles,
 
   if (allowedRoles && user && !user.roles?.some(r => allowedRoles.includes(r))) {
     return <Navigate to="/dashboard" replace />;
+  }
+
+  if (requireEyeHospitalFeature && !isEyeHospitalFeatureEnabled) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] py-20 px-4 text-center">
+        <div className="w-20 h-20 bg-amber-50 rounded-full flex items-center justify-center mb-5">
+          <span className="material-icons text-amber-400 text-4xl">lock</span>
+        </div>
+        <h2 className="text-xl font-bold text-slate-900 mb-2">Not Available</h2>
+        <p className="text-slate-500 text-sm max-w-sm leading-relaxed">
+          This feature is only available to hospitals classified as an <strong className="text-slate-700">Eye Hospital</strong> or <strong className="text-slate-700">Multi-Specialty</strong> hospital.
+        </p>
+        <a
+          href="/dashboard"
+          className="mt-6 inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-white text-sm font-semibold rounded-lg hover:bg-primary/90 transition-colors"
+        >
+          <span className="material-icons text-sm">arrow_back</span>
+          Back to Dashboard
+        </a>
+      </div>
+    );
   }
 
   if (requiredModule && !isModuleEnabled(requiredModule)) {

@@ -41,6 +41,7 @@ import Subscription from './pages/Subscription';
 import AppointmentBooking from './pages/AppointmentBooking';
 import WalkInRegistration from './pages/WalkInRegistration';
 import WalkInQueue from './pages/WalkInQueue';
+import PublicQueueDisplay from './pages/PublicQueueDisplay';
 import DoctorSchedule from './pages/DoctorSchedule';
 import DoctorAppointments from './pages/DoctorAppointments';
 import MyAppointments from './pages/MyAppointments';
@@ -66,6 +67,7 @@ import StockAdjustments from './pages/pharmacy/StockAdjustments';
 import PendingPrescriptions from './pages/pharmacy/PendingPrescriptions';
 import DispensingScreen from './pages/pharmacy/DispensingScreen';
 import DispensingBilling from './pages/pharmacy/DispensingBilling';
+import PharmacyQueue from './pages/pharmacy/PharmacyQueue';
 
 // Optical Store pages
 import OpticalDashboard from './pages/optical/OpticalDashboard';
@@ -78,6 +80,7 @@ import OpticalPrescriptionDetail from './pages/optical/OpticalPrescriptionDetail
 import OpticalSales from './pages/optical/OpticalSales';
 import NewOpticalSale from './pages/optical/NewOpticalSale';
 import OpticalStockAdjustments from './pages/optical/OpticalStockAdjustments';
+import OpticalQueue from './pages/optical/OpticalQueue';
 
 // Inventory pages
 import InventoryDashboard from './pages/inventory/InventoryDashboard';
@@ -142,6 +145,9 @@ const App: React.FC = () => {
             {/* Public */}
             <Route path="/login" element={<Login />} />
             <Route path="/reset-password" element={<ResetPassword />} />
+            {/* Public Queue Display kiosk — no auth, no Layout/sidebar. Scoped to one
+                hospital by its public code (BRD v1.1 §3). */}
+            <Route path="/public/queue/:hospitalCode" element={<PublicQueueDisplay />} />
 
             {/* Super Admin routes — separate layout, no module gating */}
             <Route
@@ -429,6 +435,15 @@ const App: React.FC = () => {
                   <StockAdjustments />
                 </ProtectedRoute>
               } />
+              <Route path="/pharmacy/queue" element={
+                <ProtectedRoute
+                  allowedRoles={['super_admin', 'admin', 'pharmacist', 'cashier', 'inventory_manager']}
+                  requiredModule="pharmacy"
+                  requireEyeHospitalFeature
+                >
+                  <PharmacyQueue />
+                </ProtectedRoute>
+              } />
               <Route path="/pharmacy/pending-prescriptions" element={
                 <ProtectedRoute
                   allowedRoles={['super_admin', 'admin', 'pharmacist', 'inventory_manager']}
@@ -541,6 +556,14 @@ const App: React.FC = () => {
                   requiredModule="optical"
                 >
                   <OpticalStockAdjustments />
+                </ProtectedRoute>
+              } />
+              <Route path="/optical/queue" element={
+                <ProtectedRoute
+                  allowedRoles={['super_admin', 'admin', 'optical_staff']}
+                  requiredModule="optical"
+                >
+                  <OpticalQueue />
                 </ProtectedRoute>
               } />
 

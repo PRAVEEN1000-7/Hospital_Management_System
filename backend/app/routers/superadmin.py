@@ -27,6 +27,7 @@ from ..schemas.prescription import GlobalMedicineCreate, MedicineUpdate
 from ..services.superadmin_service import SuperAdminService
 from ..services.tenant_service import TenantService
 from ..services.subscription_service import SubscriptionService
+from ..services.auth_service import revoke_current_access_token
 
 router = APIRouter(prefix="/superadmin", tags=["Super Admin"])
 
@@ -95,6 +96,17 @@ def superadmin_login(
         expires_in=60,  # minutes
         user=admin
     )
+
+
+@router.post("/logout")
+def superadmin_logout(
+    admin: User = Depends(require_superadmin),
+    db: Session = Depends(get_db),
+):
+    """Revoke the current super admin access token (SECURITY_AUDIT.md C1)."""
+    revoke_current_access_token(db, admin)
+    db.commit()
+    return {"success": True, "message": "Successfully logged out"}
 
 
 @router.get("/me", response_model=dict)

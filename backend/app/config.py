@@ -53,8 +53,11 @@ class Settings(BaseSettings):
 
     # Rate Limiting (per tenant)
     RATE_LIMIT_ENABLED: bool = True
-    RATE_LIMIT_REQUESTS_PER_MINUTE: int = 100  # Per tenant
-    RATE_LIMIT_REQUESTS_PER_HOUR: int = 5000  # Per tenant
+    # 100/min was tripping during normal use once multiple auto-polling
+    # widgets existed (Pharmacy/Optical queue boards every 15s, Queue Display
+    # every 10s) on top of a page load's usual handful of parallel requests.
+    RATE_LIMIT_REQUESTS_PER_MINUTE: int = 300  # Per tenant
+    RATE_LIMIT_REQUESTS_PER_HOUR: int = 10000  # Per tenant
     RATE_LIMIT_LOGIN_ATTEMPTS: int = 5  # Per 5 minutes
     RATE_LIMIT_API_BURST: int = 50  # Per 30 seconds for burst protection
 

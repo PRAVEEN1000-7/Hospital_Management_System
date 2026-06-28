@@ -694,6 +694,11 @@ async def get_consultation_notes(
     if not qe:
         raise HTTPException(status_code=404, detail="Queue entry not found")
 
+    # Without this, any authenticated user (any hospital) could read another
+    # hospital's clinical notes/diagnosis/vitals by guessing a queue_id —
+    # the PATCH save-notes endpoint above already enforces this.
+    _require_queue_actor(db, current_user, qe)
+
     appt = db.query(Appointment).filter(Appointment.id == qe.appointment_id).first()
     if not appt:
         raise HTTPException(status_code=404, detail="Appointment not found")
@@ -727,10 +732,17 @@ async def assign_doctor_to_walkin(
     appt = db.query(Appointment).filter(Appointment.id == appt_uuid).first()
     if not appt:
         raise HTTPException(status_code=404, detail="Appointment not found")
+    # Without this, a receptionist/admin in Hospital A could reassign Hospital
+    # B's appointment to one of Hospital A's doctors by guessing an
+    # appointment_id (cross-tenant IDOR + data corruption).
+    if getattr(current_user, "hospital_id", None) and str(appt.hospital_id) != str(current_user.hospital_id):
+        raise HTTPException(status_code=404, detail="Appointment not found")
 
     doctor_uuid = uuid.UUID(data.doctor_id)
     doctor = db.query(Doctor).filter(Doctor.id == doctor_uuid).first()
     if not doctor:
+        raise HTTPException(status_code=404, detail="Doctor not found")
+    if getattr(current_user, "hospital_id", None) and str(doctor.hospital_id) != str(current_user.hospital_id):
         raise HTTPException(status_code=404, detail="Doctor not found")
 
     appt.doctor_id = doctor_uuid
@@ -857,18 +869,22 @@ async def get_doctor_queue_loads(
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
 
-    loads = (
+    loads_query = (
         db.query(
             AppointmentQueue.doctor_id,
             func.count(AppointmentQueue.id).label("patient_count"),
         )
+        .join(Appointment, Appointment.id == AppointmentQueue.appointment_id)
         .filter(
             AppointmentQueue.queue_date == load_date,
             AppointmentQueue.status.notin_(["skipped"]),
         )
-        .group_by(AppointmentQueue.doctor_id)
-        .all()
     )
+    # Without this, doctor workload counts were computed across every
+    # hospital on the platform, not just the caller's own.
+    if getattr(current_user, "hospital_id", None):
+        loads_query = loads_query.filter(Appointment.hospital_id == current_user.hospital_id)
+    loads = loads_query.group_by(AppointmentQueue.doctor_id).all()
     load_map = {str(row.doctor_id): row.patient_count for row in loads}
     return load_map
 
@@ -903,6 +919,11 @@ async def get_upcoming_queue(
             AppointmentQueue.status.notin_(["completed", "skipped"]),
         )
     )
+    # Same tenant-isolation gap as GET /walk-ins/queue: without this, a
+    # receptionist/admin viewing "all doctors" (no resolved_doctor_id) saw
+    # every hospital's upcoming appointments mixed together.
+    if getattr(current_user, "hospital_id", None):
+        query = query.filter(Appointment.hospital_id == current_user.hospital_id)
     if resolved_doctor_id:
         query = query.filter(AppointmentQueue.doctor_id == resolved_doctor_id)
 

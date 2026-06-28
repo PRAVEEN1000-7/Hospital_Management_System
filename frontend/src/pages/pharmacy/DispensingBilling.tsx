@@ -190,6 +190,20 @@ const DispensingBilling: React.FC = () => {
   const resolvedPrn = patientPrn || dispensing.patient_reference_number || '';
 
   return (
+    <>
+      {/* ── Print Styles ──
+          Tailwind's print:hidden/print:block alone aren't enough — the global
+          print stylesheet (index.css) hides the entire body by default and
+          only reveals a designated print-area container (same pattern as
+          InvoiceDetail.tsx). Without this override the printed invoice came
+          out completely blank. */}
+      <style>{`
+        @media print {
+          body * { visibility: hidden !important; }
+          #dispensing-print-area, #dispensing-print-area * { visibility: visible !important; }
+          #dispensing-print-area { position: absolute; inset: 0; padding: 24px; }
+        }
+      `}</style>
     <div className="max-w-6xl mx-auto p-6">
       {/* Header - Hidden when printing */}
       <div className="flex justify-between items-center mb-6 print:hidden">
@@ -206,7 +220,7 @@ const DispensingBilling: React.FC = () => {
       </div>
 
       {/* Invoice Card */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden print:shadow-none print:border-0">
+      <div id="dispensing-print-area" className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden print:shadow-none print:border-0">
         {/* Invoice Header */}
         <div className="bg-gradient-to-r from-primary to-primary/80 px-8 py-6 print:bg-white print:border-b-2 print:border-slate-900 print:p-0">
           <div className="flex justify-between items-start">
@@ -430,6 +444,7 @@ const DispensingBilling: React.FC = () => {
         )}
       </div>
     </div>
+    </>
   );
 };
 

@@ -8,6 +8,67 @@
 
 ---
 
+## 📌 Update — 2026-06-28
+
+A fresh full-codebase re-scan (auth/session, multi-tenant isolation across
+every router, frontend XSS/redirect sinks, secrets/headers) verified each
+finding below against current code and fixed everything practical to fix
+without a larger infra/architecture change. Status markers added inline
+below (✅ Fixed · ⚠️ Still open). New findings from this pass:
+
+- **C1/C2 status correction**: a prior commit claimed to fix these but only
+  added the `revoked_tokens` migration and this document — **zero
+  enforcement code** was written. Now actually implemented: `jti` claim on
+  every access token, blocklist checked in `dependencies.get_current_user`
+  on every request, real rotating refresh tokens (`/auth/refresh` no longer
+  accepts the access token), revocation wired into `/auth/logout` and
+  `/auth/change-password`.
+- **C1 gap found while fixing it**: `routers/superadmin.py` (tenant/hospital
+  management, audit logs, subscription plans — the entire `/superadmin/*`
+  surface) authenticates via a **separate** decode path
+  (`core.tenant.get_current_superadmin`) that never went through the
+  blocklist check above, and `SuperAdminService.create_access_token()`
+  minted tokens with no `jti` at all — so superadmin tokens were
+  unrevokable regardless of which login endpoint issued them. Fixed: that
+  token creation now delegates to the shared `core.security.create_access_token()`
+  (gets a `jti` for free), `get_current_superadmin` now runs the same
+  blocklist check, and a `POST /superadmin/logout` endpoint was added.
+- **New H finding — IDOR in `routers/waitlist.py`**: `GET/PATCH/DELETE
+  /waitlist/{id}` and `POST /waitlist/{id}/book` fetched the entry by ID
+  alone, no hospital scoping — same root cause as H1/H2 below, different
+  router. Fixed: `get_waitlist_entry`/`update_waitlist_entry`/
+  `cancel_waitlist_entry` now take and filter on `hospital_id`.
+- **M2 fixed**: every value derived from user input (diagnosis, clinical/
+  opthal notes, advice, medicine fields, patient/doctor names, free-typed
+  symptoms, chief complaint) is now `html.escape()`d before interpolation
+  in `routers/prescriptions.py`, `routers/optical.py`, and
+  `routers/appointments.py`'s PDF-HTML generation, closing the stored-XSS
+  sink described below.
+- **M3 fixed**: `NotificationContainer.tsx` now validates `actionUrl` is a
+  same-origin relative path (`/^\/(?!\/)/`) before navigating — rejects
+  `javascript:`, `data:`, absolute URLs, and protocol-relative `//host` URLs.
+- **New — baseline security headers**: previously **none** were set at all.
+  Added `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`,
+  `Permissions-Policy`, and a `Content-Security-Policy` (no
+  `'unsafe-inline'`/`'unsafe-eval'` in `script-src`) via FastAPI middleware
+  (`main.py`) for backend-rendered responses, a matching CSP `<meta>` tag in
+  `frontend/index.html` for the SPA shell (works in dev and prod, since prod
+  serves `index.html` from nginx, not FastAPI), and `X-Frame-Options`/HSTS/
+  `Referrer-Policy` as real HTTP headers in `deploy/nginx.conf` (HSTS is a
+  no-op until TLS is enabled, included so it activates automatically then).
+- **Verified still accurate, not yet fixed**: C3 (token in localStorage —
+  blocked on migrating to HttpOnly cookies, which itself is blocked on TLS
+  per L2), M4 (in-memory per-process rate limiter), M5 (`X-Tenant-ID` header
+  trust). See their sections below for current detail.
+- **Re-verified as not actually exploitable**: the `UserUpdate.is_active`
+  mass-assignment concern raised during this pass — `PUT /users/{id}`
+  already requires `require_admin_or_super_admin` *and* scopes the target
+  user by `hospital_id=current_user.hospital_id`, so this is admin-only,
+  same-hospital-only behavior working as intended, not a privilege-escalation
+  path.
+
+---
+
 ## Table of Contents
 
 - [Architecture Summary](#-architecture-summary)
@@ -44,7 +105,7 @@ listener is a no-op `return query`). Isolation correctness therefore depends on
 
 ## 🔴 Critical
 
-### C1. JWT logout is a no-op — tokens cannot be revoked
+### C1. JWT logout is a no-op — tokens cannot be revoked ✅ FIXED
 
 | | |
 |---|---|
@@ -82,7 +143,7 @@ lifetime once refresh is fixed (see C2).
 
 ---
 
-### C2. `/auth/refresh` accepts the access token itself — no real refresh-token rotation
+### C2. `/auth/refresh` accepts the access token itself — no real refresh-token rotation ✅ FIXED
 
 | | |
 |---|---|
@@ -107,7 +168,7 @@ refresh token, not the access token.
 
 ---
 
-### C3. Access token stored in `localStorage` (XSS → full account takeover)
+### C3. Access token stored in `localStorage` (XSS → full account takeover) ⚠️ STILL OPEN
 
 | | |
 |---|---|
@@ -133,7 +194,7 @@ the `Authorization` header. Keep at most a minimal in-memory copy.
 
 ---
 
-### C4. Unauthenticated frontend-log endpoint → log injection / log flooding / exfil channel
+### C4. Unauthenticated frontend-log endpoint → log injection / log flooding / exfil channel ✅ FIXED
 
 | | |
 |---|---|
@@ -169,7 +230,7 @@ payload size.
 
 ## 🟠 High
 
-### H1. IDOR in walk-in consultation-notes GET (cross-tenant clinical data)
+### H1. IDOR in walk-in consultation-notes GET (cross-tenant clinical data) ✅ FIXED
 
 | | |
 |---|---|
@@ -197,7 +258,7 @@ fetching `qe` (around line 688).
 
 ---
 
-### H2. Several IDOR sinks in walk-ins where `AppointmentQueue`/`Appointment` are fetched by id alone
+### H2. Several IDOR sinks in walk-ins where `AppointmentQueue`/`Appointment` are fetched by id alone ✅ FIXED (walk_ins.py + waitlist.py)
 
 | | |
 |---|---|
@@ -222,7 +283,7 @@ calls, so it cannot be forgotten.
 
 ---
 
-### H3. `.env.production` is committed to git
+### H3. `.env.production` is committed to git ⚠️ PARTIALLY FIXED (gitignored going forward; still tracked)
 
 | | |
 |---|---|
@@ -244,7 +305,7 @@ Inject the value at deploy time via the hosting environment.
 
 ---
 
-### H4. Client-side role/permission checks are the only gate for some UX paths
+### H4. Client-side role/permission checks are the only gate for some UX paths ⚠️ STILL OPEN
 
 | | |
 |---|---|
@@ -277,7 +338,7 @@ user (good), but module-gating relies on the `roles` claim embedded in the JWT
 
 ## 🟡 Medium
 
-### M1. Hospital logo upload allows `.svg` → stored XSS
+### M1. Hospital logo upload allows `.svg` → stored XSS ✅ FIXED
 
 | | |
 |---|---|
@@ -307,7 +368,7 @@ any staff member viewing the logo runs script in the app origin → token theft
 
 ---
 
-### M2. `document.write` of server HTML into print windows
+### M2. `document.write` of server HTML into print windows ✅ FIXED
 
 | | |
 |---|---|
@@ -333,7 +394,7 @@ ensure Jinja2 autoescape is on and explicitly escape every interpolation.
 
 ---
 
-### M3. Notification `actionUrl` navigated without validation (open redirect / data-URI)
+### M3. Notification `actionUrl` navigated without validation (open redirect / data-URI) ✅ FIXED
 
 | | |
 |---|---|
@@ -358,7 +419,7 @@ reject absolute, `javascript:`, and `data:` schemes.
 
 ---
 
-### M4. Rate limiter is in-memory, per-process → ineffective behind multiple workers
+### M4. Rate limiter is in-memory, per-process → ineffective behind multiple workers ⚠️ STILL OPEN
 
 | | |
 |---|---|
@@ -375,7 +436,7 @@ swap). Make login limiting fail-closed, or at least alert, on limiter errors.
 
 ---
 
-### M5. Tenant resolution trusts `X-Tenant-ID` header and subdomain
+### M5. Tenant resolution trusts `X-Tenant-ID` header and subdomain ⚠️ STILL OPEN
 
 | | |
 |---|---|
@@ -405,7 +466,7 @@ hint.
 
 ---
 
-### M6. PII (usernames) logged to backend on every login attempt
+### M6. PII (usernames) logged to backend on every login attempt ✅ FIXED
 
 | | |
 |---|---|
@@ -426,19 +487,19 @@ Define and enforce a log retention policy.
 
 ## 🟢 Low
 
-### L1. Rate limiter keys on JWT `user_id`/`tenant_id` without verifying the user exists
+### L1. Rate limiter keys on JWT `user_id`/`tenant_id` without verifying the user exists ⚠️ STILL OPEN
 
 `backend/app/main.py:152-156` — a token with a bogus `user_id` still produces a
 stable key but no real per-user fairness. Minor.
 
-### L2. CORS includes a raw HTTP IP and allows credentials with wildcard methods/headers
+### L2. CORS includes a raw HTTP IP and allows credentials with wildcard methods/headers ⚠️ STILL OPEN
 
 `backend/.env:17`, `backend/app/main.py:57-63`. Origins are explicit (good),
 but the `http://139.59.62.156` origin over plain HTTP with `allow_credentials:
 true` and `methods/headers: ["*"]` is a sniffing risk. Use HTTPS hostnames only
 and scope methods/headers to what is actually needed.
 
-### L3. `generate_tenant_code()` uses `random` (not `secrets`) for a 2-char code
+### L3. `generate_tenant_code()` uses `random` (not `secrets`) for a 2-char code ✅ FIXED
 
 `backend/app/core/tenant.py:282-286` — only 676 possible codes (collision-prone)
 and not cryptographically random.
@@ -450,13 +511,13 @@ return ''.join(random.choices(string.ascii_uppercase, k=2))
 
 **Fix:** Use `secrets.choice` and handle collisions.
 
-### L4. Global `Exception` handler logs `exc_info=True`
+### L4. Global `Exception` handler logs `exc_info=True` ⚠️ STILL OPEN
 
 `backend/app/main.py:191-198` — fine for debugging, but ensure the production
 log level does not dump full tracebacks containing patient IDs into a
 world-readable file.
 
-### L5. `require_resource_access` dependency is a stub
+### L5. `require_resource_access` dependency is a stub ✅ FIXED (removed)
 
 `backend/app/dependencies.py:339-361` — advertised in docstrings as the
 cross-tenant guard, but the inner function body is `pass`. Anyone relying on it
@@ -504,17 +565,25 @@ So you don't accidentally "fix" these:
 
 ## 📋 Recommended Fix Order
 
+✅ = done as of the 2026-06-28 pass. Remaining items, in priority order:
+
 | Priority | Finding | Effort | Impact |
 |----------|---------|--------|--------|
-| 1 | **C1 + C2 + C3** — token revocation + real refresh rotation + HttpOnly cookie | Medium | Closes the account-takeover chain |
-| 2 | **H1 + H2** — add `hospital_id` to `AppointmentQueue` / mandate `_require_queue_actor` | Low | Closes cross-hospital PHI leakage |
-| 3 | **C4 + M6** — auth + sanitize log endpoint; stop logging usernames | Low | Closes log-injection / exfil / PHI logging |
-| 4 | **M1** — drop `.svg` uploads; magic-byte content validation | Low | Closes stored XSS |
-| 5 | **H3** — untrack `.env.production` | Trivial | Prevents future secret leakage |
-| 6 | **M5 + L5** — JWT-only tenant resolution; delete the stub guard | Medium | Removes spoofable tenant context |
-| 7 | **M4** — Redis-backed limiter | Medium | Restores brute-force protection |
-| 8 | **H4** — integration tests for backend RBAC coverage | Medium | Defense in depth for SPA gating |
-| 9 | **M2, M3, L1–L4** — hardening pass | Low | Cleanup |
+| ~~1~~ | ~~C1 + C2 — token revocation + real refresh rotation~~ | ~~Medium~~ | ✅ Done (including the superadmin-path gap found while fixing it) |
+| ~~2~~ | ~~H1 + H2 — hospital_id scoping on walk-in/waitlist IDOR sinks~~ | ~~Low~~ | ✅ Done |
+| ~~3~~ | ~~C4 + M6 — auth + sanitize log endpoint; stop logging usernames~~ | ~~Low~~ | ✅ Done |
+| ~~4~~ | ~~M1 — drop `.svg` uploads; magic-byte content validation~~ | ~~Low~~ | ✅ Done |
+| ~~5~~ | ~~H3 — gitignore `.env.production`~~ | ~~Trivial~~ | ⚠️ Partial — still git-tracked, run `git rm --cached` yourself |
+| ~~6~~ | ~~L5 — delete the stub guard~~ | ~~Trivial~~ | ✅ Done |
+| ~~7~~ | ~~M2 + M3 — escape PDF HTML; validate notification redirects~~ | ~~Low~~ | ✅ Done |
+| ~~8~~ | ~~L3 — `secrets` instead of `random` for tenant codes~~ | ~~Trivial~~ | ✅ Done |
+| ~~9~~ | ~~Baseline security headers (CSP/X-Frame-Options/etc., previously none)~~ | ~~Low~~ | ✅ Done |
+| **1** | **C3** — migrate token storage to HttpOnly cookies | Medium | Blocked on TLS (L2) — a `Secure` cookie wouldn't be sent over the current plain-HTTP production deploy |
+| 2 | **M5** — JWT-only tenant resolution; remove the `X-Tenant-ID` header fallback | Medium | Removes spoofable tenant context |
+| 3 | **M4** — Redis-backed rate limiter | Medium | Needed before running multiple backend workers/instances |
+| 4 | **H4** — integration tests asserting 403 for low-privilege tokens on every admin route | Medium | Defense in depth for SPA-only gating |
+| 5 | **L1, L2, L4** — remaining hardening items | Low | Cleanup |
+| 6 | Dead/risky `/superadmin/login` refresh-token path | Low | It mints a `refresh_token` that's never persisted server-side — currently unredeemable. Either wire it up properly or remove it; not used by the live UI today |
 
 ---
 

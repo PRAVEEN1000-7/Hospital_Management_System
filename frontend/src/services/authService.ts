@@ -5,20 +5,24 @@ export const authService = {
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
     const response = await api.post<AuthResponse>('/auth/login', credentials);
     const data = response.data;
-    
+
     localStorage.setItem('access_token', data.access_token);
+    localStorage.setItem('refresh_token', data.refresh_token);
     localStorage.setItem('user', JSON.stringify(data.user));
-    
+
     return data;
   },
 
   async logout(): Promise<void> {
+    const refreshToken = localStorage.getItem('refresh_token');
     try {
-      await api.post('/auth/logout');
+      // Revokes the access token server-side, and the refresh token too if sent.
+      await api.post('/auth/logout', refreshToken ? { refresh_token: refreshToken } : undefined);
     } catch {
-      // Server-side logout is a no-op, always clear client state
+      // Best-effort — always clear client state even if the server call fails.
     }
     localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
     localStorage.removeItem('user');
   },
 

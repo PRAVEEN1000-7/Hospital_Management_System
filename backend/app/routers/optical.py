@@ -309,7 +309,7 @@ async def create_optical_prescription(
     current_user: User = Depends(get_current_active_user),
 ):
     try:
-        rx = svc.create_optical_prescription(db, current_user.hospital_id, data.model_dump())
+        rx = svc.create_optical_prescription(db, current_user.hospital_id, data.model_dump(), created_by=current_user.id)
         return _enrich_prescription_response(rx)
     except ValueError as e:
         db.rollback()
@@ -367,11 +367,21 @@ async def get_optical_prescription_pdf(
     doctor = db.query(Doctor).filter(Doctor.id == rx.doctor_id).first()
     hospital = db.query(Hospital).filter(Hospital.id == current_user.hospital_id).first()
 
-    hosp_name = (hospital.name if hospital else "") or "Hospital"
-    hosp_address = (hospital.address_line_1 if hospital else "") or ""
-    hosp_city = (hospital.city if hospital else "") or ""
-    hosp_phone = (hospital.phone if hospital else "") or ""
-    hosp_email = (hospital.email if hospital else "") or ""
+    # This HTML is rendered client-side via document.write() with no further
+    # sanitization (SECURITY_AUDIT.md M2) — every value derived from user
+    # input must be escaped before interpolation.
+    import html as _html_mod
+
+    def _esc(value) -> str:
+        if value is None or value == "":
+            return ""
+        return _html_mod.escape(str(value), quote=True)
+
+    hosp_name = _esc((hospital.name if hospital else "") or "Hospital")
+    hosp_address = _esc((hospital.address_line_1 if hospital else "") or "")
+    hosp_city = _esc((hospital.city if hospital else "") or "")
+    hosp_phone = _esc((hospital.phone if hospital else "") or "")
+    hosp_email = _esc((hospital.email if hospital else "") or "")
 
     def _logo_data_uri(logo_url: str) -> str:
         if not logo_url:
@@ -392,10 +402,10 @@ async def get_optical_prescription_pdf(
             return ""
     logo_uri = _logo_data_uri(hospital.logo_url if hospital else "")
 
-    doctor_name = (doctor.user.full_name if doctor and doctor.user else "") or "—"
-    doctor_spec = (doctor.specialization if doctor else "") or ""
-    doctor_reg = (doctor.registration_number if doctor else "") or ""
-    doctor_qual = (doctor.qualification if doctor else "") or ""
+    doctor_name = _esc((doctor.user.full_name if doctor and doctor.user else "") or "—")
+    doctor_spec = _esc((doctor.specialization if doctor else "") or "")
+    doctor_reg = _esc((doctor.registration_number if doctor else "") or "")
+    doctor_qual = _esc((doctor.qualification if doctor else "") or "")
     doctor_display = f"Dr. {doctor_name}" + (f", {doctor_qual}" if doctor_qual else "")
 
     def _compute_age(p):
@@ -436,7 +446,7 @@ async def get_optical_prescription_pdf(
         return f"{int(v)}°" if v is not None else "—"
 
     def fmt_va(v):
-        return v if v else "—"
+        return _esc(v) if v else "—"
 
     pd_bits = []
     if rx.pd_distance is not None:
@@ -510,10 +520,10 @@ td:first-child, th:first-child {{ text-align:left; }}
 </div>
 
 <div class="patient-box">
-    <p><strong>Patient:</strong> {patient.full_name if patient else '—'}</p>
-    <p><strong>PRN:</strong> {patient.patient_reference_number if patient else '—'} |
+    <p><strong>Patient:</strong> {_esc(patient.full_name) if patient else '—'}</p>
+    <p><strong>PRN:</strong> {_esc(patient.patient_reference_number) if patient else '—'} |
        <strong>Age:</strong> {patient_age} |
-       <strong>Gender:</strong> {patient.gender if patient else '—'}</p>
+       <strong>Gender:</strong> {_esc(patient.gender) if patient else '—'}</p>
 </div>
 
 <table>
@@ -548,7 +558,7 @@ td:first-child, th:first-child {{ text-align:left; }}
 </table>
 
 {f'<div class="pd-box"><strong>Pupillary Distance (PD):</strong> {pd_line}</div>' if pd_line else ''}
-{f'<div class="notes"><strong>Notes:</strong> {rx.notes}</div>' if rx.notes else ''}
+{f'<div class="notes"><strong>Notes:</strong> {_esc(rx.notes)}</div>' if rx.notes else ''}
 
 <div class="footer">
     <div class="signature">

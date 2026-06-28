@@ -21,6 +21,11 @@ const CATEGORIES = [
   { value: 'cream', label: 'Cream' },
   { value: 'ointment', label: 'Ointment' },
   { value: 'drops', label: 'Drops' },
+  // Eye hospital — distinct from generic "Drops"/"Ointment" so dispensing
+  // quantity calc (prescription_service.calculate_prescribed_quantity /
+  // PrescriptionBuilder's computeDispenseQty) recognizes them specifically.
+  { value: 'eye drops', label: 'Eye Drops' },
+  { value: 'eye ointment', label: 'Eye Ointment' },
   { value: 'inhaler', label: 'Inhaler' },
   { value: 'powder', label: 'Powder' },
   { value: 'other', label: 'Other' },

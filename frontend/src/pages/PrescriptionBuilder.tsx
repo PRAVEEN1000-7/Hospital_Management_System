@@ -8,7 +8,9 @@ import patientService from '../services/patientService';
 import walkInService from '../services/walkInService';
 import scheduleService from '../services/scheduleService';
 import hospitalService, { type HospitalInstitutionOption } from '../services/hospitalService';
-import type { PrescriptionItemCreate, Medicine, PrescriptionTemplate } from '../types/prescription';
+import opticalService from '../services/opticalService';
+import type { PrescriptionItemCreate, Medicine, PrescriptionTemplate, EyeSide } from '../types/prescription';
+import type { OpticalPrescriptionCreateData } from '../types/optical';
 import type { Patient } from '../types/patient';
 import type { DoctorOption } from '../types/appointment';
 import AvailabilityCalendar from '../components/common/AvailabilityCalendar';
@@ -60,6 +62,18 @@ function computeDispenseQty(
   return { qty: totalDoses, unit: uom || 'units' };
 }
 
+/** Toggles one eye on/off for the Eye Hospital Drug Prescription RE/LE columns. */
+function toggleEyeSide(current: EyeSide | null | undefined, side: 'RE' | 'LE'): EyeSide | undefined {
+  const reOn = current === 'RE' || current === 'Both';
+  const leOn = current === 'LE' || current === 'Both';
+  const nextRe = side === 'RE' ? !reOn : reOn;
+  const nextLe = side === 'LE' ? !leOn : leOn;
+  if (nextRe && nextLe) return 'Both';
+  if (nextRe) return 'RE';
+  if (nextLe) return 'LE';
+  return undefined;
+}
+
 const getDisplayMedicineName = (med: Medicine): string => {
   if (!med.strength) return med.name;
   const name = med.name.trim();
@@ -93,6 +107,7 @@ const emptyItem = (): PrescriptionItemCreate => ({
   quantity: undefined,
   allow_substitution: true,
   display_order: 0,
+  eye_side: undefined,
 });
 
 /** A diagnosis group — each diagnosis has its own list of medicines */
@@ -119,6 +134,7 @@ const PrescriptionBuilder: React.FC = () => {
 
   const isEditMode = Boolean(editId);
   const pharmacyEnabled = isModuleEnabled('pharmacy');
+  const opticalModuleEnabled = isModuleEnabled('optical');
 
   // Form state
   const [patientId, setPatientId] = useState(searchParams.get('patient_id') || '');
@@ -129,7 +145,14 @@ const PrescriptionBuilder: React.FC = () => {
   const [clinicalNotes, setClinicalNotes] = useState('');
   const [advice, setAdvice] = useState('');
   const [isOpthal, setIsOpthal] = useState(user?.hospital_specialty === 'eye_hospital');
-  const [opthalNotes, setOpthalNotes] = useState('');
+  // Optional Optical (Spectacle) Prescription, created alongside the drug
+  // prescription in the same visit — eye hospitals only.
+  const [addOpticalRx, setAddOpticalRx] = useState(false);
+  const [opticalRx, setOpticalRx] = useState<Omit<OpticalPrescriptionCreateData, 'patient_id' | 'appointment_id'>>({});
+  const opticalNumField = (field: keyof OpticalPrescriptionCreateData) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setOpticalRx(prev => ({ ...prev, [field]: value === '' ? undefined : Number(value) }));
+  };
   const [blocks, setBlocks] = useState<DiagnosisBlock[]>([createBlock()]);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -251,7 +274,6 @@ const PrescriptionBuilder: React.FC = () => {
         setClinicalNotes(rx.clinical_notes || '');
         setAdvice(rx.advice || '');
         setIsOpthal(rx.is_opthal || false);
-        setOpthalNotes(rx.opthal_notes || '');
         setInstitutionId(rx.institution_id || '');
         setVitalsBloodSugar(rx.vitals_blood_sugar || '');
         setVitalsBp(rx.vitals_bp || '');
@@ -275,6 +297,7 @@ const PrescriptionBuilder: React.FC = () => {
                 quantity: item.quantity || undefined,
                 allow_substitution: item.allow_substitution,
                 display_order: idx,
+                eye_side: item.eye_side || undefined,
               }))
             : [];
         setBlocks([createBlock(rx.diagnosis || '', loadedItems.length > 0 ? loadedItems : undefined)]);
@@ -451,10 +474,15 @@ const PrescriptionBuilder: React.FC = () => {
     const updatedItems = [...newBlocks[blockIdx].items];
     updatedItems[itemIdx] = { ...updatedItems[itemIdx], [field]: value };
     newBlocks[blockIdx] = { ...newBlocks[blockIdx], items: updatedItems };
-    // Auto-add a new row when the last row has medicine_name, dosage, and frequency filled
+    // Auto-add a new row once the last row is filled in. Eye Hospital Drug
+    // Prescription rows don't have a frequency field at all, so that check
+    // only applies to the general format.
     if (itemIdx === updatedItems.length - 1) {
       const lastItem = updatedItems[itemIdx];
-      if (lastItem.medicine_name?.trim() && lastItem.dosage?.trim() && lastItem.frequency?.trim()) {
+      const lastRowFilled = isEyeHospital
+        ? lastItem.medicine_name?.trim() && lastItem.dosage?.trim()
+        : lastItem.medicine_name?.trim() && lastItem.dosage?.trim() && lastItem.frequency?.trim();
+      if (lastRowFilled) {
         updatedItems.push({ ...emptyItem(), display_order: updatedItems.length });
         newBlocks[blockIdx] = { ...newBlocks[blockIdx], items: updatedItems };
       }
@@ -615,7 +643,6 @@ const PrescriptionBuilder: React.FC = () => {
           clinical_notes: clinicalNotes || undefined,
           advice: advice || undefined,
           is_opthal: isEyeHospital ? isOpthal : undefined,
-          opthal_notes: isEyeHospital ? (opthalNotes || undefined) : undefined,
           ...institutionPayload,
           ...vitalsPayload,
           items: validItems,
@@ -631,12 +658,31 @@ const PrescriptionBuilder: React.FC = () => {
           clinical_notes: clinicalNotes || undefined,
           advice: advice || undefined,
           is_opthal: isEyeHospital ? isOpthal : undefined,
-          opthal_notes: isEyeHospital ? (opthalNotes || undefined) : undefined,
           ...institutionPayload,
           ...vitalsPayload,
           items: validItems,
         });
         rxId = rx.id;
+
+        if (addOpticalRx) {
+          try {
+            await opticalService.createPrescription({
+              patient_id: patient.id,
+              appointment_id: appointmentId || undefined,
+              ...opticalRx,
+            });
+          } catch (opticalErr: any) {
+            // The drug prescription above already saved successfully — surface
+            // the optical failure separately rather than treating the whole
+            // save as failed (e.g. current doctor isn't an eye specialist).
+            showToast(
+              'error',
+              `Prescription saved, but the optical prescription could not be created: ${
+                opticalErr?.response?.data?.detail || 'unknown error'
+              }`,
+            );
+          }
+        }
       }
 
       if (completeQueue) {
@@ -985,6 +1031,103 @@ const PrescriptionBuilder: React.FC = () => {
                   </h4>
 
                   <div className="border border-slate-200 rounded-lg overflow-visible">
+                    {isEyeHospital ? (
+                      <>
+                        {/* Eye Hospital Drug Prescription Table Header — S.No | Medicine | Eye Side (RE/LE) | Dosage | Qty */}
+                        <div className="grid grid-cols-[32px_1fr_44px_44px_1fr_56px_32px] gap-1 bg-slate-100 border-b border-slate-200 px-3 py-2">
+                          <div className="text-[10px] font-semibold text-slate-500 uppercase">#</div>
+                          <div className="text-[10px] font-semibold text-slate-500 uppercase">Medicine</div>
+                          <div className="text-[10px] font-semibold text-slate-500 uppercase text-center">RE</div>
+                          <div className="text-[10px] font-semibold text-slate-500 uppercase text-center">LE</div>
+                          <div className="text-[10px] font-semibold text-slate-500 uppercase">Dosage</div>
+                          <div className="text-[10px] font-semibold text-slate-500 uppercase text-center">Qty</div>
+                          <div className="text-[10px] font-semibold text-slate-500 uppercase text-center">×</div>
+                        </div>
+
+                        {/* Eye Hospital Medicine Rows */}
+                        {block.items.map((item, itemIdx) => {
+                          const reOn = item.eye_side === 'RE' || item.eye_side === 'Both';
+                          const leOn = item.eye_side === 'LE' || item.eye_side === 'Both';
+                          return (
+                            <div
+                              key={itemIdx}
+                              className={`grid grid-cols-[32px_1fr_44px_44px_1fr_56px_32px] gap-1 items-center px-3 py-1.5 border-b border-slate-100 last:border-0 hover:bg-blue-50/30 transition-colors ${item.medicine_name.trim() ? 'bg-white' : 'bg-slate-50/50'}`}
+                            >
+                              <div className="text-xs text-slate-400 font-medium">{itemIdx + 1}</div>
+
+                              <div className="relative pr-2">
+                                <input
+                                  type="text"
+                                  value={item.medicine_name}
+                                  onChange={e => handleMedicineNameChange(blockIdx, itemIdx, e.target.value)}
+                                  onFocus={(e) => {
+                                    activeMedInputRef.current = e.currentTarget;
+                                    setActiveMedBlockIdx(blockIdx);
+                                    setActiveMedItemIdx(itemIdx);
+                                  }}
+                                  onBlur={() => setTimeout(() => { setActiveMedBlockIdx(null); setActiveMedItemIdx(null); }, 400)}
+                                  onKeyDown={(e) => handleMedicineInputKeyDown(e, blockIdx, itemIdx)}
+                                  className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                                  placeholder="Type medicine name..."
+                                />
+                              </div>
+
+                              <div className="flex justify-center">
+                                <button
+                                  type="button"
+                                  onClick={() => updateItem(blockIdx, itemIdx, 'eye_side', toggleEyeSide(item.eye_side, 'RE'))}
+                                  className={`w-6 h-6 rounded border text-[10px] font-bold transition-colors ${reOn ? 'bg-primary text-white border-primary' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50'}`}
+                                >
+                                  {reOn ? '✓' : ''}
+                                </button>
+                              </div>
+                              <div className="flex justify-center">
+                                <button
+                                  type="button"
+                                  onClick={() => updateItem(blockIdx, itemIdx, 'eye_side', toggleEyeSide(item.eye_side, 'LE'))}
+                                  className={`w-6 h-6 rounded border text-[10px] font-bold transition-colors ${leOn ? 'bg-primary text-white border-primary' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50'}`}
+                                >
+                                  {leOn ? '✓' : ''}
+                                </button>
+                              </div>
+
+                              <div className="pr-1">
+                                <input
+                                  type="text"
+                                  value={item.dosage}
+                                  onChange={e => updateItem(blockIdx, itemIdx, 'dosage', e.target.value)}
+                                  className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                                  placeholder="1 drop, 3 times a day"
+                                />
+                              </div>
+
+                              <div className="pr-1">
+                                <input
+                                  type="number"
+                                  min={1}
+                                  value={item.quantity ?? ''}
+                                  onChange={e => updateItem(blockIdx, itemIdx, 'quantity', e.target.value ? parseInt(e.target.value, 10) : null)}
+                                  className="w-full px-1 py-1.5 border border-slate-200 rounded text-xs bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none text-center"
+                                  placeholder="1"
+                                  title="Number of packs/bottles to dispense — defaults to 1 if left blank"
+                                />
+                              </div>
+
+                              <div className="flex justify-center">
+                                <button
+                                  onClick={() => removeItemFromBlock(blockIdx, itemIdx)}
+                                  disabled={block.items.length === 1}
+                                  className="w-6 h-6 rounded border border-red-200 flex items-center justify-center hover:bg-red-50 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+                                >
+                                  <span className="material-symbols-outlined text-red-400" style={{ fontSize: '14px' }}>close</span>
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </>
+                    ) : (
+                      <>
                     {/* Table Header */}
                     <div className="grid grid-cols-[40px_1fr_80px_100px_120px_72px_80px_1fr_40px] gap-1 bg-slate-100 border-b border-slate-200 px-3 py-2">
                       <div className="text-[10px] font-semibold text-slate-500 uppercase">#</div>
@@ -1133,6 +1276,8 @@ const PrescriptionBuilder: React.FC = () => {
                         );
                       })()
                     ))}
+                      </>
+                    )}
 
                     {/* Quick Add Row */}
                     <div
@@ -1217,40 +1362,76 @@ const PrescriptionBuilder: React.FC = () => {
             />
           </div>
 
-          {/* Opthal toggle + notes (BRD §4.5) — eye-hospital feature pack only */}
-          {isEyeHospital && (
+
+          {/* Optical (Spectacle) Prescription — eye-hospital feature pack only,
+              create-mode only (it's a separate record, not part of this edit) */}
+          {isEyeHospital && !isEditMode && opticalModuleEnabled && (
             <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold flex items-center gap-2">
                   <span className="material-symbols-outlined text-primary text-sm">visibility</span>
-                  {isOpthal ? 'Opthal Notes' : 'Ophthalmology'}
+                  Optical (Spectacle) Prescription
                 </h3>
                 <button
                   type="button"
-                  onClick={() => setIsOpthal(v => !v)}
+                  onClick={() => setAddOpticalRx(v => !v)}
                   className={`px-4 py-1.5 text-xs font-bold rounded-lg border transition-colors ${
-                    isOpthal ? 'bg-primary text-white border-primary' : 'bg-white text-primary border-primary/30 hover:bg-primary/5'
+                    addOpticalRx ? 'bg-primary text-white border-primary' : 'bg-white text-primary border-primary/30 hover:bg-primary/5'
                   }`}
                 >
-                  {isOpthal ? 'OPTHAL ✓' : 'ADD OPTHAL'}
+                  {addOpticalRx ? 'OPTICAL ✓' : 'ADD OPTICAL'}
                 </button>
               </div>
-              {isOpthal && (
-                <div className="flex gap-4">
-                  <textarea
-                    rows={4}
-                    value={opthalNotes}
-                    onChange={e => setOpthalNotes(e.target.value)}
-                    className="input-field flex-1"
-                    placeholder="Eye examination findings, diagnosis, lens/IOP details..."
-                  />
-                  <svg width="90" height="60" viewBox="0 0 90 60" className="flex-shrink-0 self-start mt-1">
-                    <ellipse cx="45" cy="30" rx="42" ry="22" fill="none" stroke="#1e293b" strokeWidth="2" />
-                    <circle cx="45" cy="30" r="13" fill="none" stroke="#1e293b" strokeWidth="2" />
-                    <circle cx="45" cy="30" r="6" fill="#1e293b" />
-                    <path d="M3 30 Q45 8 87 30" fill="none" stroke="#1e293b" strokeWidth="1.5" />
-                    <path d="M3 30 Q45 52 87 30" fill="none" stroke="#1e293b" strokeWidth="1.5" />
-                  </svg>
+              {addOpticalRx && (
+                <div className="space-y-4">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-xs font-semibold text-slate-500 uppercase">
+                          <th className="py-2 pr-2">Eye</th>
+                          <th className="py-2 pr-2">SPH</th>
+                          <th className="py-2 pr-2">CYL</th>
+                          <th className="py-2 pr-2">Axis</th>
+                          <th className="py-2 pr-2">Add</th>
+                          <th className="py-2 pr-2">Visual Acuity</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td className="py-1 pr-2 font-semibold text-slate-700">Right (OD)</td>
+                          <td className="py-1 pr-2"><input type="number" step="0.25" value={opticalRx.right_sph ?? ''} onChange={opticalNumField('right_sph')} className="input-field" /></td>
+                          <td className="py-1 pr-2"><input type="number" step="0.25" value={opticalRx.right_cyl ?? ''} onChange={opticalNumField('right_cyl')} className="input-field" /></td>
+                          <td className="py-1 pr-2"><input type="number" min={0} max={180} value={opticalRx.right_axis ?? ''} onChange={opticalNumField('right_axis')} className="input-field" /></td>
+                          <td className="py-1 pr-2"><input type="number" step="0.25" value={opticalRx.right_add ?? ''} onChange={opticalNumField('right_add')} className="input-field" /></td>
+                          <td className="py-1 pr-2"><input value={opticalRx.right_va || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, right_va: e.target.value }))} placeholder="6/6" className="input-field" /></td>
+                        </tr>
+                        <tr>
+                          <td className="py-1 pr-2 font-semibold text-slate-700">Left (OS)</td>
+                          <td className="py-1 pr-2"><input type="number" step="0.25" value={opticalRx.left_sph ?? ''} onChange={opticalNumField('left_sph')} className="input-field" /></td>
+                          <td className="py-1 pr-2"><input type="number" step="0.25" value={opticalRx.left_cyl ?? ''} onChange={opticalNumField('left_cyl')} className="input-field" /></td>
+                          <td className="py-1 pr-2"><input type="number" min={0} max={180} value={opticalRx.left_axis ?? ''} onChange={opticalNumField('left_axis')} className="input-field" /></td>
+                          <td className="py-1 pr-2"><input type="number" step="0.25" value={opticalRx.left_add ?? ''} onChange={opticalNumField('left_add')} className="input-field" /></td>
+                          <td className="py-1 pr-2"><input value={opticalRx.left_va || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, left_va: e.target.value }))} placeholder="6/6" className="input-field" /></td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">PD Distance (mm)</label>
+                      <input type="number" step="0.5" value={opticalRx.pd_distance ?? ''} onChange={opticalNumField('pd_distance')} className="input-field" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">PD Near (mm)</label>
+                      <input type="number" step="0.5" value={opticalRx.pd_near ?? ''} onChange={opticalNumField('pd_near')} className="input-field" />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Optical Notes</label>
+                    <input value={opticalRx.notes || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, notes: e.target.value }))} className="input-field" />
+                  </div>
                 </div>
               )}
             </div>

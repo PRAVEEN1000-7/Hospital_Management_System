@@ -9,11 +9,12 @@ from typing import Optional, Dict, Any
 from fastapi import Request, HTTPException, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import ProgrammingError
 from jose import jwt, JWTError
 
 from ..database import get_db
 from ..models.tenant import Tenant
-from ..models.user import User
+from ..models.user import User, RevokedToken
 from ..config import settings
 
 logger = logging.getLogger(__name__)
@@ -158,23 +159,48 @@ async def get_current_superadmin(
         user_id = payload.get('user_id')
         if not user_id:
             return None
-            
+
+        # Blocklist check (SECURITY_AUDIT.md C1) — this is a separate decode
+        # path from dependencies.get_current_user, so without this every
+        # /superadmin/* route would silently ignore logout/password-change
+        # revocation regardless of which login endpoint issued the token.
+        jti = payload.get('jti')
+        if jti:
+            try:
+                revoked = db.query(RevokedToken).filter(RevokedToken.jti == uuid.UUID(jti)).first()
+            except (ValueError, TypeError):
+                revoked = None
+            except ProgrammingError:
+                db.rollback()
+                logger.critical(
+                    "revoked_tokens table is missing — superadmin token revocation is NOT enforced. "
+                    "Run database_hole/security_updates.sql against this database."
+                )
+                revoked = None
+            if revoked:
+                return None
+
         # Check roles in payload first (faster)
         roles = payload.get('roles', [])
         is_superadmin = payload.get('user_type') == 'superadmin' or 'super_admin' in roles
-        
+
         if not is_superadmin:
             return None
-        
+
         # Use SuperAdminService to validate user has super_admin role
         from ..services.superadmin_service import SuperAdminService
         user = SuperAdminService.get_by_id(db, uuid.UUID(user_id))
         
         if user:
             SuperAdminContext.set_current(user)
-        
+            # Exposes the current token's identity to /superadmin/logout so
+            # it can revoke this specific token — mirrors the attachment
+            # dependencies.get_current_user does for the regular auth path.
+            user._jti = jti
+            user._token_exp = payload.get("exp")
+
         return user
-        
+
     except (JWTError, ValueError):
         return None
 
@@ -281,6 +307,6 @@ def generate_tenant_slug(name: str) -> str:
 
 def generate_tenant_code() -> str:
     """Generate unique 2-character code for tenant"""
-    import random
+    import secrets
     import string
-    return ''.join(random.choices(string.ascii_uppercase, k=2))
+    return ''.join(secrets.choice(string.ascii_uppercase) for _ in range(2))

@@ -10,8 +10,28 @@ from ..schemas.hospital import HospitalCreate, HospitalUpdate
 logger = logging.getLogger(__name__)
 
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "uploads", "hospital")
-ALLOWED_LOGO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".svg"}
+# .svg deliberately excluded — SVGs can carry executable <script>, and these
+# files are served back from a static route at the app's own origin (stored
+# XSS). See SECURITY_AUDIT.md M1.
+ALLOWED_LOGO_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 MAX_LOGO_SIZE_MB = 2
+
+# Magic-byte signatures for the allowed types — extension alone doesn't prove
+# content (a renamed .html/.svg can still claim to be a .png).
+_FILE_SIGNATURES = {
+    ".png": (b"\x89PNG\r\n\x1a\n",),
+    ".jpg": (b"\xff\xd8\xff",),
+}
+
+
+def _has_valid_signature(file: UploadFile, file_ext: str) -> bool:
+    signatures = _FILE_SIGNATURES.get(file_ext)
+    if not signatures:
+        return True
+    file.file.seek(0)
+    header = file.file.read(16)
+    file.file.seek(0)
+    return any(header.startswith(sig) for sig in signatures)
 
 
 def ensure_upload_directory():
@@ -112,6 +132,11 @@ def save_hospital_logo(db: Session, file: UploadFile, hospital_id=None) -> dict:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid file type. Allowed: {', '.join(ALLOWED_LOGO_EXTENSIONS)}",
+        )
+    if not _has_valid_signature(file, file_ext):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File content does not match its extension.",
         )
     file.file.seek(0, 2)
     file_size_bytes = file.file.tell()

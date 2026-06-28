@@ -166,6 +166,38 @@ async def rate_limit(request: Request, call_next):
     return await call_next(request)
 
 
+# ── Security Headers Middleware ──────────────────────────────────────────────
+# Baseline hardening headers on every response from this backend (JSON API
+# responses and the printed prescription/optical/appointment HTML documents).
+# Note: in production the SPA's index.html is served directly by nginx, not
+# by this app (see deploy/nginx.conf) — these headers do NOT reach the SPA
+# shell itself, only responses FastAPI returns directly. The SPA gets its own
+# CSP via a <meta> tag in frontend/index.html, and nginx sets the headers
+# that can only be delivered as real HTTP headers (X-Frame-Options, HSTS).
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "geolocation=(), camera=(), microphone=()"
+    # script-src deliberately excludes 'unsafe-inline'/'unsafe-eval' — this is
+    # the directive that actually matters for stopping injected <script> tags
+    # from executing (SECURITY_AUDIT.md M2). style-src needs 'unsafe-inline'
+    # because the printed documents use inline style="" attributes throughout.
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self'; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "img-src 'self' data:; "
+        "object-src 'none'; "
+        "frame-ancestors 'none'; "
+        "base-uri 'self'"
+    )
+    return response
+
+
 # ---------- Global Exception Handlers ----------
 def _cors_headers(request: Request) -> dict:
     """Build CORS headers matching CORSMiddleware config so error responses include them."""

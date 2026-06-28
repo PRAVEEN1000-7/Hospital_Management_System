@@ -7,7 +7,6 @@ from datetime import datetime, timedelta
 from typing import Optional, Tuple, Dict, Any
 
 from sqlalchemy.orm import Session, joinedload
-from jose import jwt
 
 from ..models.user import User, UserRole, Role
 from ..utils.security import verify_password, get_password_hash
@@ -46,21 +45,27 @@ class SuperAdminService:
     
     @staticmethod
     def create_access_token(user: User) -> str:
-        """Create JWT access token for super admin"""
-        expires_delta = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-        expire = datetime.utcnow() + expires_delta
-        
-        to_encode = {
-            "user_id": str(user.id),
-            "user_type": "superadmin",
-            "username": user.username,
-            "email": user.email,
-            "exp": expire,
-            "iat": datetime.utcnow(),
-            "type": "access"
-        }
-        
-        return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+        """Create JWT access token for super admin.
+
+        Delegates to the shared core.security.create_access_token() rather
+        than encoding the JWT directly — that function adds a `jti` claim,
+        which is what lets /auth/logout and /auth/change-password actually
+        revoke a token (SECURITY_AUDIT.md C1). This endpoint used to mint
+        tokens with no jti at all, silently bypassing revocation regardless
+        of which login path issued them.
+        """
+        from ..core.security import create_access_token as _create_access_token
+
+        return _create_access_token(
+            data={
+                "user_id": str(user.id),
+                "user_type": "superadmin",
+                "username": user.username,
+                "email": user.email,
+                "roles": ["super_admin"],
+            },
+            expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
+        )
     
     @staticmethod
     def create_refresh_token(user: User) -> Tuple[str, str]:

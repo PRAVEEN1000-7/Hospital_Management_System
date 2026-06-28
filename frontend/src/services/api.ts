@@ -32,18 +32,21 @@ function isTokenExpiringSoon(token: string, thresholdSeconds = 300): boolean {
 let refreshPromise: Promise<string | null> | null = null;
 
 async function refreshAccessToken(): Promise<string | null> {
-  const token = localStorage.getItem('access_token');
-  if (!token) return null;
+  // Uses the long-lived refresh token, not the access token being replaced —
+  // this is what actually lets refresh work once the access token has
+  // already expired (the old /auth/refresh re-minted from the access token
+  // itself, so it failed exactly when it was needed). The refresh token is
+  // rotated (single-use) on every call, so both are persisted on success.
+  const refreshToken = localStorage.getItem('refresh_token');
+  if (!refreshToken) return null;
 
   try {
-    const response = await axios.post(
-      `${API_BASE_URL}/auth/refresh`,
-      {},
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
-    const newToken: string = response.data.access_token;
-    localStorage.setItem('access_token', newToken);
-    return newToken;
+    const response = await axios.post(`${API_BASE_URL}/auth/refresh`, { refresh_token: refreshToken });
+    const newAccessToken: string = response.data.access_token;
+    const newRefreshToken: string = response.data.refresh_token;
+    localStorage.setItem('access_token', newAccessToken);
+    localStorage.setItem('refresh_token', newRefreshToken);
+    return newAccessToken;
   } catch {
     return null;
   }
@@ -92,6 +95,7 @@ api.interceptors.response.use(
       if (!requestUrl.includes('/auth/login') && !requestUrl.includes('/auth/refresh')) {
         feLogger.warn('api', 'Session expired — redirecting to login');
         localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
         localStorage.removeItem('user');
         window.location.href = '/login';
       }

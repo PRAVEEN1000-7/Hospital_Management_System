@@ -231,8 +231,19 @@ const PrescriptionList: React.FC = () => {
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-700">{rx.patient_name || '—'}</td>
                     <td className="px-4 py-3 text-sm text-slate-700">{rx.doctor_name || '—'}</td>
-                    <td className="px-4 py-3 text-sm text-slate-500 max-w-[200px] truncate">
-                      {rx.diagnosis || '—'}
+                    <td className="px-4 py-3 text-sm text-slate-500 max-w-[200px]">
+                      <div className="flex items-center gap-1.5">
+                        <span className="truncate">{rx.diagnosis || '—'}</span>
+                        {rx.is_opthal && (
+                          <span
+                            title="Ophthalmology format prescription"
+                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-primary/10 text-primary flex-shrink-0"
+                          >
+                            <span className="material-symbols-outlined" style={{ fontSize: '11px' }}>visibility</span>
+                            OPTHAL
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-700 text-center">{rx.item_count}</td>
                     <td className="px-4 py-3">

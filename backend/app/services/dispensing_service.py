@@ -357,6 +357,10 @@ def _enrich_prescription_for_dispensing(db: Session, rx: Prescription) -> dict:
             "allow_substitution": item.allow_substitution,
             "is_dispensed": item.is_dispensed,
             "dispense_unit": dispense_unit,
+            # Eye Hospital Drug Prescription format — which eye this item is
+            # for. Never sent to the dispensing screen before, so a pharmacist
+            # had no way to tell RE from LE while dispensing eye drops.
+            "eye_side": item.eye_side,
         }
         
         # Get available stock for this medicine across all active batches (FEFO ordered).

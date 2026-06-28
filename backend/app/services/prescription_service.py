@@ -61,7 +61,25 @@ def calculate_prescribed_quantity(
     if quantity is not None and quantity > 0:
         return quantity
 
-    if not frequency or not duration_value or duration_value <= 0:
+    cat = (category or "").lower().strip()
+    uom = (unit_of_measure or "").lower().strip()
+    uop = max(1, units_per_pack or 1)
+
+    # No frequency at all means there's no dose-frequency data to compute from
+    # — this is the Eye Hospital Drug Prescription format (medicine + eye_side
+    # + free-text dosage instructions only, BRD v1.1 — never collects
+    # frequency/duration), or any other free-text-only entry. Single-unit
+    # categories (drops/ointment/cream/inhaler, including "eye drops"/
+    # "eye ointment") still mean one whole pack; anything else defaults to 1
+    # rather than None — returning nothing here previously broke dispensing
+    # (no quantity to dispense) and invoice calculation (nothing to total)
+    # for the whole item.
+    if not frequency:
+        if cat in _SINGLE_UNIT_CATEGORIES or uom == "tube":
+            return 1
+        return quantity or 1
+
+    if not duration_value or duration_value <= 0:
         return quantity
 
     frequency_parts = re.findall(r"\d+(?:\.\d+)?", frequency)
@@ -78,10 +96,6 @@ def calculate_prescribed_quantity(
         duration_days = duration_value * 7
     elif norm_unit == "months":
         duration_days = duration_value * 30
-
-    cat = (category or "").lower().strip()
-    uom = (unit_of_measure or "").lower().strip()
-    uop = max(1, units_per_pack or 1)
 
     # ── Liquid medicines (syrup, suspension …) ──────────────────────────────
     # Dispensed per bottle; clinical standard ≈ 1 bottle per 5 days (100 ml).
@@ -265,6 +279,7 @@ def create_prescription(
             ),
             allow_substitution=item_data.get("allow_substitution", True),
             display_order=item_data.get("display_order", idx),
+            eye_side=item_data.get("eye_side"),
         )
         db.add(item)
 
@@ -436,6 +451,7 @@ def update_prescription(
                 ),
                 allow_substitution=item_data.get("allow_substitution", True),
                 display_order=item_data.get("display_order", idx),
+                eye_side=item_data.get("eye_side"),
             )
             db.add(item)
 
@@ -826,21 +842,38 @@ def list_medicines(
         q = q.filter(Medicine.is_active == True)
 
     if hospital_id:
+        from ..models.user import Hospital
         from ..models.tenant import TenantModule, Module
-        enabled_modules = (
-            db.query(Module.code)
-            .join(TenantModule, TenantModule.module_id == Module.id)
-            .filter(
-                TenantModule.tenant_id == hospital_id,
-                TenantModule.is_enabled == True,
-                Module.code.in_(['pharmacy', 'inventory'])
+
+        # BUG FIX: this used to compare TenantModule.tenant_id (a saas_core
+        # Tenant id) against hospital_id (a Hospital id) directly — two
+        # different ID spaces that essentially never match. That made the
+        # "pharmacy enabled" check always fail, so every hospital silently
+        # fell back to global-only medicines in search, regardless of
+        # whether they actually had pharmacy/inventory enabled.
+        hospital = db.query(Hospital).filter(Hospital.id == hospital_id).first()
+        tenant_id = hospital.tenant_id if hospital else None
+
+        if tenant_id:
+            enabled_modules = (
+                db.query(Module.code)
+                .join(TenantModule, TenantModule.module_id == Module.id)
+                .filter(
+                    TenantModule.tenant_id == tenant_id,
+                    TenantModule.is_enabled == True,
+                    Module.code.in_(['pharmacy', 'inventory'])
+                )
+                .all()
             )
-            .all()
-        )
-        enabled_codes = {m[0] for m in enabled_modules}
-        
-        if 'pharmacy' in enabled_codes or 'inventory' in enabled_codes:
-            # If hospital has pharmacy (or inventory), show ONLY their own medicines
+            enabled_codes = {m[0] for m in enabled_modules}
+            show_own_medicines = 'pharmacy' in enabled_codes or 'inventory' in enabled_codes
+        else:
+            # No SaaS tenant linked — standalone hospital, treated as fully
+            # enabled elsewhere in the app (see TenantValidator.get_tenant_for_user).
+            show_own_medicines = True
+
+        if show_own_medicines:
+            # Hospital has pharmacy (or inventory) — show their own medicines.
             q = q.filter(Medicine.hospital_id == hospital_id)
         else:
             # Otherwise, show ONLY common/global medicines

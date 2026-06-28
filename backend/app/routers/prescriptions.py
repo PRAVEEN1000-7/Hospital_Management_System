@@ -10,10 +10,11 @@ from datetime import date, datetime, timezone
 import uuid as uuid_mod
 
 from ..database import get_db
-from ..models.user import User
+from ..models.user import User, Hospital
 from ..models.appointment import Doctor, Appointment, AppointmentQueue
 from ..models.prescription import Medicine as MedicineModel, PrescriptionTemplate
 from ..dependencies import get_current_active_user
+from ..core.tenant_security import is_eye_hospital_feature_enabled
 from ..schemas.prescription import (
     PrescriptionCreate,
     PrescriptionUpdate,
@@ -393,17 +394,35 @@ async def get_prescription_pdf(
     enriched = enrich_prescription(db, rx)
     patient = db.query(Patient).filter(Patient.id == rx.patient_id).first()
     hospital = db.query(Hospital).filter(Hospital.id == current_user.hospital_id).first()
-    
+    # Eye Hospital Drug Prescription format (S.No | Medicine | Eye Side | Dosage)
+    # replaces the generic Dosage/Frequency/Duration/Qty/Route table for eye
+    # hospitals — distinct from both the general format and the separate
+    # Optical (lens spec) prescription.
+    eye_format = is_eye_hospital_feature_enabled(hospital)
+
+    # This HTML is rendered client-side via document.write() with no further
+    # sanitization (SECURITY_AUDIT.md M2), so every value that ultimately
+    # came from user input — diagnosis, notes, advice, names, medicine
+    # fields, free-typed symptoms — MUST be escaped before interpolation.
+    # Escaping at the point of derivation (here) rather than at every f-string
+    # usage site means nothing downstream can accidentally skip it.
+    import html as _html_mod
+
+    def _esc(value) -> str:
+        if value is None or value == "":
+            return ""
+        return _html_mod.escape(str(value), quote=True)
+
     # Support dual-letterhead via institution_id
     institution = None
     if rx.institution_id:
         institution = db.query(Hospital).filter(Hospital.id == rx.institution_id).first()
-    
-    hosp_name = (institution.name if institution else hospital.name if hospital else "") or "Hospital"
-    hosp_address = (institution.address_line_1 if institution else hospital.address_line_1 if hospital else "") or ""
-    hosp_city = (institution.city if institution else hospital.city if hospital else "") or ""
-    hosp_phone = (institution.phone if institution else hospital.phone if hospital else "") or ""
-    hosp_email = (institution.email if institution else hospital.email if hospital else "") or ""
+
+    hosp_name = _esc((institution.name if institution else hospital.name if hospital else "") or "Hospital")
+    hosp_address = _esc((institution.address_line_1 if institution else hospital.address_line_1 if hospital else "") or "")
+    hosp_city = _esc((institution.city if institution else hospital.city if hospital else "") or "")
+    hosp_phone = _esc((institution.phone if institution else hospital.phone if hospital else "") or "")
+    hosp_email = _esc((institution.email if institution else hospital.email if hospital else "") or "")
 
     # Hospital logo → embed as a base64 data URI so it renders in BOTH the print
     # window and the html2canvas PDF download (relative /uploads paths and external
@@ -429,10 +448,10 @@ async def get_prescription_pdf(
     logo_uri = _logo_data_uri(institution.logo_url if institution else hospital.logo_url if hospital else "")
 
     doctor = db.query(Doctor).filter(Doctor.id == rx.doctor_id).first()
-    doctor_name = (doctor.user.full_name if doctor and doctor.user else "") or "—"
-    doctor_spec = (doctor.specialization if doctor else "") or ""
-    doctor_reg = (doctor.registration_number if doctor else "") or ""
-    doctor_qual = (doctor.qualification if doctor else "") or ""
+    doctor_name = _esc((doctor.user.full_name if doctor and doctor.user else "") or "—")
+    doctor_spec = _esc((doctor.specialization if doctor else "") or "")
+    doctor_reg = _esc((doctor.registration_number if doctor else "") or "")
+    doctor_qual = _esc((doctor.qualification if doctor else "") or "")
     # Doctor name with qualifications appended (e.g. "Dr. Hari Ram, MBBS, MD").
     doctor_display = f"Dr. {doctor_name}" + (f", {doctor_qual}" if doctor_qual else "")
 
@@ -450,10 +469,11 @@ async def get_prescription_pdf(
                 return f"{yrs} yrs"
         return "—"
     patient_age = _compute_age(patient)
-    patient_weight = (rx.vitals_weight or "").strip() if rx.vitals_weight else ""
+    patient_weight = _esc((rx.vitals_weight or "").strip() if rx.vitals_weight else "")
     weight_label = t.get("weight", "Weight")
 
     # Build clean header lines so empty fields never render as "None" or stray commas
+    # (hosp_address/hosp_city/hosp_phone/hosp_email are already escaped above)
     addr_line = ", ".join(p for p in (hosp_address, hosp_city) if p)
     contact_bits = []
     if hosp_phone:
@@ -471,21 +491,38 @@ async def get_prescription_pdf(
 
     items_html = ""
     for idx, item in enumerate(enriched.get("items", []), 1):
-        items_html += f"""
+        if eye_format:
+            eye_side = (item.get("eye_side") or "").strip()
+            tick = "&#10003;"  # ✓
+            re_mark = tick if eye_side in ("RE", "Both") else ""
+            le_mark = tick if eye_side in ("LE", "Both") else ""
+            items_html += f"""
         <tr>
             <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:center;">{idx}</td>
             <td style="padding:8px;border-bottom:1px solid #e2e8f0;">
-                <strong>{item['medicine_name']}</strong>
-                {f'<br/><span style="color:#64748b;font-size:12px;">{item.get("generic_name","")}</span>' if item.get('generic_name') else ''}
+                <strong>{_esc(item['medicine_name'])}</strong>
+                {f'<br/><span style="color:#64748b;font-size:12px;">{_esc(item.get("generic_name",""))}</span>' if item.get('generic_name') else ''}
             </td>
-            <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:center;">{item['dosage']}</td>
-            <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:center;">{item['frequency']}</td>
+            <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:center;">{re_mark}</td>
+            <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:center;">{le_mark}</td>
+            <td style="padding:8px;border-bottom:1px solid #e2e8f0;">{_esc(item.get('dosage','')) or '—'}</td>
+        </tr>"""
+        else:
+            items_html += f"""
+        <tr>
+            <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:center;">{idx}</td>
+            <td style="padding:8px;border-bottom:1px solid #e2e8f0;">
+                <strong>{_esc(item['medicine_name'])}</strong>
+                {f'<br/><span style="color:#64748b;font-size:12px;">{_esc(item.get("generic_name",""))}</span>' if item.get('generic_name') else ''}
+            </td>
+            <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:center;">{_esc(item['dosage'])}</td>
+            <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:center;">{_esc(item['frequency'])}</td>
             <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:center;">
-                {f"{item['duration_value']} {item.get('duration_unit','')}" if item.get('duration_value') else '—'}
+                {f"{item['duration_value']} {_esc(item.get('duration_unit',''))}" if item.get('duration_value') else '—'}
             </td>
             <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:center;">{item.get('quantity','') or '—'}</td>
-            <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:center;">{item.get('route','') or '—'}</td>
-            <td style="padding:8px;border-bottom:1px solid #e2e8f0;">{item.get('instructions','') or '—'}</td>
+            <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:center;">{_esc(item.get('route','')) or '—'}</td>
+            <td style="padding:8px;border-bottom:1px solid #e2e8f0;">{_esc(item.get('instructions','')) or '—'}</td>
         </tr>"""
 
     from fastapi.responses import HTMLResponse
@@ -542,31 +579,31 @@ td {{ font-size:13px; }}
 
 <div class="rx-info">
     <div>
-        <strong>{t['prn']}:</strong> {patient.patient_reference_number if patient else '—'}<br/>
+        <strong>{t['prn']}:</strong> {_esc(patient.patient_reference_number) if patient else '—'}<br/>
         <strong>{t['date']}:</strong> {fmt_date(rx.created_at)}
     </div>
     <div style="text-align:right;">
-        <strong>{t['status']}:</strong> {rx.status.upper()}
+        <strong>{t['status']}:</strong> {_esc(rx.status.upper())}
     </div>
 </div>
 
 <div class="patient-box">
-    <p><strong>{t['patient']}:</strong> {patient.full_name if patient else '—'}</p>
-    <p><strong>{t['prn']}:</strong> {patient.patient_reference_number if patient else '—'} |
+    <p><strong>{t['patient']}:</strong> {_esc(patient.full_name) if patient else '—'}</p>
+    <p><strong>{t['prn']}:</strong> {_esc(patient.patient_reference_number) if patient else '—'} |
        <strong>{t['age']}:</strong> {patient_age} |
-       <strong>{t['gender']}:</strong> {patient.gender if patient else '—'} |
-       <strong>{t['blood_group']}:</strong> {patient.blood_group if patient and patient.blood_group else '—'}
+       <strong>{t['gender']}:</strong> {_esc(patient.gender) if patient else '—'} |
+       <strong>{t['blood_group']}:</strong> {_esc(patient.blood_group) if patient and patient.blood_group else '—'}
        {f" | <strong>{weight_label}:</strong> {patient_weight} kg" if patient_weight else ""}</p>
-    {f'<p><strong>{t["allergies"]}:</strong> <span style="color:#dc2626;">{patient.known_allergies}</span></p>' if patient and patient.known_allergies else ''}
+    {f'<p><strong>{t["allergies"]}:</strong> <span style="color:#dc2626;">{_esc(patient.known_allergies)}</span></p>' if patient and patient.known_allergies else ''}
 </div>
 
-{f'<div class="diagnosis"><strong>Patient History:</strong> {"Blood Sugar: " + rx.vitals_blood_sugar if rx.vitals_blood_sugar else ""}{" | Symptoms: " + ", ".join(patient.symptoms) if patient and patient.symptoms else ""}</div>' if rx.vitals_blood_sugar or (patient and patient.symptoms) else ''}
+{f'<div class="diagnosis"><strong>Patient History:</strong> {"Blood Sugar: " + _esc(rx.vitals_blood_sugar) if rx.vitals_blood_sugar else ""}{" | Symptoms: " + _esc(", ".join(patient.symptoms)) if patient and patient.symptoms else ""}</div>' if rx.vitals_blood_sugar or (patient and patient.symptoms) else ''}
 
-{f'<div class="diagnosis"><strong>{t["diagnosis"]}:</strong> {rx.diagnosis}</div>' if rx.diagnosis else ''}
-{f'<div class="diagnosis"><strong>{t["clinical_notes"]}:</strong> {rx.clinical_notes}</div>' if rx.clinical_notes else ''}
+{f'<div class="diagnosis"><strong>{t["diagnosis"]}:</strong> {_esc(rx.diagnosis)}</div>' if rx.diagnosis else ''}
+{f'<div class="diagnosis"><strong>{t["clinical_notes"]}:</strong> {_esc(rx.clinical_notes)}</div>' if rx.clinical_notes else ''}
 
 {f'''<div class="diagnosis" style="background:#fef3c7;position:relative;padding-right:100px;">
-    <strong>Ophthalmology Examination:</strong><br/>{rx.opthal_notes}
+    <strong>Ophthalmology Examination:</strong><br/>{_esc(rx.opthal_notes)}
     <svg width="80" height="54" viewBox="0 0 90 60" style="position:absolute;top:8px;right:8px;">
         <ellipse cx="45" cy="30" rx="42" ry="22" fill="none" stroke="#1e293b" stroke-width="2" />
         <circle cx="45" cy="30" r="13" fill="none" stroke="#1e293b" stroke-width="2" />
@@ -578,21 +615,27 @@ td {{ font-size:13px; }}
 
 <table>
 <thead>
-<tr>
-    <th style="width:4%;">{t['sl_no']}</th>
-    <th style="width:22%;">{t['medicine']}</th>
-    <th style="width:10%;text-align:center;">{t['dosage']}</th>
-    <th style="width:10%;text-align:center;">{t['frequency']}</th>
-    <th style="width:12%;text-align:center;">{t['duration']}</th>
+{'''<tr>
+    <th style="width:6%;">''' + t['sl_no'] + '''</th>
+    <th style="width:44%;">''' + t['medicine'] + '''</th>
+    <th style="width:12%;text-align:center;">RE</th>
+    <th style="width:12%;text-align:center;">LE</th>
+    <th style="width:26%;">Dosage</th>
+</tr>''' if eye_format else '''<tr>
+    <th style="width:4%;">''' + t['sl_no'] + '''</th>
+    <th style="width:22%;">''' + t['medicine'] + '''</th>
+    <th style="width:10%;text-align:center;">''' + t['dosage'] + '''</th>
+    <th style="width:10%;text-align:center;">''' + t['frequency'] + '''</th>
+    <th style="width:12%;text-align:center;">''' + t['duration'] + '''</th>
     <th style="width:8%;text-align:center;">Qty</th>
     <th style="width:10%;text-align:center;">Route</th>
-    <th style="width:24%;">{t['instructions']}</th>
-</tr>
+    <th style="width:24%;">''' + t['instructions'] + '''</th>
+</tr>'''}
 </thead>
 <tbody>{items_html}</tbody>
 </table>
 
-{f'<div class="advice"><strong>{t["advice"]}:</strong> {rx.advice}</div>' if rx.advice else ''}
+{f'<div class="advice"><strong>{t["advice"]}:</strong> {_esc(rx.advice)}</div>' if rx.advice else ''}
 
 <div class="footer">
     <div class="signature">

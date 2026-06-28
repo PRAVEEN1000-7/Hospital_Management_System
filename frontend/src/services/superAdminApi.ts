@@ -32,7 +32,9 @@ export const superAdminApi = {
   // Auth
   login: (data: { username: string; password: string }) =>
     api.post('/superadmin/login', data),
-  
+
+  logout: () => api.post('/superadmin/logout'),
+
   getMe: () => api.get('/superadmin/me'),
 
   // Dashboard

@@ -71,7 +71,7 @@ const Layout: React.FC = () => {
     const allowedSet = new Set(allowed.map(a => String(a).trim().toLowerCase()));
     return effectiveRoles.some(r => allowedSet.has(r));
   };
-  const hasPendingPrescriptionAccess = hasRole('pharmacist', 'admin', 'super_admin', 'inventory_manager');
+  const hasPendingPrescriptionAccess = hasRole('pharmacist', 'admin', 'super_admin', 'inventory_manager') && isModuleEnabled('pharmacy');
   
   // Module + role gating — every section requires BOTH the right role AND enabled module
   const canAccessPatients      = hasRole('super_admin', 'admin', 'receptionist', 'nurse', 'pharmacist', 'doctor') && isModuleEnabled('patients');

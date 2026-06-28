@@ -14,7 +14,7 @@ interface SuperAdminContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (username: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   checkAuth: () => Promise<boolean>;
 }
 
@@ -53,8 +53,14 @@ export const SuperAdminProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setAdmin(user);
   };
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      await superAdminApi.logout();
+    } catch {
+      // Best-effort — always clear client state even if the server call fails.
+    }
     localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
     setAdmin(null);
   };
 

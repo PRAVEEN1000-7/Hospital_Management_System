@@ -15,6 +15,7 @@ from ..models.user import User, UserRole, Role, Hospital
 from ..models.appointment import Doctor
 from ..utils.security import get_password_hash
 from ..services.patient_id_service import generate_staff_id
+from ..services.auth_service import clear_lockout
 
 logger = logging.getLogger(__name__)
 
@@ -224,6 +225,10 @@ def reset_password(db: Session, user_id: str | uuid.UUID, new_password: str) -> 
         logger.warning("reset_password: user %s not found", user_id)
         return None
     user.password_hash = get_password_hash(new_password)
+    # An admin resetting the password is also proving identity/authority
+    # outside the normal login flow — lift any lockout too, otherwise the
+    # user still can't log in with the new password until the timer expires.
+    clear_lockout(user)
     db.commit()
     db.refresh(user)
     logger.info("Password reset for user: %s", user.username)

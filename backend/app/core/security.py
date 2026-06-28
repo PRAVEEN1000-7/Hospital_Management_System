@@ -6,6 +6,7 @@ Spec: JWT_SECRET_KEY, HS256, access token 30 min in JS memory,
 """
 import hashlib
 import secrets
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -59,6 +60,10 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
         "exp": expire,
         "iat": datetime.now(timezone.utc),
         "type": "access",
+        # Unique per-token ID — lets a single token be revoked (logout,
+        # password change) without invalidating every token for the user.
+        # See SECURITY_AUDIT.md C1 and models.user.RevokedToken.
+        "jti": str(uuid.uuid4()),
     })
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 

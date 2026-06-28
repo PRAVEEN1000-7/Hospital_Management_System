@@ -19,7 +19,7 @@ interface Medicine {
   is_active: boolean;
 }
 
-const CATEGORIES = ['tablet', 'capsule', 'syrup', 'injection', 'cream', 'drops', 'ointment', 'inhaler', 'powder', 'suspension'];
+const CATEGORIES = ['tablet', 'capsule', 'syrup', 'injection', 'cream', 'drops', 'ointment', 'eye drops', 'eye ointment', 'inhaler', 'powder', 'suspension'];
 const UNITS = ['strip', 'bottle', 'tube', 'vial', 'box', 'sachet', 'piece'];
 
 const emptyForm = () => ({

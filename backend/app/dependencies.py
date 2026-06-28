@@ -7,9 +7,11 @@ import uuid
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.exc import ProgrammingError
+from datetime import datetime, timezone
 from .database import get_db
 from .utils.security import decode_access_token
-from .models.user import User, UserRole
+from .models.user import User, UserRole, RevokedToken
 from .models import Hospital
 from .core.tenant_security import TenantValidator, SubscriptionValidator, TenantScopeValidator
 from .core.audit_logger import AuditLogger, AuditAction, AuditSeverity, get_client_ip
@@ -48,6 +50,33 @@ async def get_current_user(
 
     if payload is None:
         raise credentials_exception
+
+    # Blocklist check (SECURITY_AUDIT.md C1) — a logged-out or password-
+    # changed token is cryptographically still "valid" (JWTs are stateless),
+    # so revocation has to be enforced here on every request.
+    jti = payload.get("jti")
+    if jti:
+        try:
+            revoked = db.query(RevokedToken).filter(RevokedToken.jti == uuid.UUID(jti)).first()
+        except (ValueError, TypeError):
+            revoked = None
+        except ProgrammingError:
+            # `revoked_tokens` doesn't exist yet — database_hole/security_updates.sql
+            # hasn't been applied to this database. Fail open rather than 500
+            # every authenticated request in the app; this is loud on purpose
+            # so it's impossible to miss in the logs.
+            db.rollback()
+            logger.critical(
+                "revoked_tokens table is missing — token revocation is NOT enforced. "
+                "Run database_hole/security_updates.sql against this database."
+            )
+            revoked = None
+        if revoked:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token has been revoked. Please log in again.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
 
     user_id_str = payload.get("user_id")
     hospital_id_str = payload.get("hospital_id")
@@ -154,7 +183,11 @@ async def get_current_user(
     # Store tenant info on user object for use in route handlers
     user._tenant_id = tenant.id if tenant else None
     user._hospital_id = user.hospital_id
-    
+    # Exposes the current token's identity to /auth/logout and
+    # /auth/change-password so they can revoke this specific token.
+    user._jti = jti
+    user._token_exp = payload.get("exp")
+
     return user
 
 
@@ -336,25 +369,11 @@ async def validate_resource_access(
         )
 
 
-def require_resource_access(resource_type: str, resource_id_param_name: str = "resource_id"):
-    """
-    Factory to create a dependency that validates resource access.
-    
-    Usage:
-        @router.get("/patients/{patient_id}")
-        async def get_patient(
-            patient_id: UUID,
-            current_user: User = Depends(get_current_active_user),
-            patient: Patient = Depends(require_resource_access("patient", "patient_id")),
-            db: Session = Depends(get_db)
-        ):
-            return patient
-    """
-    async def _validate(
-        current_user: User = Depends(get_current_active_user),
-        db: Session = Depends(get_db)
-    ):
-        # Note: This is a simplified version. In practice, extract resource_id from request path
-        pass
-    
-    return _validate
+
+
+# NOTE: a `require_resource_access()` dependency factory used to live here.
+# Its body was `pass` — it validated nothing while looking, from the call
+# site, exactly like a real authorization check (SECURITY_AUDIT.md L5). It
+# was never actually used anywhere (grep confirmed). Removed rather than
+# fixed, since `validate_resource_access()` above already does this
+# correctly for any route that wires it up explicitly per-resource.

@@ -15,6 +15,10 @@ const CATEGORY_OPTIONS = [
   { value: 'cream', label: 'Cream' },
   { value: 'ointment', label: 'Ointment' },
   { value: 'drops', label: 'Drops' },
+  // Eye hospital — distinct from generic "Drops"/"Ointment" so dispensing
+  // quantity calc recognizes them specifically (see MedicineForm.tsx).
+  { value: 'eye drops', label: 'Eye Drops' },
+  { value: 'eye ointment', label: 'Eye Ointment' },
   { value: 'inhaler', label: 'Inhaler' },
   { value: 'powder', label: 'Powder' },
   { value: 'other', label: 'Other' },
@@ -36,7 +40,7 @@ const formatCategory = (value?: string | null) => {
 const MedicineList: React.FC = () => {
   const navigate = useNavigate();
   const toast = useToast();
-  const { user } = useAuth();
+  const { user, isEyeHospitalFeatureEnabled } = useAuth();
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [loading, setLoading] = useState(true);
   const [bulkUploading, setBulkUploading] = useState(false);
@@ -163,7 +167,26 @@ const MedicineList: React.FC = () => {
       },
     ];
 
-    const worksheet = XLSX.utils.aoa_to_sheet([medicineHeaders]);
+    // Eye hospitals get two filled-in example rows showing the "Eye Drops" /
+    // "Eye Ointment" categories in use, so the new categories aren't just
+    // names in the Field Guide — general hospitals get a blank template.
+    const eyeExampleRows = isEyeHospitalFeatureEnabled
+      ? [
+          {
+            name: 'Tropicamide Eye Drops', generic_name: 'Tropicamide', category: 'eye drops',
+            strength: '0.8%', unit: 'Bottle', requires_prescription: 'true',
+          },
+          {
+            name: 'Moxifloxacin Eye Ointment', generic_name: 'Moxifloxacin', category: 'eye ointment',
+            strength: '0.5%', unit: 'Tube', requires_prescription: 'true',
+          },
+        ]
+      : [];
+    const exampleRows = eyeExampleRows.map((row) =>
+      medicineHeaders.map((h) => (row as Record<string, string>)[h] ?? '')
+    );
+
+    const worksheet = XLSX.utils.aoa_to_sheet([medicineHeaders, ...exampleRows]);
     const guideSheet = XLSX.utils.json_to_sheet(guideRows);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Medicines');

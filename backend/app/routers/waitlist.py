@@ -159,7 +159,7 @@ async def get_single_waitlist_entry(
     current_user: User = Depends(get_current_active_user),
 ):
     """Get a single waitlist entry by ID."""
-    entry = get_waitlist_entry(db, entry_id)
+    entry = get_waitlist_entry(db, entry_id, hospital_id=current_user.hospital_id)
     if not entry:
         raise HTTPException(status_code=404, detail="Waitlist entry not found")
     return enrich_waitlist_entry(db, entry)
@@ -175,11 +175,13 @@ async def update_entry(
     current_user: User = Depends(get_current_active_user),
 ):
     """Update a waitlist entry (status, priority, date, etc.)."""
-    entry = get_waitlist_entry(db, entry_id)
+    entry = get_waitlist_entry(db, entry_id, hospital_id=current_user.hospital_id)
     if not entry:
         raise HTTPException(status_code=404, detail="Waitlist entry not found")
 
-    updated = update_waitlist_entry(db, entry_id, data.model_dump(exclude_unset=True))
+    updated = update_waitlist_entry(
+        db, entry_id, data.model_dump(exclude_unset=True), hospital_id=current_user.hospital_id
+    )
     db.commit()
     db.refresh(updated)
     return enrich_waitlist_entry(db, updated)
@@ -194,14 +196,14 @@ async def cancel_entry(
     current_user: User = Depends(get_current_active_user),
 ):
     """Cancel (soft-delete) a waitlist entry."""
-    entry = get_waitlist_entry(db, entry_id)
+    entry = get_waitlist_entry(db, entry_id, hospital_id=current_user.hospital_id)
     if not entry:
         raise HTTPException(status_code=404, detail="Waitlist entry not found")
 
     if entry.status == "booked":
         raise HTTPException(status_code=400, detail="Cannot cancel a waitlist entry that is already booked")
 
-    cancelled = cancel_waitlist_entry(db, entry_id)
+    cancelled = cancel_waitlist_entry(db, entry_id, hospital_id=current_user.hospital_id)
     db.commit()
     return {"detail": "Waitlist entry cancelled", "id": str(cancelled.id)}
 
@@ -220,7 +222,7 @@ async def book_from_waitlist(
     Optionally accepts a doctor_id to reassign to a different doctor.
     """
     try:
-        entry = get_waitlist_entry(db, entry_id)
+        entry = get_waitlist_entry(db, entry_id, hospital_id=current_user.hospital_id)
         if not entry:
             raise HTTPException(status_code=404, detail="Waitlist entry not found")
 

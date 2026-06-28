@@ -313,12 +313,23 @@ async def get_appointment_pdf(
     enriched = enrich_appointment(db, appt)
     patient = db.query(Patient).filter(Patient.id == appt.patient_id).first()
     hospital = db.query(Hospital).filter(Hospital.id == current_user.hospital_id).first()
-    hosp_name = (hospital.name if hospital else "") or "Hospital"
-    hosp_address = hospital.address_line_1 if hospital else ""
-    hosp_city = hospital.city if hospital else ""
-    hosp_state = hospital.state_province if hospital else ""
-    hosp_phone = hospital.phone if hospital else ""
-    hosp_email = hospital.email if hospital else ""
+
+    # This HTML is rendered client-side via document.write() with no further
+    # sanitization (SECURITY_AUDIT.md M2) — every value derived from user
+    # input must be escaped before interpolation.
+    import html as _html_mod
+
+    def _esc(value) -> str:
+        if value is None or value == "":
+            return ""
+        return _html_mod.escape(str(value), quote=True)
+
+    hosp_name = _esc((hospital.name if hospital else "") or "Hospital")
+    hosp_address = _esc(hospital.address_line_1 if hospital else "")
+    hosp_city = _esc(hospital.city if hospital else "")
+    hosp_state = _esc(hospital.state_province if hospital else "")
+    hosp_phone = _esc(hospital.phone if hospital else "")
+    hosp_email = _esc(hospital.email if hospital else "")
 
     def fmt_time(t):
         if not t:
@@ -370,16 +381,16 @@ td {{ font-size: 14px; }}
     <tr><th>Type</th><td style="text-transform: capitalize;">{appt.appointment_type}</td></tr>
     <tr><th>Date</th><td>{fmt_date(appt.appointment_date)}</td></tr>
     <tr><th>Time</th><td>{fmt_time(appt.start_time)}</td></tr>
-    <tr><th>Doctor</th><td>Dr. {enriched.get('doctor_name', 'TBA')}</td></tr>
+    <tr><th>Doctor</th><td>Dr. {_esc(enriched.get('doctor_name', 'TBA'))}</td></tr>
 </table>
 <p class="section-title">Patient Information</p>
 <table>
-    <tr><th>Name</th><td>{enriched.get('patient_name', 'â€”')}</td></tr>
-    <tr><th>PRN</th><td>{patient.patient_reference_number if patient else 'â€”'}</td></tr>
+    <tr><th>Name</th><td>{_esc(enriched.get('patient_name', '—')) or '—'}</td></tr>
+    <tr><th>PRN</th><td>{_esc(patient.patient_reference_number) if patient else '—'}</td></tr>
 </table>
 {f'''<p class="section-title">Clinical Notes</p>
 <table>
-    {"<tr><th>Chief Complaint</th><td>" + appt.chief_complaint + "</td></tr>" if appt.chief_complaint else ""}
+    {"<tr><th>Chief Complaint</th><td>" + _esc(appt.chief_complaint) + "</td></tr>" if appt.chief_complaint else ""}
 </table>''' if appt.chief_complaint else ""}
 <div class="footer">
     <p>Generated on {datetime.now().strftime("%B %d, %Y at %I:%M %p")} | {hosp_name}</p>

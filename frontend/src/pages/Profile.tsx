@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolverV4 as zodResolver } from '../utils/zodResolverV4';
 import { useAuth } from '../contexts/AuthContext';
@@ -17,8 +18,9 @@ type ChangePasswordData = {
 };
 
 const Profile: React.FC = () => {
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, logout } = useAuth();
   const toast = useToast();
+  const navigate = useNavigate();
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [showCurrent, setShowCurrent] = useState(false);
   const [showNew, setShowNew] = useState(false);
@@ -60,9 +62,15 @@ const Profile: React.FC = () => {
   const onSubmit = async (data: ChangePasswordData) => {
     try {
       await authService.changePassword(data.current_password, data.new_password);
-      toast.success('Password changed successfully');
       reset();
       setShowChangePassword(false);
+      // Changing the password revokes the current session server-side (see
+      // SECURITY_AUDIT.md C1) so every device — including this one — has to
+      // re-authenticate. Do that deliberately instead of letting the next
+      // API call fail unexpectedly.
+      toast.success('Password changed. Please log in again with your new password.');
+      await logout();
+      navigate('/login');
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || 'Failed to change password');
     }

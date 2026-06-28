@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import opticalService from '../../services/opticalService';
 import type { OpticalPrescription } from '../../types/optical';
 import { useToast } from '../../contexts/ToastContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { htmlStringToPdf } from '../../utils/pdf';
 import { format } from 'date-fns';
 
@@ -14,6 +15,12 @@ const OpticalPrescriptionDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const toast = useToast();
+  // /optical/sales/new is restricted to optical/billing staff (same
+  // separation of duties as Pharmacy dispensing) — doctors can view this
+  // page but linking them to a route they're blocked from just bounces them
+  // to the dashboard with no explanation, so hide the action instead.
+  const { hasRole } = useAuth();
+  const canDispense = hasRole('super_admin', 'admin', 'optical_staff');
   const [rx, setRx] = useState<OpticalPrescription | null>(null);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
@@ -87,6 +94,13 @@ const OpticalPrescriptionDetail: React.FC = () => {
             className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-primary bg-white border border-primary/30 rounded-lg hover:bg-primary/5 disabled:opacity-50">
             <span className="material-symbols-outlined text-base">download</span> {downloading ? 'Preparing…' : 'Download PDF'}
           </button>
+          {canDispense && (
+            <button onClick={() => navigate(`/optical/sales/new?prescription_id=${rx.id}`)}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90"
+              title="Sell spectacles/lenses against this prescription">
+              <span className="material-symbols-outlined text-base">point_of_sale</span> Dispense
+            </button>
+          )}
         </div>
       </div>
 

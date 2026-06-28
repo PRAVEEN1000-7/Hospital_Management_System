@@ -120,7 +120,8 @@ export interface OpticalPrescription {
 
 export interface OpticalPrescriptionCreateData {
   patient_id: string;
-  doctor_id: string;
+  /** Optional — omit to resolve server-side from the logged-in doctor. */
+  doctor_id?: string;
   appointment_id?: string;
   right_sph?: number;
   right_cyl?: number;

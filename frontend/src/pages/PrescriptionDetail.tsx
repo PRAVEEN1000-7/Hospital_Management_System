@@ -13,6 +13,9 @@ const PrescriptionDetail: React.FC = () => {
   const { user } = useAuth();
   const { showToast } = useToast();
   const confirm = useConfirm();
+  // Eye Hospital Drug Prescription format follows the hospital, not a
+  // per-prescription toggle — same gate used in PrescriptionBuilder.tsx.
+  const isEyeHospital = user?.hospital_specialty === 'eye_hospital' || user?.hospital_specialty === 'multi_specialty';
 
   const [prescription, setPrescription] = useState<Prescription | null>(null);
   const [history, setHistory] = useState<PrescriptionListItem[]>([]);
@@ -155,6 +158,12 @@ const PrescriptionDetail: React.FC = () => {
             <span className={`text-xs px-2.5 py-1 rounded-full border font-medium ${statusColor[rx.status] || ''}`}>
               {rx.status?.replace('_', ' ')}
             </span>
+            {rx.is_opthal && (
+              <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-primary/10 text-primary font-bold">
+                <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>visibility</span>
+                OPTHAL
+              </span>
+            )}
           </h1>
         </div>
         <div className="flex gap-2">
@@ -362,6 +371,16 @@ const PrescriptionDetail: React.FC = () => {
               </div>
             )}
 
+            {rx.is_opthal && rx.opthal_notes && (
+              <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-3">
+                <span className="material-symbols-outlined text-amber-600 text-lg flex-shrink-0">visibility</span>
+                <div>
+                  <h4 className="text-xs font-bold text-amber-700 uppercase tracking-wide mb-1">Ophthalmology Examination</h4>
+                  <p className="text-sm text-amber-900 whitespace-pre-wrap">{rx.opthal_notes}</p>
+                </div>
+              </div>
+            )}
+
             {rx.advice && (
               <div>
                 <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Advice</h4>
@@ -378,6 +397,38 @@ const PrescriptionDetail: React.FC = () => {
             </h3>
 
             <div className="border border-slate-200 rounded-lg overflow-hidden">
+              {isEyeHospital ? (
+                <>
+                  {/* Eye Hospital Drug Prescription columns — S.No | Medicine | RE | LE | Dosage */}
+                  <div className="grid grid-cols-[40px_1fr_50px_50px_1fr] gap-2 bg-slate-100 border-b border-slate-200 px-4 py-2.5">
+                    <div className="text-[10px] font-semibold text-slate-500 uppercase">#</div>
+                    <div className="text-[10px] font-semibold text-slate-500 uppercase">Medicine</div>
+                    <div className="text-[10px] font-semibold text-slate-500 uppercase text-center">RE</div>
+                    <div className="text-[10px] font-semibold text-slate-500 uppercase text-center">LE</div>
+                    <div className="text-[10px] font-semibold text-slate-500 uppercase">Dosage</div>
+                  </div>
+                  {rx.items?.map((item, idx) => {
+                    const reOn = item.eye_side === 'RE' || item.eye_side === 'Both';
+                    const leOn = item.eye_side === 'LE' || item.eye_side === 'Both';
+                    return (
+                      <div
+                        key={item.id || idx}
+                        className="grid grid-cols-[40px_1fr_50px_50px_1fr] gap-2 px-4 py-3 border-b border-slate-100 last:border-0 hover:bg-blue-50/30 transition-colors"
+                      >
+                        <div className="text-xs text-slate-400 font-medium">{idx + 1}</div>
+                        <div>
+                          <p className="text-sm font-medium text-slate-900">{item.medicine_name}</p>
+                          {item.generic_name && <p className="text-[10px] text-slate-400">{item.generic_name}</p>}
+                        </div>
+                        <div className="text-center text-sm">{reOn ? '✓' : '—'}</div>
+                        <div className="text-center text-sm">{leOn ? '✓' : '—'}</div>
+                        <div className="text-xs text-slate-700">{item.dosage}</div>
+                      </div>
+                    );
+                  })}
+                </>
+              ) : (
+                <>
               {/* Table Header */}
               <div className="grid grid-cols-[40px_1fr_80px_100px_100px_80px_1fr] gap-2 bg-slate-100 border-b border-slate-200 px-4 py-2.5">
                 <div className="text-[10px] font-semibold text-slate-500 uppercase">#</div>
@@ -411,6 +462,8 @@ const PrescriptionDetail: React.FC = () => {
                   <div className="text-xs text-slate-600">{item.instructions || '—'}</div>
                 </div>
               ))}
+                </>
+              )}
             </div>
           </div>
         </div>

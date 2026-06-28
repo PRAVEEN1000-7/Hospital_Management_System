@@ -28,9 +28,20 @@ class UserResponse(BaseModel):
 
 class TokenResponse(BaseModel):
     access_token: str
+    refresh_token: str
     token_type: str = "bearer"
     expires_in: int
     user: UserResponse
+
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
+
+class LogoutRequest(BaseModel):
+    # Optional — if the client sends the refresh token it was issued, logout
+    # revokes that too. Without it, only the current access token is revoked.
+    refresh_token: Optional[str] = None
 
 
 class TokenData(BaseModel):

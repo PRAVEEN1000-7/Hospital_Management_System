@@ -1,8 +1,15 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import type { User, AuthState, LoginCredentials } from '../types/auth';
 import authService from '../services/authService';
 import { hospitalService } from '../services/hospitalService';
 import api from '../services/api';
+
+// The public Queue Display kiosk (/public/queue/:code) is intentionally
+// unauthenticated and standalone — it must never trigger auth/tenant calls
+// like GET /tenant/modules, even when the browser also happens to hold a
+// stale token from a previous logged-in session in the same profile.
+const isPublicRoute = (pathname: string) => pathname.startsWith('/public/');
 
 interface AuthContextType extends AuthState {
   login: (credentials: LoginCredentials) => Promise<void>;
@@ -28,6 +35,7 @@ interface AuthContextType extends AuthState {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const location = useLocation();
   const [state, setState] = useState<AuthState>({
     user: authService.getStoredUser(),
     token: authService.getStoredToken(),
@@ -37,7 +45,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [enabledModules, setEnabledModules] = useState<string[]>([]);
 
   const fetchModules = useCallback(async () => {
-    if (!state.isAuthenticated) return;
+    if (!state.isAuthenticated || isPublicRoute(location.pathname)) return;
 
     if (state.user?.roles.includes('super_admin')) {
       // Fetch all system modules dynamically so new modules are auto-included
@@ -58,7 +66,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const modules = await hospitalService.getEnabledModules();
       setEnabledModules(modules);
     }
-  }, [state.isAuthenticated, state.user]);
+  }, [state.isAuthenticated, state.user, location.pathname]);
 
   // Run once whenever auth state changes (login / logout)
   useEffect(() => {

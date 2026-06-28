@@ -7,10 +7,41 @@ from datetime import datetime, timezone
 from typing import Tuple, Optional
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session, joinedload
-from ..models.user import User, UserRole, Role
+from sqlalchemy.exc import ProgrammingError
+from ..models.user import User, UserRole, Role, RevokedToken
 from ..utils.security import verify_password
 
 logger = logging.getLogger(__name__)
+
+
+def revoke_current_access_token(db: Session, user: User) -> None:
+    """Blocklist the access token currently in use by `user` (SECURITY_AUDIT.md
+    C1). Relies on `_jti`/`_token_exp` attached by whichever auth dependency
+    authenticated this request — dependencies.get_current_user for the
+    regular auth path, core.tenant.get_current_superadmin for the superadmin
+    path. Shared here so both routers revoke tokens identically."""
+    jti = getattr(user, "_jti", None)
+    exp = getattr(user, "_token_exp", None)
+    if not jti or not exp:
+        return
+    try:
+        # SAVEPOINT, not the whole transaction — if revoked_tokens doesn't
+        # exist yet, this rolls back only this operation so the caller's
+        # other pending changes (e.g. a new password hash) still commit.
+        with db.begin_nested():
+            db.merge(RevokedToken(
+                jti=uuid.UUID(jti),
+                user_id=user.id,
+                expires_at=datetime.fromtimestamp(exp, tz=timezone.utc),
+            ))
+            # Opportunistic cleanup — keeps the blocklist from growing
+            # unbounded without needing a separate scheduled job.
+            db.query(RevokedToken).filter(RevokedToken.expires_at < datetime.now(timezone.utc)).delete()
+    except ProgrammingError:
+        logger.critical(
+            "revoked_tokens table is missing — this token could not be revoked. "
+            "Run database_hole/security_updates.sql against this database."
+        )
 
 # Account lockout thresholds (per spec: 5→15min, 10→1hr, 20→indefinite)
 _LOCKOUT_RULES = [
@@ -19,6 +50,23 @@ _LOCKOUT_RULES = [
 ]
 _LOCKOUT_INDEFINITE_THRESHOLD = 20
 _LOCKOUT_INDEFINITE_YEARS = 100  # effectively permanent
+
+
+def _mask_username(username: str) -> str:
+    """Truncate for the general application log (SECURITY_AUDIT.md M6)."""
+    if not username:
+        return "<empty>"
+    return f"{username[:2]}***{username[-1]}" if len(username) > 3 else "***"
+
+
+def clear_lockout(user: User) -> None:
+    """Clear failed-attempt/lockout state. Call this whenever a password is
+    reset through a channel OTHER than a successful login — e.g. the
+    forgot-password email flow or an admin-initiated reset — since proving
+    identity that way should also lift a lockout, not just change the
+    password. Caller is responsible for db.commit()."""
+    user.failed_login_attempts = 0
+    user.locked_until = None
 
 
 def _apply_lockout(user: User) -> None:
@@ -56,10 +104,10 @@ def authenticate_user(db: Session, username: str, password: str) -> tuple:
     )
 
     if not user:
-        logger.warning(f"AUTH: No user found with username='{username}'")
+        logger.warning(f"AUTH: No user found with username='{_mask_username(username)}'")
         return None, "invalid_username"
 
-    logger.info(f"AUTH: Found user '{username}', is_active={user.is_active}, is_deleted={user.is_deleted}, locked_until={user.locked_until}")
+    logger.info(f"AUTH: Found user '{_mask_username(username)}', is_active={user.is_active}, is_deleted={user.is_deleted}, locked_until={user.locked_until}")
 
     # Check lockout BEFORE password verification to prevent timing attacks
     if user.locked_until and user.locked_until > datetime.now(timezone.utc):

@@ -1,6 +1,6 @@
 from .user import (
     User, Role, Permission, UserRole, RolePermission,
-    RefreshToken, Hospital,
+    RefreshToken, RevokedToken, Hospital,
 )
 from .patient import Patient
 from .patient_id_sequence import IdSequence

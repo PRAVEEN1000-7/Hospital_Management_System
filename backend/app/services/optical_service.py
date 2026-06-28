@@ -199,16 +199,33 @@ def _generate_prescription_number(db: Session, hospital_id: uuid.UUID) -> str:
     return f"OPT-RX-{year}-{count + 1:04d}"
 
 
-def create_optical_prescription(db: Session, hospital_id: uuid.UUID, data: dict) -> OpticalPrescription:
+def create_optical_prescription(
+    db: Session,
+    hospital_id: uuid.UUID,
+    data: dict,
+    created_by: Optional[uuid.UUID] = None,
+) -> OpticalPrescription:
     payload = _filter_model_data(OpticalPrescription, data)
     for fk in ("patient_id", "doctor_id", "appointment_id"):
         if payload.get(fk):
             payload[fk] = uuid.UUID(payload[fk])
 
     from ..models.appointment import Doctor
-    doctor = db.query(Doctor).filter(Doctor.id == payload.get("doctor_id")).first()
-    if not doctor:
-        raise ValueError("Doctor not found")
+
+    # No doctor_id provided (e.g. the Prescription Builder's "also create
+    # optical prescription" option) — resolve from the logged-in doctor,
+    # matching prescription_service.create_prescription's fallback.
+    if not payload.get("doctor_id"):
+        if not created_by:
+            raise ValueError("No doctor_id provided and no logged-in doctor to fall back to")
+        doctor = db.query(Doctor).filter(Doctor.user_id == created_by).first()
+        if not doctor:
+            raise ValueError("No doctor_id provided and current user is not a doctor")
+        payload["doctor_id"] = doctor.id
+    else:
+        doctor = db.query(Doctor).filter(Doctor.id == payload.get("doctor_id")).first()
+        if not doctor:
+            raise ValueError("Doctor not found")
     if not is_eye_specialist(doctor.specialization):
         raise ValueError(
             f"Dr. {doctor.specialization or 'this doctor'} is not an eye specialist — "

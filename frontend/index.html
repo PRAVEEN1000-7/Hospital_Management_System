@@ -4,6 +4,18 @@
     <meta charset="UTF-8" />
     <!-- <link rel="icon" type="image/svg+xml" href="/vite.svg" /> -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      Baseline CSP for the SPA shell (SECURITY_AUDIT.md M2/C3 mitigation).
+      script-src deliberately has no 'unsafe-inline'/'unsafe-eval' — that's
+      what actually stops an injected <script> tag or inline event handler
+      from running. style-src needs 'unsafe-inline' because inline style=""
+      attributes are used throughout this codebase. connect-src allows the
+      dev (localhost:8000) and configured production API origins; widen this
+      list if the API is ever served from another origin.
+      Note: frame-ancestors/X-Frame-Options can't be delivered via <meta> —
+      those are set as real HTTP headers in deploy/nginx.conf instead.
+    -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: http://localhost:8000; object-src 'none'; base-uri 'self'; connect-src 'self' http://localhost:8000 ws://localhost:*" />
     <title>HMS | Hospital Management System</title>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />

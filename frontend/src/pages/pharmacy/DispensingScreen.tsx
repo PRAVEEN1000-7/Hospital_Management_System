@@ -701,6 +701,15 @@ const DispensingScreen: React.FC = () => {
                             <span className="font-semibold text-slate-900 text-lg truncate">
                               {item.medicine_name}
                             </span>
+                            {item.eye_side && (
+                              <span
+                                title="Eye Hospital Drug Prescription — which eye this item is for"
+                                className="inline-flex items-center gap-1 text-xs px-2 py-0.5 bg-primary/10 text-primary rounded-full font-bold"
+                              >
+                                <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>visibility</span>
+                                {item.eye_side === 'Both' ? 'RE + LE' : item.eye_side}
+                              </span>
+                            )}
                             {item.is_dispensed && (
                               <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full font-medium">
                                 Already Dispensed
@@ -717,10 +726,12 @@ const DispensingScreen: React.FC = () => {
                               <span className="material-symbols-outlined text-sm">medication</span>
                               Dosage: {item.dosage}
                             </span>
-                            <span className="flex items-center gap-1">
-                              <span className="material-symbols-outlined text-sm">schedule</span>
-                              {item.frequency}
-                            </span>
+                            {item.frequency && (
+                              <span className="flex items-center gap-1">
+                                <span className="material-symbols-outlined text-sm">schedule</span>
+                                {item.frequency}
+                              </span>
+                            )}
                             {item.duration_value && (
                               <span className="flex items-center gap-1">
                                 <span className="material-symbols-outlined text-sm">today</span>

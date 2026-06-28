@@ -3,6 +3,14 @@ import type { Notification } from '../../contexts/NotificationContext';
 import { useNotification } from '../../contexts/NotificationContext';
 import { X, CheckCircle, AlertCircle, Info, AlertTriangle } from 'lucide-react';
 
+// Notifications (including their actionUrl) are persisted to localStorage —
+// writable by any XSS elsewhere in the app — so a stored value must never be
+// navigated to without validation (SECURITY_AUDIT.md M3, open redirect).
+// Only same-origin relative paths are allowed: a leading "/" not followed by
+// a second "/" (which would make it protocol-relative, e.g. "//evil.com"),
+// and never "javascript:"/"data:"/an absolute "http(s)://" URL.
+const isSafeRelativeUrl = (url: string): boolean => /^\/(?!\/)/.test(url);
+
 const NotificationContainer: React.FC = () => {
   const { notifications, removeNotification, markAsRead } = useNotification();
 
@@ -65,7 +73,7 @@ const NotificationContainer: React.FC = () => {
       if (!notification.read) {
         markAsRead(notification.id);
       }
-      if (notification.actionUrl) {
+      if (notification.actionUrl && isSafeRelativeUrl(notification.actionUrl)) {
         window.location.href = notification.actionUrl;
       }
     };

@@ -122,29 +122,43 @@ def get_waitlist(
     return items, total
 
 
-def get_waitlist_entry(db: Session, entry_id: str | uuid.UUID) -> Optional[Waitlist]:
-    """Get a single waitlist entry by ID."""
+def get_waitlist_entry(
+    db: Session, entry_id: str | uuid.UUID, hospital_id: Optional[str | uuid.UUID] = None
+) -> Optional[Waitlist]:
+    """Get a single waitlist entry by ID, scoped to the caller's hospital.
+
+    `hospital_id` is optional only so existing internal callers that already
+    scope elsewhere don't break — every router-facing call MUST pass it
+    (without it, any authenticated user could read/modify another
+    hospital's waitlist entry by guessing a UUID)."""
     if isinstance(entry_id, str):
         entry_id = uuid.UUID(entry_id)
-    return db.query(Waitlist).filter(
+    q = db.query(Waitlist).filter(
         Waitlist.id == entry_id,
         Waitlist.is_deleted == False,
-    ).first()
+    )
+    if hospital_id:
+        q = q.filter(Waitlist.hospital_id == hospital_id)
+    return q.first()
 
 
 def update_waitlist_entry(
     db: Session,
     entry_id: str | uuid.UUID,
     data: dict,
+    hospital_id: Optional[str | uuid.UUID] = None,
 ) -> Optional[Waitlist]:
-    """Update a waitlist entry."""
+    """Update a waitlist entry, scoped to the caller's hospital."""
     if isinstance(entry_id, str):
         entry_id = uuid.UUID(entry_id)
 
-    entry = db.query(Waitlist).filter(
+    q = db.query(Waitlist).filter(
         Waitlist.id == entry_id,
         Waitlist.is_deleted == False,
-    ).first()
+    )
+    if hospital_id:
+        q = q.filter(Waitlist.hospital_id == hospital_id)
+    entry = q.first()
     if not entry:
         return None
 
@@ -156,15 +170,20 @@ def update_waitlist_entry(
     return entry
 
 
-def cancel_waitlist_entry(db: Session, entry_id: str | uuid.UUID) -> Optional[Waitlist]:
-    """Cancel a waitlist entry (soft)."""
+def cancel_waitlist_entry(
+    db: Session, entry_id: str | uuid.UUID, hospital_id: Optional[str | uuid.UUID] = None
+) -> Optional[Waitlist]:
+    """Cancel a waitlist entry (soft), scoped to the caller's hospital."""
     if isinstance(entry_id, str):
         entry_id = uuid.UUID(entry_id)
 
-    entry = db.query(Waitlist).filter(
+    q = db.query(Waitlist).filter(
         Waitlist.id == entry_id,
         Waitlist.is_deleted == False,
-    ).first()
+    )
+    if hospital_id:
+        q = q.filter(Waitlist.hospital_id == hospital_id)
+    entry = q.first()
     if not entry:
         return None
 

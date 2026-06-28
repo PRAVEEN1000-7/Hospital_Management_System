@@ -113,6 +113,9 @@ class PrescriptionItem(Base):
     route = Column(String(30))  # 'oral','topical','injection','inhalation'
     instructions = Column(Text)
     quantity = Column(Integer)
+    # Eye Hospital Drug Prescription format — which eye this item applies to.
+    # 'RE' (right eye) | 'LE' (left eye) | 'Both' | null (not eye-specific).
+    eye_side = Column(String(10))
     allow_substitution = Column(Boolean, default=True)
     is_dispensed = Column(Boolean, default=False)
     dispensed_quantity = Column(Integer, default=0)

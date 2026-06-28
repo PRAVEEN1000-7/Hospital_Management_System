@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import opticalService from '../../services/opticalService';
 import patientService from '../../services/patientService';
 import type { OpticalProduct, OpticalBatch, OpticalSaleItemCreate, OpticalPrescription } from '../../types/optical';
@@ -19,6 +19,7 @@ interface CartItem extends OpticalSaleItemCreate {
 
 const NewOpticalSale: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const toast = useToast();
 
   const [products, setProducts] = useState<OpticalProduct[]>([]);
@@ -57,6 +58,22 @@ const NewOpticalSale: React.FC = () => {
     if (!patientId) { setPrescriptions([]); setPrescriptionId(''); return; }
     opticalService.getPrescriptions(1, 20, patientId).then(r => setPrescriptions(r.data)).catch(() => setPrescriptions([]));
   }, [patientId]);
+
+  // Arrived via "Dispense" from an Optical Prescription — pre-fill the patient
+  // and that exact prescription so staff don't have to look either up again.
+  useEffect(() => {
+    const linkedPrescriptionId = searchParams.get('prescription_id');
+    if (!linkedPrescriptionId) return;
+    opticalService.getPrescription(linkedPrescriptionId)
+      .then(async (rx) => {
+        const patient = await patientService.getPatient(rx.patient_id);
+        setSelectedPatient(patient);
+        setPatientId(rx.patient_id);
+        setPrescriptionId(rx.id);
+      })
+      .catch(() => toast.error('Could not load the linked eye prescription'));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const requiresPrescription = cart.some(item => RX_REQUIRED_CATEGORIES.includes(item.category));
 

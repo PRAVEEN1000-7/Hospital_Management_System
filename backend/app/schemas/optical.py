@@ -169,7 +169,11 @@ class OpticalBatchResponse(BaseModel):
 # ══════════════════════════════════════════════════
 class OpticalPrescriptionCreate(BaseModel):
     patient_id: str
-    doctor_id: str
+    # Optional — when omitted, resolved server-side from the logged-in doctor
+    # (the Prescription Builder's "also create optical prescription" option
+    # never asks the doctor to re-select themselves; the standalone Optical
+    # Prescriptions page still passes this explicitly for walk-ins).
+    doctor_id: Optional[str] = None
     appointment_id: Optional[str] = None
     right_sph: Optional[Decimal] = None
     right_cyl: Optional[Decimal] = None

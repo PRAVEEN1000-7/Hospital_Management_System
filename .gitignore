@@ -43,6 +43,10 @@ frontend/dist-ssr/
 frontend/.env
 frontend/.env.local
 frontend/.env.*.local
+# Currently git-tracked (SECURITY_AUDIT.md H3) — ignoring it going forward
+# only stops NEW changes from being committed. Run `git rm --cached
+# frontend/.env.production` to actually untrack it (left for you to do).
+frontend/.env.production
 frontend/*.local
 frontend/logs/
 frontend/*.log

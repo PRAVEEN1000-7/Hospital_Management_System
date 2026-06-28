@@ -195,6 +195,21 @@ class RefreshToken(Base):
 
 
 # ──────────────────────────────────────────────────
+# RevokedToken — access-token (JWT) blocklist
+# ──────────────────────────────────────────────────
+# Matches database_hole/security_updates.sql::revoked_tokens. Every logout /
+# password-change inserts the jti of the still-valid access token here so
+# get_current_user can reject it. SECURITY_AUDIT.md C1.
+class RevokedToken(Base):
+    __tablename__ = "revoked_tokens"
+
+    jti = Column(UUID(as_uuid=True), primary_key=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    revoked_at = Column(DateTime(timezone=True), server_default=func.now())
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+
+
+# ──────────────────────────────────────────────────
 # PasswordResetToken
 # ──────────────────────────────────────────────────
 class PasswordResetToken(Base):

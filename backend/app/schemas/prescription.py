@@ -145,6 +145,8 @@ class PrescriptionItemCreate(BaseModel):
     quantity: Optional[int] = Field(None, ge=1)
     allow_substitution: bool = True
     display_order: int = 0
+    # Eye Hospital Drug Prescription format — eye-hospital feature pack only.
+    eye_side: Optional[str] = Field(None, pattern="^(RE|LE|Both)$")
 
     @field_validator("duration_unit")
     @classmethod
@@ -173,6 +175,7 @@ class PrescriptionItemUpdate(BaseModel):
     quantity: Optional[int] = None
     allow_substitution: Optional[bool] = None
     display_order: Optional[int] = None
+    eye_side: Optional[str] = None
 
 
 class PrescriptionItemResponse(BaseModel):
@@ -192,6 +195,7 @@ class PrescriptionItemResponse(BaseModel):
     is_dispensed: bool = False
     dispensed_quantity: int = 0
     display_order: int = 0
+    eye_side: Optional[str] = None
     created_at: datetime
 
     @model_validator(mode="before")

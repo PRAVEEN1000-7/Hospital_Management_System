@@ -4,6 +4,8 @@ export type PrescriptionStatus = 'draft' | 'finalized' | 'partially_dispensed' |
 export type DurationUnit = 'days' | 'weeks' | 'months';
 export type MedicineRoute = 'oral' | 'topical' | 'injection' | 'inhalation' | 'sublingual' | 'rectal' | 'nasal' | 'ophthalmic' | 'otic';
 export type MedicineCategory = 'tablet' | 'capsule' | 'syrup' | 'injection' | 'cream' | 'drops' | 'ointment' | 'inhaler' | 'powder' | 'suspension';
+/** Eye Hospital Drug Prescription format — which eye a medicine applies to. */
+export type EyeSide = 'RE' | 'LE' | 'Both';
 
 // —— Prescription Item ——————————————————————————————————————————
 
@@ -24,6 +26,7 @@ export interface PrescriptionItem {
   is_dispensed: boolean;
   dispensed_quantity: number;
   display_order: number;
+  eye_side?: EyeSide | null;
   created_at: string;
 }
 
@@ -40,6 +43,7 @@ export interface PrescriptionItemCreate {
   quantity?: number | null;
   allow_substitution?: boolean;
   display_order?: number;
+  eye_side?: EyeSide | null;
 }
 
 // —— Prescription ———————————————————————————————————————————————
@@ -104,6 +108,7 @@ export interface PrescriptionListItem {
   diagnosis: string | null;
   status: PrescriptionStatus;
   is_finalized: boolean;
+  is_opthal?: boolean | null;
   item_count: number;
   created_at: string;
   updated_at: string;

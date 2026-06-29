@@ -133,7 +133,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const hasRole = useCallback(
     (...roles: string[]): boolean => {
       if (!state.user) return false;
-      return roles.some(r => state.user!.roles.includes(r));
+      // Case/whitespace-insensitive — mirrors the backend's _has_role
+      // normalization (dependencies.py) and ProtectedRoute's matching.
+      const normalizedRoles = roles.map(r => r.trim().toLowerCase());
+      return state.user.roles.some(r => normalizedRoles.includes(r.trim().toLowerCase()));
     },
     [state.user],
   );

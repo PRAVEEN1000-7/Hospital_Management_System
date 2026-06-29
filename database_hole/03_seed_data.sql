@@ -1,8 +1,12 @@
 -- ############################################################################
--- HMS Multi-Tenant — SEED DATA (consolidated)
+-- HMS Multi-Tenant — SAMPLE/DEV SEED DATA (consolidated)
 -- ############################################################################
--- Run AFTER multi_01_schema.sql:
---     psql -U hms_user -d hms_db -f multi_02_seed.sql
+-- OPTIONAL — for development/demo environments only. Inserts fictional
+-- hospitals ("HMS Core Hospital" etc.), users, and inventory sample data.
+-- Do NOT run this against a real hospital's production database.
+--
+-- Run AFTER 01_full_schema.sql:
+--     psql -U hms_user -d hms_db -f 03_seed_data.sql
 -- Sources: 02_seed_data.sql, 04_inventory_seed.sql
 -- ############################################################################
 

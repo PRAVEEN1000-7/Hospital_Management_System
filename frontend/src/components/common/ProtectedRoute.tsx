@@ -38,8 +38,15 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles,
     return <>{children}</>;
   }
 
-  if (allowedRoles && user && !user.roles?.some(r => allowedRoles.includes(r))) {
-    return <Navigate to="/dashboard" replace />;
+  // Case/whitespace-insensitive — mirrors the backend's _has_role normalization
+  // (dependencies.py) so a role stored with different casing never silently
+  // bounces an otherwise-authorized user to the dashboard.
+  if (allowedRoles && user) {
+    const normalizedAllowed = allowedRoles.map(r => r.trim().toLowerCase());
+    const hasAllowedRole = user.roles?.some(r => normalizedAllowed.includes(r.trim().toLowerCase()));
+    if (!hasAllowedRole) {
+      return <Navigate to="/dashboard" replace />;
+    }
   }
 
   if (requireEyeHospitalFeature && !isEyeHospitalFeatureEnabled) {

@@ -1,16 +1,26 @@
 -- ############################################################################
--- HMS Multi-Tenant — COMPLETE DATABASE SCHEMA (consolidated)
+-- HMS Multi-Tenant — COMPLETE DATABASE SCHEMA (consolidated, base structure)
 -- ############################################################################
--- First-time deploy. Run INSIDE the target database (hms_db) as its owner:
---     psql -U hms_user -d hms_db -f multi_01_schema.sql
+-- First-time deploy on a FRESH database. Run INSIDE the target database
+-- (hms_db) as its owner:
+--     psql -U hms_user -d hms_db -f 01_full_schema.sql
 --
--- This file consolidates, in the correct dependency order:
+-- This is the general (non-eye-hospital) base structure — every hospital
+-- needs this. Eye-hospital-specific additions (BRD v1.1) are intentionally
+-- kept separate — see 04_eye_hospital_updates.sql, applied AFTER this file.
+--
+-- Consolidates, in the correct dependency order:
 --   1. Core HMS schema (public)            ← 01_schema.sql
 --   2. Multi-tenant SaaS core (saas_core)  ← 05_multi_tenant_schema.sql
 --   3. Tenant links / security / RLS       ← 07_security_schema_fixes.sql
 --   4. Supplier categories adjustment      ← inventory_alter.sql
 --   5. Common (global) medicines           ← 09_common_medicines.sql
--- Superseded/recovery scripts (06, 08) are intentionally NOT included.
+--   6. Optical Store batch tracking        ← 10_optical_batches.sql
+--   7. Access-token revocation (security)  ← security_updates.sql
+-- Superseded/recovery/retrofit-only scripts (06, 08, local_new_update.sql,
+-- multi_01_schema.sql) are intentionally NOT included — their one-time
+-- backfill logic doesn't apply to a fresh install, and everything they
+-- structurally added is already folded in above.
 -- ############################################################################
 
 -- ==============================================================================
@@ -1868,7 +1878,13 @@ INSERT INTO saas_core.subscription_plans (code, name, description, billing_cycle
  '{"appointments": true, "patients": true, "prescriptions": true, "pharmacy": true, "inventory": true, "billing_full": true, "insurance": true, "analytics": true}'),
 
 ('enterprise', 'Enterprise', 'Unlimited everything for hospital chains', 'monthly', 499, NULL, NULL,
- '{"all_modules": true, "custom_api": true, "dedicated_support": true, "multi_branch": true}');
+ '{"all_modules": true, "custom_api": true, "dedicated_support": true, "multi_branch": true}'),
+
+-- Internal/manually-assigned plan used for hospitals onboarded directly by
+-- the platform team (no self-serve tier fits) — see 08_fix_hospitals_tenant_id.sql.
+('unlimited', 'Unlimited', 'All modules included, no limits', 'monthly', 0, NULL, NULL,
+ '{"all_modules": true}')
+ON CONFLICT (code) DO NOTHING;
 
 -- Seed Modules
 INSERT INTO saas_core.modules (code, name, description, category, frontend_route_prefix, api_prefix, icon, is_core, required_modules) VALUES
@@ -2511,3 +2527,122 @@ ALTER TABLE medicines ADD COLUMN IF NOT EXISTS is_global BOOLEAN NOT NULL DEFAUL
 
 -- Fast lookup of the global formulary.
 CREATE INDEX IF NOT EXISTS idx_medicines_is_global ON medicines(is_global) WHERE is_global = TRUE;
+
+
+-- ==============================================================================
+-- SECTION 6 — OPTICAL STORE: batch/lot stock tracking
+-- Source: 10_optical_batches.sql
+-- ==============================================================================
+
+-- optical_products, optical_prescriptions, optical_orders, optical_order_items
+-- already exist (Section 1). This adds the one missing piece — optical_batches
+-- — so optical stock is tracked the same way medicine_batches tracks Pharmacy
+-- stock, then backfills existing optical_products.current_stock into opening
+-- batches so no existing seed stock is lost when batches become the source of
+-- truth. Mirrors medicine_batches, except expiry_date is nullable: frames/
+-- solutions/accessories don't expire, only contact lenses meaningfully do.
+
+CREATE TABLE IF NOT EXISTS optical_batches (
+    id                  UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+    optical_product_id  UUID          NOT NULL REFERENCES optical_products(id),
+    batch_number        VARCHAR(50)   NOT NULL,
+    grn_id              UUID          REFERENCES goods_receipt_notes(id),
+    manufactured_date   DATE,
+    expiry_date         DATE,
+    purchase_price      NUMERIC,
+    selling_price       NUMERIC,
+    initial_quantity    INTEGER       NOT NULL DEFAULT 0,
+    current_quantity    INTEGER       NOT NULL DEFAULT 0,
+    is_expired          BOOLEAN       DEFAULT false,
+    is_active           BOOLEAN       DEFAULT true,
+    created_at          TIMESTAMPTZ   DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ   DEFAULT NOW(),
+    UNIQUE (optical_product_id, batch_number)
+);
+
+CREATE INDEX IF NOT EXISTS idx_optical_batches_product ON optical_batches(optical_product_id);
+CREATE INDEX IF NOT EXISTS idx_optical_batches_expiry ON optical_batches(expiry_date);
+
+-- optical_order_items needs a batch reference now that sales decrement a
+-- specific batch (FEFO) instead of a flat current_stock counter.
+ALTER TABLE optical_order_items ADD COLUMN IF NOT EXISTS batch_id UUID REFERENCES optical_batches(id);
+
+-- Backfill: one opening batch per existing product with stock on hand, so
+-- seeded optical_products rows keep their current_stock instead of silently
+-- going to zero once optical_batches becomes the source of truth. Null expiry
+-- = "never expires" under the FEFO rule used by the service layer. Guarded on
+-- "product has no batches yet at all" rather than ON CONFLICT on batch_number
+-- — the batch_number embeds today's date, so re-running this on a later day
+-- would otherwise insert a second opening batch (and silently double stock)
+-- instead of being a no-op.
+INSERT INTO optical_batches (optical_product_id, batch_number, expiry_date, initial_quantity, current_quantity, purchase_price, selling_price)
+SELECT
+    op.id,
+    'OPENING-' || to_char(NOW(), 'YYYYMMDD'),
+    NULL,
+    COALESCE(op.current_stock, 0),
+    COALESCE(op.current_stock, 0),
+    op.purchase_price,
+    op.selling_price
+FROM optical_products op
+WHERE COALESCE(op.current_stock, 0) > 0
+  AND NOT EXISTS (SELECT 1 FROM optical_batches ob WHERE ob.optical_product_id = op.id);
+
+-- optical_products.current_stock is superseded by SUM(optical_batches) —
+-- mirrors how Medicine has no stock column at all, batches are the only
+-- source of truth. Not dropping the column (no destructive drops in this
+-- migration history); just marking it dead so it isn't read by mistake.
+COMMENT ON COLUMN optical_products.current_stock IS
+  'DEPRECATED — unused since optical_batches was introduced. Stock is now SUM(optical_batches.current_quantity) for active batches, mirroring Medicine/MedicineBatch.';
+
+-- Module-dependency reconciliation: Optical is self-contained (its own
+-- prescription model, its own standalone batch stock-in path), so it does
+-- not hard-require Inventory or the clinical Prescriptions module. Settle
+-- the three previously-disagreeing, currently-unenforced dependency sources
+-- down to just "patients".
+UPDATE saas_core.modules SET required_modules = ARRAY['patients'] WHERE code = 'optical';
+
+DELETE FROM saas_core.module_dependencies WHERE module_name = 'optical' AND depends_on = 'prescriptions';
+DELETE FROM saas_core.module_dependencies WHERE module_name = 'optical' AND depends_on = 'inventory';
+
+
+-- ==============================================================================
+-- SECTION 7 — SECURITY: access-token revocation (blocklist)
+-- Source: security_updates.sql
+-- ==============================================================================
+
+-- Addresses audit findings C1 (logout is a no-op) and C2 (no real refresh-token
+-- rotation) from SECURITY_AUDIT.md. The refresh_tokens table already exists
+-- (Section 1) and is reused as-is for real refresh-token rotation — this adds
+-- the access-token blocklist table.
+
+-- Every logout / password-change / account-deactivation inserts the `jti` of
+-- the still-valid access token here so get_current_user can reject it (C1).
+-- Rows are pruned once the underlying token would have expired anyway.
+CREATE TABLE IF NOT EXISTS revoked_tokens (
+    jti           UUID        PRIMARY KEY,
+    user_id       UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    revoked_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at    TIMESTAMPTZ NOT NULL
+);
+
+-- Used by prune_expired() housekeeping.
+CREATE INDEX IF NOT EXISTS idx_revoked_tokens_expires_at ON revoked_tokens (expires_at);
+
+-- Used to revoke all outstanding sessions for a user (password change / disable).
+CREATE INDEX IF NOT EXISTS idx_revoked_tokens_user_id ON revoked_tokens (user_id);
+
+-- Fast lookup during /auth/refresh (rotated, single-use refresh tokens).
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token_hash ON refresh_tokens (token_hash);
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens (user_id);
+
+-- Housekeeping view: tokens still blocking that are past expiry. Useful for
+-- ops monitoring; CREATE OR REPLACE keeps re-runs clean.
+CREATE OR REPLACE VIEW v_revoked_tokens_expired AS
+SELECT jti, user_id, revoked_at, expires_at
+FROM revoked_tokens
+WHERE expires_at < now();
+
+-- ############################################################################
+-- End of 01_full_schema.sql
+-- ############################################################################

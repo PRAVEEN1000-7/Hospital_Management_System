@@ -85,6 +85,13 @@
 .animate-backdrop-in { animation: backdrop-in 0.18s ease both; }
 .animate-modal-in    { animation: modal-in    0.25s cubic-bezier(0.22,1,0.36,1) both; }
 
+/* Public Queue Display — the token currently being served */
+@keyframes token-blink {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
+.animate-token-blink { animation: token-blink 1s ease-in-out infinite; }
+
 /* Custom Scrollbar */
 .custom-scrollbar::-webkit-scrollbar { width: 4px; }
 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }

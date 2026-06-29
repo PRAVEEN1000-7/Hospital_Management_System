@@ -8,6 +8,7 @@ import refundService from '../services/refundService';
 import { patientService } from '../services/patientService';
 import hospitalService from '../services/hospitalService';
 import type { HospitalDetails } from '../services/hospitalService';
+import HospitalLogo from '../components/common/HospitalLogo';
 import type { Patient } from '../types/patient';
 import type { Invoice, PaymentListItem, PaymentMode, InvoiceStatus, RefundReasonCode, RefundListItem } from '../types/billing';
 
@@ -362,11 +363,12 @@ const InvoiceDetail: React.FC = () => {
 
           {/* Invoice Header */}
           <div className="bg-white rounded-xl border border-slate-200 p-6 mb-4">
-            {/* Hospital Letterhead */}
+            {/* Hospital Letterhead — same identity as the prescription PDF: real
+                logo, hospital name in primary blue, primary-blue rule beneath */}
             {hospital && (
-              <div className="flex justify-between items-start mb-5 pb-4 border-b-2 border-slate-200">
+              <div className="flex justify-between items-start mb-5 pb-4 border-b-[3px] border-primary">
                 <div>
-                  <h1 className="text-2xl font-bold text-slate-900">{hospital.name}</h1>
+                  <h1 className="text-2xl font-bold text-primary">{hospital.name}</h1>
                   <p className="text-sm text-slate-600 mt-0.5">
                     {[hospital.address_line_1, hospital.city, hospital.state_province, hospital.postal_code]
                       .filter(Boolean).join(', ')}
@@ -378,9 +380,7 @@ const InvoiceDetail: React.FC = () => {
                     {hospital.tax_id && <span>GSTIN: {hospital.tax_id}</span>}
                   </div>
                 </div>
-                <div className="w-14 h-14 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
-                  <span className="material-symbols-outlined text-primary text-[28px]">local_hospital</span>
-                </div>
+                <HospitalLogo logoUrl={hospital.logo_url} name={hospital.name} className="w-14 h-14 rounded-xl shrink-0" />
               </div>
             )}
 
@@ -403,7 +403,7 @@ const InvoiceDetail: React.FC = () => {
             </div>
 
             {/* Patient Info */}
-            <div className="mt-5 p-4 bg-slate-50 rounded-lg">
+            <div className="mt-5 p-4 bg-slate-100 rounded-lg">
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Bill To</p>
               <p className="font-bold text-slate-900 text-lg">{invoice.patient_name}</p>
               {patient && (
@@ -434,7 +434,7 @@ const InvoiceDetail: React.FC = () => {
               <p className="text-sm font-semibold text-slate-700">Items</p>
             </div>
             <table className="w-full text-sm">
-              <thead className="bg-slate-50">
+              <thead className="bg-slate-100">
                 <tr>
                   <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">#</th>
                   <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Description</th>
@@ -480,7 +480,7 @@ const InvoiceDetail: React.FC = () => {
             </table>
 
             {/* Totals */}
-            <div className="p-5 bg-slate-50 border-t border-slate-200">
+            <div className="p-5 bg-slate-100 border-t border-slate-200">
               <div className="flex justify-end">
                 <div className="w-64 space-y-1.5 text-sm">
                   <div className="flex justify-between text-slate-600">
@@ -535,7 +535,7 @@ const InvoiceDetail: React.FC = () => {
                 <p className="text-sm font-semibold text-slate-700">Payment History</p>
               </div>
               <table className="w-full text-sm">
-                <thead className="bg-slate-50">
+                <thead className="bg-slate-100">
                   <tr>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Payment #</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Date</th>
@@ -577,7 +577,7 @@ const InvoiceDetail: React.FC = () => {
                 <p className="text-xs text-slate-500">Stay on this invoice to complete refund workflow</p>
               </div>
               <table className="w-full text-sm">
-                <thead className="bg-slate-50">
+                <thead className="bg-slate-100">
                   <tr>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Refund #</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Reason</th>

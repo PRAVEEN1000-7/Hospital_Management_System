@@ -114,29 +114,35 @@ const OpticalPrescriptionDetail: React.FC = () => {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-50 text-center text-xs font-semibold text-slate-500 uppercase">
-                <th className="px-3 py-2 text-left">Eye</th>
-                <th className="px-3 py-2">SPH</th>
-                <th className="px-3 py-2">CYL</th>
-                <th className="px-3 py-2">Axis</th>
-                <th className="px-3 py-2">Add</th>
-                <th className="px-3 py-2">Visual Acuity</th>
+                <th className="px-3 py-2 text-left">Parameter</th>
+                <th className="px-3 py-2">Right (OD)</th>
+                <th className="px-3 py-2">Left (OS)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-center">
               <tr>
-                <td className="px-3 py-2 text-left font-semibold text-slate-700">Right (OD)</td>
+                <td className="px-3 py-2 text-left font-semibold text-slate-700">SPH</td>
                 <td className="px-3 py-2">{fmtPower(rx.right_sph)}</td>
-                <td className="px-3 py-2">{fmtPower(rx.right_cyl)}</td>
-                <td className="px-3 py-2">{fmtAxis(rx.right_axis)}</td>
-                <td className="px-3 py-2">{fmtPower(rx.right_add)}</td>
-                <td className="px-3 py-2">{fmtVa(rx.right_va)}</td>
+                <td className="px-3 py-2">{fmtPower(rx.left_sph)}</td>
               </tr>
               <tr>
-                <td className="px-3 py-2 text-left font-semibold text-slate-700">Left (OS)</td>
-                <td className="px-3 py-2">{fmtPower(rx.left_sph)}</td>
+                <td className="px-3 py-2 text-left font-semibold text-slate-700">CYL</td>
+                <td className="px-3 py-2">{fmtPower(rx.right_cyl)}</td>
                 <td className="px-3 py-2">{fmtPower(rx.left_cyl)}</td>
+              </tr>
+              <tr>
+                <td className="px-3 py-2 text-left font-semibold text-slate-700">Axis</td>
+                <td className="px-3 py-2">{fmtAxis(rx.right_axis)}</td>
                 <td className="px-3 py-2">{fmtAxis(rx.left_axis)}</td>
+              </tr>
+              <tr>
+                <td className="px-3 py-2 text-left font-semibold text-slate-700">Add</td>
+                <td className="px-3 py-2">{fmtPower(rx.right_add)}</td>
                 <td className="px-3 py-2">{fmtPower(rx.left_add)}</td>
+              </tr>
+              <tr>
+                <td className="px-3 py-2 text-left font-semibold text-slate-700">Visual Acuity</td>
+                <td className="px-3 py-2">{fmtVa(rx.right_va)}</td>
                 <td className="px-3 py-2">{fmtVa(rx.left_va)}</td>
               </tr>
             </tbody>

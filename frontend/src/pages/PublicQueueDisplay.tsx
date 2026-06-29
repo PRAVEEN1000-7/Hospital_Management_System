@@ -79,16 +79,19 @@ const PublicQueueDisplay: React.FC = () => {
               {column.tokens.length === 0 ? (
                 <p className="col-span-3 text-center text-slate-400 py-10">—</p>
               ) : (
-                column.tokens.map((entry, idx) => (
-                  <div
-                    key={idx}
-                    className={`rounded-xl py-4 text-center text-3xl font-bold ${
-                      STATUS_COLOR[entry.status] || 'bg-slate-700 text-white'
-                    }`}
-                  >
-                    {entry.token ?? '—'}
-                  </div>
-                ))
+                column.tokens.map((entry, idx) => {
+                  const isBeingServed = entry.status === 'being_served' || entry.status === 'in_consultation';
+                  return (
+                    <div
+                      key={idx}
+                      className={`rounded-xl py-4 text-center text-3xl font-bold ${
+                        STATUS_COLOR[entry.status] || 'bg-slate-700 text-white'
+                      } ${isBeingServed ? 'animate-token-blink' : ''}`}
+                    >
+                      {entry.token ?? '—'}
+                    </div>
+                  );
+                })
               )}
             </div>
           </div>

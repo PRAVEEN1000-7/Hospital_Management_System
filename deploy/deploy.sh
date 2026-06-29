@@ -55,7 +55,10 @@ cd "$PROJECT_DIR"
 echo ""
 echo "[3/7] Running database migration..."
 
-psql -U hms_user -d hms_db -f database_hole/08_fix_hospitals_tenant_id.sql
+# Both files are idempotent (IF NOT EXISTS / ON CONFLICT DO NOTHING throughout)
+# — safe to re-run on every deploy, on a database that already has data.
+psql -U hms_user -d hms_db -f database_hole/01_full_schema.sql
+psql -U hms_user -d hms_db -f database_hole/02_eye_hospital_updates.sql
 echo "  Migration complete"
 
 # ── 4. Frontend build ────────────────────────────────────────────────────────

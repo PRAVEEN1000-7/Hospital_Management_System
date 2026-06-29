@@ -2,8 +2,10 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
 import { hospitalService } from '../services/hospitalService';
+import scheduleService from '../services/scheduleService';
 import HospitalLogo from '../components/common/HospitalLogo';
 import type { HospitalDetails, HospitalSettings as HospitalSettingsType } from '../services/hospitalService';
+import type { DoctorOption } from '../types/appointment';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -451,11 +453,15 @@ const ProfileTab: React.FC = () => {
 
 const SystemSettingsTab: React.FC = () => {
   const toast = useToast();
+  const { user } = useAuth();
+  const isEyeHospital = user?.hospital_specialty === 'eye_hospital' || user?.hospital_specialty === 'multi_specialty';
   const [settings, setSettings] = useState<HospitalSettingsType | null>(null);
   const [editValues, setEditValues] = useState<Partial<HospitalSettingsType>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+  const [doctors, setDoctors] = useState<DoctorOption[]>([]);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   const fetchSettings = useCallback(async () => {
     setLoading(true);
@@ -471,6 +477,27 @@ const SystemSettingsTab: React.FC = () => {
   }, []);
 
   useEffect(() => { fetchSettings(); }, [fetchSettings]);
+
+  useEffect(() => {
+    if (!isEyeHospital) return;
+    scheduleService.getDoctors().then(setDoctors).catch(() => {});
+  }, [isEyeHospital]);
+
+  const publicQueueUrl = user?.hospital_code
+    ? `${window.location.origin}/public/queue/${user.hospital_code}`
+    : '';
+
+  const handleCopyLink = async () => {
+    if (!publicQueueUrl) return;
+    try {
+      await navigator.clipboard.writeText(publicQueueUrl);
+      setLinkCopied(true);
+      toast.success('Link copied — paste it into the display\'s browser');
+      setTimeout(() => setLinkCopied(false), 2500);
+    } catch {
+      toast.error('Could not copy automatically — select and copy the link manually');
+    }
+  };
 
   const handleChange = (key: SettingKey, value: string | number | boolean) => {
     if (key === 'hospital_code' && typeof value === 'string') value = value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2);
@@ -595,6 +622,115 @@ const SystemSettingsTab: React.FC = () => {
           </div>
         </div>
       ))}
+
+      {/* Queue Display — eye-hospital feature pack only */}
+      {isEyeHospital && (
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="flex items-center gap-3 px-5 py-4 bg-slate-50/50 border-b border-slate-100">
+            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+              <span className="material-symbols-outlined text-primary text-lg">tv</span>
+            </div>
+            <h2 className="font-bold text-slate-900">Queue Display</h2>
+          </div>
+
+          {/* Public link — no login needed once copied to the display's browser */}
+          <div className="px-5 py-4 border-b border-slate-100">
+            <p className="font-medium text-slate-900 text-sm mb-1">Public Display Link</p>
+            <p className="text-xs text-slate-400 mb-3">
+              Open this link on the waiting-room TV/monitor's browser (or set it as the homepage) — it
+              needs no login and stays on screen permanently. Copy it once; you won't need to log in
+              again on that device.
+            </p>
+            {publicQueueUrl ? (
+              <div className="flex items-center gap-2">
+                <input
+                  readOnly
+                  value={publicQueueUrl}
+                  onFocus={e => e.target.select()}
+                  className="flex-1 px-3 py-2 text-sm border border-slate-200 rounded-lg bg-slate-50 text-slate-600 outline-none"
+                />
+                <button
+                  onClick={handleCopyLink}
+                  className={`flex items-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${
+                    linkCopied ? 'bg-emerald-100 text-emerald-700' : 'bg-primary text-white hover:bg-primary/90'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-base">{linkCopied ? 'check' : 'content_copy'}</span>
+                  {linkCopied ? 'Copied' : 'Copy Link'}
+                </button>
+              </div>
+            ) : (
+              <p className="text-xs text-amber-600">Hospital Code is not set yet — set it under ID Sequences above first.</p>
+            )}
+          </div>
+
+          {/* Doctor columns */}
+          <div className="px-5 py-4 border-b border-slate-100 grid grid-cols-1 sm:grid-cols-2 gap-5">
+            <FormField label="Doctor 1 Column" hint="Shown as the first doctor column on the display">
+              <select
+                value={editValues.queue_display_doctor1_id || ''}
+                onChange={e => handleChange('queue_display_doctor1_id', e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none bg-white"
+              >
+                <option value="">Not set — shows "Doctor 1"</option>
+                {doctors.map(d => <option key={d.doctor_id} value={d.doctor_id}>{d.name}</option>)}
+              </select>
+            </FormField>
+            <FormField label="Doctor 2 Column" hint="Shown as the second doctor column, if enabled below">
+              <select
+                value={editValues.queue_display_doctor2_id || ''}
+                onChange={e => handleChange('queue_display_doctor2_id', e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none bg-white"
+              >
+                <option value="">Not set — shows "Doctor 2"</option>
+                {doctors.map(d => <option key={d.doctor_id} value={d.doctor_id}>{d.name}</option>)}
+              </select>
+            </FormField>
+          </div>
+
+          {/* Toggles + refresh interval */}
+          <div className="divide-y divide-slate-100">
+            {([
+              { key: 'queue_display_show_doctor2' as const, label: 'Show Doctor 2 Column', description: 'Display the second doctor\'s queue alongside the first' },
+              { key: 'queue_display_show_pharmacy' as const, label: 'Show Pharmacy Column', description: 'Display the pharmacy dispensing queue' },
+              { key: 'queue_display_show_opthal' as const, label: 'Show Opthal Column', description: 'Display the optical billing queue' },
+            ]).map(field => {
+              const isOn = editValues[field.key] !== false;
+              return (
+                <div key={field.key} className="flex flex-col sm:flex-row sm:items-center gap-3 px-5 py-4">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-slate-900 text-sm">{field.label}</p>
+                    <p className="text-xs text-slate-400 mt-0.5">{field.description}</p>
+                  </div>
+                  <button
+                    onClick={() => handleChange(field.key, !isOn)}
+                    className={`relative w-12 h-6 rounded-full transition-colors flex-shrink-0 ${isOn ? 'bg-primary' : 'bg-slate-200'}`}
+                  >
+                    <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${isOn ? 'left-[26px]' : 'left-0.5'}`} />
+                  </button>
+                </div>
+              );
+            })}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 px-5 py-4">
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-slate-900 text-sm">Refresh Interval</p>
+                <p className="text-xs text-slate-400 mt-0.5">How often the display polls for updates (5–120 seconds)</p>
+              </div>
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <input
+                  type="number"
+                  min={5}
+                  max={120}
+                  value={editValues.queue_display_refresh_seconds ?? 10}
+                  onChange={e => handleChange('queue_display_refresh_seconds', Math.max(5, Math.min(120, Number(e.target.value))))}
+                  className="w-24 px-3 py-1.5 text-sm text-right border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                />
+                <span className="text-xs text-slate-400">sec</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Read-only counters */}
       <div className="bg-slate-50 rounded-xl border border-slate-200 p-5">

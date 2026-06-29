@@ -116,11 +116,16 @@ sudo -u postgres psql -d hms_db -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GR
 cd ~/Hospital_Management_System
 
 # Run in order — order matters!
-psql -h localhost -U hms_user -d hms_db -f database_hole/01_schema.sql
-psql -h localhost -U hms_user -d hms_db -f database_hole/02_seed_data.sql
+psql -h localhost -U hms_user -d hms_db -f database_hole/01_full_schema.sql
+
+# Eye hospital / multi-specialty only — skip for a general hospital:
+psql -h localhost -U hms_user -d hms_db -f database_hole/02_eye_hospital_updates.sql
+
+# Optional — dev/demo sample data only, never on a real hospital's database:
+psql -h localhost -U hms_user -d hms_db -f database_hole/03_seed_data.sql
 ```
 
-> **Do NOT run** `03_queries.sql` — it's a reference file, not a migration.
+> **Do NOT run** `04_reference_queries.sql` — it's a reference file, not a migration.
 
 ### A4 — Verify Database
 

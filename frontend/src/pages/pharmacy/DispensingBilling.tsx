@@ -9,6 +9,7 @@ import hospitalService from '../../services/hospitalService';
 import type { HospitalDetails } from '../../services/hospitalService';
 import type { PaymentMode } from '../../types/billing';
 import { patientService } from '../../services/patientService';
+import HospitalLogo from '../../components/common/HospitalLogo';
 
 interface DispensingItem {
   id: string;
@@ -221,81 +222,80 @@ const DispensingBilling: React.FC = () => {
 
       {/* Invoice Card */}
       <div id="dispensing-print-area" className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden print:shadow-none print:border-0">
-        {/* Invoice Header */}
-        <div className="bg-gradient-to-r from-primary to-primary/80 px-8 py-6 print:bg-white print:border-b-2 print:border-slate-900 print:p-0">
-          <div className="flex justify-between items-start">
-            <div>
-              <h2 className="text-2xl font-bold text-white print:text-slate-900">
-                {hospital?.name || 'Hospital Pharmacy'}
-              </h2>
-              <p className="text-emerald-100 text-sm mt-1 print:text-slate-600">
-                Pharmacy Dispensing Bill
-              </p>
-              {hospital && (
-                <p className="text-emerald-100/90 text-xs mt-1 print:text-slate-500">
-                  {[hospital.address_line_1, hospital.city, hospital.state_province, hospital.postal_code]
-                    .filter(Boolean)
-                    .join(', ')}
-                </p>
-              )}
+        {/* Invoice Header — same centered letterhead treatment as the prescription PDF
+            (logo + hospital name in primary blue, address/contact below, blue rule) */}
+        <div className="px-8 py-6 text-center border-b-[3px] border-primary print:p-4">
+          {hospital?.logo_url && (
+            <div className="flex justify-center mb-2">
+              <HospitalLogo logoUrl={hospital.logo_url} name={hospital.name} className="w-14 h-14 rounded-xl" />
             </div>
-            <div className="text-right">
-              <div className="text-white/90 text-sm print:text-slate-600">Dispensing Number</div>
-              <div className="text-white font-bold text-lg print:text-slate-900">
-                {dispensing.dispensing_number}
-              </div>
-              <div className="text-white/80 text-xs mt-1 print:text-slate-500">
-                {new Date(billTimestamp).toLocaleString()}
-              </div>
-            </div>
+          )}
+          <h2 className="text-2xl font-bold text-primary">{hospital?.name || 'Hospital Pharmacy'}</h2>
+          {hospital && (
+            <p className="text-slate-500 text-sm mt-1">
+              {[hospital.address_line_1, hospital.city, hospital.state_province, hospital.postal_code]
+                .filter(Boolean)
+                .join(', ')}
+            </p>
+          )}
+          <p className="text-slate-500 text-xs mt-1">Pharmacy Dispensing Bill</p>
+        </div>
+
+        {/* Bill info row — mirrors the prescription's PRN/Date-left, Status-right layout */}
+        <div className="px-8 py-3 flex justify-between text-sm print:px-4">
+          <div className="text-slate-700">
+            <strong>Dispensing No:</strong> {dispensing.dispensing_number}<br />
+            <strong>Date:</strong> {new Date(billTimestamp).toLocaleString()}
+          </div>
+          <div className="text-right text-slate-700">
+            <strong>Status:</strong> <span className="capitalize">{dispensing.status}</span>
           </div>
         </div>
 
-        {/* Patient Info */}
-        <div className="px-8 py-4 border-b border-slate-200 print:p-4 print:border-b-2 print:border-slate-900">
-          <div className="flex justify-between items-start">
-            <div>
-              <div className="text-xs text-slate-500 uppercase font-semibold mb-1">Bill To</div>
-              <div className="font-semibold text-slate-900">{dispensing.patient_name || 'Walk-in Customer'}</div>
-              {(dispensing.patient_id || resolvedPrn) && (
-                <div className="text-sm text-slate-600 mt-1">
-                  PRN: {resolvedPrn || 'N/A'}
+        {/* Patient Info — same light-gray rounded box as the prescription's patient-box */}
+        <div className="px-8 py-4 print:px-4">
+          <div className="bg-slate-100 rounded-lg px-4 py-3.5">
+            <div className="flex justify-between items-start">
+              <div>
+                <div className="text-xs text-slate-500 uppercase font-semibold mb-1">Bill To</div>
+                <div className="font-semibold text-slate-900">{dispensing.patient_name || 'Walk-in Customer'}</div>
+                {(dispensing.patient_id || resolvedPrn) && (
+                  <div className="text-sm text-slate-600 mt-1">
+                    PRN: {resolvedPrn || 'N/A'}
+                  </div>
+                )}
+              </div>
+              <div className="text-right">
+                <div className="text-xs text-slate-500 uppercase font-semibold mb-1">Invoice Type</div>
+                <div className="text-sm font-medium text-slate-900 capitalize">
+                  Pharmacy Bill ({dispensing.sale_type.replace('_', ' ')})
                 </div>
-              )}
-            </div>
-            <div className="text-right">
-              <div className="text-xs text-slate-500 uppercase font-semibold mb-1">Invoice Type</div>
-              <div className="text-sm font-medium text-slate-900 capitalize">
-                Pharmacy Bill ({dispensing.sale_type.replace('_', ' ')})
-              </div>
-              <div className="text-xs text-slate-500 mt-1">
-                Status: <span className="font-medium text-emerald-600 capitalize">{dispensing.status}</span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Items Table */}
+        {/* Items Table — light-gray header row, matching the prescription's table style */}
         <div className="px-8 py-4 print:p-4">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-slate-200 print:border-slate-900">
-                <th className="text-left text-xs font-semibold text-slate-600 uppercase py-2 print:text-slate-900">
+              <tr className="bg-slate-100">
+                <th className="text-left text-xs font-semibold text-slate-600 uppercase py-2.5 px-2 rounded-l-lg">
                   #
                 </th>
-                <th className="text-left text-xs font-semibold text-slate-600 uppercase py-2 print:text-slate-900">
+                <th className="text-left text-xs font-semibold text-slate-600 uppercase py-2.5 px-2">
                   Medicine
                 </th>
-                <th className="text-center text-xs font-semibold text-slate-600 uppercase py-2 print:text-slate-900">
+                <th className="text-center text-xs font-semibold text-slate-600 uppercase py-2.5 px-2">
                   Qty
                 </th>
-                <th className="text-left text-xs font-semibold text-slate-600 uppercase py-2 print:text-slate-900">
+                <th className="text-left text-xs font-semibold text-slate-600 uppercase py-2.5 px-2">
                   Batch
                 </th>
-                <th className="text-right text-xs font-semibold text-slate-600 uppercase py-2 print:text-slate-900">
+                <th className="text-right text-xs font-semibold text-slate-600 uppercase py-2.5 px-2">
                   Unit Price
                 </th>
-                <th className="text-right text-xs font-semibold text-slate-600 uppercase py-2 print:text-slate-900">
+                <th className="text-right text-xs font-semibold text-slate-600 uppercase py-2.5 px-2 rounded-r-lg">
                   Amount
                 </th>
               </tr>
@@ -303,22 +303,22 @@ const DispensingBilling: React.FC = () => {
             <tbody>
               {dispensing.items.map((item, index) => (
                 <tr key={item.id} className="border-b border-slate-100 print:border-slate-200">
-                  <td className="py-3 text-sm text-slate-600 print:text-slate-900">{index + 1}</td>
-                  <td className="py-3">
+                  <td className="py-3 px-2 text-sm text-slate-600 print:text-slate-900">{index + 1}</td>
+                  <td className="py-3 px-2">
                     <div className="text-sm font-medium text-slate-900 print:text-slate-900">
                       {item.medicine_name || 'Medicine'}
                     </div>
                   </td>
-                  <td className="py-3 text-center text-sm text-slate-600 print:text-slate-900">
+                  <td className="py-3 px-2 text-center text-sm text-slate-600 print:text-slate-900">
                     {item.quantity}
                   </td>
-                  <td className="py-3 text-sm text-slate-600 print:text-slate-900">
+                  <td className="py-3 px-2 text-sm text-slate-600 print:text-slate-900">
                     {item.batch_number || '—'}
                   </td>
-                  <td className="py-3 text-right text-sm text-slate-600 print:text-slate-900">
+                  <td className="py-3 px-2 text-right text-sm text-slate-600 print:text-slate-900">
                     ₹{fmt(Number(item.unit_price))}
                   </td>
-                  <td className="py-3 text-right text-sm font-semibold text-slate-900 print:text-slate-900">
+                  <td className="py-3 px-2 text-right text-sm font-semibold text-slate-900 print:text-slate-900">
                     ₹{fmt(Number(item.total_price))}
                   </td>
                 </tr>

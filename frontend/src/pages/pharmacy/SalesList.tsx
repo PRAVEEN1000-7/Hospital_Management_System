@@ -166,7 +166,8 @@ const SalesList: React.FC = () => {
             <button
               type="button"
               onClick={() => {
-                setDatePreset('all');
+                setDateFrom('');
+                setDateTo('');
                 setSaleStatus('all');
                 setPatientType('all');
                 setSortBy('sale_date');

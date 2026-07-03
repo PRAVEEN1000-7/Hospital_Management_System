@@ -4,10 +4,12 @@ import pharmacyService from '../../services/pharmacyService';
 import inventoryService from '../../services/inventoryService';
 import type { Medicine, BatchCreateData } from '../../types/pharmacy';
 import { useToast } from '../../contexts/ToastContext';
+import { useAuth } from '../../contexts/AuthContext';
 
 const BatchForm: React.FC = () => {
   const navigate = useNavigate();
   const toast = useToast();
+  const { isModuleEnabled } = useAuth();
   const [searchParams] = useSearchParams();
   const preselectedMedicine = searchParams.get('medicine_id') || '';
 
@@ -31,8 +33,10 @@ const BatchForm: React.FC = () => {
 
   useEffect(() => {
     pharmacyService.getMedicines(1, 500).then(r => setMedicines(r.data)).catch(() => {});
-    inventoryService.getSuppliers(1, 100, '', true).then(r => setSuppliers(r.data)).catch(() => {});
-  }, []);
+    if (isModuleEnabled('inventory')) {
+      inventoryService.getSuppliers(1, 100, '', true).then(r => setSuppliers(r.data)).catch(() => {});
+    }
+  }, [isModuleEnabled]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;

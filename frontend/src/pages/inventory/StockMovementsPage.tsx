@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useToast } from '../../contexts/ToastContext';
 import inventoryService from '../../services/inventoryService';
 import type { StockMovement } from '../../types/inventory';
+import DateRangeFilter from '../../components/common/DateRangeFilter';
 
 const TYPE_COLORS: Record<string, string> = {
   stock_in: 'bg-emerald-50 text-emerald-700',
@@ -23,6 +24,8 @@ const StockMovementsPage: React.FC = () => {
   const [total, setTotal] = useState(0);
   const [typeFilter, setTypeFilter] = useState('');
   const [itemTypeFilter, setItemTypeFilter] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
 
   const fetchMovements = useCallback(async () => {
     setLoading(true);
@@ -30,6 +33,8 @@ const StockMovementsPage: React.FC = () => {
       const res = await inventoryService.getStockMovements(page, 15, {
         movement_type: typeFilter || undefined,
         item_type: itemTypeFilter || undefined,
+        date_from: dateFrom || undefined,
+        date_to: dateTo || undefined,
       });
       setMovements(res.data);
       setTotalPages(res.total_pages);
@@ -40,7 +45,7 @@ const StockMovementsPage: React.FC = () => {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, typeFilter, itemTypeFilter]);
+  }, [page, typeFilter, itemTypeFilter, dateFrom, dateTo]);
 
   useEffect(() => { fetchMovements(); }, [fetchMovements]);
 
@@ -53,25 +58,32 @@ const StockMovementsPage: React.FC = () => {
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
         {/* Filters */}
-        <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row gap-3">
-          <select value={typeFilter} onChange={e => { setTypeFilter(e.target.value); setPage(1); }}
-            className="px-4 py-2.5 border border-slate-200 rounded-lg text-sm bg-slate-50 cursor-pointer">
-            <option value="">All Movement Types</option>
-            <option value="stock_in">Stock In</option>
-            <option value="sale">Sale</option>
-            <option value="dispensing">Dispensing</option>
-            <option value="return">Return</option>
-            <option value="adjustment">Adjustment</option>
-            <option value="transfer">Transfer</option>
-            <option value="expired">Expired</option>
-            <option value="damaged">Damaged</option>
-          </select>
-          <select value={itemTypeFilter} onChange={e => { setItemTypeFilter(e.target.value); setPage(1); }}
-            className="px-4 py-2.5 border border-slate-200 rounded-lg text-sm bg-slate-50 cursor-pointer">
-            <option value="">All Item Types</option>
-            <option value="medicine">Medicine</option>
-            <option value="optical_product">Optical Product</option>
-          </select>
+        <div className="p-4 border-b border-slate-200">
+          <div className="flex flex-col sm:flex-row gap-3 mb-3">
+            <select value={typeFilter} onChange={e => { setTypeFilter(e.target.value); setPage(1); }}
+              className="px-4 py-2.5 border border-slate-200 rounded-lg text-sm bg-slate-50 cursor-pointer">
+              <option value="">All Movement Types</option>
+              <option value="stock_in">Stock In</option>
+              <option value="sale">Sale</option>
+              <option value="dispensing">Dispensing</option>
+              <option value="return">Return</option>
+              <option value="adjustment">Adjustment</option>
+              <option value="transfer">Transfer</option>
+              <option value="expired">Expired</option>
+              <option value="damaged">Damaged</option>
+            </select>
+            <select value={itemTypeFilter} onChange={e => { setItemTypeFilter(e.target.value); setPage(1); }}
+              className="px-4 py-2.5 border border-slate-200 rounded-lg text-sm bg-slate-50 cursor-pointer">
+              <option value="">All Item Types</option>
+              <option value="medicine">Medicine</option>
+              <option value="optical_product">Optical Product</option>
+            </select>
+          </div>
+          <DateRangeFilter
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            onChange={(from, to) => { setDateFrom(from); setDateTo(to); setPage(1); }}
+          />
         </div>
 
         {loading ? (

@@ -13,6 +13,8 @@ const invoiceService = {
       status?: string;
       invoice_type?: string;
       patient_id?: string;
+      date_from?: string;
+      date_to?: string;
     } = {}
   ): Promise<PaginatedResponse<InvoiceListItem>> {
     const response = await api.get<PaginatedResponse<InvoiceListItem>>('/invoices', {

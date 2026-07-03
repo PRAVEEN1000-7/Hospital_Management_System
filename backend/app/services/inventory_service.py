@@ -96,53 +96,88 @@ def _resolve_item_name_with_fallback(
     return None
 
 
-def _resolve_item_id(db: Session, item_type: str, item_id: str, item_name: Optional[str] = None) -> uuid.UUID:
-    """Prefer a valid catalog item id; fall back to name lookup when needed."""
+def _resolve_item_id(
+    db: Session,
+    item_type: str,
+    item_id: str,
+    item_name: Optional[str] = None,
+    hospital_id: Optional[uuid.UUID] = None,
+    unit_price: float = 0.0,
+) -> uuid.UUID:
+    """Resolve or auto-create a catalog item. Returns an existing UUID or creates a new catalog entry."""
     # Try to parse as UUID first
     parsed_id = None
     if item_id and item_id.strip():
         try:
             parsed_id = uuid.UUID(item_id)
         except (ValueError, AttributeError):
-            # Not a valid UUID, treat item_id as a name
             pass
 
+    lookup_name = (item_name or item_id or '').strip()
+
     if item_type == "medicine":
-        # If we have a valid UUID, check if it exists
         if parsed_id:
             exists = db.query(Medicine.id).filter(Medicine.id == parsed_id).first()
             if exists:
                 return parsed_id
-        # Fall back to name lookup
-        lookup_name = item_name or item_id
-        if lookup_name and lookup_name.strip():
-            match = db.query(Medicine.id).filter(func.lower(Medicine.name) == lookup_name.strip().lower()).first()
+        if lookup_name:
+            match = db.query(Medicine.id).filter(func.lower(Medicine.name) == lookup_name.lower()).first()
             if match:
                 return match[0]
-        # If UUID was provided but not found, return it anyway (might be a reference issue)
         if parsed_id:
             return parsed_id
+        # Auto-create a minimal medicine record so the PO can be saved
+        if not lookup_name:
+            raise ValueError(f"Cannot create medicine without a name: item_id={item_id}")
+        new_med = Medicine(
+            hospital_id=hospital_id,
+            name=lookup_name,
+            generic_name=lookup_name,
+            unit_of_measure='units',
+            selling_price=unit_price or 0,
+            purchase_price=unit_price or 0,
+            is_active=True,
+        )
+        db.add(new_med)
+        db.flush()
+        logger.info("Auto-created medicine '%s' for PO item", lookup_name)
+        return new_med.id
 
     if item_type == "optical_product":
-        # If we have a valid UUID, check if it exists
         if parsed_id:
             exists = db.query(OpticalProduct.id).filter(OpticalProduct.id == parsed_id).first()
             if exists:
                 return parsed_id
-        # Fall back to name lookup
-        lookup_name = item_name or item_id
-        if lookup_name and lookup_name.strip():
-            match = db.query(OpticalProduct.id).filter(func.lower(OpticalProduct.name) == lookup_name.strip().lower()).first()
+        if lookup_name:
+            q = db.query(OpticalProduct.id).filter(func.lower(OpticalProduct.name) == lookup_name.lower())
+            if hospital_id:
+                q = q.filter(OpticalProduct.hospital_id == hospital_id)
+            match = q.first()
             if match:
                 return match[0]
-        # If UUID was provided but not found, return it anyway
         if parsed_id:
             return parsed_id
+        # Auto-create a minimal optical product record so the PO can be saved
+        if not lookup_name:
+            raise ValueError(f"Cannot create optical product without a name: item_id={item_id}")
+        if not hospital_id:
+            raise ValueError(f"Cannot auto-create optical product '{lookup_name}' without a hospital_id")
+        new_prod = OpticalProduct(
+            hospital_id=hospital_id,
+            name=lookup_name,
+            category='accessory',
+            selling_price=unit_price or 0,
+            purchase_price=unit_price or 0,
+            is_active=True,
+        )
+        db.add(new_prod)
+        db.flush()
+        logger.info("Auto-created optical product '%s' for PO item", lookup_name)
+        return new_prod.id
 
-    # Return the parsed_id if we have one, otherwise raise an error
     if parsed_id:
         return parsed_id
-    raise ValueError(f"Could not resolve item_id for type {item_type}: item_id={item_id}, item_name={item_name}")
+    raise ValueError(f"Unknown item type '{item_type}': item_id={item_id}, item_name={item_name}")
 
 
 def _generate_number(db: Session, prefix: str, model_class, number_field: str) -> str:
@@ -399,7 +434,12 @@ def create_purchase_order(
         po_item = PurchaseOrderItem(
             purchase_order_id=po.id,
             item_type=item.item_type,
-            item_id=_resolve_item_id(db, item.item_type, item.item_id, getattr(item, "item_name", None)),
+            item_id=_resolve_item_id(
+                db, item.item_type, item.item_id,
+                getattr(item, "item_name", None),
+                hospital_id=hospital_id,
+                unit_price=float(item.unit_price),
+            ),
             quantity_ordered=item.quantity_ordered,
             unit_price=item.unit_price,
             total_price=item.total_price,
@@ -427,6 +467,7 @@ def list_purchase_orders(
     page: int = 1, limit: int = 10,
     status: Optional[str] = None, supplier_id: Optional[str] = None,
     search: Optional[str] = None,
+    date_from: Optional[date] = None, date_to: Optional[date] = None,
 ) -> dict:
     q = (
         db.query(PurchaseOrder)
@@ -442,6 +483,10 @@ def list_purchase_orders(
         q = q.filter(or_(
             PurchaseOrder.po_number.ilike(term),
         ))
+    if date_from:
+        q = q.filter(PurchaseOrder.order_date >= date_from)
+    if date_to:
+        q = q.filter(PurchaseOrder.order_date <= date_to)
     total = q.count()
     orders = q.order_by(PurchaseOrder.created_at.desc()).offset((page - 1) * limit).limit(limit).all()
     return {**_paginate(total, page, limit), "data": orders}
@@ -549,7 +594,12 @@ def create_grn(
         grn_item = GRNItem(
             grn_id=grn.id,
             item_type=item.item_type,
-            item_id=_resolve_item_id(db, item.item_type, item.item_id, getattr(item, "item_name", None)),
+            item_id=_resolve_item_id(
+                db, item.item_type, item.item_id,
+                getattr(item, "item_name", None),
+                hospital_id=hospital_id,
+                unit_price=float(item.unit_price),
+            ),
             batch_number=item.batch_number,
             manufactured_date=item.manufactured_date,
             expiry_date=item.expiry_date,
@@ -583,6 +633,7 @@ def list_grns(
     page: int = 1, limit: int = 10,
     status: Optional[str] = None, supplier_id: Optional[str] = None,
     search: Optional[str] = None,
+    date_from: Optional[date] = None, date_to: Optional[date] = None,
 ) -> dict:
     q = (
         db.query(GoodsReceiptNote)
@@ -599,6 +650,10 @@ def list_grns(
             GoodsReceiptNote.grn_number.ilike(term),
             GoodsReceiptNote.invoice_number.ilike(term),
         ))
+    if date_from:
+        q = q.filter(GoodsReceiptNote.receipt_date >= date_from)
+    if date_to:
+        q = q.filter(GoodsReceiptNote.receipt_date <= date_to)
     total = q.count()
     grns = q.order_by(GoodsReceiptNote.created_at.desc()).offset((page - 1) * limit).limit(limit).all()
     return {**_paginate(total, page, limit), "data": grns}
@@ -845,6 +900,7 @@ def list_stock_movements(
     page: int = 1, limit: int = 10,
     item_type: Optional[str] = None, item_id: Optional[str] = None,
     movement_type: Optional[str] = None,
+    date_from: Optional[date] = None, date_to: Optional[date] = None,
 ) -> dict:
     q = db.query(StockMovement).filter(StockMovement.hospital_id == hospital_id)
     if item_type:
@@ -853,6 +909,10 @@ def list_stock_movements(
         q = q.filter(StockMovement.item_id == uuid.UUID(item_id))
     if movement_type:
         q = q.filter(StockMovement.movement_type == movement_type)
+    if date_from:
+        q = q.filter(func.date(StockMovement.created_at) >= date_from)
+    if date_to:
+        q = q.filter(func.date(StockMovement.created_at) <= date_to)
     total = q.count()
     movements = (
         q.options(joinedload(StockMovement.performer))

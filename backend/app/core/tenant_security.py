@@ -203,8 +203,10 @@ class SubscriptionValidator:
     def require_module_access(module_name: str):
         """FastAPI dependency to enforce module access"""
         from ..dependencies import get_current_active_user
+        from fastapi import Request
 
         async def _check(
+            request: Request,
             current_user: User = Depends(get_current_active_user),
             db: Session = Depends(get_db)
         ) -> bool:
@@ -215,6 +217,12 @@ class SubscriptionValidator:
             tenant = TenantValidator.get_tenant_for_user(current_user, db)
             if not tenant:
                 return True
+
+            # Optical prescriptions (creation, retrieval, printing/PDF) must be accessible
+            # for all eye hospitals, even if they do not subscribe to the full Optical Store module.
+            if module_name == 'optical' and "/optical/prescriptions" in request.url.path:
+                if is_eye_hospital_feature_enabled(current_user.hospital):
+                    return True
 
             if not SubscriptionValidator.is_module_enabled(tenant, module_name, db):
                 raise HTTPException(

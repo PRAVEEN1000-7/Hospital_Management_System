@@ -2,6 +2,7 @@
 Invoices router — /api/v1/invoices
 """
 import logging
+from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -178,6 +179,8 @@ async def list_all_invoices(
     status: Optional[str] = None,
     invoice_type: Optional[str] = None,
     patient_id: Optional[str] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
@@ -188,6 +191,7 @@ async def list_all_invoices(
             db, current_user.hospital_id, page, limit,
             search=search, status=status,
             invoice_type=invoice_type, patient_id=patient_id,
+            date_from=date_from, date_to=date_to,
         )
     except Exception as e:
         logger.error(f"Error listing invoices: {e}", exc_info=True)

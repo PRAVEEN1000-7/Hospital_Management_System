@@ -399,12 +399,12 @@ const PrescriptionDetail: React.FC = () => {
             <div className="border border-slate-200 rounded-lg overflow-hidden">
               {isEyeHospital ? (
                 <>
-                  {/* Eye Hospital Drug Prescription columns — S.No | Medicine | RE | LE | Dosage */}
+                  {/* Eye Hospital Drug Prescription columns — S.No | Medicine | LE | RE | Dosage */}
                   <div className="grid grid-cols-[40px_1fr_50px_50px_1fr] gap-2 bg-slate-100 border-b border-slate-200 px-4 py-2.5">
                     <div className="text-[10px] font-semibold text-slate-500 uppercase">#</div>
                     <div className="text-[10px] font-semibold text-slate-500 uppercase">Medicine</div>
-                    <div className="text-[10px] font-semibold text-slate-500 uppercase text-center">RE</div>
                     <div className="text-[10px] font-semibold text-slate-500 uppercase text-center">LE</div>
+                    <div className="text-[10px] font-semibold text-slate-500 uppercase text-center">RE</div>
                     <div className="text-[10px] font-semibold text-slate-500 uppercase">Dosage</div>
                   </div>
                   {rx.items?.map((item, idx) => {
@@ -420,8 +420,8 @@ const PrescriptionDetail: React.FC = () => {
                           <p className="text-sm font-medium text-slate-900">{item.medicine_name}</p>
                           {item.generic_name && <p className="text-[10px] text-slate-400">{item.generic_name}</p>}
                         </div>
-                        <div className="text-center text-sm">{reOn ? '✓' : '—'}</div>
                         <div className="text-center text-sm">{leOn ? '✓' : '—'}</div>
+                        <div className="text-center text-sm">{reOn ? '✓' : '—'}</div>
                         <div className="text-xs text-slate-700">{item.dosage}</div>
                       </div>
                     );

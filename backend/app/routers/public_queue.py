@@ -35,7 +35,7 @@ router = APIRouter(prefix="/public", tags=["Public Queue Display"])
 
 
 def _doctor_walk_in_tokens(db: Session, hospital_id: uuid.UUID, doctor_id: Optional[uuid.UUID]) -> list[dict]:
-    """Today's walk-in queue tokens for one doctor, explicitly scoped to hospital_id."""
+    """Today's active walk-in queue tokens for one doctor, explicitly scoped to hospital_id."""
     today = date.today()
     query = (
         db.query(AppointmentQueue)
@@ -44,6 +44,7 @@ def _doctor_walk_in_tokens(db: Session, hospital_id: uuid.UUID, doctor_id: Optio
             AppointmentQueue.queue_date == today,
             Appointment.appointment_date == today,
             Appointment.hospital_id == hospital_id,
+            AppointmentQueue.status.in_(["waiting", "called", "being_served", "in_consultation"]),
         )
     )
     if doctor_id:
@@ -80,39 +81,82 @@ async def get_public_queue_display(
     doctor1_id = getattr(settings, "queue_display_doctor1_id", None) if settings else None
     doctor2_id = getattr(settings, "queue_display_doctor2_id", None) if settings else None
 
-    columns: list[PublicQueueColumn] = [
-        PublicQueueColumn(
+    # Resolve active doctors in the queue dynamically (only doctors with active tokens today)
+    today = date.today()
+    active_doctor_ids = (
+        db.query(AppointmentQueue.doctor_id)
+        .join(Appointment, Appointment.id == AppointmentQueue.appointment_id)
+        .filter(
+            AppointmentQueue.queue_date == today,
+            Appointment.appointment_date == today,
+            Appointment.hospital_id == hospital.id,
+            AppointmentQueue.doctor_id.isnot(None),
+            AppointmentQueue.status.in_(["waiting", "called", "being_served", "in_consultation"]),
+        )
+        .distinct()
+        .all()
+    )
+    active_doctor_ids = [d[0] for d in active_doctor_ids]
+
+    columns: list[PublicQueueColumn] = []
+
+    if active_doctor_ids:
+        # Create a column for each active doctor
+        for doc_id in active_doctor_ids:
+            doc = db.query(Doctor).filter(Doctor.id == doc_id).first()
+            doc_name = f"Dr. {doc.user.full_name}" if doc and doc.user else "Doctor"
+            columns.append(
+                PublicQueueColumn(
+                    id=f"doctor_{doc_id}",
+                    name=doc_name,
+                    tokens=[PublicQueueToken(**t) for t in _doctor_walk_in_tokens(db, hospital.id, doc_id)],
+                )
+            )
+    else:
+        # Fallback to defaults when no active queue entries exist today
+        columns.append(PublicQueueColumn(
             id="doctor1",
             name=_doctor_label(db, doctor1_id, "Doctor 1"),
-            tokens=[PublicQueueToken(**t) for t in _doctor_walk_in_tokens(db, hospital.id, doctor1_id)],
-        )
-    ]
-
-    if show_doctor2:
-        columns.append(PublicQueueColumn(
-            id="doctor2",
-            name=_doctor_label(db, doctor2_id, "Doctor 2"),
-            tokens=[PublicQueueToken(**t) for t in _doctor_walk_in_tokens(db, hospital.id, doctor2_id)] if doctor2_id else [],
+            tokens=[PublicQueueToken(**t) for t in _doctor_walk_in_tokens(db, hospital.id, doctor1_id)] if doctor1_id else [],
         ))
+        if show_doctor2:
+            columns.append(PublicQueueColumn(
+                id="doctor2",
+                name=_doctor_label(db, doctor2_id, "Doctor 2"),
+                tokens=[PublicQueueToken(**t) for t in _doctor_walk_in_tokens(db, hospital.id, doctor2_id)] if doctor2_id else [],
+            ))
 
     if show_pharmacy:
         pharmacy_entries = billing_queue_service.list_pharmacy_queue_entries(db, hospital.id)
+        # Filter for active tokens only (waiting, being_served, ready)
+        active_pharmacy_tokens = [
+            PublicQueueToken(token=e["queue_token"], status=e["status"]) 
+            for e in pharmacy_entries 
+            if e["status"] in ["waiting", "being_served", "ready"]
+        ]
         columns.append(PublicQueueColumn(
             id="pharmacy",
             name="Pharmacy",
-            tokens=[PublicQueueToken(token=e["queue_token"], status=e["status"]) for e in pharmacy_entries],
+            tokens=active_pharmacy_tokens,
         ))
 
     if show_opthal:
         optical_entries = optical_service.list_optical_queue(db, hospital.id)
+        # Filter for active tokens only (placed, fitting, ready)
+        active_optical_tokens = [
+            PublicQueueToken(token=e["queue_token"], status=e["queue_status"]) 
+            for e in optical_entries 
+            if e["queue_status"] in ["placed", "fitting", "ready"]
+        ]
         columns.append(PublicQueueColumn(
             id="opthal",
             name="Opthal",
-            tokens=[PublicQueueToken(token=e["queue_token"], status=e["queue_status"]) for e in optical_entries],
+            tokens=active_optical_tokens,
         ))
 
     return PublicQueueDisplayResponse(
         hospital_name=hospital.name,
+        logo_url=hospital.logo_url,
         refresh_seconds=refresh_seconds,
         columns=columns,
     )

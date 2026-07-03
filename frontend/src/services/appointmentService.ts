@@ -35,8 +35,10 @@ const appointmentService = {
     return res.data;
   },
 
-  async getDoctorToday(doctorId: string): Promise<Appointment[]> {
-    const res = await api.get<Appointment[]>(`/appointments/doctor/${doctorId}/today`);
+  async getDoctorToday(doctorId: string, queryDate?: string): Promise<Appointment[]> {
+    const params: Record<string, string> = {};
+    if (queryDate) params.query_date = queryDate;
+    const res = await api.get<Appointment[]>(`/appointments/doctor/${doctorId}/today`, { params });
     return res.data;
   },
 

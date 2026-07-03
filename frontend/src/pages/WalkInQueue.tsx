@@ -130,12 +130,15 @@ const WalkInQueue: React.FC = () => {
     if (!isDoctor || !user?.id) return;
     setScheduledLoading(true);
     try {
-      const data = await appointmentService.getDoctorToday(user.id);
+      // Always fetch TODAY's scheduled appointments for the doctor.
+      // selectedDate controls the reception's queue date picker — do NOT use it
+      // here, otherwise browsing a past queue date empties the scheduled tab.
+      const data = await appointmentService.getDoctorToday(user.id, today);
       // Filter out walk-in types since those show in the queue tab
       setScheduledAppts(data.filter(a => a.appointment_type !== 'walk-in' && (a.appointment_type as string) !== 'walk_in'));
     } catch { /* silent */ }
     setScheduledLoading(false);
-  }, [isDoctor, user?.id]);
+  }, [isDoctor, user?.id, today]);
 
   // ── Fetch unassigned walk-ins (reception/admin only) ──────────
   const fetchUnassigned = useCallback(async () => {
@@ -825,10 +828,10 @@ const WalkInQueue: React.FC = () => {
                       <div className="flex items-center gap-2">
                         <span className="material-symbols-outlined text-amber-500 text-sm">hourglass_top</span>
                         <span className="text-xs font-bold text-amber-700 uppercase tracking-wider">
-                          Waiting for Reception ({waitingPatients.length})
+                          Waiting ({waitingPatients.length})
                         </span>
                       </div>
-                      <p className="text-[10px] text-amber-600 mt-0.5">These patients will appear in Next Up once reception sends them</p>
+                      <p className="text-[10px] text-amber-600 mt-0.5">You can start consultation directly or wait for reception to send them</p>
                     </div>
                     <div className="divide-y divide-slate-100">
                       {waitingPatients.map(item => {
@@ -871,6 +874,13 @@ const WalkInQueue: React.FC = () => {
                                   className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors">
                                   <span className="material-symbols-outlined text-sm">campaign</span>
                                   Call
+                                </button>
+                              )}
+                              {isSelectedDateToday && (
+                                <button onClick={() => handleStartConsultation(item.queue_id)}
+                                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors">
+                                  <span className="material-symbols-outlined text-sm">clinical_notes</span>
+                                  Start
                                 </button>
                               )}
                             </div>

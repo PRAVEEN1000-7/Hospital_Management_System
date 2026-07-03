@@ -7,6 +7,8 @@ import scheduleService from '../services/scheduleService';
 import invoiceService from '../services/invoiceService';
 import paymentService from '../services/paymentService';
 import AppointmentStatusBadge from '../components/appointments/AppointmentStatusBadge';
+import DateRangeFilter from '../components/common/DateRangeFilter';
+import { formatLocalDateISO } from '../utils/calendarDate';
 import type { Appointment, DoctorOption, AppointmentStatus, AppointmentStats } from '../types/appointment';
 import type { Invoice, PaymentMode } from '../types/billing';
 
@@ -25,7 +27,7 @@ const AppointmentManagement: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const today = new Date().toISOString().split('T')[0];
+  const today = formatLocalDateISO();
 
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,7 +37,8 @@ const AppointmentManagement: React.FC = () => {
   const [search, setSearch] = useState(() => searchParams.get('search') || '');
   const [searchInput, setSearchInput] = useState(() => searchParams.get('search') || '');
   const [filterDoctor, setFilterDoctor] = useState<string>('');
-  const [filterDate, setFilterDate] = useState(today);
+  const [dateFrom, setDateFrom] = useState(today);
+  const [dateTo, setDateTo] = useState(today);
   const [filterStatus, setFilterStatus] = useState<string>('');
   const [filterType, setFilterType] = useState<string>('');
   const [detailAppt, setDetailAppt] = useState<Appointment | null>(null);
@@ -60,15 +63,15 @@ const AppointmentManagement: React.FC = () => {
   const fetchStats = useCallback(async () => {
     try {
       const data = await appointmentService.getStats(
-        filterDate || undefined,
-        filterDate || undefined,
+        dateFrom || undefined,
+        dateTo || undefined,
         filterDoctor || undefined,
       );
       setStats(data);
     } catch {
       // silently fail — stats are supplementary
     }
-  }, [filterDate, filterDoctor]);
+  }, [dateFrom, dateTo, filterDoctor]);
 
   useEffect(() => { fetchStats(); }, [fetchStats]);
 
@@ -78,7 +81,8 @@ const AppointmentManagement: React.FC = () => {
       const data = await appointmentService.getAppointments(page, limit, {
         ...(search && { search }),
         ...(filterDoctor && { doctor_id: filterDoctor }),
-        ...(filterDate && { date_from: filterDate, date_to: filterDate }),
+        ...(dateFrom && { date_from: dateFrom }),
+        ...(dateTo && { date_to: dateTo }),
         ...(filterStatus && { status: filterStatus }),
         ...(filterType && { appointment_type: filterType }),
       });
@@ -88,7 +92,7 @@ const AppointmentManagement: React.FC = () => {
       toast.error('Failed to load appointments');
     }
     setLoading(false);
-  }, [page, search, filterDoctor, filterDate, filterStatus, filterType]);
+  }, [page, search, filterDoctor, dateFrom, dateTo, filterStatus, filterType]);
 
   useEffect(() => { scheduleService.getDoctors().then(setDoctors).catch(() => {}); }, []);
   useEffect(() => { fetchAppointments(); }, [fetchAppointments]);
@@ -353,7 +357,7 @@ const AppointmentManagement: React.FC = () => {
 
       {/* Filters */}
       <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <div className="relative lg:col-span-2">
             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-lg">search</span>
             <input value={searchInput} onChange={(e) => setSearchInput(e.target.value)} onKeyDown={handleKeyDown}
@@ -374,8 +378,13 @@ const AppointmentManagement: React.FC = () => {
             <option value="">All Statuses</option>
             {statuses.map(s => <option key={s} value={s} className="capitalize">{s}</option>)}
           </select>
-          <input type="date" value={filterDate} onChange={(e) => { setFilterDate(e.target.value); setPage(1); }}
-            className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
+        </div>
+        <div className="mt-3">
+          <DateRangeFilter
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            onChange={(from, to) => { setDateFrom(from); setDateTo(to); setPage(1); }}
+          />
         </div>
         <div className="flex gap-2 mt-3">
           <select value={filterType} onChange={(e) => { setFilterType(e.target.value); setPage(1); }}
@@ -385,7 +394,7 @@ const AppointmentManagement: React.FC = () => {
             <option value="walk-in">Walk-in</option>
           </select>
           <button onClick={handleSearch} className="px-4 py-2 bg-primary text-white text-sm font-semibold rounded-lg hover:bg-primary/90 shadow-sm">Search</button>
-          <button onClick={() => { setSearchInput(''); setSearch(''); setFilterDoctor(''); setFilterDate(today); setFilterStatus(''); setFilterType(''); setPage(1); }}
+          <button onClick={() => { setSearchInput(''); setSearch(''); setFilterDoctor(''); setDateFrom(today); setDateTo(today); setFilterStatus(''); setFilterType(''); setPage(1); }}
             className="px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 rounded-lg">Clear</button>
         </div>
       </div>

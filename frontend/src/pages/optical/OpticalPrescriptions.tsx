@@ -4,6 +4,7 @@ import opticalService from '../../services/opticalService';
 import type { OpticalPrescription } from '../../types/optical';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { htmlStringToPdf } from '../../utils/pdf';
 import { format } from 'date-fns';
 
 const OpticalPrescriptions: React.FC = () => {
@@ -17,6 +18,7 @@ const OpticalPrescriptions: React.FC = () => {
   const canDispense = hasRole('super_admin', 'admin', 'optical_staff');
   const [prescriptions, setPrescriptions] = useState<OpticalPrescription[]>([]);
   const [loading, setLoading] = useState(true);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   const fetchPrescriptions = useCallback(async () => {
     setLoading(true);
@@ -32,6 +34,25 @@ const OpticalPrescriptions: React.FC = () => {
   }, []);
 
   useEffect(() => { fetchPrescriptions(); }, [fetchPrescriptions]);
+
+  const handlePrint = async (id: string) => {
+    try {
+      const html = await opticalService.getPrescriptionPdfUrl(id);
+      const win = window.open('', '_blank');
+      if (win) { win.document.write(html); win.document.close(); setTimeout(() => win.print(), 500); }
+    } catch { toast.error('Failed to generate print view'); }
+  };
+
+  const handleDownload = async (rx: OpticalPrescription) => {
+    if (downloadingId) return;
+    setDownloadingId(rx.id);
+    try {
+      const html = await opticalService.getPrescriptionPdfUrl(rx.id);
+      await htmlStringToPdf(html, `Eye_Prescription_${rx.prescription_number}.pdf`);
+      toast.success('Prescription downloaded');
+    } catch { toast.error('Failed to download prescription'); }
+    finally { setDownloadingId(null); }
+  };
 
   return (
     <div className="space-y-6">
@@ -60,44 +81,60 @@ const OpticalPrescriptions: React.FC = () => {
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
                 <th className="px-4 py-3 font-semibold text-slate-600">Rx Number</th>
+                <th className="px-4 py-3 font-semibold text-slate-600">Patient</th>
                 <th className="px-4 py-3 font-semibold text-slate-600">Date</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">OD (SPH/CYL/Axis)</th>
                 <th className="px-4 py-3 font-semibold text-slate-600">OS (SPH/CYL/Axis)</th>
+                <th className="px-4 py-3 font-semibold text-slate-600">OD (SPH/CYL/Axis)</th>
                 <th className="px-4 py-3 font-semibold text-slate-600">Status</th>
-                {canDispense && <th className="px-4 py-3 font-semibold text-slate-600 text-right">Action</th>}
+                <th className="px-4 py-3 font-semibold text-slate-600 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {prescriptions.map(rx => (
                 <tr key={rx.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3 font-medium text-slate-900 cursor-pointer" onClick={() => navigate(`/optical/prescriptions/${rx.id}`)}>
+                  <td className="px-4 py-3 font-medium text-violet-700 cursor-pointer hover:underline" onClick={() => navigate(`/optical/prescriptions/${rx.id}`)}>
                     {rx.prescription_number}
+                  </td>
+                  <td className="px-4 py-3 text-slate-700 cursor-pointer" onClick={() => navigate(`/optical/prescriptions/${rx.id}`)}>
+                    {rx.patient_name || '—'}
                   </td>
                   <td className="px-4 py-3 text-slate-600 cursor-pointer" onClick={() => navigate(`/optical/prescriptions/${rx.id}`)}>
                     {format(new Date(rx.created_at), 'dd MMM yyyy')}
                   </td>
-                  <td className="px-4 py-3 text-slate-600 cursor-pointer" onClick={() => navigate(`/optical/prescriptions/${rx.id}`)}>
-                    {rx.right_sph ?? '—'} / {rx.right_cyl ?? '—'} / {rx.right_axis ?? '—'}
-                  </td>
-                  <td className="px-4 py-3 text-slate-600 cursor-pointer" onClick={() => navigate(`/optical/prescriptions/${rx.id}`)}>
+                  <td className="px-4 py-3 text-slate-600 font-mono text-xs cursor-pointer" onClick={() => navigate(`/optical/prescriptions/${rx.id}`)}>
                     {rx.left_sph ?? '—'} / {rx.left_cyl ?? '—'} / {rx.left_axis ?? '—'}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600 font-mono text-xs cursor-pointer" onClick={() => navigate(`/optical/prescriptions/${rx.id}`)}>
+                    {rx.right_sph ?? '—'} / {rx.right_cyl ?? '—'} / {rx.right_axis ?? '—'}
                   </td>
                   <td className="px-4 py-3 cursor-pointer" onClick={() => navigate(`/optical/prescriptions/${rx.id}`)}>
                     <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${rx.is_finalized ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
                       {rx.is_finalized ? 'Finalized' : 'Draft'}
                     </span>
                   </td>
-                  {canDispense && (
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => navigate(`/optical/sales/new?prescription_id=${rx.id}`)}
-                        className="px-3 py-1.5 text-xs font-semibold text-white bg-primary rounded-lg hover:bg-primary/90"
-                        title="Sell spectacles/lenses against this prescription"
-                      >
-                        Dispense
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <button onClick={() => navigate(`/optical/prescriptions/${rx.id}`)}
+                        className="p-1.5 rounded-lg hover:bg-violet-50 text-slate-400 hover:text-violet-600 transition-colors" title="View">
+                        <span className="material-symbols-outlined text-sm">visibility</span>
                       </button>
-                    </td>
-                  )}
+                      <button onClick={() => handlePrint(rx.id)}
+                        className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors" title="Print">
+                        <span className="material-symbols-outlined text-sm">print</span>
+                      </button>
+                      <button onClick={() => handleDownload(rx)} disabled={downloadingId === rx.id}
+                        className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors disabled:opacity-40" title="Download PDF">
+                        <span className="material-symbols-outlined text-sm">{downloadingId === rx.id ? 'hourglass_empty' : 'download'}</span>
+                      </button>
+                      {canDispense && (
+                        <button onClick={() => navigate(`/optical/sales/new?prescription_id=${rx.id}`)}
+                          className="px-3 py-1.5 text-xs font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 ml-1"
+                          title="Dispense spectacles/lenses against this prescription">
+                          Dispense
+                        </button>
+                      )}
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>

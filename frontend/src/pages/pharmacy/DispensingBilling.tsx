@@ -16,6 +16,8 @@ interface DispensingItem {
   medicine_id: string;
   batch_id: string;
   batch_number?: string;
+  expiry_date?: string;
+  pack?: number;
   medicine_name?: string;
   quantity: number;
   unit_price: number;
@@ -57,6 +59,7 @@ const DispensingBilling: React.FC = () => {
   const [processing, setProcessing] = useState(false);
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('cash');
   const [paymentRef, setPaymentRef] = useState('');
+  const [cashReceived, setCashReceived] = useState<number | ''>('');
 
   // Get dispensing details from location state or fetch from API
   useEffect(() => {
@@ -189,6 +192,13 @@ const DispensingBilling: React.FC = () => {
 
   const billTimestamp = dispensing.dispensed_at || dispensing.created_at;
   const resolvedPrn = patientPrn || dispensing.patient_reference_number || '';
+  const balance = cashReceived !== '' ? Number(cashReceived) - Number(dispensing.net_amount) : null;
+
+  const fmtExpiry = (d?: string) => {
+    if (!d) return '—';
+    const dt = new Date(d);
+    return `${String(dt.getMonth() + 1).padStart(2, '0')}/${String(dt.getFullYear()).slice(-2)}`;
+  };
 
   return (
     <>
@@ -275,29 +285,18 @@ const DispensingBilling: React.FC = () => {
           </div>
         </div>
 
-        {/* Items Table — light-gray header row, matching the prescription's table style */}
+        {/* Items Table — BRD §5.5 column order: S.No | Medicine | Qty | Pack | Batch | Expiry Date | Amount */}
         <div className="px-8 py-4 print:p-4">
           <table className="w-full">
             <thead>
               <tr className="bg-slate-100">
-                <th className="text-left text-xs font-semibold text-slate-600 uppercase py-2.5 px-2 rounded-l-lg">
-                  #
-                </th>
-                <th className="text-left text-xs font-semibold text-slate-600 uppercase py-2.5 px-2">
-                  Medicine
-                </th>
-                <th className="text-center text-xs font-semibold text-slate-600 uppercase py-2.5 px-2">
-                  Qty
-                </th>
-                <th className="text-left text-xs font-semibold text-slate-600 uppercase py-2.5 px-2">
-                  Batch
-                </th>
-                <th className="text-right text-xs font-semibold text-slate-600 uppercase py-2.5 px-2">
-                  Unit Price
-                </th>
-                <th className="text-right text-xs font-semibold text-slate-600 uppercase py-2.5 px-2 rounded-r-lg">
-                  Amount
-                </th>
+                <th className="text-left text-xs font-semibold text-slate-600 uppercase py-2.5 px-2 rounded-l-lg">#</th>
+                <th className="text-left text-xs font-semibold text-slate-600 uppercase py-2.5 px-2">Product Name</th>
+                <th className="text-center text-xs font-semibold text-slate-600 uppercase py-2.5 px-2">Qty</th>
+                <th className="text-center text-xs font-semibold text-slate-600 uppercase py-2.5 px-2">Pack</th>
+                <th className="text-left text-xs font-semibold text-slate-600 uppercase py-2.5 px-2">Batch</th>
+                <th className="text-left text-xs font-semibold text-slate-600 uppercase py-2.5 px-2">Expiry</th>
+                <th className="text-right text-xs font-semibold text-slate-600 uppercase py-2.5 px-2 rounded-r-lg">Amount</th>
               </tr>
             </thead>
             <tbody>
@@ -305,20 +304,19 @@ const DispensingBilling: React.FC = () => {
                 <tr key={item.id} className="border-b border-slate-100 print:border-slate-200">
                   <td className="py-3 px-2 text-sm text-slate-600 print:text-slate-900">{index + 1}</td>
                   <td className="py-3 px-2">
-                    <div className="text-sm font-medium text-slate-900 print:text-slate-900">
-                      {item.medicine_name || 'Medicine'}
-                    </div>
+                    <div className="text-sm font-medium text-slate-900">{item.medicine_name || 'Medicine'}</div>
                   </td>
+                  <td className="py-3 px-2 text-center text-sm text-slate-600 print:text-slate-900">{item.quantity}</td>
                   <td className="py-3 px-2 text-center text-sm text-slate-600 print:text-slate-900">
-                    {item.quantity}
+                    {item.pack ? item.pack : '—'}
                   </td>
                   <td className="py-3 px-2 text-sm text-slate-600 print:text-slate-900">
                     {item.batch_number || '—'}
                   </td>
-                  <td className="py-3 px-2 text-right text-sm text-slate-600 print:text-slate-900">
-                    ₹{fmt(Number(item.unit_price))}
+                  <td className="py-3 px-2 text-sm text-slate-600 print:text-slate-900">
+                    {fmtExpiry(item.expiry_date)}
                   </td>
-                  <td className="py-3 px-2 text-right text-sm font-semibold text-slate-900 print:text-slate-900">
+                  <td className="py-3 px-2 text-right text-sm font-semibold text-slate-900">
                     ₹{fmt(Number(item.total_price))}
                   </td>
                 </tr>
@@ -327,22 +325,22 @@ const DispensingBilling: React.FC = () => {
           </table>
         </div>
 
-        {/* Totals */}
+        {/* Totals — BRD §5.5: includes Cash Received + Balance/Change */}
         <div className="px-8 py-4 bg-slate-50 print:p-4 print:bg-white">
           <div className="flex justify-end">
-            <div className="w-64 space-y-2">
-              <div className="flex justify-between text-sm text-slate-600 print:text-slate-700">
+            <div className="w-72 space-y-2">
+              <div className="flex justify-between text-sm text-slate-600">
                 <span>Subtotal:</span>
                 <span className="font-medium">₹{fmt(Number(dispensing.total_amount))}</span>
               </div>
               {dispensing.discount_amount > 0 && (
-                <div className="flex justify-between text-sm text-slate-600 print:text-slate-700">
+                <div className="flex justify-between text-sm text-slate-600">
                   <span>Discount:</span>
                   <span className="font-medium text-red-600">-₹{fmt(Number(dispensing.discount_amount))}</span>
                 </div>
               )}
               {dispensing.tax_amount > 0 && (
-                <div className="flex justify-between text-sm text-slate-600 print:text-slate-700">
+                <div className="flex justify-between text-sm text-slate-600">
                   <span>Tax:</span>
                   <span className="font-medium">₹{fmt(Number(dispensing.tax_amount))}</span>
                 </div>
@@ -351,6 +349,45 @@ const DispensingBilling: React.FC = () => {
                 <span>Total:</span>
                 <span>₹{fmt(Number(dispensing.net_amount))}</span>
               </div>
+              {/* Cash Received — visible in screen UI (print:hidden) and printed only when filled */}
+              <div className="flex justify-between items-center text-sm text-slate-600 pt-1 print:hidden">
+                <span>Cash Received (₹):</span>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={cashReceived}
+                  onChange={e => setCashReceived(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                  placeholder={fmt(Number(dispensing.net_amount))}
+                  className="w-32 px-2 py-1 border border-slate-300 rounded text-sm text-right bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                />
+              </div>
+              {cashReceived !== '' && balance !== null && (
+                <>
+                  {/* Shown on screen */}
+                  <div className="flex justify-between text-sm font-semibold print:hidden">
+                    <span className={balance >= 0 ? 'text-emerald-700' : 'text-red-600'}>
+                      {balance >= 0 ? 'Balance / Change:' : 'Balance Due:'}
+                    </span>
+                    <span className={balance >= 0 ? 'text-emerald-700' : 'text-red-600'}>
+                      ₹{fmt(Math.abs(balance))}
+                    </span>
+                  </div>
+                  {/* Shown on print */}
+                  <div className="hidden print:flex justify-between text-sm text-slate-700">
+                    <span>Cash Received:</span>
+                    <span className="font-medium">₹{fmt(Number(cashReceived))}</span>
+                  </div>
+                  <div className="hidden print:flex justify-between text-sm font-semibold border-t border-slate-300 pt-1">
+                    <span className={balance >= 0 ? 'text-emerald-700' : 'text-red-600'}>
+                      {balance >= 0 ? 'Balance / Change:' : 'Balance Due:'}
+                    </span>
+                    <span className={balance >= 0 ? 'text-emerald-700' : 'text-red-600'}>
+                      ₹{fmt(Math.abs(balance))}
+                    </span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -433,7 +470,25 @@ const DispensingBilling: React.FC = () => {
             </button>
           ))}
         </div>
-        {paymentMode !== 'cash' && (
+        {paymentMode === 'cash' ? (
+          <div className="flex items-center gap-3 text-sm text-slate-700">
+            <label className="font-medium whitespace-nowrap">Cash Received (₹):</label>
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              value={cashReceived}
+              onChange={e => setCashReceived(e.target.value === '' ? '' : parseFloat(e.target.value))}
+              placeholder={fmt(Number(dispensing.net_amount))}
+              className="w-40 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 text-right"
+            />
+            {cashReceived !== '' && balance !== null && (
+              <span className={`font-semibold ${balance >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
+                {balance >= 0 ? `Change: ₹${fmt(balance)}` : `Due: ₹${fmt(Math.abs(balance))}`}
+              </span>
+            )}
+          </div>
+        ) : (
           <input
             type="text"
             value={paymentRef}

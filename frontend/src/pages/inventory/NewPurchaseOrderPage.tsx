@@ -65,7 +65,7 @@ const NewPurchaseOrderPage: React.FC = () => {
   const savePreviousItems = useCallback((newItems: ItemRow[]) => {
     try {
       const updated = newItems
-        .filter(it => it.item_id && it.item_name && it.unit_price > 0)
+        .filter(it => it.item_name && it.unit_price > 0)
         .map(it => ({
           id: it.item_id,
           name: it.item_name,
@@ -77,9 +77,11 @@ const NewPurchaseOrderPage: React.FC = () => {
       if (updated.length === 0) return;
       
       setPreviousItems(prev => {
-        // Merge with existing, avoiding duplicates
-        const existingIds = new Set(prev.map(p => p.id));
-        const newItemsToAdd = updated.filter(it => !existingIds.has(it.id));
+        // Deduplicate by id (when present) or by name+type for items without catalog IDs
+        const key = (p: { id: string; name: string; type: string }) =>
+          p.id ? p.id : `${p.type}:${p.name.toLowerCase()}`;
+        const existingKeys = new Set(prev.map(key));
+        const newItemsToAdd = updated.filter(it => !existingKeys.has(key(it)));
         const merged = [...newItemsToAdd, ...prev].sort((a, b) => b.usedAt - a.usedAt).slice(0, 50);
         localStorage.setItem(PREVIOUS_ITEMS_KEY, JSON.stringify(merged));
         return merged;
@@ -203,19 +205,38 @@ const NewPurchaseOrderPage: React.FC = () => {
   };
 
   const handleDownloadTemplate = () => {
-    const templateRows = [
-      {
-        item_type: 'medicine',
-        item_id: '',
-        item_name: 'Paracetamol 650mg',
-        quantity_ordered: 50,
-        unit_price: 2.5,
-      },
+    // Example rows covering the two main item types
+    const exampleRows = [
+      { item_type: 'medicine',         item_id: '', item_name: 'Paracetamol 650mg',              quantity_ordered: 50,  unit_price: 2.50  },
+      { item_type: 'medicine',         item_id: '', item_name: 'Amoxicillin 500mg Capsule',       quantity_ordered: 100, unit_price: 5.00  },
+      { item_type: 'medicine',         item_id: '', item_name: 'Azithromycin 250mg Tablet',       quantity_ordered: 60,  unit_price: 8.50  },
+      { item_type: 'optical_product',  item_id: '', item_name: 'Anti-Reflective Lens 1.67 Index', quantity_ordered: 10,  unit_price: 250.00 },
+      { item_type: 'optical_product',  item_id: '', item_name: 'Photochromic Lens 1.56 Index',    quantity_ordered: 8,   unit_price: 320.00 },
     ];
-    const worksheet = XLSX.utils.json_to_sheet(templateRows);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'PO Items');
-    XLSX.writeFile(workbook, 'inventory_po_bulk_template.xlsx');
+
+    const ws = XLSX.utils.json_to_sheet(exampleRows);
+    ws['!cols'] = [
+      { wch: 18 }, // item_type
+      { wch: 38 }, // item_id
+      { wch: 42 }, // item_name
+      { wch: 18 }, // quantity_ordered
+      { wch: 14 }, // unit_price
+    ];
+
+    const instrRows = [
+      { Column: 'item_type',        Required: 'Yes', Valid_Values: 'medicine  |  optical_product',  Notes: 'Determines how the item is looked up in the system' },
+      { Column: 'item_id',          Required: 'No',  Valid_Values: 'UUID from the system',           Notes: 'Leave blank — the system matches by item_name automatically' },
+      { Column: 'item_name',        Required: 'Yes', Valid_Values: 'Exact name from the system',     Notes: 'Must match the medicine/product name in HMS exactly (case-insensitive)' },
+      { Column: 'quantity_ordered', Required: 'Yes', Valid_Values: 'Whole number > 0',               Notes: 'Number of units to order' },
+      { Column: 'unit_price',       Required: 'Yes', Valid_Values: 'Number > 0',                     Notes: 'Purchase price per unit in ₹' },
+    ];
+    const instrWs = XLSX.utils.json_to_sheet(instrRows);
+    instrWs['!cols'] = [{ wch: 20 }, { wch: 10 }, { wch: 36 }, { wch: 60 }];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'PO Items');
+    XLSX.utils.book_append_sheet(wb, instrWs, 'Instructions');
+    XLSX.writeFile(wb, 'inventory_po_bulk_template.xlsx');
   };
 
   const handleBulkUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -225,58 +246,68 @@ const NewPurchaseOrderPage: React.FC = () => {
     setBulkUploading(true);
     try {
       const buffer = await file.arrayBuffer();
-      const workbook = XLSX.read(buffer, { type: 'array' });
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' });
+      const wb = XLSX.read(buffer, { type: 'array' });
+      // Always read from the first sheet (ignore Instructions sheet)
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' });
 
-      if (!rows.length) {
-        toast.error('Uploaded file is empty');
+      if (!rawRows.length) {
+        toast.error('Uploaded file is empty or has no data rows.');
         return;
       }
 
-      const medicineById = new Map(medicines.map((m) => [m.id, m]));
+      const medicineById  = new Map(medicines.map((m) => [m.id, m]));
       const medicineByName = new Map(medicines.map((m) => [m.name.toLowerCase().trim(), m]));
       const parsed: ItemRow[] = [];
-      let skipped = 0;
+      const skipReasons: string[] = [];
+      const autoCreateNotes: string[] = [];
 
-      rows.forEach((row) => {
-        const itemTypeRaw = String(row.item_type || 'medicine').trim().toLowerCase();
-        // Determine item type based on supplier categories or default
-        let itemType: string = 'medicine';
-        if (selectedSupplier?.product_categories) {
-          if (selectedSupplier.product_categories.includes('optical') && itemTypeRaw.includes('optical')) {
-            itemType = 'optical_product';
-          } else if (selectedSupplier.product_categories.includes('medicine')) {
-            itemType = 'medicine';
-          } else if (selectedSupplier.product_categories.includes(itemTypeRaw)) {
-            itemType = itemTypeRaw;
-          }
-        } else {
-          // Default fallback
-          itemType = itemTypeRaw === 'optical_product' || itemTypeRaw.includes('optical') ? 'optical_product' : 'medicine';
+      rawRows.forEach((rawRow, idx) => {
+        // Normalise column keys: trim whitespace, lowercase, collapse spaces → underscores
+        const row: Record<string, unknown> = {};
+        Object.keys(rawRow).forEach(k => {
+          row[k.trim().toLowerCase().replace(/\s+/g, '_')] = rawRow[k];
+        });
+
+        const rowLabel = `Row ${idx + 2}`; // +2: row 1 = header, display is 1-indexed
+
+        const itemTypeRaw = String(row.item_type || row.type || 'medicine').trim().toLowerCase();
+        const itemType: string =
+          itemTypeRaw === 'optical_product' || itemTypeRaw === 'optical' ? 'optical_product' : 'medicine';
+
+        const itemIdCell   = String(row.item_id   || row.id            || '').trim();
+        const itemNameCell = String(row.item_name  || row.medicine_name || row.product_name || row.name || '').trim();
+        const qty          = Number(row.quantity_ordered || row.quantity || row.qty   || 0);
+        const unitPrice    = Number(row.unit_price        || row.price    || row.purchase_price || 0);
+
+        if (!itemNameCell) {
+          skipReasons.push(`${rowLabel}: item_name is empty`);
+          return;
         }
-        const itemIdCell = String(row.item_id || '').trim();
-        const itemNameCell = String(row.item_name || row.medicine_name || '').trim();
-        const qty = Number(row.quantity_ordered || row.quantity || 0);
-        const unitPrice = Number(row.unit_price || row.price || 0);
+        if (!Number.isFinite(qty) || qty <= 0) {
+          skipReasons.push(`${rowLabel} "${itemNameCell}": quantity_ordered must be > 0`);
+          return;
+        }
+        if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
+          skipReasons.push(`${rowLabel} "${itemNameCell}": unit_price must be > 0`);
+          return;
+        }
 
-        let itemId = itemIdCell;
+        let itemId   = itemIdCell;
         let itemName = itemNameCell;
 
         if (itemType === 'medicine') {
           const med = medicineById.get(itemIdCell) || medicineByName.get(itemNameCell.toLowerCase());
-          if (!med) {
-            skipped += 1;
-            return;
+          if (med) {
+            itemId   = med.id;
+            itemName = med.name;
+          } else {
+            // Not in local catalog — backend will auto-create it
+            itemId = '';
+            autoCreateNotes.push(`"${itemNameCell}" (medicine) — will be added to catalog`);
           }
-          itemId = med.id;
-          itemName = med.name;
         }
-
-        if (!itemName || !Number.isFinite(qty) || qty <= 0 || !Number.isFinite(unitPrice) || unitPrice <= 0) {
-          skipped += 1;
-          return;
-        }
+        // optical_product: always pass name-only; backend resolves or auto-creates
 
         parsed.push({
           item_type: itemType,
@@ -288,15 +319,30 @@ const NewPurchaseOrderPage: React.FC = () => {
       });
 
       if (!parsed.length) {
-        toast.error('No valid rows found. Use the template and valid medicine names/ids.');
+        const hint = skipReasons.slice(0, 5).join('\n');
+        toast.error(`No valid rows found.\n${hint}${skipReasons.length > 5 ? `\n…and ${skipReasons.length - 5} more issues` : ''}`);
+        if (skipReasons.length) console.warn('PO bulk upload — skipped rows:', skipReasons);
         return;
       }
 
       setItems(parsed);
-      toast.success(`Imported ${parsed.length} item(s)${skipped ? `, skipped ${skipped}` : ''}`);
+
+      if (skipReasons.length && autoCreateNotes.length) {
+        toast.warning(`Imported ${parsed.length} item(s). ${skipReasons.length} row(s) skipped, ${autoCreateNotes.length} new item(s) will be auto-created.`, 6000);
+        console.warn('PO bulk upload — skipped rows:', skipReasons);
+        console.info('PO bulk upload — new items to auto-create:', autoCreateNotes);
+      } else if (skipReasons.length) {
+        toast.warning(`Imported ${parsed.length} item(s). ${skipReasons.length} row(s) skipped — see browser console.`, 6000);
+        console.warn('PO bulk upload — skipped rows:', skipReasons);
+      } else if (autoCreateNotes.length) {
+        toast.success(`Imported ${parsed.length} item(s). ${autoCreateNotes.length} new item(s) will be auto-created in the catalog.`);
+        console.info('PO bulk upload — new items to auto-create:', autoCreateNotes);
+      } else {
+        toast.success(`Imported ${parsed.length} item(s) successfully`);
+      }
     } catch (err) {
       console.error('Bulk upload failed:', err);
-      toast.error('Failed to parse file. Upload CSV/XLSX template format.');
+      toast.error('Failed to read file. Upload a valid .xlsx or .csv file using the provided template.');
     } finally {
       setBulkUploading(false);
       event.target.value = '';

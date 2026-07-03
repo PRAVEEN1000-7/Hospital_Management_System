@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useToast } from '../contexts/ToastContext';
 import paymentService from '../services/paymentService';
 import type { PaymentListItem, PaymentMode } from '../types/billing';
+import DateRangeFilter from '../components/common/DateRangeFilter';
 
 const MODE_LABELS: Record<string, string> = {
   cash: 'Cash',
@@ -55,14 +56,6 @@ const PaymentList: React.FC = () => {
   const [modeFilter, setModeFilter] = useState('');
   const [dateFrom, setDateFrom] = useState(today);
   const [dateTo, setDateTo] = useState(today);
-  const [dateRange, setDateRange] = useState('');
-
-  const applyDateRange = (range: string) => {
-    setDateRange(range);
-    setPage(1);
-    setDateFrom(today);
-    setDateTo(today);
-  };
 
   // Pre-filter from invoice detail
   const invoiceId = searchParams.get('invoice_id');
@@ -81,7 +74,6 @@ const PaymentList: React.FC = () => {
           payment_mode: modeFilter || undefined,
           date_from: dateFrom || undefined,
           date_to: dateTo || undefined,
-          date_range: dateRange || undefined,
         });
         setPayments(res.items);
         setTotal(res.total);
@@ -92,7 +84,7 @@ const PaymentList: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [page, modeFilter, dateFrom, dateTo, dateRange, invoiceId, showToast]);
+  }, [page, modeFilter, dateFrom, dateTo, invoiceId, showToast]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -145,49 +137,33 @@ const PaymentList: React.FC = () => {
 
       {/* Filters */}
       {!invoiceId && (
-        <div className="flex flex-wrap gap-3 mb-5">
-          {/* Quick date range */}
-          <select
-            value={dateRange}
-            onChange={e => applyDateRange(e.target.value)}
-            className="px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary/30"
-          >
-            <option value="">All Time</option>
-            <option value="1h">Last Hour</option>
-            <option value="24h">Last 24 Hours</option>
-            <option value="7d">Last 7 Days</option>
-            <option value="30d">Last 30 Days</option>
-            <option value="1y">Last Year</option>
-          </select>
-          <select
-            value={modeFilter}
-            onChange={e => { setModeFilter(e.target.value); setPage(1); }}
-            className="px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary/30"
-          >
-            <option value="">All Modes</option>
-            <option value="cash">Cash</option>
-            <option value="upi">UPI</option>
-            <option value="debit_card">Debit Card</option>
-            <option value="credit_card">Credit Card</option>
-          </select>
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-slate-500">From</label>
-            <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setDateRange(''); setPage(1); }}
-              className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-slate-500">To</label>
-            <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setDateRange(''); setPage(1); }}
-              className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
-          </div>
-          {(dateFrom !== today || dateTo !== today || dateRange || modeFilter) && (
-            <button
-              onClick={() => { setDateFrom(today); setDateTo(today); setDateRange(''); setModeFilter(''); setPage(1); }}
-              className="px-3 py-2 text-xs font-medium text-red-500 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded-lg"
+        <div className="bg-white rounded-xl border border-slate-200 p-4 mb-5">
+          <div className="flex flex-wrap gap-3 mb-3">
+            <select
+              value={modeFilter}
+              onChange={e => { setModeFilter(e.target.value); setPage(1); }}
+              className="px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary/30"
             >
-              Clear Filters
-            </button>
-          )}
+              <option value="">All Modes</option>
+              <option value="cash">Cash</option>
+              <option value="upi">UPI</option>
+              <option value="debit_card">Debit Card</option>
+              <option value="credit_card">Credit Card</option>
+            </select>
+            {modeFilter && (
+              <button
+                onClick={() => { setModeFilter(''); setPage(1); }}
+                className="px-3 py-2 text-xs font-medium text-slate-500 hover:bg-slate-100 border border-slate-200 rounded-lg"
+              >
+                Clear Mode
+              </button>
+            )}
+          </div>
+          <DateRangeFilter
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            onChange={(from, to) => { setDateFrom(from); setDateTo(to); setPage(1); }}
+          />
         </div>
       )}
 

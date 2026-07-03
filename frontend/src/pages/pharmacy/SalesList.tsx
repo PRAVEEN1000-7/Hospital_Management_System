@@ -4,7 +4,8 @@ import pharmacyService from '../../services/pharmacyService';
 import type { Sale } from '../../types/pharmacy';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
-import { format, subDays } from 'date-fns';
+import { format } from 'date-fns';
+import DateRangeFilter from '../../components/common/DateRangeFilter';
 
 const PAYMENT_STATUS_COLORS: Record<string, string> = {
   paid: 'bg-green-100 text-green-700',
@@ -12,26 +13,9 @@ const PAYMENT_STATUS_COLORS: Record<string, string> = {
   partial: 'bg-blue-100 text-blue-700',
 };
 
-type DatePreset = 'all' | 'today' | '7d' | '30d';
 type PatientTypeFilter = 'all' | 'walk_in' | 'registered';
 type SortBy = 'sale_date' | 'total_amount' | 'invoice_number' | 'created_at';
 type SortOrder = 'asc' | 'desc';
-
-const resolveDateRange = (preset: DatePreset): { dateFrom?: string; dateTo?: string } => {
-  const today = new Date();
-  const end = format(today, 'yyyy-MM-dd');
-
-  if (preset === 'today') {
-    return { dateFrom: end, dateTo: end };
-  }
-  if (preset === '7d') {
-    return { dateFrom: format(subDays(today, 6), 'yyyy-MM-dd'), dateTo: end };
-  }
-  if (preset === '30d') {
-    return { dateFrom: format(subDays(today, 29), 'yyyy-MM-dd'), dateTo: end };
-  }
-  return {};
-};
 
 const formatSaleDateTime = (sale: Sale): string => {
   const candidate = sale.sale_date || sale.created_at;
@@ -62,7 +46,8 @@ const SalesList: React.FC = () => {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [search, setSearch] = useState('');
-  const [datePreset, setDatePreset] = useState<DatePreset>('all');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [saleStatus, setSaleStatus] = useState<string>('all');
   const [patientType, setPatientType] = useState<PatientTypeFilter>('all');
   const [sortBy, setSortBy] = useState<SortBy>('sale_date');
@@ -72,7 +57,6 @@ const SalesList: React.FC = () => {
   const fetchSales = useCallback(async () => {
     setLoading(true);
     try {
-      const { dateFrom, dateTo } = resolveDateRange(datePreset);
       const res = await pharmacyService.getSales(
         page,
         20,
@@ -92,7 +76,7 @@ const SalesList: React.FC = () => {
       setLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, search, datePreset, saleStatus, patientType, sortBy, sortOrder]);
+  }, [page, search, dateFrom, dateTo, saleStatus, patientType, sortBy, sortOrder]);
 
   useEffect(() => { fetchSales(); }, [fetchSales]);
 
@@ -120,33 +104,11 @@ const SalesList: React.FC = () => {
           className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Date</span>
-        <button
-          onClick={() => { setDatePreset('all'); setPage(1); }}
-          className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${datePreset === 'all' ? 'bg-primary text-white border-primary' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
-        >
-          All
-        </button>
-        <button
-          onClick={() => { setDatePreset('today'); setPage(1); }}
-          className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${datePreset === 'today' ? 'bg-primary text-white border-primary' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
-        >
-          Today
-        </button>
-        <button
-          onClick={() => { setDatePreset('7d'); setPage(1); }}
-          className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${datePreset === '7d' ? 'bg-primary text-white border-primary' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
-        >
-          Last 7 days
-        </button>
-        <button
-          onClick={() => { setDatePreset('30d'); setPage(1); }}
-          className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${datePreset === '30d' ? 'bg-primary text-white border-primary' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
-        >
-          Last 30 days
-        </button>
-      </div>
+      <DateRangeFilter
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+        onChange={(from, to) => { setDateFrom(from); setDateTo(to); setPage(1); }}
+      />
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
         <div className="space-y-1">

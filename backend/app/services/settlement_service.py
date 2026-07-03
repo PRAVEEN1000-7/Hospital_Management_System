@@ -149,6 +149,8 @@ def list_settlements(
     page: int = 1,
     limit: int = 10,
     status: Optional[str] = None,
+    date_from=None,
+    date_to=None,
 ) -> PaginatedSettlementResponse:
     query = (
         db.query(DailySettlement)
@@ -156,6 +158,10 @@ def list_settlements(
     )
     if status:
         query = query.filter(DailySettlement.status == status)
+    if date_from:
+        query = query.filter(DailySettlement.settlement_date >= date_from)
+    if date_to:
+        query = query.filter(DailySettlement.settlement_date <= date_to)
     total = query.count()
     rows = query.order_by(DailySettlement.settlement_date.desc()).offset((page - 1) * limit).limit(limit).all()
 

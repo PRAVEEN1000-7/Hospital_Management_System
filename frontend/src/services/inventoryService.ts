@@ -51,12 +51,14 @@ const inventoryService = {
   // ── Purchase Orders ────────────────────────────────────────────────────
   async getPurchaseOrders(
     page = 1, limit = 10,
-    filters?: { status?: string; supplier_id?: string; search?: string },
+    filters?: { status?: string; supplier_id?: string; search?: string; date_from?: string; date_to?: string },
   ): Promise<PaginatedResponse<PurchaseOrder>> {
     const params: Record<string, string | number> = { page, limit };
     if (filters?.status) params.status = filters.status;
     if (filters?.supplier_id) params.supplier_id = filters.supplier_id;
     if (filters?.search) params.search = filters.search;
+    if (filters?.date_from) params.date_from = filters.date_from;
+    if (filters?.date_to) params.date_to = filters.date_to;
     const res = await api.get<PaginatedResponse<PurchaseOrder>>('/inventory/purchase-orders', { params });
     return res.data;
   },
@@ -76,12 +78,14 @@ const inventoryService = {
   // ── Goods Receipt Notes ────────────────────────────────────────────────
   async getGRNs(
     page = 1, limit = 10,
-    filters?: { status?: string; supplier_id?: string; search?: string },
+    filters?: { status?: string; supplier_id?: string; search?: string; date_from?: string; date_to?: string },
   ): Promise<PaginatedResponse<GoodsReceiptNote>> {
     const params: Record<string, string | number> = { page, limit };
     if (filters?.status) params.status = filters.status;
     if (filters?.supplier_id) params.supplier_id = filters.supplier_id;
     if (filters?.search) params.search = filters.search;
+    if (filters?.date_from) params.date_from = filters.date_from;
+    if (filters?.date_to) params.date_to = filters.date_to;
     const res = await api.get<PaginatedResponse<GoodsReceiptNote>>('/inventory/grns', { params });
     return res.data;
   },
@@ -101,12 +105,14 @@ const inventoryService = {
   // ── Stock Movements ────────────────────────────────────────────────────
   async getStockMovements(
     page = 1, limit = 10,
-    filters?: { item_type?: string; item_id?: string; movement_type?: string },
+    filters?: { item_type?: string; item_id?: string; movement_type?: string; date_from?: string; date_to?: string },
   ): Promise<PaginatedResponse<StockMovement>> {
     const params: Record<string, string | number> = { page, limit };
     if (filters?.item_type) params.item_type = filters.item_type;
     if (filters?.item_id) params.item_id = filters.item_id;
     if (filters?.movement_type) params.movement_type = filters.movement_type;
+    if (filters?.date_from) params.date_from = filters.date_from;
+    if (filters?.date_to) params.date_to = filters.date_to;
     const res = await api.get<PaginatedResponse<StockMovement>>('/inventory/stock-movements', { params });
     return res.data;
   },

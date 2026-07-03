@@ -529,7 +529,6 @@ const App: React.FC = () => {
               <Route path="/optical/prescriptions/:id" element={
                 <ProtectedRoute
                   allowedRoles={['super_admin', 'admin', 'doctor', 'optical_staff']}
-                  requiredModule="optical"
                 >
                   <OpticalPrescriptionDetail />
                 </ProtectedRoute>

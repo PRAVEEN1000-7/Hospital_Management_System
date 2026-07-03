@@ -5,6 +5,7 @@ import { useToast } from '../contexts/ToastContext';
 import appointmentService from '../services/appointmentService';
 import AppointmentStatusBadge from '../components/appointments/AppointmentStatusBadge';
 import type { Appointment } from '../types/appointment';
+import { formatLocalDateISO } from '../utils/calendarDate';
 
 const DoctorAppointments: React.FC = () => {
   const { user } = useAuth();
@@ -13,7 +14,7 @@ const DoctorAppointments: React.FC = () => {
 
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(formatLocalDateISO());
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [notesModal, setNotesModal] = useState<{ id: string; notes: string } | null>(null);
 
@@ -21,7 +22,7 @@ const DoctorAppointments: React.FC = () => {
     if (!user?.id) return;
     setLoading(true);
     try {
-      const data = await appointmentService.getDoctorToday(user.id);
+      const data = await appointmentService.getDoctorToday(user.id, selectedDate);
       setAppointments(data);
     } catch {
       toast.error('Failed to load appointments');

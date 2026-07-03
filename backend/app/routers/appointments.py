@@ -159,13 +159,45 @@ async def my_appointments(
 @router.get("/doctor/{doctor_id}/today")
 async def doctor_today(
     doctor_id: str,
+    query_date: Optional[date] = Query(None, description="Date to fetch appointments for (YYYY-MM-DD). Defaults to server's today."),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    today = date.today()
+    target_date = query_date or date.today()
+    # Resolve: try as Doctor.id first, then fall back to Doctor.user_id
+    # so the frontend can pass either the doctor UUID or the logged-in user UUID
+    resolved_doctor_id = doctor_id
+    try:
+        import uuid as _uuid
+        parsed = _uuid.UUID(doctor_id)
+        doctor = (
+            db.query(Doctor)
+            .filter(
+                Doctor.id == parsed,
+                Doctor.hospital_id == current_user.hospital_id,
+            )
+            .first()
+        )
+        if not doctor:
+            doctor = (
+                db.query(Doctor)
+                .filter(
+                    Doctor.user_id == parsed,
+                    Doctor.hospital_id == current_user.hospital_id,
+                )
+                .first()
+            )
+        if doctor:
+            resolved_doctor_id = str(doctor.id)
+        else:
+            # No doctor found for this user/doctor ID — return empty list
+            logger.warning("doctor_today: no doctor found for id=%s hospital=%s", doctor_id, current_user.hospital_id)
+            return []
+    except (ValueError, AttributeError):
+        pass
     _, _, _, _, rows = list_appointments(
-        db, 1, 100, hospital_id=current_user.hospital_id,
-        doctor_id=doctor_id, date_from=today, date_to=today,
+        db, 1, 200, hospital_id=current_user.hospital_id,
+        doctor_id=resolved_doctor_id, date_from=target_date, date_to=target_date,
     )
     return enrich_appointments(db, rows)
 

@@ -4,19 +4,8 @@ import opticalService from '../../services/opticalService';
 import type { OpticalSale } from '../../types/optical';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
-import { format, subDays } from 'date-fns';
-
-type DatePreset = 'all' | 'today' | '7d' | '30d';
-
-const resolveDateRange = (preset: DatePreset): { dateFrom?: string; dateTo?: string } => {
-  const today = new Date();
-  const end = format(today, 'yyyy-MM-dd');
-
-  if (preset === 'today') return { dateFrom: end, dateTo: end };
-  if (preset === '7d') return { dateFrom: format(subDays(today, 6), 'yyyy-MM-dd'), dateTo: end };
-  if (preset === '30d') return { dateFrom: format(subDays(today, 29), 'yyyy-MM-dd'), dateTo: end };
-  return {};
-};
+import { format } from 'date-fns';
+import DateRangeFilter from '../../components/common/DateRangeFilter';
 
 const OpticalSales: React.FC = () => {
   const navigate = useNavigate();
@@ -27,14 +16,14 @@ const OpticalSales: React.FC = () => {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [search, setSearch] = useState('');
-  const [datePreset, setDatePreset] = useState<DatePreset>('all');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const canCreateSale = Boolean(user?.roles?.some((r) => ['super_admin', 'admin', 'optical_staff'].includes(r)));
 
   const fetchSales = useCallback(async () => {
     setLoading(true);
     try {
-      const { dateFrom, dateTo } = resolveDateRange(datePreset);
-      const res = await opticalService.getSales(page, 20, search, dateFrom || '', dateTo || '');
+      const res = await opticalService.getSales(page, 20, search, dateFrom, dateTo);
       setSales(res.data);
       setTotalPages(res.total_pages);
     } catch {
@@ -43,7 +32,7 @@ const OpticalSales: React.FC = () => {
       setLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, search, datePreset]);
+  }, [page, search, dateFrom, dateTo]);
 
   useEffect(() => { fetchSales(); }, [fetchSales]);
 
@@ -70,17 +59,11 @@ const OpticalSales: React.FC = () => {
           className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Date</span>
-        {(['all', 'today', '7d', '30d'] as DatePreset[]).map((preset) => (
-          <button key={preset}
-            onClick={() => { setDatePreset(preset); setPage(1); }}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${datePreset === preset ? 'bg-primary text-white border-primary' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
-          >
-            {preset === 'all' ? 'All' : preset === 'today' ? 'Today' : preset === '7d' ? 'Last 7 days' : 'Last 30 days'}
-          </button>
-        ))}
-      </div>
+      <DateRangeFilter
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+        onChange={(from, to) => { setDateFrom(from); setDateTo(to); setPage(1); }}
+      />
 
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         {loading ? (

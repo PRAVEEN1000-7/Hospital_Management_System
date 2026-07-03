@@ -453,10 +453,10 @@ async def get_optical_prescription_pdf(
         pd_bits.append(f"Distance: {rx.pd_distance} mm")
     if rx.pd_near is not None:
         pd_bits.append(f"Near: {rx.pd_near} mm")
-    if rx.pd_right is not None:
-        pd_bits.append(f"Right: {rx.pd_right} mm")
     if rx.pd_left is not None:
         pd_bits.append(f"Left: {rx.pd_left} mm")
+    if rx.pd_right is not None:
+        pd_bits.append(f"Right: {rx.pd_right} mm")
     pd_line = " | ".join(pd_bits)
 
     html = f"""<!DOCTYPE html>
@@ -530,35 +530,35 @@ td:first-child, th:first-child {{ text-align:left; }}
 <thead>
 <tr>
     <th style="width:34%;">Parameter</th>
-    <th style="width:33%;">Right (OD)</th>
     <th style="width:33%;">Left (OS)</th>
+    <th style="width:33%;">Right (OD)</th>
 </tr>
 </thead>
 <tbody>
 <tr>
     <td><strong>SPH</strong></td>
-    <td>{fmt_power(rx.right_sph)}</td>
     <td>{fmt_power(rx.left_sph)}</td>
+    <td>{fmt_power(rx.right_sph)}</td>
 </tr>
 <tr>
     <td><strong>CYL</strong></td>
-    <td>{fmt_power(rx.right_cyl)}</td>
     <td>{fmt_power(rx.left_cyl)}</td>
+    <td>{fmt_power(rx.right_cyl)}</td>
 </tr>
 <tr>
     <td><strong>Axis</strong></td>
-    <td>{fmt_axis(rx.right_axis)}</td>
     <td>{fmt_axis(rx.left_axis)}</td>
+    <td>{fmt_axis(rx.right_axis)}</td>
 </tr>
 <tr>
     <td><strong>Add</strong></td>
-    <td>{fmt_power(rx.right_add)}</td>
     <td>{fmt_power(rx.left_add)}</td>
+    <td>{fmt_power(rx.right_add)}</td>
 </tr>
 <tr>
     <td><strong>Visual Acuity</strong></td>
-    <td>{fmt_va(rx.right_va)}</td>
     <td>{fmt_va(rx.left_va)}</td>
+    <td>{fmt_va(rx.right_va)}</td>
 </tr>
 </tbody>
 </table>

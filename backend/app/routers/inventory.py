@@ -4,6 +4,7 @@ Stock Movements, Adjustments, Cycle Counts, Dashboard.
 """
 import logging
 import uuid
+from datetime import date
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -187,6 +188,8 @@ async def list_purchase_orders(
     status_filter: Optional[str] = Query(None, alias="status"),
     supplier_id: Optional[str] = None,
     search: Optional[str] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(inventory_manage_roles),
 ):
@@ -194,6 +197,7 @@ async def list_purchase_orders(
     result = svc.list_purchase_orders(
         db, current_user.hospital_id, page, limit,
         status=status_filter, supplier_id=supplier_id, search=search,
+        date_from=date_from, date_to=date_to,
     )
     data = [svc._format_po_response(po, db) for po in result["data"]]
     return {**result, "data": data}
@@ -253,6 +257,8 @@ async def list_grns(
     status_filter: Optional[str] = Query(None, alias="status"),
     supplier_id: Optional[str] = None,
     search: Optional[str] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(inventory_view_roles),
 ):
@@ -260,6 +266,7 @@ async def list_grns(
     result = svc.list_grns(
         db, current_user.hospital_id, page, limit,
         status=status_filter, supplier_id=supplier_id, search=search,
+        date_from=date_from, date_to=date_to,
     )
     data = [svc._format_grn_response(g, db) for g in result["data"]]
     return {**result, "data": data}
@@ -319,6 +326,8 @@ async def list_stock_movements(
     item_type: Optional[str] = None,
     item_id: Optional[str] = None,
     movement_type: Optional[str] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(inventory_view_roles),
 ):
@@ -326,6 +335,7 @@ async def list_stock_movements(
     result = svc.list_stock_movements(
         db, current_user.hospital_id, page, limit,
         item_type=item_type, item_id=item_id, movement_type=movement_type,
+        date_from=date_from, date_to=date_to,
     )
     data = [svc._format_movement_response(m, db) for m in result["data"]]
     return {**result, "data": data}

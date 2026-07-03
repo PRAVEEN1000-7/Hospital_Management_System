@@ -482,12 +482,29 @@ def finalize_prescription(
     if rx.is_finalized:
         raise ValueError("Prescription is already finalized")
 
-    # Must have at least one item
+    # Must have at least one item, unless it is an eye hospital and there is an optical prescription
     item_count = db.query(PrescriptionItem).filter(
         PrescriptionItem.prescription_id == rx.id
     ).count()
     if item_count == 0:
-        raise ValueError("Cannot finalize a prescription with no items")
+        is_eye = _eye_hospital_features_enabled(db, rx.hospital_id)
+        has_optical = False
+        if is_eye:
+            from ..models.optical import OpticalPrescription
+            from datetime import date
+            if rx.appointment_id:
+                has_optical = db.query(OpticalPrescription).filter(
+                    OpticalPrescription.appointment_id == rx.appointment_id
+                ).count() > 0
+            else:
+                has_optical = db.query(OpticalPrescription).filter(
+                    OpticalPrescription.patient_id == rx.patient_id,
+                    OpticalPrescription.doctor_id == rx.doctor_id,
+                    func.date(OpticalPrescription.created_at) == date.today(),
+                ).count() > 0
+
+        if not has_optical:
+            raise ValueError("Cannot finalize a prescription with no items")
 
     # ✅ FIX BUG #1: Check stock availability before finalizing
     from ..models.pharmacy import MedicineBatch
@@ -541,6 +558,23 @@ def finalize_prescription(
     rx.is_finalized = True
     rx.finalized_at = datetime.now(timezone.utc)
     rx.version = (rx.version or 1) + 1
+
+    # Also finalize the corresponding optical prescription if one exists
+    if _eye_hospital_features_enabled(db, rx.hospital_id):
+        from ..models.optical import OpticalPrescription
+        opt_rx = None
+        if rx.appointment_id:
+            opt_rx = db.query(OpticalPrescription).filter(
+                OpticalPrescription.appointment_id == rx.appointment_id
+            ).first()
+        else:
+            opt_rx = db.query(OpticalPrescription).filter(
+                OpticalPrescription.patient_id == rx.patient_id,
+                OpticalPrescription.doctor_id == rx.doctor_id,
+                func.date(OpticalPrescription.created_at) == date.today(),
+            ).first()
+        if opt_rx:
+            opt_rx.is_finalized = True
 
     # Pharmacy Queue (BRD v1.1 PQ-02) — eye-hospital feature pack only.
     # A token is assigned right here, at submission, well before any bill

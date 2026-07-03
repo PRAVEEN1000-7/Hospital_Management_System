@@ -48,13 +48,14 @@ def _next_queue_position(db: Session, doctor_id: uuid.UUID, queue_date: date) ->
 
 # Appointment types that get a Queue Display token — kept here so booking,
 # cancel, and reschedule all agree on the same set.
-QUEUE_SUPPORTED_TYPES = {"scheduled", "follow-up", "follow_up", "referral"}
+QUEUE_SUPPORTED_TYPES = {"scheduled", "follow-up", "follow_up", "referral", "walk-in", "walk_in"}
 
 
 def _create_queue_entry(db: Session, appt: Appointment) -> None:
     """Assign a queue token for today-or-later appointments so the patient
-    shows up on the Doctor 1/2 Queue Display columns. No-op for past dates,
-    walk-ins (handled separately in walk_ins.py), or unsupported types."""
+    shows up on the Doctor Queue Display. Walk-ins created via walk_ins.py
+    create their own queue entry; this handles all other paths including
+    walk-ins booked through the appointment management UI."""
     if not (
         appt.doctor_id
         and appt.appointment_date

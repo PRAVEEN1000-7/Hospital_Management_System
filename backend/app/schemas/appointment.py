@@ -369,6 +369,19 @@ class HospitalSettingsUpdate(BaseModel):
     queue_display_doctor1_id: Optional[str] = None
     queue_display_doctor2_id: Optional[str] = None
 
+    # DB column name sent by the frontend (allow_walk_in vs schema alias allow_walk_ins)
+    allow_walk_in: Optional[bool] = None
+    # Branding / print fields sent by the full-object PUT from frontend
+    branding_primary_color: Optional[str] = Field(None, max_length=20)
+    branding_secondary_color: Optional[str] = Field(None, max_length=20)
+    print_header_text: Optional[str] = None
+    print_footer_text: Optional[str] = None
+
+    # Silently ignore read-only or unrecognised fields (id, hospital_id,
+    # *_sequence counters, created_at, updated_at, etc.) that the frontend
+    # includes when it sends back the full settings object.
+    model_config = ConfigDict(extra='ignore')
+
     @field_validator("hospital_code")
     @classmethod
     def validate_hospital_code(cls, v: Optional[str]) -> Optional[str]:

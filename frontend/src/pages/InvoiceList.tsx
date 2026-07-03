@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import invoiceService from '../services/invoiceService';
 import type { InvoiceListItem, InvoiceStatus } from '../types/billing';
+import DateRangeFilter from '../components/common/DateRangeFilter';
 
 const STATUS_COLORS: Record<InvoiceStatus, string> = {
   draft: 'bg-slate-100 text-slate-600',
@@ -42,6 +43,8 @@ const InvoiceList: React.FC = () => {
   const [searchInput, setSearchInput] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
 
   const role = user?.roles?.[0];
   const canCreate = ['super_admin', 'admin', 'cashier', 'pharmacist'].includes(role || '');
@@ -53,6 +56,8 @@ const InvoiceList: React.FC = () => {
         search: search || undefined,
         status: statusFilter || undefined,
         invoice_type: typeFilter || undefined,
+        date_from: dateFrom || undefined,
+        date_to: dateTo || undefined,
       });
       setInvoices(res.items);
       setTotal(res.total);
@@ -62,7 +67,7 @@ const InvoiceList: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [page, search, statusFilter, typeFilter, showToast]);
+  }, [page, search, statusFilter, typeFilter, dateFrom, dateTo, showToast]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -95,40 +100,49 @@ const InvoiceList: React.FC = () => {
       </div>
 
       {/* ── Filters ── */}
-      <div className="flex flex-col sm:flex-row gap-3 mb-5">
-        <div className="relative flex-1">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-slate-400 text-[18px]">search</span>
-          <input
-            type="text"
-            placeholder="Search by invoice # or patient name…"
-            value={searchInput}
-            onChange={e => setSearchInput(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+      <div className="bg-white rounded-xl border border-slate-200 p-4 mb-5">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-slate-400 text-[18px]">search</span>
+            <input
+              type="text"
+              placeholder="Search by invoice # or patient name…"
+              value={searchInput}
+              onChange={e => setSearchInput(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+            />
+          </div>
+          <select
+            value={statusFilter}
+            onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
+            className="px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary/30"
+          >
+            <option value="">All Statuses</option>
+            <option value="draft">Draft</option>
+            <option value="issued">Issued</option>
+            <option value="partially_paid">Partially Paid</option>
+            <option value="paid">Paid</option>
+            <option value="overdue">Overdue</option>
+          </select>
+          <select
+            value={typeFilter}
+            onChange={e => { setTypeFilter(e.target.value); setPage(1); }}
+            className="px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary/30"
+          >
+            <option value="">All Types</option>
+            <option value="opd">OPD</option>
+            <option value="pharmacy">Pharmacy</option>
+            <option value="optical">Optical</option>
+            <option value="combined">Combined</option>
+          </select>
+        </div>
+        <div className="mt-3">
+          <DateRangeFilter
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            onChange={(from, to) => { setDateFrom(from); setDateTo(to); setPage(1); }}
           />
         </div>
-        <select
-          value={statusFilter}
-          onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
-          className="px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary/30"
-        >
-          <option value="">All Statuses</option>
-          <option value="draft">Draft</option>
-          <option value="issued">Issued</option>
-          <option value="partially_paid">Partially Paid</option>
-          <option value="paid">Paid</option>
-          <option value="overdue">Overdue</option>
-        </select>
-        <select
-          value={typeFilter}
-          onChange={e => { setTypeFilter(e.target.value); setPage(1); }}
-          className="px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary/30"
-        >
-          <option value="">All Types</option>
-          <option value="opd">OPD</option>
-          <option value="pharmacy">Pharmacy</option>
-          <option value="optical">Optical</option>
-          <option value="combined">Combined</option>
-        </select>
       </div>
 
       {/* ── Table ── */}

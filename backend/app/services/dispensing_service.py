@@ -336,10 +336,14 @@ def _enrich_prescription_for_dispensing(db: Session, rx: Prescription) -> dict:
 
         # Resolve dispense unit label from the linked medicine
         dispense_unit = "units"
+        units_per_pack = 1
         if item.medicine_id:
             med = db.query(Medicine).filter(Medicine.id == item.medicine_id).first()
-            if med and med.unit_of_measure:
-                dispense_unit = med.unit_of_measure
+            if med:
+                if med.unit_of_measure:
+                    dispense_unit = med.unit_of_measure
+                if med.units_per_pack:
+                    units_per_pack = med.units_per_pack
 
         item_dict = {
             "id": str(item.id),
@@ -358,6 +362,7 @@ def _enrich_prescription_for_dispensing(db: Session, rx: Prescription) -> dict:
             "allow_substitution": item.allow_substitution,
             "is_dispensed": item.is_dispensed,
             "dispense_unit": dispense_unit,
+            "units_per_pack": units_per_pack,
             # Eye Hospital Drug Prescription format — which eye this item is
             # for. Never sent to the dispensing screen before, so a pharmacist
             # had no way to tell RE from LE while dispensing eye drops.
@@ -860,6 +865,8 @@ def get_dispensing_details(
             "medicine_id": str(item.medicine_id),
             "batch_id": str(item.batch_id),
             "batch_number": resolved_batch_number,
+            "expiry_date": str(item.batch.expiry_date) if item.batch and item.batch.expiry_date else None,
+            "pack": item.medicine.units_per_pack if item.medicine and item.medicine.units_per_pack else None,
             "medicine_name": resolved_medicine_name,
             "quantity": item.quantity,
             "unit_price": float(item.unit_price) if item.unit_price else 0,

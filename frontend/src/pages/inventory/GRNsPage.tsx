@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useToast } from '../../contexts/ToastContext';
 import inventoryService from '../../services/inventoryService';
 import type { GoodsReceiptNote } from '../../types/inventory';
+import DateRangeFilter from '../../components/common/DateRangeFilter';
 
 const STATUS_COLORS: Record<string, string> = {
   pending: 'bg-amber-50 text-amber-700',
@@ -18,6 +19,8 @@ const GRNsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
@@ -29,6 +32,8 @@ const GRNsPage: React.FC = () => {
       const res = await inventoryService.getGRNs(page, 10, {
         status: statusFilter || undefined,
         search: search || undefined,
+        date_from: dateFrom || undefined,
+        date_to: dateTo || undefined,
       });
       setGRNs(res.data);
       setTotalPages(res.total_pages);
@@ -39,7 +44,7 @@ const GRNsPage: React.FC = () => {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, search, statusFilter]);
+  }, [page, search, statusFilter, dateFrom, dateTo]);
 
   useEffect(() => { fetchGRNs(); }, [fetchGRNs]);
 
@@ -69,21 +74,28 @@ const GRNsPage: React.FC = () => {
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
         {/* Filters */}
-        <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-lg">search</span>
-            <input type="text" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
-              placeholder="Search by GRN number..."
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all" />
+        <div className="p-4 border-b border-slate-200">
+          <div className="flex flex-col sm:flex-row gap-3 mb-3">
+            <div className="relative flex-1">
+              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-lg">search</span>
+              <input type="text" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
+                placeholder="Search by GRN number..."
+                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all" />
+            </div>
+            <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
+              className="px-4 py-2.5 border border-slate-200 rounded-lg text-sm bg-slate-50 cursor-pointer">
+              <option value="">All Statuses</option>
+              <option value="pending">Pending</option>
+              <option value="verified">Verified</option>
+              <option value="accepted">Accepted</option>
+              <option value="rejected">Rejected</option>
+            </select>
           </div>
-          <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
-            className="px-4 py-2.5 border border-slate-200 rounded-lg text-sm bg-slate-50 cursor-pointer">
-            <option value="">All Statuses</option>
-            <option value="pending">Pending</option>
-            <option value="verified">Verified</option>
-            <option value="accepted">Accepted</option>
-            <option value="rejected">Rejected</option>
-          </select>
+          <DateRangeFilter
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            onChange={(from, to) => { setDateFrom(from); setDateTo(to); setPage(1); }}
+          />
         </div>
 
         {/* Table */}

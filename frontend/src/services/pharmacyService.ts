@@ -44,6 +44,7 @@ export interface PrescriptionItemWithStock {
   available_quantity: number;
   available_batches: MedicineBatch[];
   dispense_unit?: string;
+  units_per_pack?: number;
   /** Eye Hospital Drug Prescription format — 'RE' | 'LE' | 'Both' | null. */
   eye_side?: string | null;
 }

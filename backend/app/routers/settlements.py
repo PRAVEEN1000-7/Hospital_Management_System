@@ -66,13 +66,15 @@ async def list_all_settlements(
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100),
     status: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
     """List settlements with pagination."""
     _require_billing_staff(current_user)
     try:
-        return list_settlements(db, current_user.hospital_id, page, limit, status=status)
+        return list_settlements(db, current_user.hospital_id, page, limit, status=status, date_from=date_from, date_to=date_to)
     except Exception as e:
         logger.error(f"Error listing settlements: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to retrieve settlements")

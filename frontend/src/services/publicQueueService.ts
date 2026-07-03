@@ -13,6 +13,7 @@ export interface PublicQueueColumn {
 
 export interface PublicQueueDisplayResponse {
   hospital_name: string;
+  logo_url?: string;
   refresh_seconds: number;
   columns: PublicQueueColumn[];
 }

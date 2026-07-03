@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import settlementService from '../services/settlementService';
 import type { SettlementListItem, SettlementStatus } from '../types/billing';
+import DateRangeFilter from '../components/common/DateRangeFilter';
 
 const STATUS_COLORS: Record<SettlementStatus, string> = {
   open: 'bg-amber-100 text-amber-700',
@@ -23,6 +24,8 @@ const SettlementList: React.FC = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [statusFilter, setStatusFilter] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [settleDate, setSettleDate] = useState(new Date().toISOString().slice(0, 10));
   const [settleNotes, setSettleNotes] = useState('');
@@ -36,7 +39,11 @@ const SettlementList: React.FC = () => {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await settlementService.list(page, 15, { status: statusFilter || undefined });
+      const res = await settlementService.list(page, 15, {
+        status: statusFilter || undefined,
+        date_from: dateFrom || undefined,
+        date_to: dateTo || undefined,
+      });
       setSettlements(res.items);
       setTotal(res.total);
       setTotalPages(res.pages);
@@ -45,7 +52,7 @@ const SettlementList: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [page, statusFilter, showToast]);
+  }, [page, statusFilter, dateFrom, dateTo, showToast]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -103,17 +110,24 @@ const SettlementList: React.FC = () => {
       </div>
 
       {/* Filters */}
-      <div className="flex gap-3 mb-5">
-        <select
-          value={statusFilter}
-          onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
-          className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-        >
-          <option value="">All Statuses</option>
-          <option value="open">Open</option>
-          <option value="closed">Closed</option>
-          <option value="verified">Verified</option>
-        </select>
+      <div className="bg-white rounded-xl border border-slate-200 p-4 mb-5">
+        <div className="flex gap-3 mb-3">
+          <select
+            value={statusFilter}
+            onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
+            className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+          >
+            <option value="">All Statuses</option>
+            <option value="open">Open</option>
+            <option value="closed">Closed</option>
+            <option value="verified">Verified</option>
+          </select>
+        </div>
+        <DateRangeFilter
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          onChange={(from, to) => { setDateFrom(from); setDateTo(to); setPage(1); }}
+        />
       </div>
 
       {/* Table */}

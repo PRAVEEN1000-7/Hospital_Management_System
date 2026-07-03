@@ -395,6 +395,29 @@ const AppointmentBooking: React.FC = () => {
                   className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
               </div>
             </div>
+            {/* No-slot warning: shown when doctor + date are selected but no slots are available */}
+            {selectedDoctor && selectedDate && !slotsLoading && slots.length === 0 && (
+              <div className="mb-4 flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
+                <span className="material-symbols-outlined text-amber-500 text-base mt-0.5 shrink-0">warning</span>
+                <div>
+                  <p className="font-semibold">No schedule set up for this date</p>
+                  <p className="text-xs text-amber-700 mt-0.5">
+                    {selectedDoctor.name} has not configured any time slots for {selectedDate}. The appointment will be booked without an assigned time slot. Ask the doctor to set up a schedule first if time slots are required.
+                  </p>
+                </div>
+              </div>
+            )}
+            {selectedDoctor && selectedDate && !slotsLoading && slots.length > 0 && slots.every(s => !s.available) && (
+              <div className="mb-4 flex items-start gap-2.5 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-800">
+                <span className="material-symbols-outlined text-red-500 text-base mt-0.5 shrink-0">event_busy</span>
+                <div>
+                  <p className="font-semibold">All slots are fully booked</p>
+                  <p className="text-xs text-red-700 mt-0.5">
+                    {selectedDoctor.name} has no available slots on {selectedDate}. Choose a different date or consider adding the patient to a waitlist.
+                  </p>
+                </div>
+              </div>
+            )}
             <div>
               <label className="block text-xs font-bold text-slate-500 mb-1">Consultation Type</label>
               <div className="flex gap-3">

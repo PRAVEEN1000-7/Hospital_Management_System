@@ -20,5 +20,6 @@ class PublicQueueColumn(BaseModel):
 
 class PublicQueueDisplayResponse(BaseModel):
     hospital_name: str
+    logo_url: Optional[str] = None
     refresh_seconds: int = 10
     columns: list[PublicQueueColumn] = []

@@ -288,6 +288,8 @@ def list_invoices(
     status: Optional[str] = None,
     invoice_type: Optional[str] = None,
     patient_id: Optional[str] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
 ) -> PaginatedInvoiceResponse:
     query = (
         db.query(Invoice)
@@ -303,6 +305,10 @@ def list_invoices(
             query = query.filter(Invoice.patient_id == uuid.UUID(patient_id))
         except ValueError:
             pass
+    if date_from:
+        query = query.filter(Invoice.invoice_date >= date_from)
+    if date_to:
+        query = query.filter(Invoice.invoice_date <= date_to)
     if search:
         search = search.strip()
         query = query.join(Patient, Invoice.patient_id == Patient.id).filter(

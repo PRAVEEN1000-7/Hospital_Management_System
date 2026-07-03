@@ -707,7 +707,7 @@ const DispensingScreen: React.FC = () => {
                                 className="inline-flex items-center gap-1 text-xs px-2 py-0.5 bg-primary/10 text-primary rounded-full font-bold"
                               >
                                 <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>visibility</span>
-                                {item.eye_side === 'Both' ? 'RE + LE' : item.eye_side}
+                                {item.eye_side === 'Both' ? 'LE + RE' : item.eye_side}
                               </span>
                             )}
                             {item.is_dispensed && (
@@ -759,6 +759,11 @@ const DispensingScreen: React.FC = () => {
                               <div className={`text-xl font-bold leading-tight ${item.remainingQty > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>{item.remainingQty}</div>
                               <div className="text-[11px] text-slate-500">{item.dispense_unit || 'units'}</div>
                             </div>
+                            {item.units_per_pack && item.units_per_pack > 1 && item.remainingQty > 0 && (
+                              <div className="col-span-3 mt-1.5 text-[11px] text-amber-800 text-center bg-amber-50/50 rounded border border-amber-100 py-1 font-medium">
+                                Needs: <span className="font-bold">{Math.floor(item.remainingQty / item.units_per_pack)} strips</span> + <span className="font-bold">{item.remainingQty % item.units_per_pack} loose</span> (Pack: {item.units_per_pack})
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -827,19 +832,59 @@ const DispensingScreen: React.FC = () => {
 
                         {/* Quantity Input */}
                         <div>
-                          <label className="block text-xs font-semibold text-slate-600 uppercase mb-1.5">
-                            Dispense Quantity
+                          <label className="block text-xs font-semibold text-slate-600 uppercase mb-1.5 flex justify-between items-center">
+                            <span>Dispense Quantity</span>
+                            {item.units_per_pack && item.units_per_pack > 1 && (
+                              <span className="text-[10px] text-slate-400 font-normal normal-case">Pack size: {item.units_per_pack}</span>
+                            )}
                           </label>
-                          <input
-                            type="number"
-                            min="0"
-                            max={Math.min(item.available_quantity || 0, item.remainingQty)}
-                            value={item.dispensedQty}
-                            onChange={(e) =>
-                              handleQuantityChange(index, parseInt(e.target.value) || 0)
-                            }
-                            className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 transition-all font-semibold"
-                          />
+                          <div className="flex gap-2">
+                            <input
+                              type="number"
+                              min="0"
+                              max={Math.min(item.available_quantity || 0, item.remainingQty)}
+                              value={item.dispensedQty}
+                              onChange={(e) =>
+                                handleQuantityChange(index, parseInt(e.target.value) || 0)
+                              }
+                              className="flex-1 px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 transition-all font-semibold"
+                            />
+                            {item.units_per_pack && item.units_per_pack > 1 && (
+                              <div className="flex gap-1">
+                                {Math.floor(item.remainingQty / item.units_per_pack) > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const strips = Math.floor(item.remainingQty / (item.units_per_pack || 1));
+                                      const qty = strips * (item.units_per_pack || 1);
+                                      handleQuantityChange(index, qty);
+                                    }}
+                                    className="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 transition-colors"
+                                  >
+                                    {Math.floor(item.remainingQty / item.units_per_pack)} Strips
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleQuantityChange(index, item.remainingQty)}
+                                  className="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"
+                                >
+                                  All
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                          {item.units_per_pack && item.units_per_pack > 1 && item.dispensedQty > 0 && (
+                            <div className="text-[11px] text-emerald-800 mt-1.5 font-medium flex items-center gap-1 bg-emerald-50/50 rounded border border-emerald-100/50 px-2 py-0.5 w-fit">
+                              <span className="material-symbols-outlined text-[13px] text-emerald-600">inventory_2</span>
+                              <span>
+                                Dispensing: <span className="font-bold">{Math.floor(item.dispensedQty / item.units_per_pack)} strips</span>
+                                {item.dispensedQty % item.units_per_pack > 0 && (
+                                  <> + <span className="font-bold">{item.dispensedQty % item.units_per_pack} loose</span></>
+                                )}
+                              </span>
+                            </div>
+                          )}
                           {selectedBatch && item.dispensedQty > (selectedBatch.quantity || 0) && (
                             <div className="text-xs text-emerald-700 mt-1 flex items-center gap-1">
                               <span className="material-symbols-outlined text-sm">sync_alt</span>

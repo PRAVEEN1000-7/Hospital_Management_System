@@ -1,0 +1,5 @@
+the eye hospital also include the normal medicine in the prescription,so they can also able to add the eye drop medicine and the normal medicine as weel.also make sure to reduce as muc level possible of click while create the prescription.
+
+current the inventory module can able to update the stock in the pharmacy.if the hospital that doesnt have the inventory ,how they can able to update the stock and the remaining things related to the medicne and the optical in their pharamcy and the opthal.check these function and verify all things,then update the code to work perfect ofr that logics.
+
+also check the billing and invoice related functions in the @BRD_HHMS_v1.md file ,then update the code to that formate mentioned in the md file.because thhe client as these way of requirements.

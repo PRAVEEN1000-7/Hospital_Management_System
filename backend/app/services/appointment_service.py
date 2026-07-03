@@ -14,6 +14,7 @@ from ..models.appointment import Appointment, AppointmentQueue, AppointmentStatu
 from ..models.patient import Patient
 from ..models.user import User
 from ..models.invoice import Invoice
+from .notification_service import notify_hospital_users
 
 logger = logging.getLogger(__name__)
 
@@ -168,6 +169,29 @@ def create_appointment(
     db.commit()
     db.refresh(appt)
     _log_status_change(db, appt.id, None, "scheduled", created_by)
+
+    # Notify the assigned doctor and receptionists about the new appointment.
+    try:
+        patient = db.query(Patient).filter(Patient.id == appt.patient_id).first()
+        patient_name = f"{patient.first_name} {patient.last_name}".strip() if patient else "a patient"
+        doctor = db.query(Doctor).filter(Doctor.id == appt.doctor_id).first()
+        doctor_user_id = doctor.user_id if doctor else None
+        notify_hospital_users(
+            db=db,
+            hospital_id=appt.hospital_id,
+            title="New Appointment",
+            message=f"Appointment booked for {patient_name} on {appt.appointment_date}.",
+            notification_type="appointment",
+            priority="normal",
+            reference_type="appointment",
+            reference_id=appt.id,
+            role_names=["receptionist"],
+            extra_user_ids=[doctor_user_id] if doctor_user_id else None,
+            exclude_user_ids=[created_by],
+        )
+    except Exception:
+        logger.warning("Failed to send appointment creation notification", exc_info=True)
+
     return appt
 
 
@@ -278,18 +302,43 @@ def update_appointment(
     appt = get_appointment(db, appointment_id)
     if not appt:
         return None
-    
+
     old_status = appt.status
+    old_doctor_id = appt.doctor_id
+
     for k, v in data.items():
         if v is not None and hasattr(appt, k):
             setattr(appt, k, v)
-    
+
     # Log status change if changed
     if "status" in data and data["status"] != old_status:
         _log_status_change(db, appt.id, old_status, data["status"], performed_by)
-    
+
     db.commit()
     db.refresh(appt)
+
+    # If the doctor was changed, notify the newly assigned doctor.
+    new_doctor_id = appt.doctor_id
+    if new_doctor_id and new_doctor_id != old_doctor_id:
+        try:
+            patient = db.query(Patient).filter(Patient.id == appt.patient_id).first()
+            patient_name = f"{patient.first_name} {patient.last_name}".strip() if patient else "a patient"
+            doctor = db.query(Doctor).filter(Doctor.id == new_doctor_id).first()
+            if doctor and doctor.user_id:
+                notify_hospital_users(
+                    db=db,
+                    hospital_id=appt.hospital_id,
+                    title="Patient Assigned to You",
+                    message=f"{patient_name} has been assigned to you for {appt.appointment_date}.",
+                    notification_type="appointment",
+                    priority="high",
+                    reference_type="appointment",
+                    reference_id=appt.id,
+                    extra_user_ids=[doctor.user_id],
+                )
+        except Exception:
+            logger.warning("Failed to send doctor reassignment notification", exc_info=True)
+
     return appt
 
 
@@ -342,6 +391,26 @@ def cancel_appointment(
     db.commit()
     db.refresh(appt)
     _log_status_change(db, appt.id, old_status, "cancelled", cancelled_by, reason)
+
+    try:
+        patient = db.query(Patient).filter(Patient.id == appt.patient_id).first()
+        patient_name = f"{patient.first_name} {patient.last_name}".strip() if patient else "a patient"
+        doctor = db.query(Doctor).filter(Doctor.id == appt.doctor_id).first()
+        if doctor and doctor.user_id:
+            notify_hospital_users(
+                db=db,
+                hospital_id=appt.hospital_id,
+                title="Appointment Cancelled",
+                message=f"Appointment for {patient_name} on {appt.appointment_date} has been cancelled.",
+                notification_type="appointment",
+                priority="high",
+                reference_type="appointment",
+                reference_id=appt.id,
+                extra_user_ids=[doctor.user_id],
+            )
+    except Exception:
+        logger.warning("Failed to send appointment cancellation notification", exc_info=True)
+
     return appt
 
 

@@ -22,6 +22,7 @@ from ..models.patient import Patient
 from ..models.appointment import Doctor
 from ..models.inventory import StockMovement
 from .prescription_service import calculate_prescribed_quantity
+from .notification_service import notify_hospital_users
 
 logger = logging.getLogger(__name__)
 
@@ -768,6 +769,26 @@ def dispense_prescription(
         f"Status: {rx.status}"
     )
     
+    # Notify the prescribing doctor that their prescription has been dispensed.
+    try:
+        doctor = db.query(Doctor).filter(Doctor.id == rx.doctor_id).first()
+        if doctor and doctor.user_id:
+            patient = db.query(Patient).filter(Patient.id == rx.patient_id).first()
+            patient_name = f"{patient.first_name} {patient.last_name}".strip() if patient else "a patient"
+            notify_hospital_users(
+                db=db,
+                hospital_id=hospital_id,
+                title="Prescription Dispensed",
+                message=f"Prescription {rx.prescription_number} for {patient_name} has been dispensed by pharmacy.",
+                notification_type="dispensing",
+                priority="normal",
+                reference_type="prescription",
+                reference_id=rx.id,
+                extra_user_ids=[doctor.user_id],
+            )
+    except Exception:
+        logger.warning("Failed to send dispensing notification", exc_info=True)
+
     return {
         "dispensing_id": str(dispensing.id),
         "dispensing_number": dispensing.invoice_number,

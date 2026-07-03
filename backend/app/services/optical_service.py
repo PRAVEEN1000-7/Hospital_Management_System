@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, or_, case
 
 from .pharmacy_service import _filter_model_data
+from .notification_service import notify_hospital_users
 from ..models.optical import OpticalProduct, OpticalBatch, OpticalPrescription, OpticalSale, OpticalSaleItem
 
 logger = logging.getLogger(__name__)
@@ -253,6 +254,26 @@ def create_optical_prescription(
             last_error = e
             continue
         db.refresh(rx)
+
+        # Notify optical staff that a new eye prescription is ready.
+        try:
+            from ..models.patient import Patient
+            patient = db.query(Patient).filter(Patient.id == rx.patient_id).first()
+            patient_name = f"{patient.first_name} {patient.last_name}".strip() if patient else "a patient"
+            notify_hospital_users(
+                db=db,
+                hospital_id=hospital_id,
+                title="New Eye Prescription",
+                message=f"Optical prescription {rx.prescription_number} for {patient_name} is ready for dispensing.",
+                notification_type="optical",
+                priority="normal",
+                reference_type="optical_prescription",
+                reference_id=rx.id,
+                role_names=["optical_staff"],
+            )
+        except Exception:
+            logger.warning("Failed to send optical prescription notification", exc_info=True)
+
         return rx
     raise last_error
 

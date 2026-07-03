@@ -22,6 +22,11 @@ export const getNotificationTarget = (notification: AppNotification): Notificati
     stock_movement: '/inventory/stock-movements',
     appointment: '/appointments/manage',
     prescription: '/prescriptions',
+    invoice: '/billing/invoices',
+    payment: '/billing/payments',
+    dispensing: '/pharmacy/sales',
+    optical_prescription: '/optical/prescriptions',
+    optical_sale: '/optical/sales',
   };
 
   const basePath = basePaths[notification.reference_type || ''] || '/dashboard';
@@ -48,6 +53,11 @@ export const getNotificationIcon = (referenceType: string): string => {
     prescription: 'medication',
     low_stock: 'warning',
     expiry: 'schedule',
+    invoice: 'receipt_long',
+    payment: 'payments',
+    dispensing: 'local_pharmacy',
+    optical_prescription: 'visibility',
+    optical_sale: 'point_of_sale',
   };
   return icons[referenceType] || 'notifications';
 };
@@ -67,6 +77,11 @@ export const getNotificationColor = (referenceType: string): string => {
     prescription: 'text-pink-500 bg-pink-50',
     low_stock: 'text-red-500 bg-red-50',
     expiry: 'text-orange-500 bg-orange-50',
+    invoice: 'text-violet-500 bg-violet-50',
+    payment: 'text-emerald-600 bg-emerald-50',
+    dispensing: 'text-teal-500 bg-teal-50',
+    optical_prescription: 'text-sky-500 bg-sky-50',
+    optical_sale: 'text-indigo-500 bg-indigo-50',
   };
   return colors[referenceType] || 'text-slate-500 bg-slate-50';
 };

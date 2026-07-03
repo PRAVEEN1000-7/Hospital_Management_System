@@ -20,6 +20,7 @@ from ..models.appointment import Doctor, Appointment
 from ..models.patient import Patient
 from ..models.user import User
 from ..models.hospital_settings import HospitalSettings
+from .notification_service import notify_hospital_users
 from ..models.pharmacy import PharmacySale, PharmacySaleItem, PharmacyQueueEntry
 from ..models.user import Hospital
 from ..core.tenant_security import is_eye_hospital_feature_enabled
@@ -557,6 +558,24 @@ def finalize_prescription(
 
     db.commit()
     db.refresh(rx)
+
+    # Notify pharmacists that a prescription is ready for dispensing.
+    try:
+        patient = db.query(Patient).filter(Patient.id == rx.patient_id).first()
+        patient_name = f"{patient.first_name} {patient.last_name}".strip() if patient else "a patient"
+        notify_hospital_users(
+            db=db,
+            hospital_id=rx.hospital_id,
+            title="Prescription Ready for Dispensing",
+            message=f"Prescription {rx.prescription_number} for {patient_name} is ready to dispense.",
+            notification_type="prescription",
+            priority="normal",
+            reference_type="prescription",
+            reference_id=rx.id,
+            role_names=["pharmacist"],
+        )
+    except Exception:
+        logger.warning("Failed to send prescription finalize notification", exc_info=True)
 
     _save_version_snapshot(db, rx, performed_by, "Finalized prescription")
     return rx

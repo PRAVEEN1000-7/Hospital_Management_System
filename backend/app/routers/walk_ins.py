@@ -26,6 +26,7 @@ from ..services.waitlist_service import (
     enrich_waitlist_entry,
     check_already_on_waitlist,
 )
+from ..services.notification_service import notify_hospital_users
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/walk-ins", tags=["Walk-in Registration"])
@@ -767,6 +768,24 @@ async def assign_doctor_to_walkin(
     db.add(queue_entry)
     db.commit()
     db.refresh(appt)
+
+    # Notify the assigned doctor that a patient has been assigned to them.
+    try:
+        patient = db.query(Patient).filter(Patient.id == appt.patient_id).first()
+        patient_name = f"{patient.first_name} {patient.last_name}".strip() if patient else "a patient"
+        notify_hospital_users(
+            db=db,
+            hospital_id=appt.hospital_id,
+            title="Patient Assigned to You",
+            message=f"{patient_name} has been assigned to your queue (Token #{queue_entry.queue_number}).",
+            notification_type="appointment",
+            priority="high",
+            reference_type="appointment",
+            reference_id=appt.id,
+            extra_user_ids=[doctor.user_id],
+        )
+    except Exception:
+        logger.warning("Failed to send doctor assignment notification", exc_info=True)
 
     enriched = enrich_appointment(db, appt)
     enriched["queue_number"] = queue_entry.queue_number

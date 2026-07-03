@@ -28,6 +28,7 @@ from ..schemas.invoice import (
     InvoiceItemCreate, InvoiceItemResponse,
 )
 from ..services.tax_service import calculate_item_tax
+from .notification_service import notify_hospital_users
 
 logger = logging.getLogger(__name__)
 
@@ -251,6 +252,26 @@ def create_invoice(
 
     _recalculate_invoice(db, invoice)
     logger.info(f"Created invoice {invoice_number} for patient {data.patient_id}")
+
+    # Notify cashiers and admins that a new invoice has been created.
+    try:
+        patient = db.query(Patient).filter(Patient.id == uuid.UUID(data.patient_id)).first()
+        patient_name = f"{patient.first_name} {patient.last_name}".strip() if patient else "a patient"
+        notify_hospital_users(
+            db=db,
+            hospital_id=hospital_id,
+            title="New Invoice Created",
+            message=f"Invoice {invoice_number} for {patient_name} has been created.",
+            notification_type="invoice",
+            priority="normal",
+            reference_type="invoice",
+            reference_id=invoice.id,
+            role_names=["cashier", "admin", "super_admin"],
+            exclude_user_ids=[user_id],
+        )
+    except Exception:
+        logger.warning("Failed to send invoice creation notification", exc_info=True)
+
     return invoice
 
 

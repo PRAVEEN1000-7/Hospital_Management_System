@@ -18,9 +18,9 @@ from ..models.inventory import (
 )
 from ..models.prescription import Medicine
 from ..models.optical import OpticalProduct, OpticalBatch
-from ..models.notification import Notification
 from ..models.pharmacy import MedicineBatch
 from ..models.user import User, Role, UserRole
+from .notification_service import notify_hospital_users as _notify_hospital_users_shared
 from ..schemas.inventory import (
     SupplierCreate, SupplierUpdate,
     PurchaseOrderCreate, PurchaseOrderUpdate,
@@ -280,39 +280,19 @@ def _notify_hospital_users(
     extra_user_ids: Optional[list[uuid.UUID]] = None,
     exclude_user_ids: Optional[list[uuid.UUID]] = None,
 ) -> None:
-    """Create in-app notifications for selected active users in the same hospital."""
-    q = db.query(User.id).filter(
-        User.hospital_id == hospital_id,
-        User.is_active == True,
-        User.is_deleted == False,
+    _notify_hospital_users_shared(
+        db=db,
+        hospital_id=hospital_id,
+        title=title,
+        message=message,
+        notification_type=notification_type,
+        priority=priority,
+        reference_type=reference_type,
+        reference_id=reference_id,
+        role_names=role_names,
+        extra_user_ids=extra_user_ids,
+        exclude_user_ids=exclude_user_ids,
     )
-    if role_names:
-        q = q.join(UserRole, UserRole.user_id == User.id).join(Role, Role.id == UserRole.role_id).filter(
-            Role.name.in_(role_names),
-            Role.is_active == True,
-        )
-
-    recipient_ids = {row[0] for row in q.distinct().all()}
-    if extra_user_ids:
-        recipient_ids.update(extra_user_ids)
-    if exclude_user_ids:
-        recipient_ids.difference_update(exclude_user_ids)
-
-    if not recipient_ids:
-        return
-
-    for user_id in recipient_ids:
-        db.add(Notification(
-            hospital_id=hospital_id,
-            user_id=user_id,
-            title=title,
-            message=message,
-            type=notification_type,
-            priority=priority,
-            reference_type=reference_type,
-            reference_id=reference_id,
-        ))
-    db.commit()
 
 
 # ═══════════════════════════════════════════════════════════════════════════

@@ -9,16 +9,21 @@ const OpticalDashboard: React.FC = () => {
   const { user } = useAuth();
   const [stats, setStats] = useState<DashboardData | null>(null);
   const [outOfStockProducts, setOutOfStockProducts] = useState<OpticalProduct[]>([]);
+  const [pendingCount, setPendingCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const loadDashboard = async () => {
       setLoading(true);
       try {
-        const dashboard = await opticalService.getDashboard();
+        // Parallel: dashboard stats + pending prescription count
+        const [dashboard, pendingRes, productsRes] = await Promise.all([
+          opticalService.getDashboard(),
+          opticalService.getPendingPrescriptions(1, 1, 'pending'),
+          opticalService.getProducts(1, 100, '', '', true),
+        ]);
         setStats(dashboard);
-
-        const productsRes = await opticalService.getProducts(1, 100, '', '', true);
+        setPendingCount(pendingRes.total);
         const outOfStock = productsRes.data.filter(p => (p.total_stock ?? 0) === 0);
         setOutOfStockProducts(outOfStock.slice(0, 10));
       } catch (err) {
@@ -40,6 +45,15 @@ const OpticalDashboard: React.FC = () => {
   }
 
   const cards = [
+    {
+      label: 'Pending Prescriptions',
+      value: pendingCount,
+      icon: 'notifications_active',
+      color: 'text-blue-600',
+      bg: 'bg-blue-50',
+      to: '/optical/prescriptions/pending',
+      highlight: pendingCount > 0,
+    },
     { label: 'Total Products', value: stats?.total_products ?? 0, icon: 'visibility', color: 'text-blue-500', bg: 'bg-blue-50', to: '/optical/products' },
     {
       label: 'Out of Stock',
@@ -55,7 +69,6 @@ const OpticalDashboard: React.FC = () => {
     { label: 'Expired', value: stats?.expired_count ?? 0, icon: 'dangerous', color: 'text-red-500', bg: 'bg-red-50', to: '/optical/products' },
     { label: "Today's Sales", value: stats?.today_sales_count ?? 0, icon: 'receipt_long', color: 'text-emerald-500', bg: 'bg-emerald-50', to: '/optical/sales' },
     { label: "Today's Revenue", value: `₹${Number(stats?.today_sales_amount ?? 0).toLocaleString()}`, icon: 'payments', color: 'text-green-600', bg: 'bg-green-50', to: '/optical/sales' },
-    { label: 'Pending Prescriptions', value: stats?.pending_prescriptions ?? 0, icon: 'description', color: 'text-purple-500', bg: 'bg-purple-50', to: '/optical/prescriptions' },
   ];
 
   return (
@@ -87,12 +100,16 @@ const OpticalDashboard: React.FC = () => {
             key={card.label}
             onClick={() => navigate(card.to)}
             className={`${card.bg} rounded-xl p-4 text-left hover:shadow-md transition-all overflow-hidden relative ${
-              card.alert ? 'ring-2 ring-red-400 ring-offset-2 animate-pulse' : ''
+              card.alert ? 'ring-2 ring-red-400 ring-offset-2 animate-pulse' :
+              card.highlight ? 'ring-2 ring-blue-400 ring-offset-2 animate-pulse' : ''
             }`}>
             <div className="flex items-center justify-between mb-2">
               <span className={`material-symbols-outlined text-2xl ${card.color} shrink-0`}>{card.icon}</span>
               {card.alert && (
                 <span className="material-symbols-outlined text-sm text-red-600 shrink-0">error</span>
+              )}
+              {card.highlight && !card.alert && (
+                <span className="material-symbols-outlined text-sm text-blue-600 shrink-0">notifications_active</span>
               )}
             </div>
             <p className="text-2xl font-bold text-slate-900 truncate">{card.value}</p>
@@ -147,19 +164,31 @@ const OpticalDashboard: React.FC = () => {
       {/* Quick actions */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {[
+          {
+            label: 'Prescription Queue',
+            desc: pendingCount > 0 ? `${pendingCount} prescription${pendingCount > 1 ? 's' : ''} waiting for dispensing` : 'View finalized prescriptions awaiting dispensing',
+            icon: 'queue',
+            to: '/optical/prescriptions/pending',
+            badge: pendingCount > 0 ? pendingCount : undefined,
+          },
+          { label: 'Dispensing Queue', desc: 'Today\'s order status board', icon: 'view_list', to: '/optical/queue' },
           { label: 'Products', desc: 'Browse & manage frames, lenses, accessories', icon: 'visibility', to: '/optical/products' },
           { label: 'Eye Prescriptions', desc: 'Record & review patient eye prescriptions', icon: 'description', to: '/optical/prescriptions' },
           { label: 'New Sale', desc: 'Sell a frame, lens, or accessory', icon: 'point_of_sale', to: '/optical/sales/new' },
           { label: 'Sales History', desc: 'View past sales & invoices', icon: 'receipt_long', to: '/optical/sales' },
-          { label: 'Stock Adjustments', desc: 'Manual stock corrections', icon: 'tune', to: '/optical/stock-adjustments' },
         ].map((item) => (
           <button key={item.label} onClick={() => navigate(item.to)}
-            className="flex items-center gap-4 p-4 bg-white rounded-xl border border-slate-200 hover:shadow-md hover:border-primary/30 transition-all text-left overflow-hidden">
+            className="flex items-center gap-4 p-4 bg-white rounded-xl border border-slate-200 hover:shadow-md hover:border-primary/30 transition-all text-left overflow-hidden relative">
             <span className="material-symbols-outlined text-3xl text-primary shrink-0">{item.icon}</span>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <p className="font-semibold text-slate-900 truncate">{item.label}</p>
               <p className="text-xs text-slate-500 truncate">{item.desc}</p>
             </div>
+            {item.badge !== undefined && (
+              <span className="absolute top-3 right-3 inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-blue-600 text-white text-[11px] font-bold">
+                {item.badge}
+              </span>
+            )}
           </button>
         ))}
       </div>

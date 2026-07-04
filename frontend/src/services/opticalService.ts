@@ -9,6 +9,21 @@ import type {
   OpticalQueueEntry, OpticalQueueStatus,
 } from '../types/optical';
 
+export interface PendingOpticalPrescription {
+  id: string;
+  prescription_number: string;
+  status: 'finalized' | 'dispensed';
+  patient_name: string;
+  patient_reference_number?: string | null;
+  patient_age?: number | null;
+  patient_gender?: string | null;
+  patient_phone?: string | null;
+  doctor_name: string;
+  doctor_specialization?: string | null;
+  finalized_at: string;
+  created_at: string;
+}
+
 export interface OpticalSalesTrendPoint {
   date: string;
   sales: number;
@@ -90,6 +105,19 @@ export const opticalService = {
   },
 
   // ═══ Eye Prescriptions ═══
+  async getPendingPrescriptions(
+    page = 1,
+    limit = 20,
+    status = '',
+    search = '',
+  ): Promise<{ total: number; page: number; limit: number; total_pages: number; data: PendingOpticalPrescription[] }> {
+    const params: Record<string, string | number> = { page, limit };
+    if (status) params.status = status;
+    if (search) params.search = search;
+    const res = await api.get('/optical/prescriptions/pending', { params });
+    return res.data;
+  },
+
   async getPrescriptions(
     page = 1, limit = 20, patientId = '', doctorId = ''
   ): Promise<OpticalPrescriptionListResponse> {

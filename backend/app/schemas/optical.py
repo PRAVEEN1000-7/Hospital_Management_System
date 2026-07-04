@@ -241,6 +241,7 @@ class OpticalPrescriptionResponse(BaseModel):
     # Enriched
     patient_name: Optional[str] = None
     doctor_name: Optional[str] = None
+    has_sale: Optional[bool] = None
 
     @model_validator(mode="before")
     @classmethod

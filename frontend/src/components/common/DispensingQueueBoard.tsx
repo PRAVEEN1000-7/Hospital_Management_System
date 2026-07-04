@@ -57,9 +57,33 @@ interface Props {
  * operate their queue the same way instead of two divergent UIs.
  */
 const DispensingQueueBoard: React.FC<Props> = ({ title, entries, loading, advancing, onAdvance, onItemClick }) => {
+  const counts: Record<DispensingQueueStatus, number> = {
+    waiting: 0, being_served: 0, ready: 0, collected: 0,
+  };
+  entries.forEach(e => { if (e.queue_status in counts) counts[e.queue_status]++; });
+
+  const summaryItems = [
+    { status: 'waiting' as DispensingQueueStatus, label: 'Waiting', color: 'text-slate-700 bg-slate-100' },
+    { status: 'being_served' as DispensingQueueStatus, label: 'Being Served', color: 'text-blue-700 bg-blue-100' },
+    { status: 'ready' as DispensingQueueStatus, label: 'Ready', color: 'text-amber-700 bg-amber-100' },
+    { status: 'collected' as DispensingQueueStatus, label: 'Collected', color: 'text-emerald-700 bg-emerald-100' },
+  ];
+
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-slate-900">{title}</h1>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <h1 className="text-2xl font-bold text-slate-900">{title}</h1>
+        {!loading && entries.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {summaryItems.map(({ status, label, color }) => (
+              <span key={status} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold ${color}`}>
+                <span className="text-base font-bold">{counts[status]}</span>
+                {label}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
 
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         {loading ? (

@@ -266,16 +266,32 @@ async def update_optical_batch(
         raise HTTPException(status_code=500, detail="Failed to update batch")
 
 
-def _enrich_prescription_response(rx) -> OpticalPrescriptionResponse:
+def _enrich_prescription_response(rx, has_sale: bool | None = None) -> OpticalPrescriptionResponse:
     resp = OpticalPrescriptionResponse.model_validate(rx)
     resp.patient_name = rx.patient.full_name if getattr(rx, "patient", None) else None
     resp.doctor_name = (
         f"Dr. {rx.doctor.user.full_name}" if getattr(rx, "doctor", None) and rx.doctor.user else None
     )
+    resp.has_sale = has_sale
     return resp
 
 
 # ═══ Eye Prescriptions ═══
+@router.get("/prescriptions/pending")
+async def list_pending_optical_prescriptions(
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    status: Optional[str] = Query(None, description="pending | dispensed"),
+    search: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Finalized optical prescriptions queue — for optical counter staff."""
+    return svc.list_pending_optical_prescriptions(
+        db, current_user.hospital_id, page, limit, status, search
+    )
+
+
 @router.get("/prescriptions", response_model=OpticalPrescriptionListResponse)
 async def list_optical_prescriptions(
     page: int = Query(1, ge=1),
@@ -286,7 +302,15 @@ async def list_optical_prescriptions(
     current_user: User = Depends(get_current_active_user),
 ):
     result = svc.list_optical_prescriptions(db, current_user.hospital_id, page, limit, patient_id, doctor_id)
-    result["data"] = [_enrich_prescription_response(p) for p in result["data"]]
+    # Bulk-check which prescriptions already have a linked sale so the UI
+    # can hide the Dispense button for already-dispensed prescriptions.
+    from ..models.optical import OpticalSale as _OptSale
+    rx_ids = [p.id for p in result["data"]]
+    sold_ids: set = set()
+    if rx_ids:
+        rows = db.query(_OptSale.prescription_id).filter(_OptSale.prescription_id.in_(rx_ids)).all()
+        sold_ids = {row[0] for row in rows}
+    result["data"] = [_enrich_prescription_response(p, has_sale=p.id in sold_ids) for p in result["data"]]
     return result
 
 

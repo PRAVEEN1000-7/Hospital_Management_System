@@ -237,7 +237,7 @@ class SubscriptionPlanUpdate(BaseModel):
 
 class SubscriptionPlanResponse(SubscriptionPlanBase):
     id: uuid.UUID
-    modules_included: List[uuid.UUID]
+    modules_included: List[uuid.UUID] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
     # Number of hospitals currently enrolled on this plan (active/trialing/past_due).

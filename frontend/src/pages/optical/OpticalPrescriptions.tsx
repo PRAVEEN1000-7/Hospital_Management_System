@@ -134,12 +134,18 @@ const OpticalPrescriptions: React.FC = () => {
                         className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors disabled:opacity-40" title="Download PDF">
                         <span className="material-symbols-outlined text-sm">{downloadingId === rx.id ? 'hourglass_empty' : 'download'}</span>
                       </button>
-                      {canDispense && (
-                        <button onClick={() => navigate(`/optical/sales/new?prescription_id=${rx.id}`)}
-                          className="px-3 py-1.5 text-xs font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 ml-1"
-                          title="Dispense spectacles/lenses against this prescription">
-                          Dispense
-                        </button>
+                      {canDispense && rx.is_finalized && (
+                        rx.has_sale ? (
+                          <span className="px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-100 rounded-lg ml-1">
+                            Dispensed
+                          </span>
+                        ) : (
+                          <button onClick={() => navigate(`/optical/sales/new?prescription_id=${rx.id}`)}
+                            className="px-3 py-1.5 text-xs font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 ml-1"
+                            title="Sell glasses / lenses against this prescription">
+                            Sell Glasses
+                          </button>
+                        )
                       )}
                     </div>
                   </td>

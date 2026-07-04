@@ -116,6 +116,7 @@ export interface OpticalPrescription {
   updated_at: string;
   patient_name?: string;
   doctor_name?: string;
+  has_sale?: boolean | null;
 }
 
 export interface OpticalPrescriptionCreateData {

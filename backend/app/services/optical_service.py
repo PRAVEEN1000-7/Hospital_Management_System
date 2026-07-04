@@ -319,6 +319,116 @@ def list_optical_prescriptions(
     }
 
 
+def list_pending_optical_prescriptions(
+    db: Session,
+    hospital_id: uuid.UUID,
+    page: int = 1,
+    limit: int = 20,
+    status_filter: Optional[str] = None,
+    search: Optional[str] = None,
+) -> dict:
+    """Return finalized optical prescriptions with patient/doctor info, for the optical queue page."""
+    from ..models.patient import Patient
+    from ..models.doctor import Doctor as DoctorModel
+    from ..models.user import User as UserModel
+
+    # Base: only finalized prescriptions for this hospital
+    query = db.query(OpticalPrescription).filter(
+        OpticalPrescription.hospital_id == hospital_id,
+        OpticalPrescription.is_finalized == True,
+    )
+
+    # Full-text search — Rx number or patient name
+    if search:
+        patient_ids_sub = (
+            db.query(Patient.id)
+            .filter(
+                Patient.hospital_id == hospital_id,
+                or_(
+                    Patient.first_name.ilike(f"%{search}%"),
+                    Patient.last_name.ilike(f"%{search}%"),
+                ),
+            )
+            .subquery()
+        )
+        query = query.filter(
+            or_(
+                OpticalPrescription.prescription_number.ilike(f"%{search}%"),
+                OpticalPrescription.patient_id.in_(patient_ids_sub),
+            )
+        )
+
+    # Status filter
+    dispensed_rx_sub = (
+        db.query(OpticalSale.prescription_id)
+        .filter(OpticalSale.hospital_id == hospital_id, OpticalSale.prescription_id.isnot(None))
+        .subquery()
+    )
+    if status_filter == "pending":
+        query = query.filter(~OpticalPrescription.id.in_(dispensed_rx_sub))
+    elif status_filter == "dispensed":
+        query = query.filter(OpticalPrescription.id.in_(dispensed_rx_sub))
+
+    total = query.count()
+    items = query.order_by(OpticalPrescription.created_at.desc()).offset((page - 1) * limit).limit(limit).all()
+
+    # Collect IDs to check which prescriptions have a linked sale
+    rx_ids = [rx.id for rx in items]
+    sold_ids: set[uuid.UUID] = set()
+    if rx_ids:
+        sold_rows = (
+            db.query(OpticalSale.prescription_id)
+            .filter(OpticalSale.prescription_id.in_(rx_ids))
+            .all()
+        )
+        sold_ids = {row[0] for row in sold_rows}
+
+    result_data = []
+    for rx in items:
+        patient = db.query(Patient).filter(Patient.id == rx.patient_id).first()
+        doctor = db.query(DoctorModel).filter(DoctorModel.id == rx.doctor_id).first()
+
+        patient_age = None
+        if patient and getattr(patient, "date_of_birth", None):
+            today = date.today()
+            dob = patient.date_of_birth
+            patient_age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+        elif patient and getattr(patient, "age_years", None):
+            patient_age = patient.age_years
+
+        doctor_name = None
+        doctor_spec = None
+        if doctor:
+            doctor_spec = getattr(doctor, "specialization", None)
+            if doctor.user:
+                fn = doctor.user.first_name or ""
+                ln = doctor.user.last_name or ""
+                doctor_name = f"Dr. {fn} {ln}".strip()
+
+        result_data.append({
+            "id": str(rx.id),
+            "prescription_number": rx.prescription_number,
+            "status": "dispensed" if rx.id in sold_ids else "finalized",
+            "patient_name": patient.full_name if patient else "Unknown",
+            "patient_reference_number": getattr(patient, "patient_reference_number", None) if patient else None,
+            "patient_age": patient_age,
+            "patient_gender": getattr(patient, "gender", None) if patient else None,
+            "patient_phone": getattr(patient, "phone_number", None) if patient else None,
+            "doctor_name": doctor_name or "Unknown",
+            "doctor_specialization": doctor_spec,
+            "finalized_at": rx.updated_at.isoformat() if rx.updated_at else rx.created_at.isoformat(),
+            "created_at": rx.created_at.isoformat(),
+        })
+
+    return {
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "total_pages": ceil(total / limit) if limit else 1,
+        "data": result_data,
+    }
+
+
 def update_optical_prescription(db: Session, prescription_id: str | uuid.UUID, data: dict) -> Optional[OpticalPrescription]:
     rx = get_optical_prescription_by_id(db, prescription_id)
     if not rx:
@@ -860,9 +970,15 @@ def get_optical_dashboard(db: Session, hospital_id: uuid.UUID) -> dict:
         func.date(OpticalSale.created_at) == today,
     ).first()
 
+    # "Pending" = finalized prescriptions that have no linked sale yet
+    dispensed_rx_ids = db.query(OpticalSale.prescription_id).filter(
+        OpticalSale.hospital_id == hospital_id,
+        OpticalSale.prescription_id.isnot(None),
+    ).subquery()
     pending_prescriptions = db.query(func.count(OpticalPrescription.id)).filter(
         OpticalPrescription.hospital_id == hospital_id,
-        OpticalPrescription.is_finalized == False,
+        OpticalPrescription.is_finalized == True,
+        ~OpticalPrescription.id.in_(dispensed_rx_ids),
     ).scalar() or 0
 
     return {

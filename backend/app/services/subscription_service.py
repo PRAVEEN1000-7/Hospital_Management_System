@@ -79,7 +79,7 @@ class SubscriptionService:
             return None
         
         for key, value in updates.items():
-            if hasattr(plan, key) and value is not None:
+            if hasattr(plan, key):
                 setattr(plan, key, value)
         
         plan.updated_at = datetime.utcnow()

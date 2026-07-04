@@ -375,6 +375,14 @@ def create_plan(
     db: Session = Depends(get_db)
 ):
     """Create new subscription plan"""
+    # Guard against duplicate plan code before hitting the DB constraint.
+    existing = db.query(SubscriptionPlan).filter(SubscriptionPlan.code == request.code).first()
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail=f"A plan with code '{request.code}' already exists. Choose a different code."
+        )
+
     plan = SubscriptionService.create_plan(
         db=db,
         code=request.code,

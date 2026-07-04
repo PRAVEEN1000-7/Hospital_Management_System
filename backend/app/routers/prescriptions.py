@@ -494,8 +494,8 @@ async def get_prescription_pdf(
         if eye_format:
             eye_side = (item.get("eye_side") or "").strip()
             tick = "&#10003;"  # ✓
-            re_mark = tick if eye_side in ("RE", "Both") else ""
-            le_mark = tick if eye_side in ("LE", "Both") else ""
+            re_mark = tick if eye_side in ("RE", "Both") else "—"
+            le_mark = tick if eye_side in ("LE", "Both") else "—"
             items_html += f"""
         <tr>
             <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:center;">{idx}</td>
@@ -506,6 +506,7 @@ async def get_prescription_pdf(
             <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:center;">{re_mark}</td>
             <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:center;">{le_mark}</td>
             <td style="padding:8px;border-bottom:1px solid #e2e8f0;">{_esc(item.get('dosage','')) or '—'}</td>
+            <td style="padding:8px;border-bottom:1px solid #e2e8f0;">{_esc(item.get('frequency','')) or '—'}</td>
         </tr>"""
         else:
             items_html += f"""
@@ -616,11 +617,12 @@ td {{ font-size:13px; }}
 <table>
 <thead>
 {'''<tr>
-    <th style="width:6%;">''' + t['sl_no'] + '''</th>
-    <th style="width:44%;">''' + t['medicine'] + '''</th>
-    <th style="width:12%;text-align:center;">RE</th>
-    <th style="width:12%;text-align:center;">LE</th>
-    <th style="width:26%;">Dosage</th>
+    <th style="width:5%;">''' + t['sl_no'] + '''</th>
+    <th style="width:35%;">''' + t['medicine'] + '''</th>
+    <th style="width:10%;text-align:center;">RE</th>
+    <th style="width:10%;text-align:center;">LE</th>
+    <th style="width:20%;">Dosage</th>
+    <th style="width:20%;">''' + t['frequency'] + '''</th>
 </tr>''' if eye_format else '''<tr>
     <th style="width:4%;">''' + t['sl_no'] + '''</th>
     <th style="width:22%;">''' + t['medicine'] + '''</th>

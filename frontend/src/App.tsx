@@ -81,6 +81,7 @@ import OpticalSales from './pages/optical/OpticalSales';
 import NewOpticalSale from './pages/optical/NewOpticalSale';
 import OpticalStockAdjustments from './pages/optical/OpticalStockAdjustments';
 import OpticalQueue from './pages/optical/OpticalQueue';
+import OpticalPendingPrescriptions from './pages/optical/OpticalPendingPrescriptions';
 
 // Inventory pages
 import InventoryDashboard from './pages/inventory/InventoryDashboard';
@@ -516,6 +517,14 @@ const App: React.FC = () => {
                   requiredModule="optical"
                 >
                   <OpticalBatchForm />
+                </ProtectedRoute>
+              } />
+              <Route path="/optical/prescriptions/pending" element={
+                <ProtectedRoute
+                  allowedRoles={['super_admin', 'admin', 'optical_staff']}
+                  requiredModule="optical"
+                >
+                  <OpticalPendingPrescriptions />
                 </ProtectedRoute>
               } />
               <Route path="/optical/prescriptions" element={

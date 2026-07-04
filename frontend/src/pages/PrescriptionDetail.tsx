@@ -399,13 +399,14 @@ const PrescriptionDetail: React.FC = () => {
             <div className="border border-slate-200 rounded-lg overflow-hidden">
               {isEyeHospital ? (
                 <>
-                  {/* Eye Hospital Drug Prescription columns — S.No | Medicine | LE | RE | Dosage */}
-                  <div className="grid grid-cols-[40px_1fr_50px_50px_1fr] gap-2 bg-slate-100 border-b border-slate-200 px-4 py-2.5">
+                  {/* Eye Hospital Drug Prescription columns — S.No | Medicine | LE | RE | Dosage | Frequency */}
+                  <div className="grid grid-cols-[40px_1fr_50px_50px_120px_120px] gap-2 bg-slate-100 border-b border-slate-200 px-4 py-2.5">
                     <div className="text-[10px] font-semibold text-slate-500 uppercase">#</div>
                     <div className="text-[10px] font-semibold text-slate-500 uppercase">Medicine</div>
                     <div className="text-[10px] font-semibold text-slate-500 uppercase text-center">LE</div>
                     <div className="text-[10px] font-semibold text-slate-500 uppercase text-center">RE</div>
                     <div className="text-[10px] font-semibold text-slate-500 uppercase">Dosage</div>
+                    <div className="text-[10px] font-semibold text-slate-500 uppercase">Frequency</div>
                   </div>
                   {rx.items?.map((item, idx) => {
                     const reOn = item.eye_side === 'RE' || item.eye_side === 'Both';
@@ -413,7 +414,7 @@ const PrescriptionDetail: React.FC = () => {
                     return (
                       <div
                         key={item.id || idx}
-                        className="grid grid-cols-[40px_1fr_50px_50px_1fr] gap-2 px-4 py-3 border-b border-slate-100 last:border-0 hover:bg-blue-50/30 transition-colors"
+                        className="grid grid-cols-[40px_1fr_50px_50px_120px_120px] gap-2 px-4 py-3 border-b border-slate-100 last:border-0 hover:bg-blue-50/30 transition-colors"
                       >
                         <div className="text-xs text-slate-400 font-medium">{idx + 1}</div>
                         <div>
@@ -423,6 +424,7 @@ const PrescriptionDetail: React.FC = () => {
                         <div className="text-center text-sm">{leOn ? '✓' : '—'}</div>
                         <div className="text-center text-sm">{reOn ? '✓' : '—'}</div>
                         <div className="text-xs text-slate-700">{item.dosage}</div>
+                        <div className="text-xs text-slate-700">{item.frequency || '—'}</div>
                       </div>
                     );
                   })}

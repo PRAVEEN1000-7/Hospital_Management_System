@@ -36,11 +36,19 @@ const OpticalPrescriptions: React.FC = () => {
   useEffect(() => { fetchPrescriptions(); }, [fetchPrescriptions]);
 
   const handlePrint = async (id: string) => {
+    // Open synchronously (before any await) to avoid popup blockers.
+    const win = window.open('', '_blank');
+    if (!win) { toast.error('Pop-ups are blocked — allow pop-ups for this site to print.'); return; }
     try {
       const html = await opticalService.getPrescriptionPdfUrl(id);
-      const win = window.open('', '_blank');
-      if (win) { win.document.write(html); win.document.close(); setTimeout(() => win.print(), 500); }
-    } catch { toast.error('Failed to generate print view'); }
+      win.document.open();
+      win.document.write(html);
+      win.document.close();
+      setTimeout(() => { try { win.print(); } catch { /* window may have been closed */ } }, 800);
+    } catch {
+      win.close();
+      toast.error('Failed to generate print view');
+    }
   };
 
   const handleDownload = async (rx: OpticalPrescription) => {

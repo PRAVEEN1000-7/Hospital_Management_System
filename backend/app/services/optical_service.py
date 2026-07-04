@@ -95,13 +95,17 @@ def list_optical_products(
     product_ids = [p.id for p in items]
     stock_map: dict[uuid.UUID, int] = {}
     if product_ids:
-        stock_rows = (
-            db.query(OpticalBatch.product_id, func.coalesce(func.sum(OpticalBatch.quantity), 0))
-            .filter(OpticalBatch.product_id.in_(product_ids), OpticalBatch.is_active == True)
-            .group_by(OpticalBatch.product_id)
-            .all()
-        )
-        stock_map = {row[0]: int(row[1]) for row in stock_rows}
+        try:
+            stock_rows = (
+                db.query(OpticalBatch.product_id, func.coalesce(func.sum(OpticalBatch.quantity), 0))
+                .filter(OpticalBatch.product_id.in_(product_ids), OpticalBatch.is_active == True)
+                .group_by(OpticalBatch.product_id)
+                .all()
+            )
+            stock_map = {row[0]: int(row[1]) for row in stock_rows}
+        except Exception:
+            db.rollback()
+            logger.warning("optical_batches table may not exist yet; stock will show as 0")
 
     return {
         "total": total,
@@ -803,45 +807,51 @@ def get_optical_dashboard(db: Session, hospital_id: uuid.UUID) -> dict:
 
     product_ids = [p.id for p in products]
     stock_map: dict[uuid.UUID, int] = {}
+    expiring = 0
+    expired = 0
     if product_ids:
-        stock_rows = (
-            db.query(OpticalBatch.product_id, func.coalesce(func.sum(OpticalBatch.quantity), 0))
-            .filter(OpticalBatch.product_id.in_(product_ids), OpticalBatch.is_active == True)
-            .group_by(OpticalBatch.product_id)
-            .all()
-        )
-        stock_map = {row[0]: int(row[1]) for row in stock_rows}
+        try:
+            stock_rows = (
+                db.query(OpticalBatch.product_id, func.coalesce(func.sum(OpticalBatch.quantity), 0))
+                .filter(OpticalBatch.product_id.in_(product_ids), OpticalBatch.is_active == True)
+                .group_by(OpticalBatch.product_id)
+                .all()
+            )
+            stock_map = {row[0]: int(row[1]) for row in stock_rows}
+
+            # Expiry counts must explicitly exclude null-expiry batches (frames,
+            # solutions, accessories) — unlike MedicineBatch.expiry_date, this column
+            # is nullable, and a bare `<= thirty_days` comparison against NULL would
+            # just silently evaluate to NULL/false in SQL, but being explicit here
+            # keeps the intent obvious rather than relying on that NULL semantics.
+            expiring = db.query(func.count(OpticalBatch.id)).join(
+                OpticalProduct, OpticalProduct.id == OpticalBatch.product_id
+            ).filter(
+                OpticalProduct.hospital_id == hospital_id,
+                OpticalBatch.is_active == True,
+                OpticalBatch.expiry_date.isnot(None),
+                OpticalBatch.expiry_date <= thirty_days,
+                OpticalBatch.expiry_date > today,
+                OpticalBatch.quantity > 0,
+            ).scalar() or 0
+
+            expired = db.query(func.count(OpticalBatch.id)).join(
+                OpticalProduct, OpticalProduct.id == OpticalBatch.product_id
+            ).filter(
+                OpticalProduct.hospital_id == hospital_id,
+                OpticalBatch.is_active == True,
+                OpticalBatch.expiry_date.isnot(None),
+                OpticalBatch.expiry_date <= today,
+                OpticalBatch.quantity > 0,
+            ).scalar() or 0
+        except Exception:
+            db.rollback()
+            logger.warning("optical_batches table may not exist yet; stock/expiry counts will show as 0")
 
     low_stock = sum(
         1 for p in products
         if 0 < stock_map.get(p.id, 0) <= (p.reorder_level or 5)
     )
-
-    # Expiry counts must explicitly exclude null-expiry batches (frames,
-    # solutions, accessories) — unlike MedicineBatch.expiry_date, this column
-    # is nullable, and a bare `<= thirty_days` comparison against NULL would
-    # just silently evaluate to NULL/false in SQL, but being explicit here
-    # keeps the intent obvious rather than relying on that NULL semantics.
-    expiring = db.query(func.count(OpticalBatch.id)).join(
-        OpticalProduct, OpticalProduct.id == OpticalBatch.product_id
-    ).filter(
-        OpticalProduct.hospital_id == hospital_id,
-        OpticalBatch.is_active == True,
-        OpticalBatch.expiry_date.isnot(None),
-        OpticalBatch.expiry_date <= thirty_days,
-        OpticalBatch.expiry_date > today,
-        OpticalBatch.quantity > 0,
-    ).scalar() or 0
-
-    expired = db.query(func.count(OpticalBatch.id)).join(
-        OpticalProduct, OpticalProduct.id == OpticalBatch.product_id
-    ).filter(
-        OpticalProduct.hospital_id == hospital_id,
-        OpticalBatch.is_active == True,
-        OpticalBatch.expiry_date.isnot(None),
-        OpticalBatch.expiry_date <= today,
-        OpticalBatch.quantity > 0,
-    ).scalar() or 0
 
     today_sales = db.query(
         func.count(OpticalSale.id),

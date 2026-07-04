@@ -72,7 +72,7 @@ async def optical_top_products(
 @router.get("/products", response_model=OpticalProductListResponse)
 async def list_optical_products(
     page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(20, ge=1, le=500),
     search: Optional[str] = None,
     category: Optional[str] = None,
     active_only: bool = True,

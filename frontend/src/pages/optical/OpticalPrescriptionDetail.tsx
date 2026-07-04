@@ -7,7 +7,12 @@ import { useAuth } from '../../contexts/AuthContext';
 import { htmlStringToPdf } from '../../utils/pdf';
 import { format } from 'date-fns';
 
-const fmtPower = (v: number | null) => (v === null || v === undefined ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(2)}`);
+const fmtPower = (v: number | string | null) => {
+  if (v === null || v === undefined) return '—';
+  const n = Number(v);
+  if (isNaN(n)) return '—';
+  return `${n > 0 ? '+' : ''}${n.toFixed(2)}`;
+};
 const fmtAxis = (v: number | null) => (v === null || v === undefined ? '—' : `${v}°`);
 const fmtVa = (v: string | null) => v || '—';
 
@@ -41,15 +46,21 @@ const OpticalPrescriptionDetail: React.FC = () => {
 
   const handlePrint = async () => {
     if (!id) return;
+    // Open the window synchronously (before any await) so popup blockers don't kill it.
+    const win = window.open('', '_blank');
+    if (!win) {
+      toast.error('Pop-ups are blocked — allow pop-ups for this site to print.');
+      return;
+    }
     try {
       const html = await opticalService.getPrescriptionPdfUrl(id);
-      const win = window.open('', '_blank');
-      if (win) {
-        win.document.write(html);
-        win.document.close();
-        setTimeout(() => win.print(), 500);
-      }
+      win.document.open();
+      win.document.write(html);
+      win.document.close();
+      // Give fonts/images in the new window enough time to load before printing.
+      setTimeout(() => { try { win.print(); } catch { /* window may have been closed */ } }, 800);
     } catch {
+      win.close();
       toast.error('Failed to generate print view');
     }
   };

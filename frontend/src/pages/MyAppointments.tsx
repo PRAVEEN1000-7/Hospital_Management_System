@@ -150,7 +150,7 @@ const MyAppointments: React.FC = () => {
                   </div>
                   <p className="text-sm text-slate-600">
                     <span className="material-symbols-outlined text-sm align-text-bottom mr-1">person</span>
-                    Dr. {appt.doctor_name || 'TBA'}
+                    {appt.doctor_name || 'TBA'}
                     <span className="mx-2 text-slate-300">|</span>
                     <span className="material-symbols-outlined text-sm align-text-bottom mr-1">schedule</span>
                     {formatTime(appt.start_time || undefined)}

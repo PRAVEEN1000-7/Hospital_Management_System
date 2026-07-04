@@ -331,7 +331,7 @@ const Layout: React.FC = () => {
     mainNavItems.push({ to: '/patients', label: 'Patient Directory', icon: 'group' });
   }
   if (hasRole('super_admin', 'admin', 'receptionist') && isModuleEnabled('patients')) {
-    mainNavItems.push({ to: '/register', label: 'Register Patient', icon: 'person_add' });
+    mainNavItems.push({ to: '/register', label: 'Patient Registration', icon: 'person_add' });
   }
   if (hasRole('super_admin', 'admin')) {
     mainNavItems.push({ to: '/staff', label: 'Staff Directory', icon: 'badge' });
@@ -529,7 +529,8 @@ const Layout: React.FC = () => {
   // For flat nav items: exact match only
   const isExactActive = (path: string) => location.pathname === path;
 
-  const fullName = user ? `${user.first_name} ${user.last_name}`.trim() : '';
+  const isDoctor = user?.roles?.includes('doctor');
+  const fullName = user ? `${isDoctor ? 'Dr. ' : ''}${user.first_name} ${user.last_name}`.trim() : '';
 
   return (
     <div className="flex h-screen overflow-hidden">

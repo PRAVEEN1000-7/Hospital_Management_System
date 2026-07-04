@@ -276,18 +276,24 @@ class TenantService:
         ).first()
         
         if existing_sub:
-            raise ValueError("Hospital already has an active subscription. Use change-plan instead.")
-            
-        # Create subscription
-        subscription = TenantSubscription(
-            tenant_id=tenant.id,
-            plan_id=plan_id,
-            status='trialing',
-            trial_ends_at=datetime.utcnow() + timedelta(days=14),  # Default 14 days trial
-            current_period_start=datetime.utcnow(),
-            current_period_end=datetime.utcnow() + timedelta(days=30)
-        )
-        db.add(subscription)
+            # Re-assigning a plan — update in place rather than blocking the admin action.
+            existing_sub.plan_id = plan_id
+            existing_sub.status = 'active'
+            existing_sub.current_period_start = datetime.utcnow()
+            existing_sub.current_period_end = datetime.utcnow() + timedelta(days=30)
+            existing_sub.trial_ends_at = None
+            subscription = existing_sub
+        else:
+            # Create subscription
+            subscription = TenantSubscription(
+                tenant_id=tenant.id,
+                plan_id=plan_id,
+                status='trialing',
+                trial_ends_at=datetime.utcnow() + timedelta(days=14),
+                current_period_start=datetime.utcnow(),
+                current_period_end=datetime.utcnow() + timedelta(days=30)
+            )
+            db.add(subscription)
         
         # Enable modules based on plan defaults (includes core modules)
         TenantService._enable_modules_for_plan(db, tenant.id, plan)

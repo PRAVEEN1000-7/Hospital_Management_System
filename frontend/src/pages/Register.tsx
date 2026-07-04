@@ -278,7 +278,7 @@ const Register: React.FC = () => {
       {/* Header */}
       <header className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/dashboard')} className="p-2 rounded-lg hover:bg-slate-100 text-slate-500 transition-colors">
+          <button onClick={() => navigate(-1)} className="p-2 rounded-lg hover:bg-slate-100 text-slate-500 transition-colors">
             <span className="material-icons">arrow_back</span>
           </button>
           <div>
@@ -646,7 +646,7 @@ const Register: React.FC = () => {
         <div className="flex justify-end gap-3">
           <button
             type="button"
-            onClick={() => navigate('/dashboard')}
+            onClick={() => navigate(-1)}
             className="px-6 py-2.5 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 font-semibold text-sm transition-colors"
           >
             Cancel
@@ -664,7 +664,7 @@ const Register: React.FC = () => {
             ) : (
               <>
                 <span className="material-icons text-lg">person_add</span>
-                Register Patient
+                Patient Registration
               </>
             )}
           </button>

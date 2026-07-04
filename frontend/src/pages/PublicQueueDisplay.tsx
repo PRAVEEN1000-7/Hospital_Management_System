@@ -112,9 +112,11 @@ const QueueColumn: React.FC<{ column: PublicQueueColumn; animKey: number }> = ({
                     <span className={`text-5xl font-black leading-none tabular-nums ${isActive ? '' : 'text-slate-500'}`}>
                       {nowServing?.token ?? '—'}
                     </span>
-                    <span className={`text-[9px] font-extrabold uppercase tracking-widest mt-1 ${isActive ? theme.accent : 'text-slate-600'}`}>
-                      {isActive ? 'Calling' : 'Waiting'}
-                    </span>
+                    {isActive && (
+                      <span className={`text-[9px] font-extrabold uppercase tracking-widest mt-1 ${theme.accent}`}>
+                        Calling
+                      </span>
+                    )}
                   </div>
                 );
               })()}

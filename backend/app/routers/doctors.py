@@ -70,7 +70,7 @@ async def get_my_doctor_profile(
         raise HTTPException(status_code=404, detail="Doctor profile not found for this user")
     resp = DoctorResponse.model_validate(doctor)
     if doctor.user:
-        resp.doctor_name = f"{doctor.user.first_name} {doctor.user.last_name}"
+        resp.doctor_name = f"Dr. {doctor.user.first_name} {doctor.user.last_name}"
     # Include department name
     if doctor.department_id:
         from ..models.department import Department
@@ -96,7 +96,7 @@ async def get_doctors(
     for d in doctors:
         resp = DoctorResponse.model_validate(d)
         if d.user:
-            resp.doctor_name = f"{d.user.first_name} {d.user.last_name}"
+            resp.doctor_name = f"Dr. {d.user.first_name} {d.user.last_name}"
         enriched.append(resp)
     return DoctorListResponse(
         total=result["total"],
@@ -118,7 +118,7 @@ async def get_doctor(
         raise HTTPException(status_code=404, detail="Doctor not found")
     resp = DoctorResponse.model_validate(doctor)
     if doctor.user:
-        resp.doctor_name = f"{doctor.user.first_name} {doctor.user.last_name}"
+        resp.doctor_name = f"Dr. {doctor.user.first_name} {doctor.user.last_name}"
     return resp
 
 

@@ -24,6 +24,8 @@ const FOOD_TIMING_OPTIONS = ['', 'Before food', 'After food'];
 
 const _LIQUID_CATS = new Set(['syrup', 'suspension', 'liquid', 'solution', 'linctus', 'elixir', 'tincture']);
 const _SINGLE_UNIT_CATS = new Set(['drops', 'eye drops', 'ear drops', 'nasal drops', 'nasal spray', 'cream', 'ointment', 'gel', 'lotion', 'paste', 'inhaler', 'spray', 'patch', 'suppository']);
+// Categories that are valid for eye-side (RE/LE) dosing — must be ophthalmic/eye-drop type
+const EYE_DROP_CATEGORIES = new Set(['drops', 'eye drops', 'eye drop', 'ophthalmic', 'ophthalmic drops', 'eye ointment', 'ophthalmic ointment']);
 
 interface MedInfo { category: string | null; units_per_pack: number; unit_of_measure: string; }
 
@@ -445,14 +447,16 @@ const PrescriptionBuilder: React.FC = () => {
     const newBlocks = [...blocks];
     const updatedItems = [...newBlocks[blockIdx].items];
     const currentItem = updatedItems[itemIdx];
-    // If an eye side is already selected for this row, default to "1 drop" dosage;
-    // otherwise use the medicine's own strength (e.g. "500mg").
-    const eyeSideActive = !!currentItem.eye_side;
+    const isEyeDrop = EYE_DROP_CATEGORIES.has((med.category || '').toLowerCase());
+    // Only keep eye_side selection if the chosen medicine is actually an eye drop.
+    // If a non-eye-drop is selected while RE/LE was active, clear it.
+    const eyeSideActive = !!currentItem.eye_side && isEyeDrop;
     updatedItems[itemIdx] = {
       ...currentItem,
       medicine_id: med.id,
       medicine_name: getDisplayMedicineName(med),
       generic_name: med.generic_name,
+      eye_side: eyeSideActive ? currentItem.eye_side : undefined,
       dosage: eyeSideActive ? '1 drop' : (med.strength || ''),
     };
     newBlocks[blockIdx] = { ...newBlocks[blockIdx], items: updatedItems };
@@ -743,13 +747,8 @@ const PrescriptionBuilder: React.FC = () => {
         // Finalize prescription + complete queue entry in one call
         await prescriptionService.finalizeAndComplete(rxId);
         showToast('success', 'Prescription finalized & consultation completed!');
-        // If an optical Rx was just created, navigate to it for print/download
-        // (or to send to the optical store if optical module is active)
-        if (freshOpticalRxId) {
-          navigate(`/optical/prescriptions/${freshOpticalRxId}`);
-        } else {
-          navigate('/appointments/queue');
-        }
+        // Always return to today's patients list after completing a consultation
+        navigate('/appointments/queue');
       } else if (finalize) {
         await prescriptionService.finalizePrescription(rxId);
         showToast(
@@ -1115,6 +1114,10 @@ const PrescriptionBuilder: React.FC = () => {
                           const leOn = item.eye_side === 'LE' || item.eye_side === 'Both';
                           const medInfo = item.medicine_id ? medicineInfoById[item.medicine_id] : undefined;
                           const { qty: dispQty, unit: dispUnit } = computeDispenseQty(item, medInfo);
+                          // RE/LE buttons are only enabled for eye-drop category medicines.
+                          // If a medicine is selected from DB and its category is not ophthalmic, lock the buttons.
+                          const medCategory = (medInfo?.category || '').toLowerCase();
+                          const eyeSideDisabled = !!item.medicine_id && !EYE_DROP_CATEGORIES.has(medCategory);
                           return (
                             <div
                               key={itemIdx}
@@ -1143,9 +1146,16 @@ const PrescriptionBuilder: React.FC = () => {
                               <div className="flex justify-center">
                                 <button
                                   type="button"
-                                  onClick={() => updateEyeSide(blockIdx, itemIdx, 'LE')}
-                                  title="Left Eye"
-                                  className={`w-7 h-7 rounded border text-[9px] font-bold transition-colors ${leOn ? 'bg-primary text-white border-primary' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50'}`}
+                                  onClick={() => !eyeSideDisabled && updateEyeSide(blockIdx, itemIdx, 'LE')}
+                                  title={eyeSideDisabled ? 'Not applicable — not an eye drop medicine' : 'Left Eye'}
+                                  disabled={eyeSideDisabled}
+                                  className={`w-7 h-7 rounded border text-[9px] font-bold transition-colors ${
+                                    eyeSideDisabled
+                                      ? 'bg-slate-100 text-slate-300 border-slate-100 cursor-not-allowed'
+                                      : leOn
+                                        ? 'bg-primary text-white border-primary'
+                                        : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50'
+                                  }`}
                                 >
                                   LE
                                 </button>
@@ -1154,9 +1164,16 @@ const PrescriptionBuilder: React.FC = () => {
                               <div className="flex justify-center">
                                 <button
                                   type="button"
-                                  onClick={() => updateEyeSide(blockIdx, itemIdx, 'RE')}
-                                  title="Right Eye"
-                                  className={`w-7 h-7 rounded border text-[9px] font-bold transition-colors ${reOn ? 'bg-primary text-white border-primary' : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50'}`}
+                                  onClick={() => !eyeSideDisabled && updateEyeSide(blockIdx, itemIdx, 'RE')}
+                                  title={eyeSideDisabled ? 'Not applicable — not an eye drop medicine' : 'Right Eye'}
+                                  disabled={eyeSideDisabled}
+                                  className={`w-7 h-7 rounded border text-[9px] font-bold transition-colors ${
+                                    eyeSideDisabled
+                                      ? 'bg-slate-100 text-slate-300 border-slate-100 cursor-not-allowed'
+                                      : reOn
+                                        ? 'bg-primary text-white border-primary'
+                                        : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50'
+                                  }`}
                                 >
                                   RE
                                 </button>
@@ -1780,7 +1797,7 @@ const PrescriptionBuilder: React.FC = () => {
                   Appointment Date <span className="text-red-500">*</span>
                 </label>
                 <p className="text-xs text-slate-500 mb-2">
-                  Availability is based on {selectedReferDoctor?.name ? `Dr. ${selectedReferDoctor.name}` : 'selected doctor'} slots.
+                  Availability is based on {selectedReferDoctor?.name || 'selected doctor'} slots.
                 </p>
                 <AvailabilityCalendar
                   monthKey={referCalendarMonth}

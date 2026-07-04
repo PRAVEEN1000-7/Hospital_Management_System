@@ -506,7 +506,7 @@ const SystemSettingsTab: React.FC = () => {
     if (key === 'appointment_buffer_minutes' && typeof value === 'number') value = Math.max(0, Math.min(60, value));
     if (key === 'max_daily_appointments_per_doctor' && typeof value === 'number') value = Math.max(1, Math.min(100, value));
     if (key === 'follow_up_validity_days' && typeof value === 'number') value = Math.max(1, Math.min(365, value));
-    if (key === 'consultation_fee_default' && typeof value === 'number') value = Math.max(0, value);
+    if (key === 'consultation_fee_default') { const n = Number(value); value = isNaN(n) ? '0' : String(Math.max(0, n)); }
     if ((key === 'invoice_prefix' || key === 'prescription_prefix') && typeof value === 'string') value = value.slice(0, 10);
     setEditValues(prev => ({ ...prev, [key]: value }));
     setHasChanges(true);
@@ -520,7 +520,13 @@ const SystemSettingsTab: React.FC = () => {
     }
     setSaving(true);
     try {
-      const updated = await hospitalService.updateSettings(editValues);
+      const payload: Partial<HospitalSettingsType> = {
+        ...editValues,
+        consultation_fee_default: editValues.consultation_fee_default !== undefined
+          ? String(editValues.consultation_fee_default)
+          : undefined,
+      };
+      const updated = await hospitalService.updateSettings(payload);
       setSettings(updated);
       setEditValues(updated);
       setHasChanges(false);
@@ -608,7 +614,7 @@ const SystemSettingsTab: React.FC = () => {
                         {field.suffix === '₹' && <span className="text-sm text-slate-500 font-medium">₹</span>}
                         <input
                           type={field.type === 'number' ? 'number' : 'text'}
-                          value={String(value || '')}
+                          value={value !== null && value !== undefined ? String(value) : ''}
                           onChange={e => handleChange(field.key, field.type === 'number' ? Number(e.target.value) : e.target.value)}
                           className={`px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none ${field.type === 'number' ? 'w-24 text-right' : 'w-40'}`}
                         />
@@ -669,7 +675,7 @@ const SystemSettingsTab: React.FC = () => {
             <FormField label="Doctor 1 Column" hint="Shown as the first doctor column on the display">
               <select
                 value={editValues.queue_display_doctor1_id || ''}
-                onChange={e => handleChange('queue_display_doctor1_id', e.target.value)}
+                onChange={e => handleChange('queue_display_doctor1_id', e.target.value || '')}
                 className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none bg-white"
               >
                 <option value="">Not set — shows "Doctor 1"</option>
@@ -679,7 +685,7 @@ const SystemSettingsTab: React.FC = () => {
             <FormField label="Doctor 2 Column" hint="Shown as the second doctor column, if enabled below">
               <select
                 value={editValues.queue_display_doctor2_id || ''}
-                onChange={e => handleChange('queue_display_doctor2_id', e.target.value)}
+                onChange={e => handleChange('queue_display_doctor2_id', e.target.value || '')}
                 className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none bg-white"
               >
                 <option value="">Not set — shows "Doctor 2"</option>

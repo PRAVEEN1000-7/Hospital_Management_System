@@ -105,7 +105,7 @@ const Profile: React.FC = () => {
 
   const roleLabel = ROLE_LABELS[user.roles?.[0] || ''] || user.roles?.[0] || '';
   const roleColors = ROLE_COLORS[user.roles?.[0] || ''] || 'bg-slate-100 text-slate-800';
-  const fullName = `${user.first_name} ${user.last_name}`;
+  const fullName = `${isDoctor ? 'Dr. ' : ''}${user.first_name} ${user.last_name}`;
   const initials = fullName
     .split(' ')
     .map(n => n[0])

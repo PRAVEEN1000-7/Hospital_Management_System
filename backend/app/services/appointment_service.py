@@ -500,7 +500,7 @@ def enrich_appointment(db: Session, appt: Appointment) -> dict:
     if appt.doctor_id:
         doctor = db.query(Doctor).filter(Doctor.id == appt.doctor_id).first()
         if doctor and doctor.user:
-            d["doctor_name"] = doctor.user.full_name
+            d["doctor_name"] = f"Dr. {doctor.user.full_name}"
         else:
             d["doctor_name"] = None
     else:
@@ -541,7 +541,7 @@ def enrich_appointments(db: Session, appointments: list[Appointment]) -> list[di
         doctor_records = db.query(Doctor).filter(Doctor.id.in_(doctor_ids)).all()
         for doc in doctor_records:
             if doc.user:
-                doctors[doc.id] = doc.user.full_name
+                doctors[doc.id] = f"Dr. {doc.user.full_name}"
 
     appointment_ids = [a.id for a in appointments]
     invoice_map = {}

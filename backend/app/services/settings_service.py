@@ -116,8 +116,15 @@ def update_hospital_settings(
     if not settings:
         return None
 
+    UUID_FK_FIELDS = {'queue_display_doctor1_id', 'queue_display_doctor2_id'}
     for key, value in data.items():
-        if hasattr(settings, key) and value is not None:
+        if not hasattr(settings, key):
+            continue
+        # Empty string sent from the "Not set" option in a <select> must be treated
+        # as NULL so SQLAlchemy doesn't try to store "" in a UUID FK column.
+        if key in UUID_FK_FIELDS and value == '':
+            value = None
+        if value is not None:
             setattr(settings, key, value)
 
     db.commit()

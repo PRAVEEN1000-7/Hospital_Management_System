@@ -630,7 +630,17 @@ def get_or_create_consultation_invoice_for_appointment(
     if consultation_fee <= Decimal("0") and appointment.doctor:
         consultation_fee = Decimal(appointment.doctor.consultation_fee or Decimal("0"))
     if consultation_fee <= Decimal("0"):
-        return None
+        # Fallback to hospital default consultation fee from settings
+        from ..models.hospital_settings import HospitalSettings as _HospSettings
+        hs = db.query(_HospSettings).filter(_HospSettings.hospital_id == hospital_id).first()
+        if hs and hs.consultation_fee_default:
+            try:
+                fallback = Decimal(str(hs.consultation_fee_default))
+                if fallback > Decimal("0"):
+                    consultation_fee = fallback
+            except Exception:
+                pass
+    # Allow ₹0 invoices (free consultation) — do not block the flow
 
     existing_invoice = (
         db.query(Invoice)

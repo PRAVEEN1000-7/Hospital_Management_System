@@ -504,7 +504,7 @@ const StaffDirectory: React.FC = () => {
                           )}
                         </div>
                         <div className="min-w-0">
-                          <p className="text-sm font-semibold text-slate-900 truncate">{`${user.first_name} ${user.last_name}`}</p>
+                          <p className="text-sm font-semibold text-slate-900 truncate">{`${user.roles?.includes('doctor') ? 'Dr. ' : ''}${user.first_name} ${user.last_name}`}</p>
                           <p className="text-xs text-slate-500 truncate">Last login: {getTimeAgo(user.last_login_at)}</p>
                         </div>
                       </div>
@@ -590,7 +590,7 @@ const StaffDirectory: React.FC = () => {
                 getInitials(`${viewUser.first_name} ${viewUser.last_name}`)
               )}
             </div>
-            <h3 className="text-lg font-bold text-slate-900">{`${viewUser.first_name} ${viewUser.last_name}`}</h3>
+            <h3 className="text-lg font-bold text-slate-900">{`${viewUser.roles?.includes('doctor') ? 'Dr. ' : ''}${viewUser.first_name} ${viewUser.last_name}`}</h3>
             <p className="text-sm text-slate-500 mb-2">@{viewUser.username}</p>
             <div className="flex items-center gap-2">
               {getRoleBadge(viewUser.roles?.[0] || '')}
@@ -1281,7 +1281,7 @@ const ResetPasswordModal: React.FC<{ user: UserData; onClose: () => void; onSucc
   };
 
   return (
-    <Drawer title={`Reset Password — ${user.first_name} ${user.last_name}`} onClose={onClose}>
+    <Drawer title={`Reset Password — ${user.roles?.includes('doctor') ? 'Dr. ' : ''}${user.first_name} ${user.last_name}`} onClose={onClose}>
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         <section className="space-y-4">
           <SectionTitle>Security</SectionTitle>

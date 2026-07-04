@@ -389,14 +389,17 @@ class HospitalSettingsUpdate(BaseModel):
             v = v.upper()
         return v
 
-    @field_validator("consultation_fee_default")
+    @field_validator("consultation_fee_default", mode="before")
     @classmethod
-    def validate_consultation_fee(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None:
-            try:
-                float(v)  # Must be numeric string
-            except ValueError:
-                raise ValueError("Consultation fee must be a valid numeric value")
+    def validate_consultation_fee(cls, v: Any) -> Optional[str]:
+        # Pydantic v2 does not coerce int/float → str in lax mode, so do it here.
+        if v is None:
+            return None
+        v = str(v)
+        try:
+            float(v)
+        except ValueError:
+            raise ValueError("Consultation fee must be a valid numeric value")
         return v
 
 

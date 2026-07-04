@@ -587,7 +587,7 @@ def finalize_prescription(
             hospital_id=rx.hospital_id,
             prescription=rx,
             patient_id=rx.patient_id,
-            doctor_name=doctor.user.full_name if doctor and doctor.user else None,
+            doctor_name=f"Dr. {doctor.user.full_name}" if doctor and doctor.user else None,
         )
 
     db.commit()

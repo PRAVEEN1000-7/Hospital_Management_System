@@ -6,11 +6,15 @@ import appointmentService from '../services/appointmentService';
 import scheduleService from '../services/scheduleService';
 import invoiceService from '../services/invoiceService';
 import paymentService from '../services/paymentService';
+import prescriptionService from '../services/prescriptionService';
+import opticalService from '../services/opticalService';
 import AppointmentStatusBadge from '../components/appointments/AppointmentStatusBadge';
 import DateRangeFilter from '../components/common/DateRangeFilter';
 import { formatLocalDateISO } from '../utils/calendarDate';
 import type { Appointment, DoctorOption, AppointmentStatus, AppointmentStats } from '../types/appointment';
 import type { Invoice, PaymentMode } from '../types/billing';
+import type { PrescriptionListItem } from '../types/prescription';
+import type { OpticalPrescription } from '../types/optical';
 
 const PAYMENT_MODES: { value: PaymentMode; label: string }[] = [
   { value: 'cash', label: 'Cash' },
@@ -54,6 +58,13 @@ const AppointmentManagement: React.FC = () => {
   const [collectRef, setCollectRef] = useState('');
   const [collectNotes, setCollectNotes] = useState('');
   const [collectDate, setCollectDate] = useState(today);
+
+  // Prescription viewer state (loaded when detail modal opens)
+  const [viewRxs, setViewRxs] = useState<PrescriptionListItem[]>([]);
+  const [viewOptRxs, setViewOptRxs] = useState<OpticalPrescription[]>([]);
+  const [viewRxLoading, setViewRxLoading] = useState(false);
+  const [printingId, setPrintingId] = useState<string | null>(null);
+
   const limit = 15;
 
   const role = user?.roles?.[0] || '';
@@ -125,6 +136,42 @@ const AppointmentManagement: React.FC = () => {
     if (appt.patient_id) params.set('patient_id', appt.patient_id);
     if (appt.id) params.set('appointment_id', appt.id);
     navigate(`/prescriptions/new?${params.toString()}`);
+  };
+
+  const loadPrescriptionsForAppt = async (appt: Appointment) => {
+    if (!appt.patient_id) return;
+    setViewRxLoading(true);
+    setViewRxs([]);
+    setViewOptRxs([]);
+    try {
+      const [rxRes, optRes] = await Promise.all([
+        prescriptionService.getPrescriptions(1, 50, { patient_id: appt.patient_id }),
+        opticalService.getPrescriptions(1, 50, appt.patient_id),
+      ]);
+      setViewRxs(rxRes.data.filter(rx => rx.appointment_id === appt.id));
+      setViewOptRxs(optRes.data.filter(rx => rx.appointment_id === appt.id));
+    } catch { /* silent */ }
+    setViewRxLoading(false);
+  };
+
+  const printRx = async (id: string, isOptical = false) => {
+    const win = window.open('', '_blank');
+    if (!win) { toast.error('Pop-ups are blocked — allow pop-ups for this site'); return; }
+    setPrintingId(id);
+    try {
+      const html = isOptical
+        ? await opticalService.getPrescriptionPdfUrl(id)
+        : await prescriptionService.getPrescriptionPdfUrl(id);
+      win.document.open();
+      win.document.write(html);
+      win.document.close();
+      setTimeout(() => { try { win.print(); } catch { /* closed */ } }, 800);
+    } catch {
+      win.close();
+      toast.error('Failed to load prescription for printing');
+    } finally {
+      setPrintingId(null);
+    }
   };
 
   const handleStatusChange = async (id: string, status: string) => {
@@ -434,7 +481,7 @@ const AppointmentManagement: React.FC = () => {
                   </span>
                 </div>
                 <div className="flex items-center gap-1 mt-3 pt-3 border-t border-slate-100">
-                  <button onClick={() => setDetailAppt(appt)} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg" title="View">
+                  <button onClick={() => { setDetailAppt(appt); loadPrescriptionsForAppt(appt); }} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg" title="View Details & Prescription">
                     <span className="material-symbols-outlined text-lg">visibility</span>
                   </button>
                   {canProgressConsultation && appt.status !== 'cancelled' && appt.status !== 'completed' && (
@@ -459,13 +506,13 @@ const AppointmentManagement: React.FC = () => {
                       </button>
                     </>
                   )}
-                  {(appt.status === 'in-progress' || appt.status === 'completed') && (
+                  {appt.status === 'in-progress' && (
                     <button onClick={() => openPrescription(appt)} className="p-1.5 text-purple-500 hover:text-purple-700 hover:bg-purple-50 rounded-lg" title="Write Prescription">
                       <span className="material-symbols-outlined text-lg">clinical_notes</span>
                     </button>
                   )}
                   {canCollectFee && appt.status === 'completed' && !appt.consultation_fee_collected && (
-                    <button onClick={() => openCollectFee(appt)} className="p-1.5 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg" title="Collect Fee">
+                    <button onClick={() => openCollectFee(appt)} className="p-1.5 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg" title="Collect Consultation Fee">
                       <span className="material-symbols-outlined text-lg">payments</span>
                     </button>
                   )}
@@ -505,7 +552,7 @@ const AppointmentManagement: React.FC = () => {
                       <td className="px-4 py-3"><AppointmentStatusBadge status={appt.status} /></td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
-                          <button onClick={() => setDetailAppt(appt)} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg" title="View">
+                          <button onClick={() => { setDetailAppt(appt); loadPrescriptionsForAppt(appt); }} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg" title="View Details & Prescription">
                             <span className="material-symbols-outlined text-lg">visibility</span>
                           </button>
                           {canProgressConsultation && appt.status !== 'cancelled' && appt.status !== 'completed' && (
@@ -530,13 +577,13 @@ const AppointmentManagement: React.FC = () => {
                               </button>
                             </>
                           )}
-                          {(appt.status === 'in-progress' || appt.status === 'completed') && (
+                          {appt.status === 'in-progress' && (
                             <button onClick={() => openPrescription(appt)} className="p-1.5 text-purple-500 hover:text-purple-700 hover:bg-purple-50 rounded-lg" title="Write Prescription">
                               <span className="material-symbols-outlined text-lg">clinical_notes</span>
                             </button>
                           )}
                           {canCollectFee && appt.status === 'completed' && !appt.consultation_fee_collected && (
-                            <button onClick={() => openCollectFee(appt)} className="p-1.5 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg" title="Collect Fee">
+                            <button onClick={() => openCollectFee(appt)} className="p-1.5 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg" title="Collect Consultation Fee">
                               <span className="material-symbols-outlined text-lg">payments</span>
                             </button>
                           )}
@@ -564,39 +611,148 @@ const AppointmentManagement: React.FC = () => {
         </>
       )}
 
-      {/* Detail Modal */}
+      {/* Detail Modal — Appointment + Prescription Viewer */}
       {detailAppt && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setDetailAppt(null)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-slate-900">Appointment Details</h3>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Appointment Details</h3>
+                <p className="text-xs text-slate-400">{detailAppt.appointment_number}</p>
+              </div>
               <button onClick={() => setDetailAppt(null)} className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"><span className="material-symbols-outlined">close</span></button>
             </div>
-            <div className="space-y-3 text-sm">
-              {[
-                ['Appointment #', detailAppt.appointment_number],
-                ['Patient', detailAppt.patient_name || '—'],
-                ['Doctor', detailAppt.doctor_name || '—'],
-                ['Date', new Date(detailAppt.appointment_date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })],
-                [detailAppt.start_time ? 'Time' : 'Arrival Time', formatTime(getApptTime(detailAppt))],
-                ['Type', detailAppt.appointment_type],
-                ['Consultation', detailAppt.visit_type || '—'],
-                ['Urgency', detailAppt.priority || 'normal'],
-                ['Reason', detailAppt.chief_complaint || '—'],
-                ['Notes', detailAppt.notes || '—'],
-              ].map(([label, value]) => (
-                <div key={label} className="flex items-start justify-between gap-4">
-                  <span className="text-slate-400 font-medium whitespace-nowrap">{label}</span>
-                  <span className="text-slate-900 text-right">{value}</span>
+
+            <div className="overflow-y-auto flex-1 px-6 py-4 space-y-5">
+              {/* Appointment Summary */}
+              <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                {[
+                  ['Patient', detailAppt.patient_name || '—'],
+                  ['Doctor', detailAppt.doctor_name || '—'],
+                  ['Date', new Date(detailAppt.appointment_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })],
+                  [detailAppt.start_time ? 'Time' : 'Arrival', formatTime(getApptTime(detailAppt))],
+                  ['Type', detailAppt.appointment_type],
+                  ['Visit', detailAppt.visit_type || '—'],
+                ].map(([label, value]) => (
+                  <div key={label} className="flex flex-col">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{label}</span>
+                    <span className="text-slate-900 font-medium">{value}</span>
+                  </div>
+                ))}
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Status</span>
+                  <AppointmentStatusBadge status={detailAppt.status} />
                 </div>
-              ))}
-              <div className="flex items-center justify-between">
-                <span className="text-slate-400 font-medium">Status</span>
-                <AppointmentStatusBadge status={detailAppt.status} />
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Consultation Fee</span>
+                  <span className={`text-sm font-semibold ${detailAppt.consultation_fee_collected ? 'text-emerald-600' : 'text-red-500'}`}>
+                    {detailAppt.consultation_fee_collected ? 'Collected ✓' : 'Pending'}
+                  </span>
+                </div>
               </div>
+              {detailAppt.chief_complaint && (
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Reason for Visit</span>
+                  <p className="text-sm text-slate-700 mt-0.5">{detailAppt.chief_complaint}</p>
+                </div>
+              )}
+
+              {/* Fee not collected warning */}
+              {detailAppt.status === 'completed' && !detailAppt.consultation_fee_collected && (
+                <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
+                  <span className="material-symbols-outlined text-amber-500 text-base mt-0.5 shrink-0">payments</span>
+                  <div>
+                    <p className="font-semibold">Consultation fee not collected</p>
+                    <p className="text-xs text-amber-700 mt-0.5">Collect the consultation fee to enable prescription download and pharmacy dispensing.</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Prescriptions Section */}
+              {detailAppt.status === 'completed' && (
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="material-symbols-outlined text-primary text-base">clinical_notes</span>
+                    <h4 className="font-bold text-slate-900 text-sm">Prescriptions</h4>
+                  </div>
+
+                  {viewRxLoading ? (
+                    <div className="text-center py-6 text-slate-400">
+                      <span className="material-symbols-outlined animate-spin text-2xl">progress_activity</span>
+                      <p className="text-xs mt-1">Loading prescriptions…</p>
+                    </div>
+                  ) : viewRxs.length === 0 && viewOptRxs.length === 0 ? (
+                    <div className="text-center py-5 bg-slate-50 rounded-xl border border-slate-200 text-slate-400">
+                      <span className="material-symbols-outlined text-2xl">description</span>
+                      <p className="text-xs mt-1">No prescriptions found for this visit</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {/* Regular prescriptions */}
+                      {viewRxs.map(rx => (
+                        <div key={rx.id} className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-xs font-bold text-primary">{rx.prescription_number}</span>
+                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${rx.is_finalized ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
+                                  {rx.is_finalized ? 'Finalized' : rx.status}
+                                </span>
+                              </div>
+                              {rx.diagnosis && <p className="text-xs text-slate-700 font-medium">{rx.diagnosis}</p>}
+                              <p className="text-[11px] text-slate-400 mt-0.5">{rx.item_count} medicine{rx.item_count !== 1 ? 's' : ''} · {rx.doctor_name || '—'}</p>
+                            </div>
+                            <button
+                              onClick={() => printRx(rx.id)}
+                              disabled={!detailAppt.consultation_fee_collected || printingId === rx.id}
+                              title={!detailAppt.consultation_fee_collected ? 'Collect consultation fee first to print' : 'Print Prescription'}
+                              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed bg-primary text-white hover:bg-primary/90"
+                            >
+                              <span className="material-symbols-outlined text-sm">
+                                {printingId === rx.id ? 'progress_activity' : 'print'}
+                              </span>
+                              Print
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+
+                      {/* Optical prescriptions */}
+                      {viewOptRxs.map(rx => (
+                        <div key={rx.id} className="bg-blue-50 rounded-xl border border-blue-200 p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="text-xs font-bold text-blue-600">{rx.prescription_number}</span>
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700">Eye Prescription</span>
+                                {rx.is_finalized && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700">Finalized</span>}
+                              </div>
+                              <p className="text-[11px] text-blue-600 mt-0.5">{rx.doctor_name || '—'}</p>
+                            </div>
+                            <button
+                              onClick={() => printRx(rx.id, true)}
+                              disabled={!detailAppt.consultation_fee_collected || printingId === rx.id}
+                              title={!detailAppt.consultation_fee_collected ? 'Collect consultation fee first to print' : 'Print Eye Prescription'}
+                              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed bg-blue-600 text-white hover:bg-blue-700"
+                            >
+                              <span className="material-symbols-outlined text-sm">
+                                {printingId === rx.id ? 'progress_activity' : 'print'}
+                              </span>
+                              Print
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-            {(detailAppt.status === 'in-progress' || detailAppt.status === 'completed') && (
-              <div className="mt-5 pt-4 border-t border-slate-100 flex gap-2">
+
+            {/* Modal Footer Actions */}
+            <div className="px-6 py-4 border-t border-slate-100 flex gap-2 shrink-0">
+              {detailAppt.status === 'in-progress' && (
                 <button
                   onClick={() => { openPrescription(detailAppt); setDetailAppt(null); }}
                   className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-purple-600 rounded-xl hover:bg-purple-700 transition-colors shadow-sm"
@@ -604,8 +760,18 @@ const AppointmentManagement: React.FC = () => {
                   <span className="material-symbols-outlined text-base">clinical_notes</span>
                   Write Prescription
                 </button>
-              </div>
-            )}
+              )}
+              {canCollectFee && detailAppt.status === 'completed' && !detailAppt.consultation_fee_collected && (
+                <button
+                  onClick={() => { openCollectFee(detailAppt); setDetailAppt(null); }}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-emerald-600 rounded-xl hover:bg-emerald-700 transition-colors shadow-sm"
+                >
+                  <span className="material-symbols-outlined text-base">payments</span>
+                  Collect Consultation Fee
+                </button>
+              )}
+              <button onClick={() => setDetailAppt(null)} className="px-4 py-2.5 text-sm font-medium text-slate-500 hover:bg-slate-100 rounded-xl transition-colors">Close</button>
+            </div>
           </div>
         </div>
       )}

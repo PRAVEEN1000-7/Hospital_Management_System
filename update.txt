@@ -1,5 +1,26 @@
-the eye hospital also include the normal medicine in the prescription,so they can also able to add the eye drop medicine and the normal medicine as weel.also make sure to reduce as muc level possible of click while create the prescription.
+04-07-2026 updates
 
-current the inventory module can able to update the stock in the pharmacy.if the hospital that doesnt have the inventory ,how they can able to update the stock and the remaining things related to the medicne and the optical in their pharamcy and the opthal.check these function and verify all things,then update the code to work perfect ofr that logics.
+1. error occur in the subscription while assign the plan to the hospital when assign the enterprise plan.
+2. register patient to patient registration in the entire application.
+3. if i create the doctor in theri name should be display with the prefix Dr. before their name [Dr. Prefix in front of all doctors by default(in staff directory)]
+4. remove the waiting text inside the current token that is display in the display queue.
+5.While print the prescription in the top right corner of the page the status: Finalized (current one) change that to Prescribed.
+6.opthal prescription is not saved it shows the error .make sure that the hospital have the optical store or if not in the both condition we can able to create the opthal prescription and that should save in the db perfectly.if that is needed or later the module is enabled, then all the details should show perfectly with out any backend and the frontend error.
+7. in the entire application check all the quick action link,that should redirect to the mentioned and to that exact page ,whne the user click instead by default going to the dashboard(currently tht issue is happening).
 
-also check the billing and invoice related functions in the @BRD_HHMS_v1.md file ,then update the code to that formate mentioned in the md file.because thhe client as these way of requirements.
+
+
+
+
+
+
+-- Review
+
+1. meaning of the hospital code
+2. 
+
+--  Doubt
+
+In walk in registration, create check box below choose doctor. and name it as specialist assignment. 
+
+it should function as, if the check box is enabled , the patient will be consulted by that doctor alone. So in queue display his token number should be shown under that particular doctor only

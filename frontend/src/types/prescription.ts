@@ -105,6 +105,7 @@ export interface PrescriptionListItem {
   prescription_number: string;
   patient_id: string;
   doctor_id: string;
+  appointment_id?: string | null;
   diagnosis: string | null;
   status: PrescriptionStatus;
   is_finalized: boolean;

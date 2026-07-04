@@ -53,7 +53,7 @@ function getQuickActions(role: string, isSuperAdmin: boolean): QuickAction[] {
     case 'super_admin':
     case 'admin':
       return [
-        { icon: 'person_add', iconColor: 'text-primary', label: 'Register Patient', desc: 'Add a new patient record', to: '/register' },
+        { icon: 'person_add', iconColor: 'text-primary', label: 'Patient Registration', desc: 'Add a new patient record', to: '/register' },
         { icon: 'group', iconColor: 'text-emerald-500', label: 'Patient Directory', desc: 'Browse all patient records', to: '/patients' },
         ...(isSuperAdmin ? [
           { icon: 'admin_panel_settings', iconColor: 'text-rose-500', label: 'User Management', desc: 'Manage staff accounts', to: '/user-management' },
@@ -76,8 +76,9 @@ function getQuickActions(role: string, isSuperAdmin: boolean): QuickAction[] {
       ];
     case 'receptionist':
       return [
-        { icon: 'directions_walk', iconColor: 'text-primary', label: 'Walk-in Registration', desc: 'Register a walk-in patient', to: '/appointments/walk-in' },
-        { icon: 'queue', iconColor: 'text-amber-500', label: 'Walk-in Queue', desc: 'View current queue status', to: '/appointments/queue' },
+        { icon: 'person_add', iconColor: 'text-primary', label: 'Patient Registration', desc: 'Add a new patient record', to: '/register' },
+        { icon: 'directions_walk', iconColor: 'text-amber-500', label: 'Walk-in Registration', desc: 'Register a walk-in patient', to: '/appointments/walk-in' },
+        { icon: 'queue', iconColor: 'text-blue-500', label: 'Walk-in Queue', desc: 'View current queue status', to: '/appointments/queue' },
         { icon: 'event_note', iconColor: 'text-emerald-500', label: 'Manage Appointments', desc: 'View & manage all appointments', to: '/appointments/manage' },
       ];
     case 'pharmacist':
@@ -141,7 +142,7 @@ function getQuickLinks(role: string): QuickLink[] {
       ];
     case 'receptionist':
       return [
-        { icon: 'person_add', iconColor: 'text-blue-400', label: 'Register Patient', to: '/register' },
+        { icon: 'person_add', iconColor: 'text-blue-400', label: 'Patient Registration', to: '/register' },
         { icon: 'playlist_add', iconColor: 'text-amber-400', label: 'Waitlist', to: '/appointments/waitlist' },
         { icon: 'analytics', iconColor: 'text-emerald-400', label: 'Reports', to: '/appointments/reports' },
       ];
@@ -344,7 +345,7 @@ const Dashboard: React.FC = () => {
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-slate-900">{title}</h1>
         <p className="text-slate-500 text-sm mt-1">
-          Welcome back, <span className="font-semibold text-slate-700">{user ? `${user.first_name} ${user.last_name}` : ''}</span>
+          Welcome back, <span className="font-semibold text-slate-700">{user ? `${user.roles?.includes('doctor') ? 'Dr. ' : ''}${user.first_name} ${user.last_name}` : ''}</span>
           {' · '}
           <span className="text-primary font-medium">{formatRole(role)}</span>
         </p>
@@ -431,6 +432,25 @@ const Dashboard: React.FC = () => {
           ))}
         </div>
       </div>
+
+      {/* Quick Links */}
+      {quickLinks.length > 0 && (
+        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm mb-8">
+          <h3 className="font-bold text-slate-900 mb-4">Quick Links</h3>
+          <div className="flex flex-wrap gap-3">
+            {quickLinks.map((link) => (
+              <button
+                key={link.to}
+                onClick={() => navigate(link.to)}
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg hover:bg-primary/5 hover:border-primary/30 hover:text-primary transition-colors"
+              >
+                <span className={`material-symbols-outlined text-base ${link.iconColor}`}>{link.icon}</span>
+                {link.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Workspace + Info — 70/30 for all roles */}
       <div className="grid grid-cols-1 lg:grid-cols-10 gap-6 items-start">

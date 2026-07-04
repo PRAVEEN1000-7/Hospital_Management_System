@@ -1131,7 +1131,7 @@ const WalkInQueue: React.FC = () => {
                                   {item.appointment_type === 'referral' && item.referring_doctor_name && (
                                     <p className="text-[10px] text-orange-600 flex items-center gap-0.5 mt-0.5">
                                       <span className="material-symbols-outlined" style={{ fontSize: 10 }}>person</span>
-                                      Ref: Dr. {item.referring_doctor_name}
+                                      Ref: {item.referring_doctor_name}
                                     </p>
                                   )}
                                 </td>
@@ -1652,7 +1652,7 @@ const WalkInQueue: React.FC = () => {
                                   {item.appointment_type === 'referral' && item.referring_doctor_name && (
                                     <p className="text-[10px] text-orange-600 flex items-center gap-0.5 mt-0.5">
                                       <span className="material-symbols-outlined" style={{ fontSize: 10 }}>person</span>
-                                      Ref: Dr. {item.referring_doctor_name}
+                                      Ref: {item.referring_doctor_name}
                                     </p>
                                   )}
                                 </td>

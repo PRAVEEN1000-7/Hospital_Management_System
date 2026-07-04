@@ -280,7 +280,7 @@ const UserManagement: React.FC = () => {
                         <span className="text-sm font-semibold text-slate-900">{user.username}</span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-sm text-slate-700">{`${user.first_name} ${user.last_name}`}</td>
+                    <td className="px-6 py-4 text-sm text-slate-700">{`${user.roles?.includes('doctor') ? 'Dr. ' : ''}${user.first_name} ${user.last_name}`}</td>
                     <td className="px-6 py-4 text-sm text-slate-500 hidden md:table-cell">{user.email}</td>
                     <td className="px-6 py-4">{getRoleBadge(user.roles?.[0] || '')}</td>
                     <td className="px-6 py-4 text-center">
@@ -351,7 +351,7 @@ const UserManagement: React.FC = () => {
       {deleteConfirm && (
         <Modal title="Delete User" onClose={() => setDeleteConfirm(null)}>
           <p className="text-slate-600 mb-6">
-            Are you sure you want to delete <strong>{`${deleteConfirm.first_name} ${deleteConfirm.last_name}`}</strong> ({deleteConfirm.username})?
+            Are you sure you want to delete <strong>{`${deleteConfirm.roles?.includes('doctor') ? 'Dr. ' : ''}${deleteConfirm.first_name} ${deleteConfirm.last_name}`}</strong> ({deleteConfirm.username})?
             This action cannot be undone.
           </p>
           <div className="flex justify-end gap-3">

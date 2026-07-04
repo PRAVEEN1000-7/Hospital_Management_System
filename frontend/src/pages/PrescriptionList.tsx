@@ -133,11 +133,16 @@ const PrescriptionList: React.FC = () => {
   };
 
   const handleOptPrint = async (id: string) => {
+    const win = window.open('', '_blank');
+    if (!win) { showToast('error', 'Pop-ups are blocked — allow pop-ups for this site to print.'); return; }
     try {
       const html = await opticalService.getPrescriptionPdfUrl(id);
-      const win = window.open('', '_blank');
-      if (win) { win.document.write(html); win.document.close(); setTimeout(() => win.print(), 500); }
+      win.document.open();
+      win.document.write(html);
+      win.document.close();
+      setTimeout(() => { try { win.print(); } catch { /* window may have been closed */ } }, 800);
     } catch {
+      win.close();
       showToast('error', 'Failed to print eye prescription');
     }
   };
@@ -317,7 +322,7 @@ const PrescriptionList: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {optRx.map(rx => {
-                    const fmt = (v: number | null) => v === null ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(2)}`;
+                    const fmt = (v: number | string | null) => { const n = Number(v); return (v === null || v === undefined) ? '—' : isNaN(n) ? '—' : `${n > 0 ? '+' : ''}${n.toFixed(2)}`; };
                     return (
                       <tr key={rx.id} className="hover:bg-violet-50/30 transition-colors">
                         <td className="px-4 py-3">

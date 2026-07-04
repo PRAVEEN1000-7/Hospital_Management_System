@@ -86,7 +86,7 @@ async def list_doctors(
     for d in doctors:
         doctor_name = None
         if d.user:
-            doctor_name = f"{d.user.first_name} {d.user.last_name}".strip()
+            doctor_name = f"Dr. {d.user.first_name} {d.user.last_name}".strip()
         result.append({
             "doctor_id": str(d.id),
             "user_id": str(d.user_id),

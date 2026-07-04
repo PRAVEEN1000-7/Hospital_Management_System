@@ -583,7 +583,7 @@ td {{ font-size:13px; }}
         <strong>{t['date']}:</strong> {fmt_date(rx.created_at)}
     </div>
     <div style="text-align:right;">
-        <strong>{t['status']}:</strong> {_esc(rx.status.upper())}
+        <strong>{t['status']}:</strong> {_esc({"finalized": "Prescribed", "dispensed": "Dispensed", "draft": "Draft"}.get(rx.status, rx.status.title()))}
     </div>
 </div>
 

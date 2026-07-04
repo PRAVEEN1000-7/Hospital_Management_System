@@ -408,7 +408,7 @@ async def get_queue_status(
                 doctor_id_str = str(appt.doctor_id)
                 doc = db.query(Doctor).filter(Doctor.id == appt.doctor_id).first()
                 if doc and doc.user:
-                    doctor_name = doc.user.full_name
+                    doctor_name = f"Dr. {doc.user.full_name}"
 
         items.append({
             "queue_id": str(qe.id),
@@ -974,13 +974,13 @@ async def get_upcoming_queue(
             if parent and parent.doctor_id:
                 ref_doc = db.query(Doctor).filter(Doctor.id == parent.doctor_id).first()
                 if ref_doc and ref_doc.user:
-                    referring_doctor_name = ref_doc.user.full_name
+                    referring_doctor_name = f"Dr. {ref_doc.user.full_name}"
 
         doctor_name = None
         if appt.doctor_id:
             doc = db.query(Doctor).filter(Doctor.id == appt.doctor_id).first()
             if doc and doc.user:
-                doctor_name = doc.user.full_name
+                doctor_name = f"Dr. {doc.user.full_name}"
 
         date_key = qe.queue_date.isoformat()
         grouped[date_key].append({
@@ -1158,7 +1158,7 @@ async def refer_patient_to_doctor(
         db.refresh(referral_appt)
 
         # Build response
-        to_doctor_name = to_doctor.user.full_name if to_doctor.user else "Doctor"
+        to_doctor_name = f"Dr. {to_doctor.user.full_name}" if to_doctor.user else "Doctor"
         patient = db.query(Patient).filter(Patient.id == original_appt.patient_id).first()
 
         return {

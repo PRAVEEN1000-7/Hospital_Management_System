@@ -30,6 +30,8 @@ interface DispensingRecord {
   patient_id: string;
   patient_name?: string;
   patient_reference_number?: string;
+  prescription_id?: string | null;
+  consultation_fee_collected?: boolean;
   sale_type: string;
   status: string;
   total_amount: number;
@@ -434,6 +436,19 @@ const DispensingBilling: React.FC = () => {
         </div>
       </div>
 
+      {/* Consultation fee gate — only shown when fee hasn't been collected for a prescription-linked sale */}
+      {dispensing.prescription_id && dispensing.consultation_fee_collected === false && (
+        <div className="mt-6 flex items-start gap-3 p-4 bg-amber-50 border border-amber-300 rounded-xl print:hidden">
+          <span className="material-symbols-outlined text-amber-600 mt-0.5 flex-shrink-0">warning</span>
+          <div>
+            <p className="text-sm font-semibold text-amber-800">Consultation Fee Not Collected</p>
+            <p className="text-sm text-amber-700 mt-0.5">
+              Please collect the doctor's consultation fee at the reception counter before processing medicine payment.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="mt-6 flex justify-end gap-2 print:hidden">
         <button
           onClick={handlePrint}
@@ -443,8 +458,9 @@ const DispensingBilling: React.FC = () => {
         </button>
         <button
           onClick={handlePaymentAndPrint}
-          disabled={processing}
-          className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 flex items-center gap-2"
+          disabled={processing || (!!dispensing.prescription_id && dispensing.consultation_fee_collected === false)}
+          title={dispensing.prescription_id && dispensing.consultation_fee_collected === false ? 'Collect consultation fee first' : undefined}
+          className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
         >
           <span className="material-symbols-outlined text-sm">payment</span>
           {processing ? 'Processing...' : 'Confirm Payment & Print'}

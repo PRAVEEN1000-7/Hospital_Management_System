@@ -231,11 +231,10 @@ def create_optical_prescription(
         doctor = db.query(Doctor).filter(Doctor.id == payload.get("doctor_id")).first()
         if not doctor:
             raise ValueError("Doctor not found")
-    if not is_eye_specialist(doctor.specialization):
-        raise ValueError(
-            f"Dr. {doctor.specialization or 'this doctor'} is not an eye specialist — "
-            "only doctors with an ophthalmology/optometry specialization can be assigned an eye prescription."
-        )
+    # Any registered doctor in the hospital may write an optical prescription.
+    # The module gate (tenant_security) already controls whether the hospital
+    # has access to this feature; restricting further by specialization causes
+    # general practitioners and surgeons to be blocked unnecessarily.
 
     # _generate_prescription_number reads the current count without a lock, so two
     # near-simultaneous submissions (double-click, duplicate request) can both compute

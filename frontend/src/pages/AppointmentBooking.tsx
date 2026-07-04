@@ -63,6 +63,10 @@ const AppointmentBooking: React.FC = () => {
   const [doctorSearch, setDoctorSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
 
+  // Schedule check for selected doctor
+  const [doctorHasSchedule, setDoctorHasSchedule] = useState<boolean | null>(null);
+  const [scheduleCheckLoading, setScheduleCheckLoading] = useState(false);
+
   // ── Register new patient modal ──────────────────────────────────────────
   const [showRegModal, setShowRegModal] = useState(false);
   const [regForm, setRegForm] = useState<RegForm>(emptyReg());
@@ -173,6 +177,16 @@ const AppointmentBooking: React.FC = () => {
     }, 300);
     return () => clearTimeout(tid);
   }, [patientSearch]);
+
+  // Check if selected doctor has any schedule configured
+  useEffect(() => {
+    if (!selectedDoctor) { setDoctorHasSchedule(null); return; }
+    setScheduleCheckLoading(true);
+    scheduleService.getSchedules(selectedDoctor.doctor_id)
+      .then(schedules => setDoctorHasSchedule(schedules.length > 0))
+      .catch(() => setDoctorHasSchedule(null))
+      .finally(() => setScheduleCheckLoading(false));
+  }, [selectedDoctor]);
 
   // Fetch slots when doctor+date selected
   useEffect(() => {
@@ -362,7 +376,7 @@ const AppointmentBooking: React.FC = () => {
                     return matchSearch && matchDept;
                   })
                   .map(d => (
-                    <button key={d.doctor_id} onClick={() => { setSelectedDoctor(d); setSelectedTime(null); }}
+                    <button key={d.doctor_id} onClick={() => { setSelectedDoctor(d); setSelectedTime(null); setSlots([]); }}
                       className={`w-full text-left px-4 py-2.5 flex items-center gap-3 border-b border-slate-100 last:border-0 transition-colors ${
                         selectedDoctor?.doctor_id === d.doctor_id ? 'bg-primary/5 border-l-2 border-l-primary' : 'hover:bg-slate-50'
                       }`}>
@@ -395,18 +409,38 @@ const AppointmentBooking: React.FC = () => {
                   className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
               </div>
             </div>
-            {/* No-slot warning: shown when doctor + date are selected but no slots are available */}
-            {selectedDoctor && selectedDate && !slotsLoading && slots.length === 0 && (
-              <div className="mb-4 flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
-                <span className="material-symbols-outlined text-amber-500 text-base mt-0.5 shrink-0">warning</span>
+            {/* No schedule configured — blocks booking entirely */}
+            {selectedDoctor && !scheduleCheckLoading && doctorHasSchedule === false && (
+              <div className="mb-4 flex items-start gap-2.5 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-800">
+                <span className="material-symbols-outlined text-red-500 text-base mt-0.5 shrink-0">block</span>
                 <div>
-                  <p className="font-semibold">No schedule set up for this date</p>
-                  <p className="text-xs text-amber-700 mt-0.5">
-                    {selectedDoctor.name} has not configured any time slots for {selectedDate}. The appointment will be booked without an assigned time slot. Ask the doctor to set up a schedule first if time slots are required.
+                  <p className="font-semibold">No schedule configured for {selectedDoctor.name}</p>
+                  <p className="text-xs text-red-700 mt-0.5">
+                    This doctor has not set up any consultation schedule yet. Please ask them to configure their schedule in <strong>Doctor Schedule</strong> before booking appointments. Without a schedule, patients cannot be assigned a consultation slot.
                   </p>
                 </div>
               </div>
             )}
+            {/* Schedule is loading indicator */}
+            {selectedDoctor && scheduleCheckLoading && (
+              <div className="mb-4 flex items-center gap-2 text-xs text-slate-400">
+                <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span>
+                Checking doctor schedule…
+              </div>
+            )}
+            {/* No slots for selected date */}
+            {selectedDoctor && selectedDate && doctorHasSchedule === true && !slotsLoading && slots.length === 0 && (
+              <div className="mb-4 flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
+                <span className="material-symbols-outlined text-amber-500 text-base mt-0.5 shrink-0">event_busy</span>
+                <div>
+                  <p className="font-semibold">No slots available on {selectedDate}</p>
+                  <p className="text-xs text-amber-700 mt-0.5">
+                    {selectedDoctor.name} has no consultation slots on this date. Please pick a different date.
+                  </p>
+                </div>
+              </div>
+            )}
+            {/* All slots taken */}
             {selectedDoctor && selectedDate && !slotsLoading && slots.length > 0 && slots.every(s => !s.available) && (
               <div className="mb-4 flex items-start gap-2.5 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-800">
                 <span className="material-symbols-outlined text-red-500 text-base mt-0.5 shrink-0">event_busy</span>
@@ -436,7 +470,16 @@ const AppointmentBooking: React.FC = () => {
               <button onClick={() => setStep(1)} className="px-4 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-100 rounded-lg">
                 <span className="material-symbols-outlined text-sm align-middle mr-1">arrow_back</span> Back
               </button>
-              <button onClick={() => setStep(3)} disabled={!selectedDoctor || !selectedDate}
+              <button
+                onClick={() => setStep(3)}
+                disabled={
+                  !selectedDoctor ||
+                  !selectedDate ||
+                  scheduleCheckLoading ||
+                  doctorHasSchedule === false ||
+                  (!!selectedDate && !slotsLoading && slots.length === 0) ||
+                  (!!selectedDate && !slotsLoading && slots.length > 0 && slots.every(s => !s.available))
+                }
                 className="px-6 py-2.5 bg-primary text-white rounded-lg text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-primary/90 transition-colors shadow-sm">
                 Next <span className="material-symbols-outlined text-sm align-middle ml-1">arrow_forward</span>
               </button>

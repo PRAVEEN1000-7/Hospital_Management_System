@@ -578,7 +578,7 @@ const DispensingScreen: React.FC = () => {
                 label="Doctor" 
                 value={
                   <div>
-                    <div className="font-medium text-slate-900">Dr. {prescription.doctor_name}</div>
+                    <div className="font-medium text-slate-900">{prescription.doctor_name}</div>
                     {prescription.doctor_specialization && (
                       <div className="text-xs text-slate-500">{prescription.doctor_specialization}</div>
                     )}

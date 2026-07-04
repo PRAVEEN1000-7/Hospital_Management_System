@@ -311,7 +311,7 @@ def _enrich_prescription_for_dispensing(db: Session, rx: Prescription) -> dict:
     # Doctor info
     doctor = db.query(Doctor).filter(Doctor.id == rx.doctor_id).first()
     if doctor and doctor.user:
-        d["doctor_name"] = doctor.user.full_name
+        d["doctor_name"] = f"Dr. {doctor.user.full_name}"
         d["doctor_specialization"] = doctor.specialization
     else:
         d["doctor_name"] = None
@@ -831,6 +831,29 @@ def get_dispensing_details(
     # Get patient info
     patient = db.query(Patient).filter(Patient.id == dispensing.patient_id).first()
     
+    # Check consultation fee status for prescription-linked dispensings
+    consultation_fee_collected = True  # default: no gate for walk-in/OTC
+    if dispensing.prescription_id:
+        from .invoice_service import get_or_create_consultation_invoice_for_appointment
+        from ..models.prescription import Prescription as _Rx
+        from ..models.invoice import Invoice as _Inv
+        linked_rx = db.query(_Rx).filter(_Rx.id == dispensing.prescription_id).first()
+        if linked_rx and linked_rx.appointment_id:
+            consult_inv = (
+                db.query(_Inv)
+                .filter(
+                    _Inv.appointment_id == linked_rx.appointment_id,
+                    _Inv.is_deleted == False,
+                )
+                .first()
+            )
+            if consult_inv:
+                balance = float(consult_inv.balance_amount or 0)
+                consultation_fee_collected = balance <= 0
+            else:
+                # No invoice yet — fee not collected (unless it's a free appt)
+                consultation_fee_collected = False
+
     result = {
         "id": str(dispensing.id),
         "dispensing_number": dispensing.invoice_number,
@@ -838,6 +861,8 @@ def get_dispensing_details(
         "patient_id": str(dispensing.patient_id) if dispensing.patient_id else None,
         "patient_name": patient.full_name if patient else None,
         "patient_reference_number": patient.patient_reference_number if patient else None,
+        "prescription_id": str(dispensing.prescription_id) if dispensing.prescription_id else None,
+        "consultation_fee_collected": consultation_fee_collected,
         "sale_type": dispensing.sale_type,
         "status": dispensing.status,
         # subtotal maps to DB column total_amount in PharmacySale model

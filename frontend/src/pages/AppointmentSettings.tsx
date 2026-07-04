@@ -105,9 +105,11 @@ const AppointmentSettings: React.FC = () => {
     if (key === 'follow_up_validity_days' && typeof value === 'number') {
       value = Math.max(1, Math.min(365, value));
     }
-    // Validate consultation_fee_default: must be numeric
-    if (key === 'consultation_fee_default' && typeof value === 'number') {
-      value = Math.max(0, value);
+    // consultation_fee_default is stored as a string on the backend (String column).
+    // Always keep it as a string so Pydantic v2 doesn't reject a numeric type.
+    if (key === 'consultation_fee_default') {
+      const n = Number(value);
+      value = isNaN(n) ? '0' : String(Math.max(0, n));
     }
     // Validate invoice_prefix and prescription_prefix: max 10 chars
     if ((key === 'invoice_prefix' || key === 'prescription_prefix') && typeof value === 'string') {
@@ -137,7 +139,14 @@ const AppointmentSettings: React.FC = () => {
 
     setSaving(true);
     try {
-      const updated = await appointmentSettingsService.updateSettings(editValues);
+      // Ensure consultation_fee_default is always a string (backend schema is Optional[str]).
+      const payload: Partial<HospitalSettings> = {
+        ...editValues,
+        consultation_fee_default: editValues.consultation_fee_default !== undefined
+          ? String(editValues.consultation_fee_default)
+          : undefined,
+      };
+      const updated = await appointmentSettingsService.updateSettings(payload);
       setSettings(updated);
       setEditValues(updated);
       setHasChanges(false);
@@ -241,7 +250,7 @@ const AppointmentSettings: React.FC = () => {
                             )}
                             <input
                               type={field.type === 'number' ? 'number' : 'text'}
-                              value={String(value || '')}
+                              value={value !== null && value !== undefined ? String(value) : ''}
                               onChange={(e) => handleChange(field.key, field.type === 'number' ? Number(e.target.value) : e.target.value)}
                               className={`px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none ${
                                 field.type === 'number' ? 'w-24 text-right' : 'w-40'

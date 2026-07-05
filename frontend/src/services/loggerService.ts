@@ -21,7 +21,7 @@
  *   2026-03-08 14:12:02 | INFO | component_name | message
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 const FLUSH_INTERVAL_MS = 10_000;  // Flush every 10 seconds
 const MAX_BUFFER_SIZE = 20;         // Flush when buffer reaches 20 entries
 

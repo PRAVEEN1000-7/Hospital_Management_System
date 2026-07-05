@@ -51,6 +51,7 @@ from ..services.prescription_service import (
 )
 from ..services.invoice_service import get_or_create_consultation_invoice_for_appointment
 from ..services.appointment_service import create_appointment
+from ..services.notification_service import notify_hospital_users
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/prescriptions", tags=["Prescriptions"])
@@ -246,6 +247,23 @@ async def finalize_rx(
                     current_user.hospital_id,
                 )
 
+        # Notify pharmacists that a prescription is ready for dispensing (fire-and-forget)
+        try:
+            notify_hospital_users(
+                db=db,
+                hospital_id=current_user.hospital_id,
+                title="Prescription Ready for Dispensing",
+                message=f"Prescription {rx.prescription_number} has been finalized and is awaiting dispensing.",
+                notification_type="prescription",
+                priority="high",
+                reference_type="prescription",
+                reference_id=rx.id,
+                role_names=["pharmacist", "admin"],
+                exclude_user_ids=[current_user.id],
+            )
+        except Exception:
+            pass
+
         return enrich_prescription(db, rx)
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
@@ -333,6 +351,24 @@ async def finalize_and_complete_queue(
         enriched["consultation_invoice_id"] = str(consultation_invoice.id) if consultation_invoice else None
         enriched["consultation_invoice_number"] = consultation_invoice.invoice_number if consultation_invoice else None
         enriched["consultation_invoice_status"] = consultation_invoice.status if consultation_invoice else None
+
+        # Notify pharmacists that a prescription is ready for dispensing (fire-and-forget)
+        try:
+            notify_hospital_users(
+                db=db,
+                hospital_id=current_user.hospital_id,
+                title="Prescription Ready for Dispensing",
+                message=f"Prescription {rx.prescription_number} has been finalized and is awaiting dispensing.",
+                notification_type="prescription",
+                priority="high",
+                reference_type="prescription",
+                reference_id=rx.id,
+                role_names=["pharmacist", "admin"],
+                exclude_user_ids=[current_user.id],
+            )
+        except Exception:
+            pass
+
         return enriched
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))

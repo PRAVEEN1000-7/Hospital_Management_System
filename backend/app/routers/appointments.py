@@ -33,6 +33,7 @@ from ..services.appointment_service import (
     enrich_appointments,
 )
 from ..services.schedule_service import is_doctor_on_leave, get_available_slots
+from ..services.notification_service import notify_hospital_users
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/appointments", tags=["Appointments"])
@@ -90,6 +91,30 @@ async def book_appointment(
                 )
         except Exception as email_err:
             logger.warning(f"Failed to send confirmation email: {email_err}")
+
+        # Notify the assigned doctor + admin (fire-and-forget)
+        try:
+            patient_name = enriched.get("patient_name", "A patient")
+            extra_ids = []
+            if appt.doctor_id:
+                doc = db.query(Doctor).filter(Doctor.id == appt.doctor_id).first()
+                if doc:
+                    extra_ids = [doc.user_id]
+            notify_hospital_users(
+                db=db,
+                hospital_id=current_user.hospital_id,
+                title="New Appointment Booked",
+                message=f"{patient_name} — {appt.appointment_number} on {appt.appointment_date}.",
+                notification_type="appointment",
+                priority="normal",
+                reference_type="appointment",
+                reference_id=appt.id,
+                role_names=["admin", "receptionist"],
+                extra_user_ids=extra_ids,
+                exclude_user_ids=[current_user.id],
+            )
+        except Exception:
+            pass
 
         return enriched
     except HTTPException:
@@ -266,6 +291,29 @@ async def cancel_appt(
                 )
         except Exception as email_err:
             logger.warning(f"Failed to send cancellation email: {email_err}")
+
+        # Notify doctor + admin of cancellation (fire-and-forget)
+        try:
+            extra_ids = []
+            if appt.doctor_id:
+                doc = db.query(Doctor).filter(Doctor.id == appt.doctor_id).first()
+                if doc:
+                    extra_ids = [doc.user_id]
+            notify_hospital_users(
+                db=db,
+                hospital_id=current_user.hospital_id,
+                title="Appointment Cancelled",
+                message=f"Appointment {appt.appointment_number} has been cancelled.",
+                notification_type="appointment",
+                priority="normal",
+                reference_type="appointment",
+                reference_id=appt.id,
+                role_names=["admin", "receptionist"],
+                extra_user_ids=extra_ids,
+                exclude_user_ids=[current_user.id],
+            )
+        except Exception:
+            pass
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
 
@@ -309,6 +357,29 @@ async def reschedule_appt(
             )
     except Exception as email_err:
         logger.warning(f"Failed to send reschedule email: {email_err}")
+
+    # Notify doctor + admin of reschedule (fire-and-forget)
+    try:
+        extra_ids = []
+        if appt.doctor_id:
+            doc = db.query(Doctor).filter(Doctor.id == appt.doctor_id).first()
+            if doc:
+                extra_ids = [doc.user_id]
+        notify_hospital_users(
+            db=db,
+            hospital_id=current_user.hospital_id,
+            title="Appointment Rescheduled",
+            message=f"Appointment {appt.appointment_number} rescheduled to {data.new_date}.",
+            notification_type="appointment",
+            priority="normal",
+            reference_type="appointment",
+            reference_id=appt.id,
+            role_names=["admin", "receptionist"],
+            extra_user_ids=extra_ids,
+            exclude_user_ids=[current_user.id],
+        )
+    except Exception:
+        pass
 
     return enriched
 

@@ -30,6 +30,11 @@ const notificationsService = {
     return res.data;
   },
 
+  async getUnreadCount(): Promise<number> {
+    const res = await api.get<{ unread_count: number }>('/notifications/unread-count');
+    return res.data.unread_count;
+  },
+
   async markRead(id: string): Promise<AppNotification> {
     const res = await api.put<AppNotification>(`/notifications/${id}/read`);
     return res.data;
@@ -37,6 +42,14 @@ const notificationsService = {
 
   async markAllRead(): Promise<void> {
     await api.put('/notifications/read-all');
+  },
+
+  async deleteNotification(id: string): Promise<void> {
+    await api.delete(`/notifications/${id}`);
+  },
+
+  async deleteAllRead(): Promise<void> {
+    await api.delete('/notifications/read');
   },
 };
 

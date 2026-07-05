@@ -13,6 +13,7 @@ from ..database import get_db
 from ..models.user import User
 from ..models.optical import OpticalProduct as OpticalProductModel, OpticalBatch
 from ..dependencies import get_current_active_user
+from ..services.notification_service import notify_hospital_users
 from ..schemas.optical import (
     # Product
     OpticalProductCreate, OpticalProductUpdate, OpticalProductResponse, OpticalProductListResponse,
@@ -334,6 +335,21 @@ async def create_optical_prescription(
 ):
     try:
         rx = svc.create_optical_prescription(db, current_user.hospital_id, data.model_dump(), created_by=current_user.id)
+        try:
+            notify_hospital_users(
+                db=db,
+                hospital_id=current_user.hospital_id,
+                title="New Optical Prescription",
+                message=f"Optical prescription {rx.prescription_number} has been created and is ready for dispensing.",
+                notification_type="optical",
+                priority="normal",
+                reference_type="optical_prescription",
+                reference_id=rx.id,
+                role_names=["optical_staff", "admin"],
+                exclude_user_ids=[current_user.id],
+            )
+        except Exception:
+            pass
         return _enrich_prescription_response(rx)
     except ValueError as e:
         db.rollback()
@@ -655,6 +671,21 @@ async def create_optical_sale(
         resp = OpticalSaleResponse.model_validate(sale)
         items = svc.get_sale_items(db, sale.id)
         resp.items = [OpticalSaleItemResponse.model_validate(i) for i in items]
+        try:
+            notify_hospital_users(
+                db=db,
+                hospital_id=current_user.hospital_id,
+                title="New Optical Sale",
+                message=f"Optical sale {sale.invoice_number} has been created — total ₹{sale.total_amount or 0:.2f}.",
+                notification_type="optical",
+                priority="normal",
+                reference_type="optical_sale",
+                reference_id=sale.id,
+                role_names=["admin"],
+                exclude_user_ids=[current_user.id],
+            )
+        except Exception:
+            pass
         return resp
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

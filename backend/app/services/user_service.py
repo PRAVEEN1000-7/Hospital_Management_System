@@ -21,8 +21,28 @@ logger = logging.getLogger(__name__)
 
 # Upload directory configuration
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "uploads", "photos")
-ALLOWED_PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif"}
+# S2: .gif excluded — consistent with logo policy (GIFs served from the app's
+# own origin can be used for tracking-pixel attacks; also no magic-byte spec).
+# .svg excluded: can carry <script> tags (stored XSS via static file route).
+ALLOWED_PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 MAX_PHOTO_SIZE_MB = 2
+
+# S1: Magic-byte signatures — extension alone is not enough; a renamed .html
+# can pass an extension check while the browser renders it as HTML (stored XSS).
+_PHOTO_SIGNATURES: dict[str, tuple[bytes, ...]] = {
+    ".png": (b"\x89PNG\r\n\x1a\n",),
+    ".jpg": (b"\xff\xd8\xff",),
+}
+
+
+def _has_valid_photo_signature(file: UploadFile, file_ext: str) -> bool:
+    sigs = _PHOTO_SIGNATURES.get(file_ext)
+    if not sigs:
+        return True
+    file.file.seek(0)
+    header = file.file.read(16)
+    file.file.seek(0)
+    return any(header.startswith(sig) for sig in sigs)
 
 
 def ensure_upload_directory():
@@ -254,16 +274,24 @@ def save_user_photo(db: Session, user_id: str | uuid.UUID, file: UploadFile) -> 
     ensure_upload_directory()
 
     # Validate file extension
-    file_ext = os.path.splitext(file.filename)[1].lower()
+    file_ext = os.path.splitext(file.filename or "")[1].lower()
     if file_ext not in ALLOWED_PHOTO_EXTENSIONS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid file type. Allowed: {', '.join(ALLOWED_PHOTO_EXTENSIONS)}"
+            detail=f"Invalid file type. Allowed: {', '.join(sorted(ALLOWED_PHOTO_EXTENSIONS))}"
         )
 
     # Normalize extension: .jpeg -> .jpg for consistency
     if file_ext == '.jpeg':
         file_ext = '.jpg'
+
+    # S1: Verify the file's actual content matches its claimed extension.
+    # Extension check alone is not sufficient — a renamed .html passes it.
+    if not _has_valid_photo_signature(file, file_ext):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File content does not match its extension.",
+        )
 
     # Check file size
     file.file.seek(0, 2)
@@ -298,9 +326,11 @@ def save_user_photo(db: Session, user_id: str | uuid.UUID, file: UploadFile) -> 
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
     except Exception as e:
+        # S8: log the real error server-side; never expose internal paths to the client.
+        logger.error("Failed to write photo file for user %s: %s", user_id, e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to save photo: {str(e)}"
+            detail="Failed to save photo. Please try again.",
         )
 
     user.avatar_url = f"/uploads/photos/{filename}"

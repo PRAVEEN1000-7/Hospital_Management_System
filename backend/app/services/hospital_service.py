@@ -159,9 +159,11 @@ def save_hospital_logo(db: Session, file: UploadFile, hospital_id=None) -> dict:
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
     except Exception as e:
+        # S7: log the real error server-side; never expose internal paths to the client.
+        logger.error("Failed to write logo file for hospital %s: %s", hospital_id, e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to save logo: {str(e)}",
+            detail="Failed to save logo. Please try again.",
         )
     db_hospital.logo_url = f"/uploads/hospital/{filename}"
     db.commit()

@@ -32,6 +32,8 @@ const Layout: React.FC = () => {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
+  // IDs hidden from the panel view — DB is never touched; resets on page refresh.
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const userMenuRef = useRef<HTMLDivElement>(null);
   const notificationsRef = useRef<HTMLDivElement>(null);
   const [appointmentsOpen, setAppointmentsOpen] = useState(
@@ -176,6 +178,9 @@ const Layout: React.FC = () => {
     }
   }, []);
 
+  // Notifications visible in the panel — filters out locally dismissed items.
+  const visibleNotifications = notifications.filter(n => !dismissedIds.has(n.id));
+
   useEffect(() => {
     if (!notificationsOpen) return;
     fetchNotifications();
@@ -185,12 +190,19 @@ const Layout: React.FC = () => {
     fetchNotifications(true);
   }, [fetchNotifications]);
 
+  // Background poll: cheap unread-count only (every 30 s).
+  // Full list is fetched on dropdown open.
   useEffect(() => {
-    const timer = setInterval(() => {
-      fetchNotifications(true);
+    const timer = setInterval(async () => {
+      try {
+        const count = await notificationsService.getUnreadCount();
+        setUnreadCount(count);
+      } catch {
+        // keep previous count on transient failure
+      }
     }, 30000);
     return () => clearInterval(timer);
-  }, [fetchNotifications]);
+  }, []);
 
   const handleMarkRead = async (id: string) => {
     try {
@@ -210,6 +222,21 @@ const Layout: React.FC = () => {
     } catch {
       // Ignore mark-all failures
     }
+  };
+
+  // Hide a single notification from the panel — UI only, no DB change.
+  const handleDismiss = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    setDismissedIds(prev => new Set(prev).add(id));
+  };
+
+  // Hide all currently visible notifications — UI only, no DB change.
+  const handleDismissAll = () => {
+    setDismissedIds(prev => {
+      const next = new Set(prev);
+      notifications.forEach(n => next.add(n.id));
+      return next;
+    });
   };
 
   const handleLogout = async () => {
@@ -1049,15 +1076,26 @@ const Layout: React.FC = () => {
                         </span>
                       )}
                     </div>
-                    {unreadCount > 0 && (
-                      <button
-                        onClick={handleMarkAllRead}
-                        className="text-xs font-semibold text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
-                      >
-                        <span className="material-icons text-sm">done_all</span>
-                        Mark all read
-                      </button>
-                    )}
+                    <div className="flex items-center gap-3">
+                      {unreadCount > 0 && (
+                        <button
+                          onClick={handleMarkAllRead}
+                          className="text-xs font-semibold text-primary hover:text-primary/80 transition-colors flex items-center gap-1"
+                        >
+                          <span className="material-icons text-sm">done_all</span>
+                          Mark all read
+                        </button>
+                      )}
+                      {visibleNotifications.length > 0 && (
+                        <button
+                          onClick={handleDismissAll}
+                          className="text-xs font-semibold text-slate-400 hover:text-slate-700 transition-colors flex items-center gap-1"
+                          title="Hide all from view — notifications stay in your history"
+                        >
+                          <span className="material-icons text-sm">visibility_off</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {/* Notifications List */}
@@ -1067,7 +1105,7 @@ const Layout: React.FC = () => {
                         <span className="material-icons animate-spin text-3xl text-primary">progress_activity</span>
                         <p className="text-sm text-slate-500 mt-3">Loading notifications...</p>
                       </div>
-                    ) : notifications.length === 0 ? (
+                    ) : visibleNotifications.length === 0 ? (
                       <div className="p-12 text-center">
                         <span className="material-icons text-5xl text-slate-300">notifications_none</span>
                         <p className="text-sm font-semibold text-slate-700 mt-3">All caught up!</p>
@@ -1075,50 +1113,58 @@ const Layout: React.FC = () => {
                       </div>
                     ) : (
                       <div className="divide-y divide-slate-50">
-                        {notifications.map((notification) => {
+                        {visibleNotifications.map((notification) => {
                           const referenceType = notification.reference_type || '';
                           const icon = getNotificationIcon(referenceType);
                           const colorClass = getNotificationColor(referenceType);
                           const formattedMessage = formatNotificationMessage(notification);
-                          
+
                           return (
-                            <button
+                            <div
                               key={notification.id}
-                              onClick={() => handleNotificationClick(notification)}
-                              className={`w-full px-4 py-3 text-left hover:bg-slate-50 transition-all border-l-4 ${
+                              className={`group relative flex items-start gap-3 px-4 py-3 hover:bg-slate-50 transition-all border-l-4 cursor-pointer ${
                                 !notification.is_read
                                   ? 'border-primary bg-blue-50/30'
                                   : 'border-transparent'
                               }`}
+                              onClick={() => handleNotificationClick(notification)}
                             >
-                              <div className="flex items-start gap-3">
-                                {/* Icon */}
-                                <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${colorClass}`}>
-                                  <span className="material-icons text-lg">{icon}</span>
-                                </div>
-
-                                {/* Content */}
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-start justify-between gap-2">
-                                    <p className={`text-sm font-semibold ${
-                                      !notification.is_read ? 'text-slate-900' : 'text-slate-600'
-                                    }`}>
-                                      {notification.title}
-                                    </p>
-                                    {!notification.is_read && (
-                                      <span className="w-2 h-2 rounded-full bg-primary flex-shrink-0 mt-1.5"></span>
-                                    )}
-                                  </div>
-                                  <p className="text-xs text-slate-500 mt-1 line-clamp-2">
-                                    {formattedMessage}
-                                  </p>
-                                  <p className="text-[10px] text-slate-400 mt-1.5 flex items-center gap-1">
-                                    <span className="material-icons text-[10px]">schedule</span>
-                                    {notification.created_at ? getRelativeTime(notification.created_at) : 'Unknown'}
-                                  </p>
-                                </div>
+                              {/* Icon */}
+                              <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${colorClass}`}>
+                                <span className="material-icons text-lg">{icon}</span>
                               </div>
-                            </button>
+
+                              {/* Content */}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-start justify-between gap-2">
+                                  <p className={`text-sm font-semibold ${
+                                    !notification.is_read ? 'text-slate-900' : 'text-slate-600'
+                                  }`}>
+                                    {notification.title}
+                                  </p>
+                                  {!notification.is_read && (
+                                    <span className="w-2 h-2 rounded-full bg-primary flex-shrink-0 mt-1.5"></span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-slate-500 mt-1 line-clamp-2">
+                                  {formattedMessage}
+                                </p>
+                                <p className="text-[10px] text-slate-400 mt-1.5 flex items-center gap-1">
+                                  <span className="material-icons text-[10px]">schedule</span>
+                                  {notification.created_at ? getRelativeTime(notification.created_at) : 'Unknown'}
+                                </p>
+                              </div>
+
+                              {/* Per-item dismiss (UI only — no DB change) */}
+                              <button
+                                onClick={(e) => handleDismiss(e, notification.id)}
+                                className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0 p-1 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-600 mt-0.5"
+                                aria-label="Dismiss notification"
+                                title="Hide from view"
+                              >
+                                <span className="material-icons text-[16px]">close</span>
+                              </button>
+                            </div>
                           );
                         })}
                       </div>
@@ -1126,14 +1172,22 @@ const Layout: React.FC = () => {
                   </div>
 
                   {/* Footer */}
-                  {notifications.length > 0 && (
-                    <div className="px-4 py-2 border-t border-slate-100 bg-slate-50 text-center">
+                  {visibleNotifications.length > 0 && (
+                    <div className="px-4 py-2 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
                       <p className="text-xs text-slate-500">
                         {unreadCount === 0
                           ? 'All notifications read'
                           : `${unreadCount} unread notification${unreadCount > 1 ? 's' : ''}`
                         }
                       </p>
+                      <button
+                        onClick={handleDismissAll}
+                        className="text-xs font-semibold text-slate-500 hover:text-slate-800 transition-colors flex items-center gap-1"
+                        title="Hide all from view — notifications stay in your history"
+                      >
+                        <span className="material-icons text-sm">visibility_off</span>
+                        Clear view
+                      </button>
                     </div>
                   )}
                 </div>

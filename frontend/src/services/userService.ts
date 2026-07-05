@@ -76,7 +76,7 @@ export const userService = {
       return photoUrl;
     }
     // Use the API base URL to route uploads through the backend (avoids Nginx proxy misses)
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || '/api/v1';
     // Remove leading slash or "uploads/" if present to avoid double slashes
     let photoPath = photoUrl.startsWith('/') ? photoUrl.substring(1) : photoUrl;
     if (photoPath.startsWith('uploads/')) {

@@ -39,6 +39,29 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
+# ── S6: Per-IP login rate limiter ────────────────────────────────────────────
+# The existing per-username limiter (check_login_limit) protects individual
+# accounts but not credential-stuffing: an attacker can rotate through many
+# usernames from one IP without triggering any per-username block.
+# This in-memory sliding-window guard caps total login attempts per source IP.
+import time as _time
+_LOGIN_IP_WINDOW_SECS = 300       # 5-minute window
+_LOGIN_IP_MAX_ATTEMPTS = 20       # max login attempts per IP per window
+_login_ip_timestamps: dict[str, list[float]] = {}
+
+
+def _check_login_ip_limit(client_ip: str) -> bool:
+    """Return False (block) when the IP has exceeded the per-window limit."""
+    now = _time.time()
+    cutoff = now - _LOGIN_IP_WINDOW_SECS
+    recent = [t for t in _login_ip_timestamps.get(client_ip, []) if t > cutoff]
+    if len(recent) >= _LOGIN_IP_MAX_ATTEMPTS:
+        _login_ip_timestamps[client_ip] = recent
+        return False
+    recent.append(now)
+    _login_ip_timestamps[client_ip] = recent
+    return True
+
 
 def _mask_username(username: str) -> str:
     """Truncate for the general application log (SECURITY_AUDIT.md M6) —
@@ -101,7 +124,17 @@ async def login(
         ip_address = get_client_ip(request) if request else None
         logger.info(f"LOGIN ATTEMPT: username='{_mask_username(credentials.username)}' from {ip_address}")
 
-        # Rate-limit login attempts per username to prevent brute force
+        # S6: Per-IP rate limit — blocks credential-stuffing from a single IP
+        # even when the attacker rotates usernames to avoid per-account lockout.
+        if ip_address and not _check_login_ip_limit(ip_address):
+            logger.warning("LOGIN BLOCKED: per-IP limit exceeded from %s", ip_address)
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many login attempts from this IP. Please try again in 5 minutes.",
+                headers={"Retry-After": str(_LOGIN_IP_WINDOW_SECS)},
+            )
+
+        # Per-username rate limit — prevents brute-forcing a single account
         try:
             from ..core.rate_limiter import get_rate_limiter
             limiter = get_rate_limiter()

@@ -17,8 +17,10 @@ from datetime import date
 from ..database import get_db
 from ..models.user import User
 from ..models.prescription import Medicine as MedicineModel, Prescription
+from ..models.appointment import Doctor
 from ..dependencies import get_current_active_user
 from ..services import dispensing_service as svc
+from ..services.notification_service import notify_hospital_users
 
 logger = logging.getLogger(__name__)
 
@@ -303,12 +305,36 @@ async def dispense_prescription(
             notes=request.notes,
         )
         
+        # Notify prescribing doctor that dispensing is complete (fire-and-forget)
+        try:
+            rx = db.query(Prescription).filter(
+                Prescription.id == uuid_mod.UUID(prescription_id),
+                Prescription.hospital_id == current_user.hospital_id,
+            ).first()
+            if rx and rx.doctor_id:
+                doc = db.query(Doctor).filter(Doctor.id == rx.doctor_id).first()
+                extra_ids = [doc.user_id] if doc else []
+                notify_hospital_users(
+                    db=db,
+                    hospital_id=current_user.hospital_id,
+                    title="Prescription Dispensed",
+                    message=f"Prescription {rx.prescription_number} has been dispensed by the pharmacy.",
+                    notification_type="dispensing",
+                    priority="normal",
+                    reference_type="dispensing",
+                    reference_id=rx.id,
+                    role_names=[],
+                    extra_user_ids=extra_ids,
+                )
+        except Exception:
+            pass
+
         return {
             "success": True,
             "message": f"Dispensing completed. Status: {result['status']}",
             "data": result,
         }
-        
+
     except ValueError as ve:
         logger.warning(f"Dispensing validation error: {ve}")
         db.rollback()

@@ -30,6 +30,7 @@ from .routers import public_queue  # unauthenticated public Queue Display
 # Multi-tenant routers
 from .routers import superadmin, tenant_admin
 from .core.tenant_security import SubscriptionValidator
+from .dependencies import get_current_active_user
 from fastapi import Depends
 
 logger = get_logger(__name__)
@@ -310,8 +311,10 @@ async def health_check():
 
 
 @app.get("/api/v1/config/hospital")
-async def get_hospital_config():
-    """Get hospital configuration (for ID cards, reports, etc.)"""
+async def get_hospital_config(
+    current_user=Depends(get_current_active_user),  # S10: require auth
+):
+    """Get hospital configuration (for ID cards, reports, etc.) — authenticated users only."""
     return {
         "hospital_name": settings.HOSPITAL_NAME,
         "hospital_address": settings.HOSPITAL_ADDRESS,

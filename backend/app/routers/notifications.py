@@ -109,3 +109,55 @@ async def mark_all_read(
     )
     db.commit()
     return {"success": True}
+
+
+@router.get("/unread-count")
+async def get_unread_count(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Lightweight poll endpoint — returns only the unread count."""
+    count = db.query(func.count(Notification.id)).filter(
+        Notification.hospital_id == current_user.hospital_id,
+        Notification.user_id == current_user.id,
+        Notification.is_read == False,
+    ).scalar() or 0
+    return {"unread_count": count}
+
+
+@router.delete("/read")
+async def delete_all_read(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Delete all read notifications for the current user."""
+    (
+        db.query(Notification)
+        .filter(
+            Notification.hospital_id == current_user.hospital_id,
+            Notification.user_id == current_user.id,
+            Notification.is_read == True,
+        )
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    return {"success": True}
+
+
+@router.delete("/{notification_id}")
+async def delete_notification(
+    notification_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Delete a single notification."""
+    n = db.query(Notification).filter(
+        Notification.id == notification_id,
+        Notification.hospital_id == current_user.hospital_id,
+        Notification.user_id == current_user.id,
+    ).first()
+    if not n:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    db.delete(n)
+    db.commit()
+    return {"success": True}

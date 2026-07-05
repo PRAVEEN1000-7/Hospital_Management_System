@@ -828,18 +828,40 @@ PUBLIC_IP=$(curl -4 -s ifconfig.me)
 echo "VITE_API_BASE_URL=http://$PUBLIC_IP/api/v1" > .env
 ```
 
-### 17.2 — Build for Production
+### 17.2 — Prepare Web Root (First Deploy Only)
+
+`vite.config.ts` builds directly into `/var/www/hms` (no `cp` step needed).
+Before the first build, set up the directory permissions so your user can write there:
+
+```bash
+sudo mkdir -p /var/www/hms
+sudo chown -R root:$(whoami) /var/www/hms
+sudo chmod -R 775 /var/www/hms
+```
+
+**What this does:**
+| Who | Permission | Why |
+|-----|------------|-----|
+| `root` (owner) | full | system ownership |
+| your user group | read + write + execute | build can write files here |
+| others (nginx/www-data) | read + execute | nginx can serve files, cannot modify them |
+
+> This is a one-time step. The deploy script (`deploy.sh`) runs it automatically on every deploy — it is safe to re-run (idempotent).
+
+### 17.3 — Build for Production
 
 ```bash
 npm install
 npm run build
 ```
 
-This creates `frontend/dist/` — a static bundle. No Node.js needed at runtime.
+Vite reads `outDir: '/var/www/hms'` from `vite.config.ts` and writes the compiled bundle directly to `/var/www/hms`. No Node.js needed at runtime. No manual `cp` required.
 
-### 17.3 — Serve via Nginx
+### 17.4 — Serve via Nginx
 
-The built files in `dist/` will be served by Nginx (configured in [Section 18](#18-production-nginx-reverse-proxy)). No need to run `npm run dev` in production.
+The files are already in `/var/www/hms` after the build. Nginx (configured in [Section 18](#18-production-nginx-reverse-proxy)) serves them as static assets. No need to run `npm run dev` in production.
+
+> **Every future deploy:** `git pull` → `npm run build` → `sudo systemctl restart hms-backend` — that's it.
 
 ---
 
@@ -1020,7 +1042,7 @@ CORS_ORIGINS=["https://yourdomain.com"]
 VITE_API_BASE_URL=https://yourdomain.com/api/v1
 ```
 
-Rebuild frontend and restart backend:
+Rebuild frontend (writes directly to `/var/www/hms`) and restart backend:
 ```bash
 cd ~/Hospital_Management_System/frontend && npm run build
 
@@ -1312,6 +1334,7 @@ With systemd `enable`, this happens automatically on boot.
 
 | Error | Cause | Fix |
 |-------|-------|-----|
+| `EACCES: permission denied /var/www/hms` during build | `/var/www/hms` owned by root | Run Section 17.2 permission setup once: `sudo chown -R root:$(whoami) /var/www/hms && sudo chmod -R 775 /var/www/hms` |
 | Not loading on public IP | Vite bound to localhost | Use `--host 0.0.0.0` |
 | `[::1]:3000` in ss output | IPv6 only | Use `--host 0.0.0.0` |
 | Vite HMR WebSocket error | HMR host misconfigured | Add `hmr.host` in `vite.config.ts` |

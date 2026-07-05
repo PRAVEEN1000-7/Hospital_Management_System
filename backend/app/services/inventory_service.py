@@ -1000,37 +1000,40 @@ def get_low_stock_items(db: Session, hospital_id: uuid.UUID, limit: int = 20) ->
                 "purchase_price": float(med.purchase_price or 0),
             })
 
-    # Optical products use the same OpticalBatch-totals-vs-reorder_level pattern,
-    # so Inventory's "Low Stock" view stays accurate once Optical is enabled too
-    # — without this, it would silently stay medicine-only forever.
-    products = (
-        db.query(OpticalProduct.id, OpticalProduct.name, OpticalProduct.reorder_level, OpticalProduct.purchase_price)
-        .filter(OpticalProduct.hospital_id == hospital_id, OpticalProduct.is_active == True)
-        .all()
-    )
-    product_ids = [p.id for p in products]
-    optical_stock_map: dict[uuid.UUID, int] = {}
-    if product_ids:
-        rows = (
-            db.query(OpticalBatch.product_id, func.coalesce(func.sum(OpticalBatch.quantity), 0))
-            .filter(OpticalBatch.product_id.in_(product_ids), OpticalBatch.is_active == True)
-            .group_by(OpticalBatch.product_id)
+    # Optical products — wrapped in try/except so a missing optical_batches
+    # table (schema not yet migrated on this env) doesn't break the dashboard.
+    try:
+        products = (
+            db.query(OpticalProduct.id, OpticalProduct.name, OpticalProduct.reorder_level, OpticalProduct.purchase_price)
+            .filter(OpticalProduct.hospital_id == hospital_id, OpticalProduct.is_active == True)
             .all()
         )
-        optical_stock_map = {row[0]: int(row[1]) for row in rows}
+        product_ids = [p.id for p in products]
+        optical_stock_map: dict[uuid.UUID, int] = {}
+        if product_ids:
+            rows = (
+                db.query(OpticalBatch.product_id, func.coalesce(func.sum(OpticalBatch.quantity), 0))
+                .filter(OpticalBatch.product_id.in_(product_ids), OpticalBatch.is_active == True)
+                .group_by(OpticalBatch.product_id)
+                .all()
+            )
+            optical_stock_map = {row[0]: int(row[1]) for row in rows}
 
-    for product in products:
-        current = optical_stock_map.get(product.id, 0)
-        reorder = product.reorder_level or 5
-        if current <= reorder:
-            low_stock.append({
-                "item_id": str(product.id),
-                "item_type": "optical_product",
-                "item_name": product.name,
-                "current_stock": current,
-                "reorder_level": reorder,
-                "purchase_price": float(product.purchase_price or 0),
-            })
+        for product in products:
+            current = optical_stock_map.get(product.id, 0)
+            reorder = product.reorder_level or 5
+            if current <= reorder:
+                low_stock.append({
+                    "item_id": str(product.id),
+                    "item_type": "optical_product",
+                    "item_name": product.name,
+                    "current_stock": current,
+                    "reorder_level": reorder,
+                    "purchase_price": float(product.purchase_price or 0),
+                })
+    except Exception as e:
+        logger.warning("Could not fetch optical low-stock items (schema may need migration): %s", e)
+        db.rollback()
 
     low_stock.sort(key=lambda x: (x["current_stock"], x["item_name"] or ""))
     return low_stock[:limit]
@@ -1437,7 +1440,7 @@ def get_stock_status_analytics(
         # Determine status
         if total_stock == 0:
             status = "critical"
-        elif total_stock < med.reorder_level:
+        elif med.reorder_level is not None and total_stock < med.reorder_level:
             status = "low"
         elif med.max_stock_level and total_stock > med.max_stock_level:
             status = "overstock"
@@ -1445,20 +1448,20 @@ def get_stock_status_analytics(
             status = "ok"
         
         # Get last restock date from latest GRN
-        last_grn = db.query(GoodsReceiptNote.received_date).filter(
+        last_grn = db.query(GoodsReceiptNote.receipt_date).filter(
             GoodsReceiptNote.hospital_id == hospital_id,
-            GoodsReceiptNote.status == "verified",
-        ).order_by(GoodsReceiptNote.received_date.desc()).first()
-        
+            GoodsReceiptNote.status == "accepted",
+        ).order_by(GoodsReceiptNote.receipt_date.desc()).first()
+
         results.append({
             "item_name": med.name,
             "item_id": str(med.id),
             "category": med.category or "General",
             "current_stock": total_stock,
-            "min_stock": med.reorder_level,
+            "min_stock": med.reorder_level or 0,
             "max_stock": med.max_stock_level or 0,
             "status": status,
-            "last_restock_date": str(last_grn.received_date) if last_grn and last_grn.received_date else None,
+            "last_restock_date": str(last_grn.receipt_date) if last_grn and last_grn.receipt_date else None,
         })
     
     return results

@@ -329,7 +329,7 @@ def list_pending_optical_prescriptions(
 ) -> dict:
     """Return finalized optical prescriptions with patient/doctor info, for the optical queue page."""
     from ..models.patient import Patient
-    from ..models.doctor import Doctor as DoctorModel
+    from ..models.appointment import Doctor as DoctorModel
     from ..models.user import User as UserModel
 
     # Base: only finalized prescriptions for this hospital

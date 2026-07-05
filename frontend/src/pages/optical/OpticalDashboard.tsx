@@ -6,7 +6,10 @@ import { useAuth } from '../../contexts/AuthContext';
 
 const OpticalDashboard: React.FC = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, hasRole } = useAuth();
+  // Optical staff / admins can sell, manage stock, and see the dispensing queue.
+  // Doctors can view products and prescriptions but not process sales.
+  const canManage = hasRole('super_admin', 'admin', 'optical_staff');
   const [stats, setStats] = useState<DashboardData | null>(null);
   const [outOfStockProducts, setOutOfStockProducts] = useState<OpticalProduct[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
@@ -15,22 +18,18 @@ const OpticalDashboard: React.FC = () => {
   useEffect(() => {
     const loadDashboard = async () => {
       setLoading(true);
-      try {
-        // Parallel: dashboard stats + pending prescription count
-        const [dashboard, pendingRes, productsRes] = await Promise.all([
-          opticalService.getDashboard(),
-          opticalService.getPendingPrescriptions(1, 1, 'pending'),
-          opticalService.getProducts(1, 100, '', '', true),
-        ]);
-        setStats(dashboard);
-        setPendingCount(pendingRes.total);
-        const outOfStock = productsRes.data.filter(p => (p.total_stock ?? 0) === 0);
+      const [dashboardRes, pendingRes, productsRes] = await Promise.allSettled([
+        opticalService.getDashboard(),
+        opticalService.getPendingPrescriptions(1, 1, 'pending'),
+        opticalService.getProducts(1, 100, '', '', true),
+      ]);
+      if (dashboardRes.status === 'fulfilled') setStats(dashboardRes.value);
+      if (pendingRes.status === 'fulfilled') setPendingCount(pendingRes.value.total);
+      if (productsRes.status === 'fulfilled') {
+        const outOfStock = productsRes.value.data.filter(p => (p.total_stock ?? 0) === 0);
         setOutOfStockProducts(outOfStock.slice(0, 10));
-      } catch (err) {
-        console.error('Failed to load optical dashboard:', err);
-      } finally {
-        setLoading(false);
       }
+      setLoading(false);
     };
 
     loadDashboard();
@@ -81,16 +80,18 @@ const OpticalDashboard: React.FC = () => {
             Welcome back, <span className="font-semibold text-slate-700">{user?.first_name} {user?.last_name}</span>
           </p>
         </div>
-        <div className="flex gap-2">
-          <button onClick={() => navigate('/optical/sales/new')}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 transition-colors">
-            <span className="material-symbols-outlined text-base">point_of_sale</span> New Sale
-          </button>
-          <button onClick={() => navigate('/optical/products/new')}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-primary bg-white border border-primary/30 rounded-lg hover:bg-primary/5 transition-colors">
-            <span className="material-symbols-outlined text-base">add</span> Add Product
-          </button>
-        </div>
+        {canManage && (
+          <div className="flex gap-2">
+            <button onClick={() => navigate('/optical/sales/new')}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 transition-colors">
+              <span className="material-symbols-outlined text-base">point_of_sale</span> New Sale
+            </button>
+            <button onClick={() => navigate('/optical/products/new')}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-primary bg-white border border-primary/30 rounded-lg hover:bg-primary/5 transition-colors">
+              <span className="material-symbols-outlined text-base">add</span> Add Product
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Stats Grid */}
@@ -140,8 +141,8 @@ const OpticalDashboard: React.FC = () => {
             {outOfStockProducts.map((product) => (
               <div
                 key={product.id}
-                onClick={() => navigate(`/optical/batches/new?product_id=${product.id}`)}
-                className="bg-white rounded-lg p-3 border border-red-200 cursor-pointer hover:shadow-md transition-all"
+                onClick={() => canManage ? navigate(`/optical/batches/new?product_id=${product.id}`) : undefined}
+                className={`bg-white rounded-lg p-3 border border-red-200 transition-all ${canManage ? 'cursor-pointer hover:shadow-md' : ''}`}
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
@@ -164,19 +165,19 @@ const OpticalDashboard: React.FC = () => {
       {/* Quick actions */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {[
-          {
+          canManage && {
             label: 'Prescription Queue',
             desc: pendingCount > 0 ? `${pendingCount} prescription${pendingCount > 1 ? 's' : ''} waiting for dispensing` : 'View finalized prescriptions awaiting dispensing',
             icon: 'queue',
             to: '/optical/prescriptions/pending',
             badge: pendingCount > 0 ? pendingCount : undefined,
           },
-          { label: 'Dispensing Queue', desc: 'Today\'s order status board', icon: 'view_list', to: '/optical/queue' },
+          canManage && { label: 'Dispensing Queue', desc: 'Today\'s order status board', icon: 'view_list', to: '/optical/queue' },
           { label: 'Products', desc: 'Browse & manage frames, lenses, accessories', icon: 'visibility', to: '/optical/products' },
           { label: 'Eye Prescriptions', desc: 'Record & review patient eye prescriptions', icon: 'description', to: '/optical/prescriptions' },
-          { label: 'New Sale', desc: 'Sell a frame, lens, or accessory', icon: 'point_of_sale', to: '/optical/sales/new' },
+          canManage && { label: 'New Sale', desc: 'Sell a frame, lens, or accessory', icon: 'point_of_sale', to: '/optical/sales/new' },
           { label: 'Sales History', desc: 'View past sales & invoices', icon: 'receipt_long', to: '/optical/sales' },
-        ].map((item) => (
+        ].filter(Boolean).map((item: any) => (
           <button key={item.label} onClick={() => navigate(item.to)}
             className="flex items-center gap-4 p-4 bg-white rounded-xl border border-slate-200 hover:shadow-md hover:border-primary/30 transition-all text-left overflow-hidden relative">
             <span className="material-symbols-outlined text-3xl text-primary shrink-0">{item.icon}</span>

@@ -189,10 +189,17 @@ async def register_walk_in(
                 detail="Doctor is on leave today and cannot accept walk-ins",
             )
 
-        # ── Check if ALL slots are full → auto-waitlist ──
+        # ── Check doctor has a schedule for today ──
         slots = get_available_slots(db, doctor_id, today)
-        has_available = any(s["available"] for s in slots) if slots else True  # no schedule = allow
-        if slots and not has_available:
+        if not slots:
+            raise HTTPException(
+                status_code=400,
+                detail="This doctor has no schedule configured for today. Walk-in booking is not possible.",
+            )
+
+        # ── Check if ALL slots are full → auto-waitlist ──
+        has_available = any(s["available"] for s in slots)
+        if not has_available:
             logger.info(
                 f"All slots full for doctor {doctor_id} on {today}. "
                 f"Auto-adding patient {patient_id} to waitlist."

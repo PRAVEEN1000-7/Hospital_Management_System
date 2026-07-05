@@ -1759,8 +1759,9 @@ const PrescriptionBuilder: React.FC = () => {
       {/* ── Refer to Doctor Modal ──────────────────────────────────── */}
       {showReferModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-6">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col max-h-[90vh]">
+            {/* Fixed header */}
+            <div className="flex items-center justify-between px-6 pt-6 pb-4 flex-shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center">
                   <span className="material-symbols-outlined text-orange-600">send</span>
@@ -1775,7 +1776,8 @@ const PrescriptionBuilder: React.FC = () => {
               </button>
             </div>
 
-            <div className="space-y-4">
+            {/* Scrollable content */}
+            <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-2 space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
                   Select Doctor / Specialist <span className="text-red-500">*</span>
@@ -1837,7 +1839,8 @@ const PrescriptionBuilder: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100">
+            {/* Fixed footer — always visible */}
+            <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-100 flex-shrink-0">
               <button onClick={closeReferModal}
                 className="px-4 py-2.5 text-sm font-medium text-slate-500 hover:bg-slate-100 rounded-lg transition-colors">
                 Cancel
@@ -1918,6 +1921,7 @@ const PrescriptionBuilder: React.FC = () => {
 
 // Sub-component: Patient prescription history sidebar
 const PatientRxHistory: React.FC<{ patientId: string }> = ({ patientId }) => {
+  const navigate = useNavigate();
   const [history, setHistory] = useState<any[]>([]);
 
   useEffect(() => {
@@ -1938,17 +1942,24 @@ const PatientRxHistory: React.FC<{ patientId: string }> = ({ patientId }) => {
       {history.length > 0 ? (
         <div className="space-y-2">
           {history.map(rx => (
-            <div key={rx.id} className="p-2 rounded-lg bg-slate-50 flex justify-between items-center">
-              <div>
-                <p className="text-xs font-medium">
+            <button
+              key={rx.id}
+              onClick={() => navigate(`/prescriptions/${rx.id}`)}
+              className="w-full p-2 rounded-lg bg-slate-50 hover:bg-primary/5 hover:border-primary/20 border border-transparent flex justify-between items-center transition-colors group text-left"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-medium text-slate-800">
                   {new Date(rx.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                 </p>
-                <p className="text-[10px] text-slate-400">{rx.diagnosis || 'No diagnosis'}</p>
+                <p className="text-[10px] text-slate-400 truncate">{rx.diagnosis || 'No diagnosis'}</p>
               </div>
-              <span className={`text-[10px] px-1.5 py-0.5 rounded ${statusColor[rx.status] || 'bg-slate-100 text-slate-600'}`}>
-                {rx.status}
-              </span>
-            </div>
+              <div className="flex items-center gap-1 shrink-0 ml-2">
+                <span className={`text-[10px] px-1.5 py-0.5 rounded ${statusColor[rx.status] || 'bg-slate-100 text-slate-600'}`}>
+                  {rx.status}
+                </span>
+                <span className="material-symbols-outlined text-xs text-slate-300 group-hover:text-primary transition-colors">chevron_right</span>
+              </div>
+            </button>
           ))}
         </div>
       ) : (

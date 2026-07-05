@@ -40,6 +40,7 @@ const WalkInRegistration: React.FC = () => {
 
   const [doctors, setDoctors] = useState<DoctorOption[]>([]);
   const [selectedDoctorId, setSelectedDoctorId] = useState<string>('');
+  const [doctorScheduleState, setDoctorScheduleState] = useState<'idle' | 'checking' | 'no_schedule' | 'all_full' | 'available'>('idle');
   const [urgencyLevel, setUrgencyLevel] = useState('normal');
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -65,6 +66,25 @@ const WalkInRegistration: React.FC = () => {
     setRegForm(f => ({ ...f, [field]: value }));
 
   useEffect(() => { scheduleService.getDoctors().then(setDoctors).catch(() => {}); }, []);
+
+  const handleDoctorChange = async (doctorId: string) => {
+    setSelectedDoctorId(doctorId);
+    if (!doctorId) { setDoctorScheduleState('idle'); return; }
+    setDoctorScheduleState('checking');
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const result = await scheduleService.getAvailableSlots(doctorId, today);
+      if (!result.slots || result.slots.length === 0) {
+        setDoctorScheduleState('no_schedule');
+      } else if (result.slots.every(s => !s.available)) {
+        setDoctorScheduleState('all_full');
+      } else {
+        setDoctorScheduleState('available');
+      }
+    } catch {
+      setDoctorScheduleState('idle');
+    }
+  };
 
   // Sync country code when country changes in reg form
   useEffect(() => {
@@ -127,6 +147,7 @@ const WalkInRegistration: React.FC = () => {
     setSelectedPatient(null);
     setPatientSearch('');
     setSelectedDoctorId('');
+    setDoctorScheduleState('idle');
     setUrgencyLevel('normal');
     setReason('');
     setSuccess(null);
@@ -418,12 +439,39 @@ const WalkInRegistration: React.FC = () => {
         <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm p-5 flex flex-col gap-4">
           {/* Doctor */}
           <div>
-            <label className="block text-xs font-bold text-slate-500 mb-1">Doctor </label>
-            <select value={selectedDoctorId} onChange={(e) => setSelectedDoctorId(e.target.value as any)}
-              className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none bg-white">
+            <label className="block text-xs font-bold text-slate-500 mb-1">Doctor</label>
+            <select
+              value={selectedDoctorId}
+              onChange={(e) => handleDoctorChange(e.target.value)}
+              className={`w-full px-3 py-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none bg-white ${doctorScheduleState === 'no_schedule' ? 'border-red-400' : 'border-slate-200'}`}
+            >
               <option value="">Choose Doctor</option>
               {doctors.map(d => <option key={d.doctor_id} value={d.doctor_id}>{d.name} — {d.specialization || 'General'}</option>)}
             </select>
+            {doctorScheduleState === 'checking' && (
+              <p className="mt-1.5 text-xs text-slate-400 flex items-center gap-1">
+                <span className="material-symbols-outlined text-sm animate-spin">progress_activity</span>
+                Checking schedule...
+              </p>
+            )}
+            {doctorScheduleState === 'no_schedule' && (
+              <div className="mt-2 flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                <span className="material-symbols-outlined text-red-500 text-base mt-0.5">event_busy</span>
+                <p className="text-xs text-red-700 font-medium">This doctor has no schedule for today. Please choose a different doctor or set up a schedule first.</p>
+              </div>
+            )}
+            {doctorScheduleState === 'all_full' && (
+              <div className="mt-2 flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                <span className="material-symbols-outlined text-amber-500 text-base mt-0.5">info</span>
+                <p className="text-xs text-amber-700 font-medium">All slots are full today — patient will be waitlisted automatically.</p>
+              </div>
+            )}
+            {doctorScheduleState === 'available' && (
+              <p className="mt-1.5 text-xs text-emerald-600 flex items-center gap-1">
+                <span className="material-symbols-outlined text-sm">check_circle</span>
+                Doctor has slots available today
+              </p>
+            )}
           </div>
 
           {/* Urgency */}
@@ -457,7 +505,7 @@ const WalkInRegistration: React.FC = () => {
           </div>
 
           {/* Submit */}
-          <button onClick={handleSubmit} disabled={!selectedPatient || submitting}
+          <button onClick={handleSubmit} disabled={!selectedPatient || submitting || doctorScheduleState === 'no_schedule' || doctorScheduleState === 'checking'}
             className="w-full py-2.5 bg-primary text-white rounded-lg text-sm font-bold disabled:opacity-40 hover:bg-primary/90 transition-colors shadow-sm flex items-center justify-center gap-2">
             <span className="material-symbols-outlined text-base">{submitting ? 'progress_activity' : 'how_to_reg'}</span>
             {submitting ? 'Registering...' : 'Register Walk-in'}

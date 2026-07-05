@@ -52,7 +52,7 @@ const Login: React.FC = () => {
           <img
             alt="Modern Hospital Corridor"
             className="w-full h-full object-cover opacity-40 mix-blend-overlay"
-            src="https://lh3.googleusercontent.com/aida-public/AB6AXuAY9XKOewOnGBuqSJLua1JF4J7T33NLnVXWK4nfzlXr7IUq_0Ks5kuB8j3G2h_BUFjfpUEXxhnyq17cBECdpPVGbO4VAiOf-Ez-dVZd0Sw-_77IFOtfXrY8oKxkiX-t4KIXxlew93ZkKqsFmrnoAviAXgwiIqec7BSykP3KYxHpTi_kifipp2l8yQQmdk_Tts1Cyvx__cudqG9yME34Y0GmlKbSglNjnbeZ-N80iHZC0z4_VRt0tUB2tqQTLRZPCFaka5V3PdAQyj4"
+            src="/Login_Bg.png"
           />
         </div>
         <div className="relative z-10 p-12 lg:p-24 text-white max-w-2xl">

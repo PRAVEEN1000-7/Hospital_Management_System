@@ -363,6 +363,22 @@ const DispensingScreen: React.FC = () => {
       return;
     }
 
+    // Any open line left with 0 quantity and not explicitly skipped is silently
+    // dropped from the request below (neither dispensed nor recorded as skipped),
+    // which leaves that line — and therefore the whole prescription — stuck on
+    // "pending" forever with no indication why. Block submission until every
+    // open line is resolved one way or the other.
+    const unresolvedItems = dispensingItems.filter(
+      (item) => !item.is_dispensed && item.remainingQty > 0 && !item.skip && item.dispensedQty <= 0
+    );
+    if (unresolvedItems.length > 0) {
+      showToast(
+        'error',
+        `Enter a quantity or mark as skipped for: ${unresolvedItems.map((i) => i.medicine_name).join(', ')}`
+      );
+      return;
+    }
+
     if (!prescription) return;
 
     setSaving(true);

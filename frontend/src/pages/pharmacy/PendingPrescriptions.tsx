@@ -111,7 +111,7 @@ const PendingPrescriptions: React.FC = () => {
             <h1 className="text-2xl font-bold text-slate-900">Prescription Queue</h1>
             {total > 0 && (
               <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-700">
-                {total} pending
+                {total} {statusFilter === 'dispensed' ? 'dispensed' : statusFilter === 'pending' ? 'pending' : 'total'}
               </span>
             )}
           </div>

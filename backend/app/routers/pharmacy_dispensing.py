@@ -50,7 +50,7 @@ async def get_pending_prescriptions(
     **Status filters:**
     - `pending` → Finalized, not started dispensing
     - `dispensed` → Fully dispensed (complete)
-    - (none) → Shows pending (active work queue)
+    - (none) → Shows all (both pending and dispensed)
     """
     try:
         result = svc.get_pending_prescriptions(

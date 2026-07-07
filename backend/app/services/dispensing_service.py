@@ -203,17 +203,15 @@ def get_pending_prescriptions(
         Prescription.is_deleted == False,
     )
     
-    # Filter by status
-    if status_filter:
-        if status_filter == 'pending':
-            query = query.filter(Prescription.status == 'finalized')
-        elif status_filter == 'dispensed':
-            query = query.filter(Prescription.status == 'dispensed')
-        else:
-            query = query.filter(Prescription.status == 'finalized')
-    else:
-        # Default: show active work queue (pending).
+    # Filter by status. No filter (the "All Status" choice) intentionally
+    # shows BOTH pending and dispensed — it previously fell through to the
+    # same 'finalized'-only filter as 'pending', so a prescription you just
+    # finished dispensing would silently vanish from the default view
+    # instead of showing up here with its "Dispensed" status.
+    if status_filter == 'pending':
         query = query.filter(Prescription.status == 'finalized')
+    elif status_filter == 'dispensed':
+        query = query.filter(Prescription.status == 'dispensed')
     
     # Filter by doctor
     if doctor_id:
@@ -830,14 +828,26 @@ def get_dispensing_details(
     
     # Get patient info
     patient = db.query(Patient).filter(Patient.id == dispensing.patient_id).first()
-    
+
+    # PharmacySale has no prescription_id column — a prescription-linked
+    # dispensing is only traceable via its items' prescription_item_id (all
+    # items in one dispensing batch always originate from the same prescription).
+    prescription_id = None
+    if dispensing.sale_type == "prescription":
+        from ..models.prescription import PrescriptionItem as _RxItem
+        linked_item = next((it for it in items if it.prescription_item_id), None)
+        if linked_item:
+            rx_item = db.query(_RxItem).filter(_RxItem.id == linked_item.prescription_item_id).first()
+            if rx_item:
+                prescription_id = rx_item.prescription_id
+
     # Check consultation fee status for prescription-linked dispensings
     consultation_fee_collected = True  # default: no gate for walk-in/OTC
-    if dispensing.prescription_id:
+    if prescription_id:
         from .invoice_service import get_or_create_consultation_invoice_for_appointment
         from ..models.prescription import Prescription as _Rx
         from ..models.invoice import Invoice as _Inv
-        linked_rx = db.query(_Rx).filter(_Rx.id == dispensing.prescription_id).first()
+        linked_rx = db.query(_Rx).filter(_Rx.id == prescription_id).first()
         if linked_rx and linked_rx.appointment_id:
             consult_inv = (
                 db.query(_Inv)
@@ -861,7 +871,7 @@ def get_dispensing_details(
         "patient_id": str(dispensing.patient_id) if dispensing.patient_id else None,
         "patient_name": patient.full_name if patient else None,
         "patient_reference_number": patient.patient_reference_number if patient else None,
-        "prescription_id": str(dispensing.prescription_id) if dispensing.prescription_id else None,
+        "prescription_id": str(prescription_id) if prescription_id else None,
         "consultation_fee_collected": consultation_fee_collected,
         "sale_type": dispensing.sale_type,
         "status": dispensing.status,

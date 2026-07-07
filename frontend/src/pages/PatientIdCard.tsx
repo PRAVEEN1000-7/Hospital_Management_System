@@ -6,6 +6,7 @@ import { jsPDF } from 'jspdf';
 import { QRCodeSVG } from 'qrcode.react';
 import patientService from '../services/patientService';
 import hospitalService from '../services/hospitalService';
+import userService from '../services/userService';
 import type { HospitalDetails } from '../services/hospitalService';
 import type { Patient } from '../types/patient';
 import { useToast } from '../contexts/ToastContext';
@@ -41,6 +42,7 @@ const PatientIdCard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [photoFailed, setPhotoFailed] = useState(false);
+  const [logoFailed, setLogoFailed] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -64,6 +66,10 @@ const PatientIdCard: React.FC = () => {
   useEffect(() => {
     setPhotoFailed(false);
   }, [patient?.photo_url]);
+
+  useEffect(() => {
+    setLogoFailed(false);
+  }, [hospital?.logo_url]);
 
   const generatePDF = async (): Promise<jsPDF | null> => {
     if (!frontRef.current || !backRef.current) return null;
@@ -150,6 +156,7 @@ const PatientIdCard: React.FC = () => {
 
   const age = differenceInYears(new Date(), new Date(patient.date_of_birth));
   const photoUrl = patientService.getPhotoUrl(patient.photo_url);
+  const logoUrl = userService.getPhotoUrl(hospital.logo_url);
   const parsed = parsePatientId(patient.patient_reference_number);
 
   // QR data: compact patient identification string
@@ -235,7 +242,7 @@ const PatientIdCard: React.FC = () => {
             </div>
 
             {/* PRN Bar */}
-            <div style={{ background: '#0b5ed7', padding: '5px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ background: '#0b5ed7', padding: '5px 18px', display: 'flex', justifyContent: 'flex-end', alignItems: 'baseline', gap: 8 }}>
               <span style={{ color: '#a3cdff', fontSize: 9, letterSpacing: 1, fontWeight: 600, textTransform: 'uppercase' }}>PRN</span>
               <span style={{ color: '#ffffff', fontSize: 14, fontWeight: 'bold', letterSpacing: 2.5, fontFamily: 'Consolas, monospace' }}>{patient.patient_reference_number}</span>
             </div>
@@ -317,13 +324,31 @@ const PatientIdCard: React.FC = () => {
             </div>
 
             {/* Details */}
-            <div style={{ padding: '14px 18px', flex: 1, fontSize: 12, color: '#475569', display: 'flex', flexDirection: 'column', gap: 5 }}>
-              <div style={{ lineHeight: 1.4 }}><strong style={{ color: '#334155' }}>Address:</strong> {hospital.address_line_1}{hospital.address_line_2 ? `, ${hospital.address_line_2}` : ''}</div>
-              <div><strong style={{ color: '#334155' }}>City/State:</strong> {hospital.city}, {hospital.state_province}</div>
-              <div><strong style={{ color: '#334155' }}>Country:</strong> {hospital.country} — {hospital.postal_code}</div>
-              <div><strong style={{ color: '#334155' }}>Phone:</strong> {hospital.phone}</div>
-              <div><strong style={{ color: '#334155' }}>Email:</strong> {hospital.email}</div>
-              {hospital.website && <div><strong style={{ color: '#334155' }}>Website:</strong> {hospital.website}</div>}
+            <div style={{ padding: '14px 18px', flex: 1, display: 'flex', gap: 14, alignItems: 'center' }}>
+              <div style={{ flex: 1, fontSize: 12, color: '#475569', display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
+                <div style={{ lineHeight: 1.4 }}><strong style={{ color: '#334155' }}>Address:</strong> {hospital.address_line_1}{hospital.address_line_2 ? `, ${hospital.address_line_2}` : ''}</div>
+                <div><strong style={{ color: '#334155' }}>City/State:</strong> {hospital.city}, {hospital.state_province}</div>
+                <div><strong style={{ color: '#334155' }}>Country:</strong> {hospital.country} — {hospital.postal_code}</div>
+                <div><strong style={{ color: '#334155' }}>Phone:</strong> {hospital.phone}</div>
+                <div><strong style={{ color: '#334155' }}>Email:</strong> {hospital.email}</div>
+                {hospital.website && <div><strong style={{ color: '#334155' }}>Website:</strong> {hospital.website}</div>}
+              </div>
+
+              {/* Hospital Logo — fills the empty space beside the contact details */}
+              <div style={{ flexShrink: 0, width: 76, height: 76, borderRadius: '50%', background: '#f1f5f9', border: '1.5px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                {logoUrl && !logoFailed ? (
+                  <img
+                    src={logoUrl}
+                    alt=""
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    onError={() => setLogoFailed(true)}
+                  />
+                ) : (
+                  <span style={{ fontSize: 22, fontWeight: 'bold', color: '#94a3b8' }}>
+                    {hospital.name.trim().split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase()}
+                  </span>
+                )}
+              </div>
             </div>
 
             {/* ID Format Reference */}

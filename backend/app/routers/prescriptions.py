@@ -718,7 +718,7 @@ async def create_new_medicine(
 @medicines_router.get("", response_model=PaginatedMedicineResponse)
 async def list_all_medicines(
     page: int = Query(1, ge=1),
-    limit: int = Query(10, ge=1, le=100),
+    limit: int = Query(10, ge=1, le=1000),
     search: Optional[str] = None,
     category: Optional[str] = None,
     db: Session = Depends(get_db),

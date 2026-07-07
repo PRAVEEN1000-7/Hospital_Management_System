@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
@@ -9,6 +9,7 @@ import { patientService } from '../services/patientService';
 import hospitalService from '../services/hospitalService';
 import type { HospitalDetails } from '../services/hospitalService';
 import HospitalLogo from '../components/common/HospitalLogo';
+import { htmlStringToPdf } from '../utils/pdf';
 import type { Patient } from '../types/patient';
 import type { Invoice, PaymentListItem, PaymentMode, InvoiceStatus, RefundReasonCode, RefundListItem } from '../types/billing';
 
@@ -86,8 +87,6 @@ const InvoiceDetail: React.FC = () => {
   const [refundReasonCode, setRefundReasonCode] = useState<string>('billing_error');
   const [refundReasonDetail, setRefundReasonDetail] = useState('');
   const [refundSaving, setRefundSaving] = useState(false);
-
-  const printRef = useRef<HTMLDivElement>(null);
 
   const role = user?.roles?.[0];
   const canMutate = ['super_admin', 'admin', 'cashier', 'pharmacist', 'receptionist'].includes(role || '');
@@ -250,8 +249,35 @@ const InvoiceDetail: React.FC = () => {
     }
   };
 
-  const handlePrint = () => {
-    window.print();
+  const [downloading, setDownloading] = useState(false);
+
+  const handlePrint = async () => {
+    if (!id) return;
+    try {
+      const html = await invoiceService.getInvoicePdfHtml(id);
+      const win = window.open('', '_blank');
+      if (win) {
+        win.document.write(html);
+        win.document.close();
+        setTimeout(() => win.print(), 500);
+      }
+    } catch {
+      showToast('error', 'Failed to generate print view');
+    }
+  };
+
+  const handleDownload = async () => {
+    if (!id || downloading) return;
+    setDownloading(true);
+    try {
+      const html = await invoiceService.getInvoicePdfHtml(id);
+      await htmlStringToPdf(html, `Invoice_${invoice?.invoice_number || id}.pdf`);
+      showToast('success', 'Invoice downloaded');
+    } catch {
+      showToast('error', 'Failed to download invoice');
+    } finally {
+      setDownloading(false);
+    }
   };
 
   if (loading) {
@@ -310,6 +336,14 @@ const InvoiceDetail: React.FC = () => {
               <span className="material-symbols-outlined text-[16px]">print</span>
               Print
             </button>
+            <button
+              onClick={handleDownload}
+              disabled={downloading}
+              className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+            >
+              <span className="material-symbols-outlined text-[16px]">download</span>
+              {downloading ? 'Preparing…' : 'Download PDF'}
+            </button>
             {canMutate && invoice.status === 'draft' && (
               <button
                 onClick={handleIssue}
@@ -358,8 +392,9 @@ const InvoiceDetail: React.FC = () => {
           </div>
         </div>
 
-        {/* ── Printable Invoice Area ── */}
-        <div id="invoice-print-area" ref={printRef}>
+        {/* ── On-screen invoice summary (Print/Download now use the backend-rendered
+             HTML via handlePrint/handleDownload for consistent formatting) ── */}
+        <div id="invoice-print-area">
 
           {/* Invoice Header */}
           <div className="bg-white rounded-xl border border-slate-200 p-6 mb-4">

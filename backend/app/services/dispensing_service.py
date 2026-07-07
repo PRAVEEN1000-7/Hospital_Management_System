@@ -901,6 +901,45 @@ def get_dispensing_details(
     return result
 
 
+def mark_dispensing_paid(
+    db: Session,
+    dispensing_id: str | uuid.UUID,
+    hospital_id: uuid.UUID,
+    amount_paid: Decimal,
+    payment_method: Optional[str] = None,
+) -> Optional[PharmacySale]:
+    """Record that a dispensing bill's invoice has been paid.
+
+    PharmacySale.payment_status defaults to "pending" and nothing else ever
+    updates it — DispensingBilling.tsx creates a separate Invoice/Payment pair
+    to actually collect money (Invoice has no FK back to PharmacySale; see the
+    "invoice_id removed" comment on the model), so the Sales list kept showing
+    every prescription-driven sale as pending forever, even after payment was
+    successfully collected and printed. This is called right after that
+    payment is recorded so the two stay in sync.
+    """
+    if isinstance(dispensing_id, str):
+        dispensing_id = uuid.UUID(dispensing_id)
+
+    sale = db.query(PharmacySale).filter(
+        PharmacySale.id == dispensing_id,
+        PharmacySale.hospital_id == hospital_id,
+    ).first()
+    if not sale:
+        return None
+
+    total = sale.total_amount or Decimal("0")
+    sale.paid_amount = amount_paid
+    sale.balance_amount = max(Decimal("0"), total - amount_paid)
+    sale.payment_status = "paid" if amount_paid >= total else "partially_paid"
+    if payment_method:
+        sale.payment_method = payment_method
+
+    db.commit()
+    db.refresh(sale)
+    return sale
+
+
 def _generate_dispensing_number(db: Session, hospital_id: uuid.UUID) -> str:
     """Generate unique dispensing number: DISP-YYYYMMDD-XXXXXX."""
     from datetime import date

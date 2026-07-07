@@ -23,6 +23,14 @@ const inventoryService = {
     const res = await api.get<ExpiringItem[]>('/inventory/expiring', { params: { days } });
     return res.data;
   },
+  /** Live current stock for one item — fetched fresh from batch quantities,
+   * not the possibly-stale medicine/optical list snapshot. */
+  async getStockLevel(itemType: 'medicine' | 'optical_product', itemId: string): Promise<number> {
+    const res = await api.get<{ current_stock: number }>('/inventory/stock-level', {
+      params: { item_type: itemType, item_id: itemId },
+    });
+    return res.data.current_stock;
+  },
 
   // ── Suppliers ──────────────────────────────────────────────────────────
   async getSuppliers(page = 1, limit = 10, search = '', is_active?: boolean): Promise<PaginatedResponse<Supplier>> {
@@ -100,6 +108,14 @@ const inventoryService = {
   async updateGRN(id: string, data: { status?: string; notes?: string }): Promise<GoodsReceiptNote> {
     const res = await api.put<GoodsReceiptNote>(`/inventory/grns/${id}`, data);
     return res.data;
+  },
+  /** Correct batch_number/manufactured_date/expiry_date on a received line item.
+   * Backend only allows this while the GRN is still "pending". */
+  async updateGRNItemBatch(
+    grnId: string, itemId: string,
+    data: { batch_number?: string; manufactured_date?: string; expiry_date?: string },
+  ): Promise<void> {
+    await api.put(`/inventory/grns/${grnId}/items/${itemId}`, data);
   },
 
   // ── Stock Movements ────────────────────────────────────────────────────

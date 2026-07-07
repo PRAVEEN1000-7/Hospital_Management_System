@@ -770,38 +770,27 @@ const InvoiceCreate: React.FC = () => {
                       {getAllowedItemTypes().map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                     </select>
                   </div>
-                  {/* Qty (col 7) */}
+                  {/* Qty (col 7) — with stock warning for medicine */}
                   <div className="col-span-3 sm:col-span-1">
-                    <label className="block text-[10px] font-medium text-slate-500 mb-1">Qty</label>
+                    <label className="block text-[10px] font-medium text-slate-500 mb-1">
+                      Qty
+                      {line.item_type === 'medicine' && validateMedicineQuantity(line) && (
+                        <span className="ml-1 text-orange-500 font-bold">⚠</span>
+                      )}
+                    </label>
                     <input
                       type="number"
                       min={0.01} step="0.01"
-                    value={line.quantity || ''}
+                      value={line.quantity || ''}
                       onChange={e => updateLine(idx, { quantity: parseFloat(e.target.value) || 0 })}
-                      className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-primary/30 bg-white text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                      className={`w-full px-2 py-1.5 border rounded text-xs focus:outline-none focus:ring-1 bg-white text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${
+                        validateMedicineQuantity(line) ? 'border-orange-300 focus:ring-orange-500/30' : 'border-slate-200 focus:ring-primary/30'
+                      }`}
                     />
+                    {validateMedicineQuantity(line) && (
+                      <p className="text-[9px] text-orange-600 mt-0.5">{validateMedicineQuantity(line)}</p>
+                    )}
                   </div>
-                    {/* Qty (col 7) — with stock warning for medicine */}
-                    <div className="col-span-3 sm:col-span-1">
-                      <label className="block text-[10px] font-medium text-slate-500 mb-1">
-                        Qty
-                        {line.item_type === 'medicine' && validateMedicineQuantity(line) && (
-                          <span className="ml-1 text-orange-500 font-bold">⚠</span>
-                        )}
-                      </label>
-                      <input
-                        type="number"
-                        min={0.01} step="0.01"
-                        value={line.quantity || ''}
-                        onChange={e => updateLine(idx, { quantity: parseFloat(e.target.value) || 0 })}
-                        className={`w-full px-2 py-1.5 border rounded text-xs focus:outline-none focus:ring-1 bg-white text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${
-                          validateMedicineQuantity(line) ? 'border-orange-300 focus:ring-orange-500/30' : 'border-slate-200 focus:ring-primary/30'
-                        }`}
-                      />
-                      {validateMedicineQuantity(line) && (
-                        <p className="text-[9px] text-orange-600 mt-0.5">{validateMedicineQuantity(line)}</p>
-                      )}
-                    </div>
                   {/* Unit Price (col 8) */}
                   <div className="col-span-3 sm:col-span-1">
                     <label className="block text-[10px] font-medium text-slate-500 mb-1">

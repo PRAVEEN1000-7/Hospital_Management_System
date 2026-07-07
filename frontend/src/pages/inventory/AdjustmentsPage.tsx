@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useToast } from '../../contexts/ToastContext';
 import inventoryService from '../../services/inventoryService';
+import pharmacyService from '../../services/pharmacyService';
+import opticalService from '../../services/opticalService';
+import SearchableSelect, { type SuggestionOption } from '../../components/common/SearchableSelect';
 import type { StockAdjustment, StockAdjustmentCreate } from '../../types/inventory';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -14,6 +17,15 @@ const TYPE_LABELS: Record<string, string> = {
   decrease: 'Decrease',
   write_off: 'Write Off',
 };
+
+interface CatalogItem {
+  id: string;
+  name: string;
+  strength?: string | null;
+  generic_name?: string | null;
+  brand?: string | null;
+  total_stock?: number | null;
+}
 
 const AdjustmentsPage: React.FC = () => {
   const toast = useToast();
@@ -34,6 +46,24 @@ const AdjustmentsPage: React.FC = () => {
     reason: '',
   });
   const [itemLabel, setItemLabel] = useState('');
+  const [currentStock, setCurrentStock] = useState<number | null>(null);
+  const [medicines, setMedicines] = useState<CatalogItem[]>([]);
+  const [opticalProducts, setOpticalProducts] = useState<CatalogItem[]>([]);
+
+  useEffect(() => {
+    pharmacyService.getMedicines(1, 500).then(r => setMedicines(r.data)).catch(() => {});
+    opticalService.getProducts(1, 500).then(r => setOpticalProducts(r.data)).catch(() => {});
+  }, []);
+
+  // Adjustments must reference a real catalog item — unlike POs/GRNs there's no
+  // sensible "auto-create" for stock you're correcting, so the picker only offers
+  // existing medicines/optical products (no free-text/manual-entry option).
+  const itemSuggestions: SuggestionOption[] = (formData.item_type === 'medicine' ? medicines : opticalProducts).map(item => ({
+    id: item.id,
+    label: item.strength !== undefined ? `${item.name}${item.strength ? ` (${item.strength})` : ''}` : item.name,
+    sublabel: item.generic_name || item.brand || undefined,
+    metadata: { id: item.id, name: item.name, stock: item.total_stock ?? 0 },
+  }));
 
   const fetchAdjustments = useCallback(async () => {
     setLoading(true);
@@ -55,18 +85,49 @@ const AdjustmentsPage: React.FC = () => {
   const resetForm = () => {
     setFormData({ item_type: 'medicine', item_id: '', adjustment_type: 'increase', quantity: 0, reason: '' });
     setItemLabel('');
+    setCurrentStock(null);
     setShowModal(false);
   };
 
+  const [loadingStock, setLoadingStock] = useState(false);
+
+  const handleItemSelect = async (value: string, metadata?: Record<string, unknown>) => {
+    setItemLabel(value);
+    if (!metadata || !metadata.id) {
+      // Typed text that doesn't match a suggestion — no real item_id exists for it.
+      setFormData(prev => ({ ...prev, item_id: '' }));
+      setCurrentStock(null);
+      return;
+    }
+
+    const itemId = metadata.id as string;
+    const itemType = formData.item_type as 'medicine' | 'optical_product';
+    setFormData(prev => ({ ...prev, item_id: itemId }));
+    // Show the list snapshot immediately, then replace it with a live DB read —
+    // this number directly informs how much to increase/decrease/write off, so
+    // it must reflect stock right now, not whatever it was when the page loaded.
+    setCurrentStock(typeof metadata.stock === 'number' ? metadata.stock : null);
+
+    setLoadingStock(true);
+    try {
+      const liveStock = await inventoryService.getStockLevel(itemType, itemId);
+      setCurrentStock(liveStock);
+    } catch {
+      // Keep the snapshot value if the live lookup fails.
+    } finally {
+      setLoadingStock(false);
+    }
+  };
+
   const handleCreate = async () => {
-    if (!itemLabel || formData.quantity <= 0 || !formData.reason) {
+    if (!formData.item_id) {
+      toast.error('Please select an item from the list'); return;
+    }
+    if (formData.quantity <= 0 || !formData.reason) {
       toast.error('Please fill in all required fields'); return;
     }
     try {
-      await inventoryService.createAdjustment({
-        ...formData,
-        item_id: formData.item_id || crypto.randomUUID(),
-      });
+      await inventoryService.createAdjustment(formData);
       toast.success('Adjustment created');
       resetForm();
       fetchAdjustments();
@@ -97,6 +158,14 @@ const AdjustmentsPage: React.FC = () => {
           New Adjustment
         </button>
       </header>
+
+      {/* Workflow hint */}
+      <div className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 flex items-center gap-2 flex-wrap text-xs text-slate-500">
+        <span className="font-semibold text-slate-600">How it works:</span>
+        <span>Raise an adjustment for a stock correction →</span>
+        <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">Pending</span>
+        <span>→ an admin/manager Approves (updates real stock) or Rejects it.</span>
+      </div>
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
         {/* Filters */}
@@ -154,15 +223,21 @@ const AdjustmentsPage: React.FC = () => {
                       </span>
                     </td>
                     <td className="px-4 py-4 text-right">
-                      {adj.status === 'pending' && (
-                        <div className="flex items-center justify-end gap-1">
-                          <button onClick={() => handleApprove(adj.id, true)} className="p-1.5 hover:bg-emerald-50 rounded-lg transition-colors" title="Approve">
-                            <span className="material-symbols-outlined text-lg text-emerald-500">check_circle</span>
+                      {adj.status === 'pending' ? (
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button onClick={() => handleApprove(adj.id, true)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors"
+                            title="Approve — applies this change to real stock">
+                            <span className="material-symbols-outlined text-[15px]">check_circle</span> Approve
                           </button>
-                          <button onClick={() => handleApprove(adj.id, false)} className="p-1.5 hover:bg-red-50 rounded-lg transition-colors" title="Reject">
-                            <span className="material-symbols-outlined text-lg text-red-400">cancel</span>
+                          <button onClick={() => handleApprove(adj.id, false)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
+                            title="Reject — stock will not be changed">
+                            <span className="material-symbols-outlined text-[15px]">cancel</span> Reject
                           </button>
                         </div>
+                      ) : (
+                        <span className="text-xs text-slate-400 italic">No action needed</span>
                       )}
                     </td>
                   </tr>
@@ -198,7 +273,14 @@ const AdjustmentsPage: React.FC = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-500 mb-1.5">Item Type *</label>
-                  <select value={formData.item_type} onChange={e => setFormData({ ...formData, item_type: e.target.value as 'medicine' | 'optical_product' })}
+                  <select
+                    value={formData.item_type}
+                    onChange={e => {
+                      const item_type = e.target.value as 'medicine' | 'optical_product';
+                      setFormData(prev => ({ ...prev, item_type, item_id: '' }));
+                      setItemLabel('');
+                      setCurrentStock(null);
+                    }}
                     className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm bg-slate-50 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none">
                     <option value="medicine">Medicine</option>
                     <option value="optical_product">Optical Product</option>
@@ -215,9 +297,20 @@ const AdjustmentsPage: React.FC = () => {
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1.5">Item Name *</label>
-                <input type="text" value={itemLabel} onChange={e => { setItemLabel(e.target.value); setFormData({ ...formData, item_id: e.target.value }); }}
-                  className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm bg-slate-50 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" placeholder="Enter item name" />
+                <label className="block text-xs font-semibold text-slate-500 mb-1.5">Item *</label>
+                <SearchableSelect
+                  value={itemLabel}
+                  onChange={handleItemSelect}
+                  suggestions={itemSuggestions}
+                  placeholder={formData.item_type === 'medicine' ? 'Search medicine...' : 'Search optical product...'}
+                  allowManualEntry={false}
+                />
+                {currentStock !== null && (
+                  <p className="text-xs text-slate-400 mt-1">
+                    Current stock: <span className="font-semibold text-slate-600">{currentStock}</span>
+                    {loadingStock && <span className="text-primary ml-1">(checking stock…)</span>}
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-500 mb-1.5">Quantity *</label>

@@ -42,6 +42,21 @@ class InvoiceItemCreate(BaseModel):
             raise ValueError(f"item_type must be one of: {', '.join(VALID_ITEM_TYPES)}")
         return v
 
+    @field_validator("quantity", "unit_price", mode="before")
+    @classmethod
+    def round_to_two_decimals(cls, v):
+        # decimal_places=2 below REJECTS (doesn't round) anything more precise —
+        # a freely-typed price/quantity for consultation/service/procedure/registration
+        # lines (unlike medicine lines, which source Numeric(12,2) DB values) can easily
+        # carry a stray extra digit from manual entry or float arithmetic, causing the
+        # whole invoice creation to fail with a generic 422 the UI can't explain.
+        if v is None:
+            return v
+        try:
+            return round(Decimal(str(v)), 2)
+        except Exception:
+            return v
+
 
 class InvoiceItemResponse(BaseModel):
     id: str

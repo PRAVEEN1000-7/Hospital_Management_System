@@ -16,7 +16,7 @@ from ..models.user import User
 from ..schemas.inventory import (
     SupplierCreate, SupplierUpdate, SupplierResponse,
     PurchaseOrderCreate, PurchaseOrderUpdate, PurchaseOrderResponse,
-    GRNCreate, GRNUpdate, GRNResponse,
+    GRNCreate, GRNUpdate, GRNResponse, GRNItemBatchUpdate, GRNItemResponse,
     StockMovementResponse,
     StockAdjustmentCreate, StockAdjustmentUpdate, StockAdjustmentResponse,
     CycleCountCreate, CycleCountUpdate, CycleCountResponse,
@@ -74,6 +74,27 @@ async def expiring_items(
 ):
     """Items expiring within the given number of days."""
     return svc.get_expiring_items(db, current_user.hospital_id, days=days)
+
+
+@router.get("/stock-level")
+async def stock_level(
+    item_type: str = Query(..., pattern=r"^(medicine|optical_product)$"),
+    item_id: uuid.UUID = Query(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(inventory_view_roles),
+):
+    """Live current stock for one item, fetched fresh from batch quantities.
+
+    Used by Cycle Counts / Adjustments to populate "System Qty" / "Current
+    stock" at the moment an item is selected — the medicine/optical product
+    lists these pages preload on mount are a one-time snapshot and go stale
+    the instant any sale, dispensing, or other GRN/adjustment changes stock.
+    """
+    return {
+        "item_type": item_type,
+        "item_id": str(item_id),
+        "current_stock": svc.get_stock_level(db, current_user.hospital_id, item_type, item_id),
+    }
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -361,6 +382,43 @@ async def update_grn(
         raise HTTPException(status_code=404, detail="GRN not found")
     full_grn = svc.get_grn(db, grn.id)
     return svc._format_grn_response(full_grn, db)
+
+
+@grn_router.put("/{grn_id}/items/{item_id}", response_model=GRNItemResponse)
+async def update_grn_item_batch(
+    grn_id: uuid.UUID,
+    item_id: uuid.UUID,
+    payload: GRNItemBatchUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(grn_verify_roles),
+):
+    """Correct batch_number/manufactured_date/expiry_date on a received line item.
+
+    Only permitted while the GRN is still 'pending' — see update_grn_item_batch
+    in inventory_service.py for why this is locked once verified/accepted.
+    """
+    existing = svc.get_grn(db, grn_id)
+    if not existing or str(existing.hospital_id) != str(current_user.hospital_id):
+        raise HTTPException(status_code=404, detail="GRN not found")
+    try:
+        item = svc.update_grn_item_batch(db, grn_id, item_id, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return GRNItemResponse(
+        id=str(item.id),
+        item_type=item.item_type,
+        item_id=str(item.item_id),
+        item_name=svc._resolve_item_name_with_fallback(db, item.item_type, item.item_id, existing.hospital_id, float(item.unit_price)),
+        batch_number=item.batch_number,
+        manufactured_date=item.manufactured_date,
+        expiry_date=item.expiry_date,
+        quantity_received=item.quantity_received,
+        quantity_accepted=item.quantity_accepted,
+        quantity_rejected=item.quantity_rejected or 0,
+        unit_price=float(item.unit_price),
+        total_price=float(item.total_price),
+        rejection_reason=item.rejection_reason,
+    )
 
 
 # ═════════════════════════════════════════════════════════════════════════════

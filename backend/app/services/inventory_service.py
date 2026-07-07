@@ -24,7 +24,7 @@ from .notification_service import notify_hospital_users as _notify_hospital_user
 from ..schemas.inventory import (
     SupplierCreate, SupplierUpdate,
     PurchaseOrderCreate, PurchaseOrderUpdate,
-    GRNCreate, GRNUpdate,
+    GRNCreate, GRNUpdate, GRNItemBatchUpdate,
     StockAdjustmentCreate, StockAdjustmentUpdate,
     CycleCountCreate, CycleCountUpdate,
 )
@@ -270,6 +270,102 @@ def _apply_medicine_batch_delta(
         MedicineBatch.is_active == True,
         MedicineBatch.quantity > 0,
     ).order_by(MedicineBatch.expiry_date.asc(), MedicineBatch.created_at.asc()).all()
+
+    available = sum(int(b.quantity or 0) for b in batches)
+    if available < remaining:
+        raise ValueError("Insufficient stock across batches for adjustment")
+
+    for b in batches:
+        if remaining <= 0:
+            break
+        take = min(int(b.quantity or 0), remaining)
+        b.quantity = int(b.quantity or 0) - take
+        remaining -= take
+
+    return None
+
+
+def _get_optical_batch_stock(db: Session, product_id: uuid.UUID) -> int:
+    """Single source of truth for optical product stock: sum of active batch quantities.
+
+    Mirrors _get_medicine_batch_stock — kept as the ground truth so
+    get_stock_level(), adjustments, and cycle counts never drift from what
+    optical sales actually deduct from (OpticalBatch.quantity).
+    """
+    total = db.query(func.coalesce(func.sum(OpticalBatch.quantity), 0)).filter(
+        OpticalBatch.product_id == product_id,
+        OpticalBatch.is_active == True,
+    ).scalar() or 0
+    return int(total)
+
+
+def _apply_optical_batch_delta(
+    db: Session,
+    product_id: uuid.UUID,
+    delta: int,
+    batch_id: Optional[uuid.UUID] = None,
+) -> Optional[uuid.UUID]:
+    """Apply stock delta to optical batches and return affected batch id when deterministic.
+
+    Mirrors _apply_medicine_batch_delta. Without this, stock adjustments and cycle
+    count reconciliation only wrote a StockMovement row and never touched
+    OpticalBatch.quantity — the real, sellable stock was left completely unchanged.
+    """
+    if delta == 0:
+        return batch_id
+
+    if batch_id:
+        batch = db.query(OpticalBatch).filter(
+            OpticalBatch.id == batch_id,
+            OpticalBatch.product_id == product_id,
+            OpticalBatch.is_active == True,
+        ).first()
+        if not batch:
+            raise ValueError("Specified batch not found for optical product")
+
+        new_qty = (batch.quantity or 0) + delta
+        if new_qty < 0:
+            raise ValueError("Adjustment would result in negative batch stock")
+
+        if delta > 0:
+            batch.initial_quantity = (batch.initial_quantity or 0) + delta
+        batch.quantity = new_qty
+        return batch.id
+
+    if delta > 0:
+        batch_number = f"SYS-ADJ-{date.today().strftime('%Y%m%d')}"
+        batch = db.query(OpticalBatch).filter(
+            OpticalBatch.product_id == product_id,
+            OpticalBatch.batch_number == batch_number,
+        ).first()
+        if batch:
+            batch.quantity = (batch.quantity or 0) + delta
+            batch.initial_quantity = (batch.initial_quantity or 0) + delta
+            batch.is_active = True
+        else:
+            batch = OpticalBatch(
+                product_id=product_id,
+                batch_number=batch_number,
+                mfg_date=date.today(),
+                initial_quantity=delta,
+                quantity=delta,
+                purchase_price=0,
+                selling_price=0,
+                is_active=True,
+            )
+            db.add(batch)
+            db.flush()
+        return batch.id
+
+    # No batch specified: negative deltas are consumed FEFO — non-expiring
+    # batches (expiry_date NULL) are consumed last, matching the sale logic
+    # in optical_service.py so adjustments and sales agree on ordering.
+    remaining = -delta
+    batches = db.query(OpticalBatch).filter(
+        OpticalBatch.product_id == product_id,
+        OpticalBatch.is_active == True,
+        OpticalBatch.quantity > 0,
+    ).order_by(OpticalBatch.expiry_date.is_(None), OpticalBatch.expiry_date.asc()).all()
 
     available = sum(int(b.quantity or 0) for b in batches)
     if available < remaining:
@@ -708,6 +804,44 @@ def update_grn(
     return grn
 
 
+def update_grn_item_batch(
+    db: Session,
+    grn_id: uuid.UUID,
+    item_id: uuid.UUID,
+    data: GRNItemBatchUpdate,
+) -> GRNItem:
+    """Correct batch_number/manufactured_date/expiry_date on a received line item.
+
+    Only allowed while the GRN is 'pending'. Once verified/accepted,
+    _process_grn_acceptance has already created MedicineBatch/OpticalBatch
+    and StockMovement rows keyed by the original batch_number — changing it
+    afterward would silently desync the GRN from the stock it produced.
+    """
+    grn = db.query(GoodsReceiptNote).filter(GoodsReceiptNote.id == grn_id).first()
+    if not grn:
+        raise ValueError("GRN not found")
+    if grn.status != "pending":
+        raise ValueError(
+            f"Batch details are locked once a GRN is {grn.status} — only 'pending' GRNs can be edited"
+        )
+
+    item = db.query(GRNItem).filter(
+        GRNItem.id == item_id,
+        GRNItem.grn_id == grn_id,
+    ).first()
+    if not item:
+        raise ValueError("GRN item not found")
+
+    update_data = data.model_dump(exclude_unset=True)
+    for k, v in update_data.items():
+        setattr(item, k, v)
+
+    db.commit()
+    db.refresh(item)
+    logger.info("GRN item batch details updated: %s (item=%s)", grn.grn_number, item_id)
+    return item
+
+
 def _process_grn_acceptance(db: Session, grn: GoodsReceiptNote):
     """On GRN acceptance, record stock_in movements, update PO item received qty, and create medicine batches."""
     grn_with_items = (
@@ -724,38 +858,15 @@ def _process_grn_acceptance(db: Session, grn: GoodsReceiptNote):
         if accepted <= 0:
             continue
 
-        # Calculate current balance
-        last_movement = (
-            db.query(StockMovement)
-            .filter(
-                StockMovement.hospital_id == grn.hospital_id,
-                StockMovement.item_type == item.item_type,
-                StockMovement.item_id == item.item_id,
-            )
-            .order_by(StockMovement.created_at.desc())
-            .first()
-        )
-        current_balance = last_movement.balance_after if last_movement else 0
-
-        movement = StockMovement(
-            hospital_id=grn.hospital_id,
-            item_type=item.item_type,
-            item_id=item.item_id,
-            movement_type="stock_in",
-            reference_type="grn",
-            reference_id=grn.id,
-            quantity=accepted,
-            balance_after=current_balance + accepted,
-            unit_cost=float(item.unit_price),
-            notes=f"GRN {grn.grn_number} accepted",
-            performed_by=grn.verified_by,
-        )
-        db.add(movement)
-
-        # ✅ FIX BUG #3: Create or update MedicineBatch for pharmacy dispensing
+        # Create or update the batch FIRST, then compute balance_after from a fresh
+        # sum of real batch quantities — mirrors dispensing_service.py's pattern.
+        # The previous approach computed balance_after from the last StockMovement's
+        # balance_after + accepted, a shadow running total that could silently drift
+        # from the real batch-quantity total (the only number sales/dispensing/low-stock
+        # actually read), permanently corrupting the audit trail once it diverged.
         if item.item_type == "medicine":
             from ..models.pharmacy import MedicineBatch
-            
+
             batch = db.query(MedicineBatch).filter(
                 MedicineBatch.medicine_id == item.item_id,
                 MedicineBatch.batch_number == item.batch_number,
@@ -779,6 +890,8 @@ def _process_grn_acceptance(db: Session, grn: GoodsReceiptNote):
                     is_active=True,
                 )
                 db.add(batch)
+            db.flush()
+            balance_after = _get_medicine_batch_stock(db, item.item_id)
         elif item.item_type == "optical_product":
             batch = db.query(OpticalBatch).filter(
                 OpticalBatch.product_id == item.item_id,
@@ -803,6 +916,35 @@ def _process_grn_acceptance(db: Session, grn: GoodsReceiptNote):
                     is_active=True,
                 )
                 db.add(batch)
+            db.flush()
+            balance_after = _get_optical_batch_stock(db, item.item_id)
+        else:
+            last_movement = (
+                db.query(StockMovement)
+                .filter(
+                    StockMovement.hospital_id == grn.hospital_id,
+                    StockMovement.item_type == item.item_type,
+                    StockMovement.item_id == item.item_id,
+                )
+                .order_by(StockMovement.created_at.desc())
+                .first()
+            )
+            balance_after = (last_movement.balance_after if last_movement else 0) + accepted
+
+        movement = StockMovement(
+            hospital_id=grn.hospital_id,
+            item_type=item.item_type,
+            item_id=item.item_id,
+            movement_type="stock_in",
+            reference_type="grn",
+            reference_id=grn.id,
+            quantity=accepted,
+            balance_after=balance_after,
+            unit_cost=float(item.unit_price),
+            notes=f"GRN {grn.grn_number} accepted",
+            performed_by=grn.verified_by,
+        )
+        db.add(movement)
 
         # Update PO item received quantity if this GRN links to a PO
         if grn.purchase_order_id:
@@ -947,9 +1089,14 @@ def get_stock_level(
     db: Session, hospital_id: uuid.UUID,
     item_type: str, item_id: uuid.UUID,
 ) -> int:
-    """Get current stock balance. Medicines use batch totals as source of truth."""
+    """Get current stock balance. Medicines and optical products use batch totals as
+    the source of truth — the same numbers sales/dispensing actually deduct from.
+    Reading the StockMovement chain instead (as this used to for optical_product)
+    silently drifted from real stock whenever a batch changed outside that chain."""
     if item_type == "medicine":
         return _get_medicine_batch_stock(db, item_id)
+    if item_type == "optical_product":
+        return _get_optical_batch_stock(db, item_id)
 
     last = (
         db.query(StockMovement.balance_after)
@@ -1147,6 +1294,12 @@ def approve_stock_adjustment(
         if adj.item_type == "medicine":
             movement_batch_id = _apply_medicine_batch_delta(db, adj.item_id, qty, adj.batch_id)
             balance_after = _get_medicine_batch_stock(db, adj.item_id)
+        elif adj.item_type == "optical_product":
+            # Previously this branch never touched OpticalBatch.quantity — an
+            # "approved" adjustment recorded a new balance_after in the movement
+            # ledger but left the real, sellable stock completely unchanged.
+            movement_batch_id = _apply_optical_batch_delta(db, adj.item_id, qty, adj.batch_id)
+            balance_after = _get_optical_batch_stock(db, adj.item_id)
         else:
             current_balance = get_stock_level(db, adj.hospital_id, adj.item_type, adj.item_id)
             balance_after = current_balance + qty
@@ -1314,6 +1467,12 @@ def update_cycle_count(
             if it.item_type == "medicine":
                 movement_batch_id = _apply_medicine_batch_delta(db, it.item_id, delta, it.batch_id)
                 balance_after = _get_medicine_batch_stock(db, it.item_id)
+            elif it.item_type == "optical_product":
+                # Same fix as approve_stock_adjustment: without this the "verified"
+                # count recorded a corrected balance in the ledger but never
+                # touched OpticalBatch.quantity, so nothing was actually reconciled.
+                movement_batch_id = _apply_optical_batch_delta(db, it.item_id, delta, it.batch_id)
+                balance_after = _get_optical_batch_stock(db, it.item_id)
             else:
                 current_balance = get_stock_level(db, cc.hospital_id, it.item_type, it.item_id)
                 balance_after = current_balance + delta

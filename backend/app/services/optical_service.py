@@ -552,17 +552,17 @@ def create_sale(db: Session, hospital_id: uuid.UUID, data: dict, user_id: uuid.U
 
         batch.quantity -= qty
 
-        last_movement = (
-            db.query(StockMovement)
-            .filter(
-                StockMovement.hospital_id == hospital_id,
-                StockMovement.item_type == "optical_product",
-                StockMovement.item_id == product_uuid,
-            )
-            .order_by(StockMovement.created_at.desc())
-            .first()
-        )
-        current_balance = last_movement.balance_after if last_movement else 0
+        # Record the stock-out against a fresh sum of real batch quantities (not the
+        # prior movement's balance_after + delta) so this ledger can never drift from
+        # what's actually sellable — matches dispensing_service.py's pattern and what
+        # inventory_service.get_stock_level()/low-stock now both read.
+        db.flush()
+        balance_after = db.query(
+            func.coalesce(func.sum(OpticalBatch.quantity), 0)
+        ).filter(
+            OpticalBatch.product_id == product_uuid,
+            OpticalBatch.is_active == True,
+        ).scalar() or 0
 
         movement = StockMovement(
             hospital_id=hospital_id,
@@ -573,7 +573,7 @@ def create_sale(db: Session, hospital_id: uuid.UUID, data: dict, user_id: uuid.U
             reference_type="optical_order",
             reference_id=sale.id,
             quantity=-qty,
-            balance_after=current_balance - qty,
+            balance_after=int(balance_after),
             unit_cost=float(unit_price),
             notes=f"Optical sale: {sale.invoice_number}",
             performed_by=user_id,

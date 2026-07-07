@@ -81,7 +81,7 @@ async def pharmacy_top_medicines(
 @router.get("/medicines", response_model=MedicineListResponse)
 async def list_medicines(
     page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(20, ge=1, le=1000),
     search: Optional[str] = None,
     category: Optional[str] = None,
     active_only: bool = True,

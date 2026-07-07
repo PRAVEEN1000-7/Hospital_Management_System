@@ -9,6 +9,7 @@ This router provides endpoints for:
 """
 import logging
 import uuid as uuid_mod
+from decimal import Decimal
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -159,6 +160,11 @@ async def get_prescription_for_dispensing(
 # ═══════════════════════════════════════════════════════════════════════════
 
 from pydantic import BaseModel, Field
+
+class MarkPaidRequest(BaseModel):
+    amount_paid: Decimal = Field(..., ge=0)
+    payment_method: Optional[str] = None
+
 
 class DispenseItemInput(BaseModel):
     prescription_item_id: str
@@ -422,6 +428,43 @@ async def get_dispensing_record(
     except Exception as e:
         logger.error(f"Error fetching dispensing record: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch dispensing record")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Mark Dispensing Paid
+# ═══════════════════════════════════════════════════════════════════════════
+
+@router.put("/dispensing/{dispensing_id}/mark-paid")
+async def mark_dispensing_paid(
+    dispensing_id: str,
+    request: MarkPaidRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Sync a dispensing bill's payment_status after its invoice has been paid.
+
+    Called by DispensingBilling.tsx right after paymentService.record()
+    succeeds — the invoice/payment created there has no link back to the
+    originating PharmacySale, so without this call the Sales list keeps
+    showing the sale as "pending" forever even once payment is collected.
+    """
+    try:
+        sale = svc.mark_dispensing_paid(
+            db=db,
+            dispensing_id=dispensing_id,
+            hospital_id=current_user.hospital_id,
+            amount_paid=request.amount_paid,
+            payment_method=request.payment_method,
+        )
+        if not sale:
+            raise HTTPException(status_code=404, detail="Dispensing record not found")
+        return {"success": True, "payment_status": sale.payment_status}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error marking dispensing paid: {e}", exc_info=True)
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to update payment status")
 
 
 # ═══════════════════════════════════════════════════════════════════════════

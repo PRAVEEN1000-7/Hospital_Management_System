@@ -72,6 +72,16 @@ const GRNsPage: React.FC = () => {
         </button>
       </header>
 
+      {/* Workflow legend — the Actions column changes with status. */}
+      <div className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 flex items-center gap-2 flex-wrap text-xs text-slate-500">
+        <span className="font-semibold text-slate-600">Receipt flow:</span>
+        <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">Pending</span>
+        <span>→ check the delivery, Verify →</span>
+        <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">Verified</span>
+        <span>→ Accept updates stock, or Reject →</span>
+        <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">Accepted</span>
+      </div>
+
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
         {/* Filters */}
         <div className="p-4 border-b border-slate-200">
@@ -136,24 +146,32 @@ const GRNsPage: React.FC = () => {
                       </span>
                     </td>
                     <td className="px-4 py-4 text-right">
-                      <div className="flex items-center justify-end gap-1">
+                      <div className="flex items-center justify-end gap-1.5 flex-wrap">
                         {grn.status === 'pending' && (
-                          <button onClick={() => handleStatusChange(grn, 'verified')} className="p-1.5 hover:bg-blue-50 rounded-lg transition-colors" title="Verify">
-                            <span className="material-symbols-outlined text-lg text-blue-500">verified</span>
+                          <button onClick={() => handleStatusChange(grn, 'verified')}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+                            title="Confirm the delivered items/quantities match this receipt">
+                            <span className="material-symbols-outlined text-[15px]">verified</span> Verify
                           </button>
                         )}
                         {grn.status === 'verified' && (
                           <>
-                            <button onClick={() => handleStatusChange(grn, 'accepted')} className="p-1.5 hover:bg-emerald-50 rounded-lg transition-colors" title="Accept">
-                              <span className="material-symbols-outlined text-lg text-emerald-500">check_circle</span>
+                            <button onClick={() => handleStatusChange(grn, 'accepted')}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors"
+                              title="Accept — adds these items to stock and creates batches">
+                              <span className="material-symbols-outlined text-[15px]">check_circle</span> Accept &amp; Update Stock
                             </button>
-                            <button onClick={() => handleStatusChange(grn, 'rejected')} className="p-1.5 hover:bg-red-50 rounded-lg transition-colors" title="Reject">
-                              <span className="material-symbols-outlined text-lg text-red-400">cancel</span>
+                            <button onClick={() => handleStatusChange(grn, 'rejected')}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
+                              title="Reject this delivery — no stock will be added">
+                              <span className="material-symbols-outlined text-[15px]">cancel</span> Reject
                             </button>
                           </>
                         )}
-                        <button onClick={() => setDetailGRN(grn)} className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors" title="View Details">
-                          <span className="material-symbols-outlined text-lg text-slate-500">visibility</span>
+                        <button onClick={() => setDetailGRN(grn)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                          title="View full receipt details and line items">
+                          <span className="material-symbols-outlined text-[15px]">visibility</span> View
                         </button>
                       </div>
                     </td>

@@ -843,7 +843,7 @@ const DispensingScreen: React.FC = () => {
                               type="number"
                               min="0"
                               max={Math.min(item.available_quantity || 0, item.remainingQty)}
-                              value={item.dispensedQty}
+                              value={item.dispensedQty || ''}
                               onChange={(e) =>
                                 handleQuantityChange(index, parseInt(e.target.value) || 0)
                               }
@@ -927,6 +927,11 @@ const DispensingScreen: React.FC = () => {
                         >
                           <option value="">Select reason...</option>
                           <option value="out_of_stock">Out of stock</option>
+                          {/* Auto-skip reason set when this line's medicine isn't linked to the
+                              pharmacy catalog at all — without this option the <select> silently
+                              shows "Select reason..." even though a reason is already set, making
+                              it look like the pharmacist forgot to pick one. */}
+                          <option value="not_in_formulary">Not linked to pharmacy formulary</option>
                           <option value="patient_refused">Patient refused</option>
                           <option value="doctor_approved_alternative">Doctor approved alternative</option>
                           <option value="expired_batch">Expired batch</option>

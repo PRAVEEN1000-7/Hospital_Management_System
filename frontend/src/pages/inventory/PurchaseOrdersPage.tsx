@@ -100,6 +100,19 @@ const PurchaseOrdersPage: React.FC = () => {
         </button>
       </header>
 
+      {/* Workflow legend — the Actions column changes with status, so spell out the
+          lifecycle once here instead of relying on hover tooltips alone. */}
+      <div className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 flex items-center gap-2 flex-wrap text-xs text-slate-500">
+        <span className="font-semibold text-slate-600">Order flow:</span>
+        <span className="px-2 py-0.5 rounded-full bg-slate-100">Draft</span>
+        <span>→ Submit →</span>
+        <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">Submitted</span>
+        <span>→ admin Approves/Rejects →</span>
+        <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">Approved</span>
+        <span>→ receive goods via GRN →</span>
+        <span className="px-2 py-0.5 rounded-full bg-green-50 text-green-700">Received</span>
+      </div>
+
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
         {/* Filters */}
         <div className="p-4 border-b border-slate-200">
@@ -174,29 +187,39 @@ const PurchaseOrdersPage: React.FC = () => {
                       </span>
                     </td>
                     <td className="px-4 py-4 text-right">
-                      <div className="flex items-center justify-end gap-1">
+                      <div className="flex items-center justify-end gap-1.5 flex-wrap">
                         {po.status === 'draft' && (
-                          <button onClick={() => handleStatusChange(po, 'submitted')} className="p-1.5 hover:bg-blue-50 rounded-lg transition-colors" title="Submit">
-                            <span className="material-symbols-outlined text-lg text-blue-500">send</span>
+                          <button onClick={() => handleStatusChange(po, 'submitted')}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+                            title="Send this draft to an admin for approval">
+                            <span className="material-symbols-outlined text-[15px]">send</span> Submit
                           </button>
                         )}
                         {po.status === 'submitted' && isAdminUser && (
                           <>
-                            <button onClick={() => handleStatusChange(po, 'approved')} className="p-1.5 hover:bg-emerald-50 rounded-lg transition-colors" title="Approve">
-                              <span className="material-symbols-outlined text-lg text-emerald-500">check_circle</span>
+                            <button onClick={() => handleStatusChange(po, 'approved')}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors"
+                              title="Approve this order so it can be sent to the supplier">
+                              <span className="material-symbols-outlined text-[15px]">check_circle</span> Approve
                             </button>
-                            <button onClick={() => handleStatusChange(po, 'cancelled')} className="p-1.5 hover:bg-red-50 rounded-lg transition-colors" title="Reject">
-                              <span className="material-symbols-outlined text-lg text-red-400">cancel</span>
+                            <button onClick={() => handleStatusChange(po, 'cancelled')}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
+                              title="Reject this order — it will be cancelled">
+                              <span className="material-symbols-outlined text-[15px]">cancel</span> Reject
                             </button>
                           </>
                         )}
                         {po.status === 'draft' && !isAdminUser && (
-                          <button onClick={() => handleStatusChange(po, 'cancelled')} className="p-1.5 hover:bg-red-50 rounded-lg transition-colors" title="Cancel">
-                            <span className="material-symbols-outlined text-lg text-red-400">cancel</span>
+                          <button onClick={() => handleStatusChange(po, 'cancelled')}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
+                            title="Cancel this draft order">
+                            <span className="material-symbols-outlined text-[15px]">cancel</span> Cancel
                           </button>
                         )}
-                        <button onClick={() => setDetailPO(po)} className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors" title="View Details">
-                          <span className="material-symbols-outlined text-lg text-slate-500">visibility</span>
+                        <button onClick={() => setDetailPO(po)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                          title="View full order details and line items">
+                          <span className="material-symbols-outlined text-[15px]">visibility</span> View
                         </button>
                       </div>
                     </td>

@@ -159,6 +159,15 @@ const DispensingBilling: React.FC = () => {
         payment_reference: paymentRef.trim() || undefined,
       });
 
+      // Step 4: Sync the dispensing record's own payment_status — the invoice
+      // created above has no link back to it, so without this the Sales list
+      // keeps showing this sale as "pending" even though it's now paid.
+      try {
+        await pharmacyService.markDispensingPaid(dispensing.id, dispensing.net_amount, paymentMode);
+      } catch {
+        // Non-fatal — the invoice/payment already succeeded; don't block the receipt.
+      }
+
       showToast('success', 'Payment recorded successfully');
       window.print();
       navigate('/pharmacy/pending-prescriptions', {

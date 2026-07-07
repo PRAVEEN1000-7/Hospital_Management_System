@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useToast } from '../../contexts/ToastContext';
 import inventoryService from '../../services/inventoryService';
+import pharmacyService from '../../services/pharmacyService';
+import opticalService from '../../services/opticalService';
+import SearchableSelect, { type SuggestionOption } from '../../components/common/SearchableSelect';
 import type { CycleCount, CycleCountCreate } from '../../types/inventory';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -15,6 +18,15 @@ interface ItemRow {
   item_name: string;
   system_quantity: number;
   counted_quantity: number;
+}
+
+interface CatalogItem {
+  id: string;
+  name: string;
+  strength?: string | null;
+  generic_name?: string | null;
+  brand?: string | null;
+  total_stock?: number | null;
 }
 
 const CycleCountsPage: React.FC = () => {
@@ -35,6 +47,21 @@ const CycleCountsPage: React.FC = () => {
     { item_type: 'medicine', item_id: '', item_name: '', system_quantity: 0, counted_quantity: 0 },
   ]);
   const [saving, setSaving] = useState(false);
+  const [medicines, setMedicines] = useState<CatalogItem[]>([]);
+  const [opticalProducts, setOpticalProducts] = useState<CatalogItem[]>([]);
+
+  useEffect(() => {
+    pharmacyService.getMedicines(1, 500).then(r => setMedicines(r.data)).catch(() => {});
+    opticalService.getProducts(1, 500).then(r => setOpticalProducts(r.data)).catch(() => {});
+  }, []);
+
+  const getSuggestions = (itemType: 'medicine' | 'optical_product'): SuggestionOption[] =>
+    (itemType === 'medicine' ? medicines : opticalProducts).map(item => ({
+      id: item.id,
+      label: item.strength !== undefined ? `${item.name}${item.strength ? ` (${item.strength})` : ''}` : item.name,
+      sublabel: item.generic_name || item.brand || undefined,
+      metadata: { id: item.id, name: item.name, stock: item.total_stock ?? 0 },
+    }));
 
   const fetchCounts = useCallback(async () => {
     setLoading(true);
@@ -61,6 +88,62 @@ const CycleCountsPage: React.FC = () => {
     setCountItems(updated);
   };
 
+  // Item type change invalidates any previously-selected item (medicine vs optical
+  // product catalogs are disjoint) — clear the id/name/system qty together.
+  const changeItemType = (idx: number, item_type: 'medicine' | 'optical_product') => {
+    const updated = [...countItems];
+    updated[idx] = { ...updated[idx], item_type, item_id: '', item_name: '', system_quantity: 0 };
+    setCountItems(updated);
+  };
+
+  // A cycle count exists to compare the SYSTEM's believed stock against a physical
+  // count — system_quantity must come from the real catalog, not be hand-typed
+  // (which would let a user simply declare there's no variance either way).
+  const [loadingStockIdx, setLoadingStockIdx] = useState<number | null>(null);
+
+  const selectItem = async (idx: number, value: string, metadata?: Record<string, unknown>) => {
+    if (!metadata || !metadata.id) {
+      const updated = [...countItems];
+      updated[idx] = { ...updated[idx], item_id: '', item_name: value, system_quantity: 0 };
+      setCountItems(updated);
+      return;
+    }
+
+    const itemId = metadata.id as string;
+    const itemName = metadata.name as string;
+    const itemType = countItems[idx].item_type;
+
+    // Show the list snapshot immediately, then replace it with a fresh DB read —
+    // the bulk medicine/optical list is fetched once on page load and goes stale
+    // the moment any sale/dispensing/GRN/adjustment changes stock afterward.
+    setCountItems(prev => {
+      const updated = [...prev];
+      updated[idx] = {
+        ...updated[idx],
+        item_id: itemId,
+        item_name: itemName,
+        system_quantity: typeof metadata.stock === 'number' ? metadata.stock : 0,
+      };
+      return updated;
+    });
+
+    setLoadingStockIdx(idx);
+    try {
+      const liveStock = await inventoryService.getStockLevel(itemType, itemId);
+      setCountItems(prev => {
+        const updated = [...prev];
+        if (updated[idx]?.item_id === itemId) {
+          updated[idx] = { ...updated[idx], system_quantity: liveStock };
+        }
+        return updated;
+      });
+    } catch {
+      // Keep the snapshot value if the live lookup fails — better than blanking it.
+    } finally {
+      setLoadingStockIdx(null);
+    }
+  };
+
   const resetCreateForm = () => {
     setShowCreate(false);
     setCountDate(new Date().toISOString().split('T')[0]);
@@ -69,8 +152,8 @@ const CycleCountsPage: React.FC = () => {
   };
 
   const handleCreate = async () => {
-    if (countItems.some(it => !it.item_name)) {
-      toast.error('Please fill in all item names'); return;
+    if (countItems.some(it => !it.item_id)) {
+      toast.error('Please select a real item from the list for every row'); return;
     }
     setSaving(true);
     try {
@@ -79,7 +162,7 @@ const CycleCountsPage: React.FC = () => {
         notes: countNotes || undefined,
         items: countItems.map(it => ({
           item_type: it.item_type,
-          item_id: it.item_id || crypto.randomUUID(),
+          item_id: it.item_id,
           item_name: it.item_name,
           system_quantity: it.system_quantity,
           counted_quantity: it.counted_quantity,
@@ -120,6 +203,17 @@ const CycleCountsPage: React.FC = () => {
           New Cycle Count
         </button>
       </header>
+
+      {/* Workflow hint */}
+      <div className="bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 flex items-center gap-2 flex-wrap text-xs text-slate-500">
+        <span className="font-semibold text-slate-600">How it works:</span>
+        <span>Record what you physically counted →</span>
+        <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">In Progress</span>
+        <span>→ Mark Complete once counting is done →</span>
+        <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">Completed</span>
+        <span>→ Verify applies the variance to real stock →</span>
+        <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">Verified</span>
+      </div>
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
         <div className="p-4 border-b border-slate-200">
@@ -177,19 +271,25 @@ const CycleCountsPage: React.FC = () => {
                         </span>
                       </td>
                       <td className="px-4 py-4 text-right">
-                        <div className="flex items-center justify-end gap-1">
+                        <div className="flex items-center justify-end gap-1.5 flex-wrap">
                           {cc.status === 'in_progress' && (
-                            <button onClick={() => handleStatusChange(cc, 'completed')} className="p-1.5 hover:bg-amber-50 rounded-lg transition-colors" title="Mark Complete">
-                              <span className="material-symbols-outlined text-lg text-amber-500">task_alt</span>
+                            <button onClick={() => handleStatusChange(cc, 'completed')}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors"
+                              title="Mark counting as finished — locks the counted quantities">
+                              <span className="material-symbols-outlined text-[15px]">task_alt</span> Mark Complete
                             </button>
                           )}
                           {cc.status === 'completed' && (
-                            <button onClick={() => handleStatusChange(cc, 'verified')} className="p-1.5 hover:bg-emerald-50 rounded-lg transition-colors" title="Verify">
-                              <span className="material-symbols-outlined text-lg text-emerald-500">verified</span>
+                            <button onClick={() => handleStatusChange(cc, 'verified')}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors"
+                              title="Verify — applies any variance to real stock">
+                              <span className="material-symbols-outlined text-[15px]">verified</span> Verify
                             </button>
                           )}
-                          <button onClick={() => setDetailCC(cc)} className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors" title="View">
-                            <span className="material-symbols-outlined text-lg text-slate-500">visibility</span>
+                          <button onClick={() => setDetailCC(cc)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                            title="View counted items and variances">
+                            <span className="material-symbols-outlined text-[15px]">visibility</span> View
                           </button>
                         </div>
                       </td>
@@ -257,21 +357,30 @@ const CycleCountsPage: React.FC = () => {
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                         <div>
                           <label className="text-xs text-slate-400">Type</label>
-                          <select value={item.item_type} onChange={e => updateItem(idx, 'item_type', e.target.value)}
+                          <select value={item.item_type} onChange={e => changeItemType(idx, e.target.value as 'medicine' | 'optical_product')}
                             className="w-full px-2 py-2 border border-slate-200 rounded-lg text-sm bg-white mt-1">
                             <option value="medicine">Medicine</option>
                             <option value="optical_product">Optical Product</option>
                           </select>
                         </div>
                         <div>
-                          <label className="text-xs text-slate-400">Item Name *</label>
-                          <input type="text" value={item.item_name} onChange={e => updateItem(idx, 'item_name', e.target.value)}
-                            className="w-full px-2 py-2 border border-slate-200 rounded-lg text-sm mt-1" placeholder="Name" />
+                          <label className="text-xs text-slate-400">Item *</label>
+                          <SearchableSelect
+                            value={item.item_name}
+                            onChange={(val, meta) => selectItem(idx, val, meta)}
+                            suggestions={getSuggestions(item.item_type)}
+                            placeholder={item.item_type === 'medicine' ? 'Search medicine...' : 'Search optical product...'}
+                            allowManualEntry={false}
+                            className="mt-1"
+                          />
                         </div>
                         <div>
-                          <label className="text-xs text-slate-400">System Qty</label>
-                          <input type="number" min="0" value={item.system_quantity} onChange={e => updateItem(idx, 'system_quantity', parseInt(e.target.value) || 0)}
-                            className="w-full px-2 py-2 border border-slate-200 rounded-lg text-sm mt-1" />
+                          <label className="text-xs text-slate-400">
+                            System Qty {loadingStockIdx === idx && <span className="text-primary">(checking stock…)</span>}
+                          </label>
+                          <input type="number" readOnly value={item.system_quantity}
+                            title="Live current stock, fetched from the database when the item is selected"
+                            className="w-full px-2 py-2 border border-slate-200 rounded-lg text-sm mt-1 bg-slate-50 text-slate-500 cursor-not-allowed" />
                         </div>
                         <div>
                           <label className="text-xs text-slate-400">Counted Qty *</label>

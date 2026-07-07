@@ -9,18 +9,29 @@
 7. in the entire application check all the quick action link,that should redirect to the mentioned and to that exact page ,whne the user click instead by default going to the dashboard(currently tht issue is happening).
 
 
-
-
-
-
-
--- Review
-
-1. meaning of the hospital code
-2. 
-
 --  Doubt
 
 In walk in registration, create check box below choose doctor. and name it as specialist assignment. 
 
 it should function as, if the check box is enabled , the patient will be consulted by that doctor alone. So in queue display his token number should be shown under that particular doctor only
+
+
+
+-- 07-07-2026
+
+1 . in inventory module the new purchse order is not working perfectly.
+2.  i have the medicine named abc but it not show in the po medicine select options
+3. in the sales section under the pharmacy module after the dispencing the status is still showing the pending ,analysis those functions and find the real cause for that and fix it.
+4. could not able to dispense. if click dispense it is skipping
+5. in the invoice section,cant able to create the new invoice for the details in the application
+6. in the registration form,initially i have tried to select baby it is not selecting but after entering dob it is asking me to select baby/master.please check this it should allow initially and based on dob you have to cross verify
+
+
+1. in the pharmacy queue what is purpose of the manual queue option .if its not necessary remove that
+2. in the inventory module their is a action functions,but i cant able to understanf that one easy ,add some better thing for the easy understandable one.
+3. in the grn, make sure that hte batch number should be edit after the Finalized the option.
+4. in the invoice ,when i click the new invoice it shows the white space in the screen.
+5. make sure that the system quantity is fixed one and that should be comes from the history or the store data form db.
+6. also check the all the print option and the downlaod option in the invoice is works perfectly ,with the correct formate.
+
+7.mainly focus on the stock and other things in the inventory, all these things in the section are mapped correct and works perfeclty by onr by one,because the each is depend on the before and the next one.

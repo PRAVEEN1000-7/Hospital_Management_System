@@ -314,7 +314,7 @@ const App: React.FC = () => {
               } />
               <Route path="/appointments/reports" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin']}
+                  allowedRoles={['super_admin', 'admin', 'report_viewer']}
                   requiredModule="appointments"
                 >
                   <AppointmentReports />
@@ -473,7 +473,7 @@ const App: React.FC = () => {
               {/* ── Optical Store module ── */}
               <Route path="/optical" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'doctor', 'optical_staff']}
+                  allowedRoles={['super_admin', 'admin', 'optical_staff']}
                   requiredModule="optical"
                 >
                   <OpticalDashboard />
@@ -481,7 +481,7 @@ const App: React.FC = () => {
               } />
               <Route path="/optical/products" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'doctor', 'optical_staff']}
+                  allowedRoles={['super_admin', 'admin', 'optical_staff']}
                   requiredModule="optical"
                 >
                   <OpticalProductList />
@@ -497,7 +497,7 @@ const App: React.FC = () => {
               } />
               <Route path="/optical/products/:id" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'doctor', 'optical_staff']}
+                  allowedRoles={['super_admin', 'admin', 'optical_staff']}
                   requiredModule="optical"
                 >
                   <OpticalProductDetail />
@@ -529,12 +529,16 @@ const App: React.FC = () => {
               } />
               <Route path="/optical/prescriptions" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'doctor', 'optical_staff']}
+                  allowedRoles={['super_admin', 'admin', 'optical_staff']}
                   requiredModule="optical"
                 >
                   <OpticalPrescriptions />
                 </ProtectedRoute>
               } />
+              {/* Doctors reach this single-record view only via the post-save redirect after
+                  creating an Opthal prescription (PrescriptionBuilder.tsx) — everything else
+                  in Optical Store (dashboard, product/sales lists, dispensing, stock) stays
+                  restricted to admin/optical_staff. */}
               <Route path="/optical/prescriptions/:id" element={
                 <ProtectedRoute
                   allowedRoles={['super_admin', 'admin', 'doctor', 'optical_staff']}
@@ -544,7 +548,7 @@ const App: React.FC = () => {
               } />
               <Route path="/optical/sales" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'doctor', 'optical_staff']}
+                  allowedRoles={['super_admin', 'admin', 'optical_staff']}
                   requiredModule="optical"
                 >
                   <OpticalSales />
@@ -684,7 +688,7 @@ const App: React.FC = () => {
               {/* ── Billing module ── */}
               <Route path="/billing/invoices" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'cashier', 'pharmacist', 'receptionist', 'doctor']}
+                  allowedRoles={['super_admin', 'admin', 'cashier', 'pharmacist', 'receptionist']}
                   requiredModule="billing"
                 >
                   <InvoiceList />
@@ -700,7 +704,7 @@ const App: React.FC = () => {
               } />
               <Route path="/billing/invoices/:id" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'cashier', 'pharmacist', 'receptionist', 'doctor']}
+                  allowedRoles={['super_admin', 'admin', 'cashier', 'pharmacist', 'receptionist']}
                   requiredModule="billing"
                 >
                   <InvoiceDetail />
@@ -708,7 +712,7 @@ const App: React.FC = () => {
               } />
               <Route path="/billing/payments" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'cashier', 'pharmacist', 'receptionist', 'doctor']}
+                  allowedRoles={['super_admin', 'admin', 'cashier', 'pharmacist', 'receptionist']}
                   requiredModule="billing"
                 >
                   <PaymentList />
@@ -758,7 +762,7 @@ const App: React.FC = () => {
               {/* ── Analytics module ── */}
               <Route path="/analytics" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin']}
+                  allowedRoles={['super_admin', 'admin', 'doctor', 'receptionist', 'pharmacist', 'cashier', 'inventory_manager', 'report_viewer']}
                   requiredModule="analytics"
                 >
                   <AnalyticsDashboard />

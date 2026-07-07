@@ -229,6 +229,144 @@ async def get_invoice(
     return InvoiceResponse.model_validate(invoice)
 
 
+@router.get("/{invoice_id}/pdf")
+async def get_invoice_pdf(
+    invoice_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Generate a downloadable/printable HTML document for this invoice.
+
+    Mirrors the appointment/prescription print templates — a fully
+    self-contained HTML document (inline <style>, escaped values) so it
+    renders identically whether opened for printing or converted to PDF
+    client-side via htmlStringToPdf.
+    """
+    import html as _html_mod
+    from datetime import datetime
+    from ..models.user import Hospital
+
+    _require_billing_view(current_user)
+    invoice = get_invoice_by_id(db, invoice_id)
+    if not invoice or str(invoice.hospital_id) != str(current_user.hospital_id):
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    hospital = db.query(Hospital).filter(Hospital.id == current_user.hospital_id).first()
+    patient = invoice.patient
+
+    def _esc(value) -> str:
+        if value is None or value == "":
+            return ""
+        return _html_mod.escape(str(value), quote=True)
+
+    def fmt_money(v) -> str:
+        return f"{float(v or 0):,.2f}"
+
+    def fmt_date(d) -> str:
+        return d.strftime("%B %d, %Y") if d else "—"
+
+    hosp_name = _esc((hospital.name if hospital else "") or "Hospital")
+    hosp_address = _esc(hospital.address_line_1 if hospital else "")
+    hosp_city = _esc(hospital.city if hospital else "")
+    hosp_state = _esc(hospital.state_province if hospital else "")
+    hosp_phone = _esc(hospital.phone if hospital else "")
+    hosp_email = _esc(hospital.email if hospital else "")
+
+    item_type_labels = {
+        "consultation": "Consultation", "medicine": "Medicine",
+        "optical_product": "Optical Product", "service": "Service",
+        "procedure": "Procedure", "registration": "Registration",
+    }
+
+    rows = "".join(
+        f"""<tr>
+            <td>{_esc(item.description)}<br><span class="muted">{_esc(item_type_labels.get(item.item_type, item.item_type))}{f' · Batch {_esc(item.batch_number)}' if item.batch_number else ''}</span></td>
+            <td class="right">{float(item.quantity or 0):g}</td>
+            <td class="right">₹{fmt_money(item.unit_price)}</td>
+            <td class="right">{float(item.discount_percent or 0):g}%</td>
+            <td class="right">₹{fmt_money(item.tax_amount)}</td>
+            <td class="right"><strong>₹{fmt_money(item.total_price)}</strong></td>
+        </tr>"""
+        for item in invoice.items
+    )
+
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+<title>Invoice - {_esc(invoice.invoice_number)}</title>
+<style>
+body {{ font-family: Arial, sans-serif; margin: 0; padding: 40px; color: #1e293b; }}
+.header {{ text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 3px solid #0284c7; }}
+.header h1 {{ margin: 0; color: #0284c7; font-size: 28px; }}
+.header p {{ margin: 4px 0 0; color: #64748b; font-size: 14px; }}
+.invoice-number {{ font-size: 20px; font-weight: bold; color: #0284c7; text-align: center; margin: 20px 0; padding: 12px; background: #f0f9ff; border-radius: 8px; }}
+.meta {{ display: flex; justify-content: space-between; margin: 16px 0; font-size: 13px; color: #64748b; }}
+table {{ width: 100%; border-collapse: collapse; margin: 16px 0; }}
+th, td {{ text-align: left; padding: 10px 12px; border-bottom: 1px solid #e2e8f0; font-size: 13px; }}
+th {{ color: #64748b; font-weight: 600; font-size: 12px; background: #f8fafc; }}
+.right {{ text-align: right; }}
+.muted {{ color: #94a3b8; font-size: 11px; }}
+.section-title {{ font-size: 16px; font-weight: bold; color: #0284c7; margin: 24px 0 8px; padding-bottom: 4px; border-bottom: 2px solid #e2e8f0; }}
+.status {{ display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: bold; text-transform: uppercase; }}
+.status-paid {{ background: #dcfce7; color: #166534; }}
+.status-issued {{ background: #dbeafe; color: #1e40af; }}
+.status-partially_paid {{ background: #fef3c7; color: #92400e; }}
+.status-draft {{ background: #f1f5f9; color: #475569; }}
+.status-overdue, .status-cancelled, .status-void {{ background: #fee2e2; color: #991b1b; }}
+.summary {{ width: 280px; margin-left: auto; margin-top: 16px; }}
+.summary-row {{ display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }}
+.summary-total {{ font-size: 16px; font-weight: bold; border-top: 2px solid #e2e8f0; padding-top: 8px; margin-top: 8px; }}
+.footer {{ margin-top: 40px; text-align: center; color: #94a3b8; font-size: 11px; border-top: 1px solid #e2e8f0; padding-top: 16px; }}
+@media print {{ body {{ padding: 20px; }} }}
+</style>
+</head>
+<body>
+<div class="header">
+    <h1>{hosp_name}</h1>
+    <p>{hosp_address}, {hosp_city}, {hosp_state}</p>
+    <p>Phone: {hosp_phone} | Email: {hosp_email}</p>
+</div>
+<div class="invoice-number">Invoice #{_esc(invoice.invoice_number)}</div>
+<div class="meta">
+    <span>Date: {fmt_date(invoice.invoice_date)}</span>
+    <span class="status status-{invoice.status}">{_esc(invoice.status.replace('_', ' '))}</span>
+</div>
+<p class="section-title">Bill To</p>
+<table>
+    <tr><th style="width:160px;">Patient</th><td>{_esc(patient.full_name) if patient else '—'}</td></tr>
+    <tr><th>PRN</th><td>{_esc(patient.patient_reference_number) if patient else '—'}</td></tr>
+</table>
+<p class="section-title">Line Items</p>
+<table>
+    <thead>
+        <tr><th>Description</th><th class="right">Qty</th><th class="right">Unit Price</th><th class="right">Disc.</th><th class="right">Tax</th><th class="right">Total</th></tr>
+    </thead>
+    <tbody>{rows}</tbody>
+</table>
+<div class="summary">
+    <div class="summary-row"><span>Subtotal</span><span>₹{fmt_money(invoice.subtotal)}</span></div>
+    {f'<div class="summary-row"><span>Discount</span><span>-₹{fmt_money(invoice.discount_amount)}</span></div>' if invoice.discount_amount else ''}
+    <div class="summary-row"><span>Tax</span><span>₹{fmt_money(invoice.tax_amount)}</span></div>
+    <div class="summary-row summary-total"><span>Total</span><span>₹{fmt_money(invoice.total_amount)}</span></div>
+    <div class="summary-row"><span>Paid</span><span>₹{fmt_money(invoice.paid_amount)}</span></div>
+    <div class="summary-row"><span>Balance Due</span><span>₹{fmt_money(invoice.balance_amount)}</span></div>
+</div>
+{f'<p class="section-title">Notes</p><p style="font-size:13px;">{_esc(invoice.notes)}</p>' if invoice.notes else ''}
+<div class="footer">
+    <p>Generated on {datetime.now().strftime("%B %d, %Y at %I:%M %p")} | {hosp_name}</p>
+    <p>This is a computer-generated document. No signature required.</p>
+</div>
+</body>
+</html>"""
+
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(
+        content=html,
+        media_type="text/html",
+        headers={"Content-Disposition": f'inline; filename="invoice_{invoice.invoice_number}.html"'},
+    )
+
+
 @router.put("/{invoice_id}", response_model=InvoiceResponse)
 async def update_invoice_header(
     invoice_id: str,

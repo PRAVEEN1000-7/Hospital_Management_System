@@ -1,7 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import pharmacyService from '../../services/pharmacyService';
+import { patientService } from '../../services/patientService';
+import prescriptionService from '../../services/prescriptionService';
 import type { Medicine, MedicineBatch, SaleItemCreate, SaleCreateData } from '../../types/pharmacy';
+import type { Patient } from '../../types/patient';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { format } from 'date-fns';
@@ -16,6 +19,32 @@ interface CartItem extends SaleItemCreate {
   supplier_name?: string;
 }
 
+// Mirrors DispensingScreen.tsx's calculation — some older prescription items
+// only carry frequency + duration (no flat quantity), so the real prescribed
+// count must be derived the same way here to know what's left to sell/dispense.
+const calculatePrescribedQuantity = (item: {
+  frequency?: string | null;
+  duration_value?: number | null;
+  duration_unit?: string | null;
+  quantity?: number | null;
+}) => {
+  if (typeof item.quantity === 'number' && item.quantity > 0) return item.quantity;
+  if (!item.frequency || !item.duration_value || item.duration_value <= 0) return 0;
+
+  const frequencyParts = item.frequency.match(/\d+(?:\.\d+)?/g);
+  if (!frequencyParts?.length) return 0;
+
+  const dailyUnits = frequencyParts.reduce((total, part) => total + Number(part), 0);
+  if (dailyUnits <= 0) return 0;
+
+  const normalizedUnit = (item.duration_unit || 'days').toLowerCase();
+  let durationDays = item.duration_value;
+  if (normalizedUnit === 'weeks') durationDays *= 7;
+  if (normalizedUnit === 'months') durationDays *= 30;
+
+  return Math.ceil(dailyUnits * durationDays);
+};
+
 const NewSale: React.FC = () => {
   const navigate = useNavigate();
   const toast = useToast();
@@ -25,6 +54,9 @@ const NewSale: React.FC = () => {
   const [batchMap, setBatchMap] = useState<Record<string, MedicineBatch[]>>({});
   const [cart, setCart] = useState<CartItem[]>([]);
   const [patientName, setPatientName] = useState('');
+  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [patientResults, setPatientResults] = useState<Patient[]>([]);
+  const [showPatientDrop, setShowPatientDrop] = useState(false);
   const [doctorName, setDoctorName] = useState('');
   const [prescriptionNumber, setPrescriptionNumber] = useState('');
   const [prescriptionDate, setPrescriptionDate] = useState('');
@@ -34,6 +66,8 @@ const NewSale: React.FC = () => {
   const [consultationFee, setConsultationFee] = useState(0);
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
+  const [rxLookupStatus, setRxLookupStatus] = useState<'idle' | 'loading' | 'found' | 'not_found'>('idle');
+  const [linkedPrescriptionId, setLinkedPrescriptionId] = useState<string | null>(null);
 
   // Load medicine, add selected medicine to cart
   const [selectedMedicine, setSelectedMedicine] = useState('');
@@ -41,6 +75,34 @@ const NewSale: React.FC = () => {
   useEffect(() => {
     pharmacyService.getMedicines(1, 500).then(r => setMedicines(r.data)).catch(() => {});
   }, []);
+
+  // Search existing patients by name/phone/reference number (debounced).
+  const searchPatients = useCallback(async (q: string) => {
+    if (q.length < 2) { setPatientResults([]); return; }
+    try {
+      const res = await patientService.getPatients(1, 6, q);
+      setPatientResults(res.data);
+    } catch { setPatientResults([]); }
+  }, []);
+
+  useEffect(() => {
+    if (selectedPatient) return;
+    const t = setTimeout(() => searchPatients(patientName), 280);
+    return () => clearTimeout(t);
+  }, [patientName, selectedPatient, searchPatients]);
+
+  const selectPatient = (p: Patient) => {
+    setSelectedPatient(p);
+    setPatientName(`${p.first_name} ${p.last_name}`.trim());
+    setPatientResults([]);
+    setShowPatientDrop(false);
+  };
+
+  const clearSelectedPatient = () => {
+    setSelectedPatient(null);
+    setPatientName('');
+    setPatientResults([]);
+  };
 
   const loadBatches = async (medicineId: string) => {
     if (batchMap[medicineId]) return batchMap[medicineId];
@@ -52,6 +114,91 @@ const NewSale: React.FC = () => {
       return [];
     }
   };
+
+  // Look up an existing patient's old prescription by number (debounced) and
+  // auto-fill patient/doctor/date, plus pre-load its still-owed items into the cart.
+  useEffect(() => {
+    const number = prescriptionNumber.trim();
+    if (number.length < 3) {
+      setRxLookupStatus('idle');
+      setLinkedPrescriptionId(null);
+      return;
+    }
+
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      setRxLookupStatus('loading');
+      try {
+        const res = await prescriptionService.getPrescriptions(1, 5, { search: number });
+        const match = res.data.find(rx => rx.prescription_number.toLowerCase() === number.toLowerCase());
+        if (!match) {
+          if (!cancelled) { setRxLookupStatus('not_found'); setLinkedPrescriptionId(null); }
+          return;
+        }
+        if (match.id === linkedPrescriptionId) {
+          if (!cancelled) setRxLookupStatus('found');
+          return;
+        }
+
+        const rx = await prescriptionService.getPrescription(match.id);
+        if (cancelled) return;
+
+        setLinkedPrescriptionId(rx.id);
+        setRxLookupStatus('found');
+        setDoctorName(rx.doctor_name || '');
+        setPrescriptionDate(rx.created_at ? rx.created_at.slice(0, 10) : '');
+
+        if (rx.patient_id) {
+          try {
+            const patient = await patientService.getPatient(rx.patient_id);
+            if (!cancelled) selectPatient(patient);
+          } catch { /* patient lookup is best-effort */ }
+        }
+
+        if (cart.length === 0) {
+          const newItems: CartItem[] = [];
+          for (const item of rx.items) {
+            if (!item.medicine_id || item.is_dispensed) continue;
+            const prescribedQty = calculatePrescribedQuantity(item);
+            const remainingQty = Math.max(0, prescribedQty - (item.dispensed_quantity || 0));
+            if (remainingQty <= 0) continue;
+
+            const med = medicines.find(m => m.id === item.medicine_id);
+            const batches = await loadBatches(item.medicine_id);
+            const validBatches = batches.filter(b => b.quantity > 0 && new Date(b.expiry_date) > new Date());
+            const batch = validBatches[0];
+
+            newItems.push({
+              medicine_id: item.medicine_id,
+              medicine_name: med ? `${med.name} ${med.strength || ''}`.trim() : item.medicine_name,
+              batch_id: batch?.id,
+              quantity: batch ? Math.min(remainingQty, batch.quantity) : remainingQty,
+              unit_price: batch?.selling_price || 0,
+              discount_percent: 0,
+              tax_percent: batch?.tax_percent || 0,
+              dosage_instructions: [item.dosage, item.frequency].filter(Boolean).join(' - ') || undefined,
+              duration_days: item.duration_value || undefined,
+              available_qty: batch?.quantity || 0,
+              batch_number: batch?.batch_number,
+              mfg_date: batch?.mfg_date || undefined,
+              expiry_date: batch?.expiry_date,
+              mrp: batch?.mrp ?? undefined,
+              supplier_name: batch?.supplier_name || undefined,
+            });
+          }
+          if (newItems.length > 0 && !cancelled) {
+            setCart(prev => [...prev, ...newItems]);
+            toast.success(`Loaded ${newItems.length} item(s) from prescription ${rx.prescription_number}`);
+          }
+        }
+      } catch {
+        if (!cancelled) { setRxLookupStatus('not_found'); setLinkedPrescriptionId(null); }
+      }
+    }, 500);
+
+    return () => { cancelled = true; clearTimeout(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prescriptionNumber]);
 
   const addToCart = async () => {
     if (!selectedMedicine) return;
@@ -136,6 +283,7 @@ const NewSale: React.FC = () => {
     setSaving(true);
     try {
       await pharmacyService.createSale({
+        patient_id: selectedPatient?.id || undefined,
         patient_name: patientName || undefined,
         doctor_name: doctorName || undefined,
         prescription_number: prescriptionNumber || undefined,
@@ -176,8 +324,42 @@ const NewSale: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Patient Name</label>
-              <input value={patientName} onChange={e => setPatientName(e.target.value)} placeholder="Walk-in if blank"
-                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
+              {selectedPatient ? (
+                <div className="flex items-center justify-between px-3 py-2 border border-primary/30 bg-primary/5 rounded-lg">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-slate-900 truncate">
+                      {selectedPatient.first_name} {selectedPatient.last_name}
+                    </p>
+                    <p className="text-xs text-slate-500 truncate">
+                      {selectedPatient.patient_reference_number} · {selectedPatient.phone_number}
+                    </p>
+                  </div>
+                  <button type="button" onClick={clearSelectedPatient}
+                    className="text-xs text-slate-400 hover:text-red-500 font-medium ml-2 shrink-0">
+                    Change
+                  </button>
+                </div>
+              ) : (
+                <div className="relative">
+                  <input value={patientName}
+                    onChange={e => { setPatientName(e.target.value); setShowPatientDrop(true); }}
+                    onFocus={() => setShowPatientDrop(true)}
+                    onBlur={() => setTimeout(() => setShowPatientDrop(false), 150)}
+                    placeholder="Search existing patient or type walk-in name"
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
+                  {showPatientDrop && patientResults.length > 0 && (
+                    <div className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                      {patientResults.map(p => (
+                        <button key={p.id} type="button" onMouseDown={() => selectPatient(p)}
+                          className="w-full text-left px-3 py-2 hover:bg-slate-50 text-sm">
+                          <span className="font-medium">{p.first_name} {p.last_name}</span>
+                          <span className="ml-2 text-slate-400 text-xs">{p.patient_reference_number} · {p.phone_number}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             <div>
               <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Doctor</label>
@@ -202,8 +384,20 @@ const NewSale: React.FC = () => {
             <div>
               <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Prescription No.</label>
               <input value={prescriptionNumber} onChange={e => setPrescriptionNumber(e.target.value)}
-                placeholder="Rx reference number"
+                placeholder="Enter old Rx number to auto-fill patient & items"
                 className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
+              {rxLookupStatus === 'loading' && (
+                <p className="text-[11px] text-slate-400 mt-1">Looking up prescription…</p>
+              )}
+              {rxLookupStatus === 'found' && (
+                <p className="text-[11px] text-emerald-600 mt-1 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-xs">check_circle</span>
+                  Prescription found — patient, doctor & items loaded
+                </p>
+              )}
+              {rxLookupStatus === 'not_found' && (
+                <p className="text-[11px] text-amber-600 mt-1">No matching prescription — will be saved as a reference note only.</p>
+              )}
             </div>
             <div>
               <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Prescription Date</label>
@@ -215,7 +409,7 @@ const NewSale: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Consultation Fee</label>
-                <input type="number" min={0} step={0.01} value={consultationFee}
+                <input type="number" min={0} step={0.01} value={consultationFee || ''}
                   onChange={e => setConsultationFee(parseFloat(e.target.value) || 0)}
                   placeholder="Flows to bill as first line item"
                   className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
@@ -272,19 +466,19 @@ const NewSale: React.FC = () => {
                     </div>
                     <div className="col-span-1">
                       <label className="block text-xs text-slate-500 mb-0.5">Qty</label>
-                      <input type="number" min={1} max={item.available_qty} value={item.quantity}
+                      <input type="number" min={1} max={item.available_qty} value={item.quantity || ''}
                         onChange={e => updateCartItem(idx, 'quantity', parseInt(e.target.value) || 0)}
                         className="w-full px-2 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
                     </div>
                     <div className="col-span-2">
                       <label className="block text-xs text-slate-500 mb-0.5">Price</label>
-                      <input type="number" min={0} step={0.01} value={item.unit_price}
+                      <input type="number" min={0} step={0.01} value={item.unit_price || ''}
                         onChange={e => updateCartItem(idx, 'unit_price', parseFloat(e.target.value) || 0)}
                         className="w-full px-2 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
                     </div>
                     <div className="col-span-1">
                       <label className="block text-xs text-slate-500 mb-0.5">Disc%</label>
-                      <input type="number" min={0} max={100} value={item.discount_percent || 0}
+                      <input type="number" min={0} max={100} value={item.discount_percent || ''}
                         onChange={e => updateCartItem(idx, 'discount_percent', parseFloat(e.target.value) || 0)}
                         className="w-full px-2 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
                     </div>
@@ -348,7 +542,7 @@ const NewSale: React.FC = () => {
               </div>
               <div className="flex justify-between text-sm items-center">
                 <span className="text-slate-500">Discount</span>
-                <input type="number" min={0} step={0.01} value={discountAmount}
+                <input type="number" min={0} step={0.01} value={discountAmount || ''}
                   onChange={e => setDiscountAmount(parseFloat(e.target.value) || 0)}
                   className="w-24 px-2 py-1 text-sm text-right border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
               </div>
@@ -366,7 +560,7 @@ const NewSale: React.FC = () => {
                 <>
                   <div className="flex justify-between text-sm items-center pt-2 border-t border-slate-200">
                     <span className="text-slate-500">{paymentMethod === 'cash' ? 'Cash' : paymentMethod === 'upi' ? 'UPI' : paymentMethod === 'bank_transfer' ? 'Bank Transfer' : 'Amount'} Received</span>
-                    <input type="number" min={0} step={0.01} value={amountTendered}
+                    <input type="number" min={0} step={0.01} value={amountTendered || ''}
                       onChange={e => setAmountTendered(parseFloat(e.target.value) || 0)}
                       className="w-24 px-2 py-1 text-sm text-right border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
                   </div>

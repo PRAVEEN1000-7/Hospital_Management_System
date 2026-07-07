@@ -104,6 +104,7 @@ const Register: React.FC = () => {
   const watchState = watch('state');
   const watchDob = watch('date_of_birth');
   const watchTitle = watch('title');
+  const watchGender = watch('gender');
 
   // Clear server error on any change.
   // After first submit: re-validate live so each field's error clears the moment it is fixed.
@@ -132,13 +133,37 @@ const Register: React.FC = () => {
   })();
 
   useEffect(() => {
+    // isChild defaults to false whenever DOB is still empty (see above), which
+    // is "unknown", not "confirmed adult". Without this guard, picking "Baby"
+    // or "Master" before entering a DOB was immediately reverted to blank by
+    // the second condition below, since !isChild was true for the wrong reason.
+    // Only cross-verify the title against age once we actually have a DOB.
+    if (!watchDob) return;
+
     if (isChild && watchTitle && ADULT_ONLY_TITLES.includes(watchTitle)) {
-      setValue('title', '');
+      // Gender may not be selected yet at this point — "Baby" is the safe
+      // default and gets refined to "Master" below once gender is known.
+      const corrected = watchGender === 'Male' ? 'Master' : 'Baby';
+      setValue('title', corrected);
+      toast.info(`Title auto-corrected to "${corrected}" — patient is under 5 years old`);
     }
     if (!isChild && watchTitle && CHILD_TITLES.includes(watchTitle)) {
       setValue('title', '');
+      toast.info('Please select a title — patient is 5 years or older');
     }
-  }, [isChild, watchTitle, setValue]);
+  }, [isChild, watchDob, watchTitle, watchGender, setValue]);
+
+  // Refine Baby ↔ Master once gender becomes known/changes (e.g. gender picked
+  // after DOB, or changed afterwards) — this is the one place age AND gender
+  // both determine a single correct title, unlike the adult titles above.
+  useEffect(() => {
+    if (!watchDob || !isChild || !watchGender) return;
+    if (watchTitle === 'Baby' && watchGender === 'Male') {
+      setValue('title', 'Master');
+    } else if (watchTitle === 'Master' && watchGender !== 'Male') {
+      setValue('title', 'Baby');
+    }
+  }, [watchGender, isChild, watchDob, watchTitle, setValue]);
 
   useEffect(() => {
     if (watchState && STATE_COUNTRY_MAP[watchState]) {

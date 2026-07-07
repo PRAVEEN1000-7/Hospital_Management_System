@@ -346,14 +346,17 @@ const SuppliersPage: React.FC = () => {
                       </span>
                     </td>
                     <td className="px-4 py-4 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => handleEdit(s)} className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors" title="Edit">
-                          <span className="material-symbols-outlined text-lg text-slate-500">edit</span>
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button onClick={() => handleEdit(s)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                          title="Edit supplier details">
+                          <span className="material-symbols-outlined text-[15px]">edit</span> Edit
                         </button>
-                        <button onClick={() => handleToggleActive(s)} className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors" title={s.is_active ? 'Deactivate' : 'Activate'}>
-                          <span className={`material-symbols-outlined text-lg ${s.is_active ? 'text-amber-500' : 'text-emerald-500'}`}>
-                            {s.is_active ? 'block' : 'check_circle'}
-                          </span>
+                        <button onClick={() => handleToggleActive(s)}
+                          className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg transition-colors ${s.is_active ? 'text-amber-700 bg-amber-50 hover:bg-amber-100' : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100'}`}
+                          title={s.is_active ? 'Deactivate — hides this supplier from PO/GRN pickers' : 'Reactivate this supplier'}>
+                          <span className="material-symbols-outlined text-[15px]">{s.is_active ? 'block' : 'check_circle'}</span>
+                          {s.is_active ? 'Deactivate' : 'Activate'}
                         </button>
                       </div>
                     </td>

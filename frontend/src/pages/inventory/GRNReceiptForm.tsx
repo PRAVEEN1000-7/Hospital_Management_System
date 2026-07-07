@@ -2,7 +2,23 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useToast } from '../../contexts/ToastContext';
 import inventoryService from '../../services/inventoryService';
+import pharmacyService from '../../services/pharmacyService';
+import opticalService from '../../services/opticalService';
+import SearchableSelect, { type SuggestionOption } from '../../components/common/SearchableSelect';
 import type { GRNItemCreate, GoodsReceiptNote, PurchaseOrder } from '../../types/inventory';
+
+interface CatalogItem {
+  id: string;
+  name: string;
+  strength?: string | null;
+  generic_name?: string | null;
+  brand?: string | null;
+  purchase_price?: number | null;
+}
+
+// Carries the backend GRNItem id when editing an existing GRN, so batch
+// corrections can be saved back to the right row.
+type GRNFormItem = GRNItemCreate & { id?: string };
 
 const GRNReceiptForm: React.FC = () => {
   const navigate = useNavigate();
@@ -17,7 +33,7 @@ const GRNReceiptForm: React.FC = () => {
   const [invoiceDate, setInvoiceDate] = useState('');
   const [notes, setNotes] = useState('');
   const [poId, setPOId] = useState('');
-  const [items, setItems] = useState<GRNItemCreate[]>([
+  const [items, setItems] = useState<GRNFormItem[]>([
     {
       item_type: 'medicine',
       item_id: '',
@@ -35,6 +51,39 @@ const GRNReceiptForm: React.FC = () => {
   const [loading, setLoading] = useState(isEditMode);
   const [saving, setSaving] = useState(false);
   const [suppliers, setSuppliers] = useState<any[]>([]);
+  const [medicines, setMedicines] = useState<CatalogItem[]>([]);
+  const [opticalProducts, setOpticalProducts] = useState<CatalogItem[]>([]);
+
+  useEffect(() => {
+    pharmacyService.getMedicines(1, 500).then(r => setMedicines(r.data)).catch(() => {});
+    opticalService.getProducts(1, 500).then(r => setOpticalProducts(r.data)).catch(() => {});
+  }, []);
+
+  const getItemSuggestions = (itemType: string): SuggestionOption[] =>
+    (itemType === 'medicine' ? medicines : opticalProducts).map(item => ({
+      id: item.id,
+      label: item.strength !== undefined ? `${item.name}${item.strength ? ` (${item.strength})` : ''}` : item.name,
+      sublabel: item.generic_name || item.brand || undefined,
+      metadata: { id: item.id, name: item.name, price: item.purchase_price || 0 },
+    }));
+
+  // Standalone (no-PO) rows: selecting a catalog item fills the real id; typing a
+  // name with no match leaves item_id empty so the backend auto-creates the item
+  // (mirrors NewPurchaseOrderPage.tsx's item resolution — the only difference is
+  // this form additionally lets the item type change per row).
+  const handleItemSelect = (idx: number, value: string, metadata?: Record<string, unknown>) => {
+    const newItems = [...items];
+    const item = newItems[idx];
+    if (metadata && metadata.id) {
+      item.item_id = metadata.id as string;
+      item.item_name = metadata.name as string;
+      item.unit_price = (metadata.price as number) || item.unit_price;
+    } else {
+      item.item_id = '';
+      item.item_name = value.trim();
+    }
+    setItems(newItems);
+  };
 
   // Fetch existing GRN if editing
   useEffect(() => {
@@ -50,6 +99,7 @@ const GRNReceiptForm: React.FC = () => {
         setNotes(grn.notes || '');
         setPOId(grn.purchase_order_id || '');
         setItems(grn.items.map(i => ({
+          id: i.id,
           item_type: i.item_type,
           item_id: i.item_id,
           item_name: i.item_name || undefined,
@@ -122,6 +172,13 @@ const GRNReceiptForm: React.FC = () => {
     const item = newItems[index];
     (item as any)[field] = value;
 
+    // Medicine and optical product catalogs are disjoint — switching type
+    // invalidates whatever was previously selected.
+    if (field === 'item_type') {
+      item.item_id = '';
+      item.item_name = '';
+    }
+
     // Auto-calculate quantities
     if (field === 'quantity_received') {
       item.quantity_accepted = value; // Default: accept all received
@@ -160,6 +217,31 @@ const GRNReceiptForm: React.FC = () => {
     setItems(items.filter((_, i) => i !== index));
   };
 
+  // Batch details (batch_number / mfg date / expiry date) can only be corrected
+  // while the GRN is still "pending" — once verified/accepted, stock has already
+  // been posted under the original batch_number and changing it would desync
+  // the GRN from the real inventory it produced (see inventory_service.py).
+  const canEditBatchDetails = isEditMode && existingGRN?.status === 'pending';
+  const [savingBatchIdx, setSavingBatchIdx] = useState<number | null>(null);
+
+  const handleSaveBatchDetails = async (index: number) => {
+    const item = items[index];
+    if (!item.id) return;
+    setSavingBatchIdx(index);
+    try {
+      await inventoryService.updateGRNItemBatch(grnId!, item.id, {
+        batch_number: item.batch_number || undefined,
+        manufactured_date: item.manufactured_date || undefined,
+        expiry_date: item.expiry_date || undefined,
+      });
+      toast.success('Batch details updated');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to update batch details');
+    } finally {
+      setSavingBatchIdx(null);
+    }
+  };
+
   // Validate form
   const validateForm = (): boolean => {
     if (!supplier) {
@@ -176,16 +258,22 @@ const GRNReceiptForm: React.FC = () => {
     }
 
     for (const item of items) {
-      if (!item.item_id) {
-        toast.error('All items must have a medicine selected');
+      // item_id may be blank for a manually-typed new item — the backend resolves
+      // by name or auto-creates it (see NewPurchaseOrderPage.tsx for the same
+      // pattern). Requiring a pre-resolved id here would block adding any item
+      // that isn't already in the catalog.
+      if (!item.item_name) {
+        toast.error('All items must have a name or be selected from the list');
         return false;
       }
       if (!item.batch_number) {
         toast.error('Batch number is required for all items');
         return false;
       }
-      if (!item.expiry_date) {
-        toast.error('Expiry date is required for all items');
+      // Optical frames/solutions/accessories legitimately have no expiry —
+      // only medicines require one.
+      if (item.item_type === 'medicine' && !item.expiry_date) {
+        toast.error('Expiry date is required for all medicine items');
         return false;
       }
       if (item.quantity_received <= 0) {
@@ -242,7 +330,11 @@ const GRNReceiptForm: React.FC = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">{isEditMode ? 'View GRN' : 'Create Goods Receipt Note'}</h1>
-          <p className="text-sm text-slate-500 mt-1">Record incoming stock delivery and create medicine batches</p>
+          <p className="text-sm text-slate-500 mt-1">
+            {canEditBatchDetails
+              ? 'This receipt is still Pending — batch #, mfg date and expiry date can be corrected below.'
+              : 'Record incoming stock delivery and create medicine batches'}
+          </p>
         </div>
         <button
           onClick={() => navigate('/inventory/grns')}
@@ -359,27 +451,50 @@ const GRNReceiptForm: React.FC = () => {
             <table className="w-full text-sm">
               <thead className="bg-slate-50 border-y border-slate-200">
                 <tr>
-                  <th className="px-3 py-2 text-left font-semibold text-slate-600">Medicine</th>
+                  <th className="px-3 py-2 text-left font-semibold text-slate-600">Type</th>
+                  <th className="px-3 py-2 text-left font-semibold text-slate-600">Item</th>
                   <th className="px-3 py-2 text-left font-semibold text-slate-600">Batch #</th>
                   <th className="px-3 py-2 text-left font-semibold text-slate-600">Mfg Date</th>
                   <th className="px-3 py-2 text-left font-semibold text-slate-600">Expiry Date</th>
                   <th className="px-3 py-2 text-center font-semibold text-slate-600">Received</th>
                   <th className="px-3 py-2 text-center font-semibold text-slate-600">Accepted</th>
                   <th className="px-3 py-2 text-right font-semibold text-slate-600">Unit Price</th>
-                  {!isEditMode && <th className="px-3 py-2 text-center font-semibold text-slate-600">Action</th>}
+                  {(!isEditMode || canEditBatchDetails) && <th className="px-3 py-2 text-center font-semibold text-slate-600">Action</th>}
                 </tr>
               </thead>
               <tbody>
                 {items.map((item, idx) => (
                   <tr key={idx} className="border-b border-slate-100 hover:bg-slate-50">
                     <td className="px-3 py-3">
-                      <input
-                        type="text"
-                        value={item.item_name || ''}
-                        placeholder="Medicine name"
-                        disabled
-                        className="w-full px-2 py-1 border border-slate-200 rounded text-xs bg-slate-50"
-                      />
+                      <select
+                        value={item.item_type}
+                        onChange={(e) => updateItem(idx, 'item_type', e.target.value)}
+                        disabled={isEditMode || !!poId}
+                        className="w-full px-2 py-1 border border-slate-200 rounded text-xs bg-white disabled:bg-slate-50"
+                      >
+                        <option value="medicine">Medicine</option>
+                        <option value="optical_product">Optical</option>
+                      </select>
+                    </td>
+                    <td className="px-3 py-3 min-w-[160px]">
+                      {isEditMode || poId ? (
+                        <input
+                          type="text"
+                          value={item.item_name || ''}
+                          placeholder="Item name"
+                          disabled
+                          className="w-full px-2 py-1 border border-slate-200 rounded text-xs bg-slate-50"
+                        />
+                      ) : (
+                        <SearchableSelect
+                          value={item.item_name || ''}
+                          onChange={(val, meta) => handleItemSelect(idx, val, meta)}
+                          suggestions={getItemSuggestions(item.item_type)}
+                          placeholder={item.item_type === 'medicine' ? 'Search medicine...' : 'Search optical product...'}
+                          allowManualEntry={true}
+                          className="text-xs"
+                        />
+                      )}
                     </td>
                     <td className="px-3 py-3">
                       <input
@@ -387,7 +502,8 @@ const GRNReceiptForm: React.FC = () => {
                         value={item.batch_number}
                         onChange={(e) => updateItem(idx, 'batch_number', e.target.value)}
                         placeholder="Batch #"
-                        disabled={isEditMode}
+                        disabled={isEditMode && !canEditBatchDetails}
+                        title={isEditMode && !canEditBatchDetails ? 'Locked — batch details can only be corrected while the GRN is still Pending' : undefined}
                         className="w-full px-2 py-1 border border-slate-200 rounded text-xs focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:bg-slate-50"
                       />
                     </td>
@@ -396,7 +512,8 @@ const GRNReceiptForm: React.FC = () => {
                         type="date"
                         value={item.manufactured_date}
                         onChange={(e) => updateItem(idx, 'manufactured_date', e.target.value)}
-                        disabled={isEditMode}
+                        disabled={isEditMode && !canEditBatchDetails}
+                        title={isEditMode && !canEditBatchDetails ? 'Locked — batch details can only be corrected while the GRN is still Pending' : undefined}
                         className="w-full px-2 py-1 border border-slate-200 rounded text-xs focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:bg-slate-50"
                       />
                     </td>
@@ -405,7 +522,8 @@ const GRNReceiptForm: React.FC = () => {
                         type="date"
                         value={item.expiry_date}
                         onChange={(e) => updateItem(idx, 'expiry_date', e.target.value)}
-                        disabled={isEditMode}
+                        disabled={isEditMode && !canEditBatchDetails}
+                        title={isEditMode && !canEditBatchDetails ? 'Locked — batch details can only be corrected while the GRN is still Pending' : undefined}
                         className="w-full px-2 py-1 border border-slate-200 rounded text-xs focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:bg-slate-50"
                       />
                     </td>
@@ -437,6 +555,18 @@ const GRNReceiptForm: React.FC = () => {
                           className="text-red-500 hover:text-red-700 text-xs"
                         >
                           Remove
+                        </button>
+                      </td>
+                    )}
+                    {canEditBatchDetails && (
+                      <td className="px-3 py-3 text-center">
+                        <button
+                          onClick={() => handleSaveBatchDetails(idx)}
+                          disabled={savingBatchIdx === idx}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 rounded-lg transition-colors disabled:opacity-50"
+                          title="Save the batch #/dates for this row"
+                        >
+                          {savingBatchIdx === idx ? 'Saving...' : 'Save'}
                         </button>
                       </td>
                     )}

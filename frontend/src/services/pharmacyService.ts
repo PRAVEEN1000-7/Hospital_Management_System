@@ -281,6 +281,18 @@ export const pharmacyService = {
   },
 
   /**
+   * Sync payment_status on the dispensing record after its invoice is paid
+   * (invoices have no link back to the dispensing sale, so the Sales list
+   * would otherwise keep showing "pending" forever).
+   */
+  async markDispensingPaid(dispensingId: string, amountPaid: number, paymentMethod?: string): Promise<void> {
+    await api.put(`/pharmacy/dispensing/${dispensingId}/mark-paid`, {
+      amount_paid: amountPaid,
+      payment_method: paymentMethod,
+    });
+  },
+
+  /**
    * Preview dispensing totals before submission
    * Returns backend-calculated totals based on items to dispense
    */

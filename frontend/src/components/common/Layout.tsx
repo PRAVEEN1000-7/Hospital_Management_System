@@ -81,11 +81,18 @@ const Layout: React.FC = () => {
   const canAccessPrescriptions = hasRole('super_admin', 'admin', 'doctor', 'nurse', 'pharmacist') && isModuleEnabled('prescriptions');
   const canAccessPharmacy      = hasRole('pharmacist', 'admin', 'super_admin', 'inventory_manager', 'cashier') && isModuleEnabled('pharmacy');
   const canAccessInventory     = hasRole('super_admin', 'admin', 'inventory_manager', 'pharmacist') && isModuleEnabled('inventory');
-  // Receptionist can view invoices/payments at front desk; doctor can view their patient billing
-  const canAccessBilling       = hasRole('super_admin', 'admin', 'cashier', 'pharmacist', 'doctor', 'receptionist') && isModuleEnabled('billing');
-  const canAccessAnalytics     = hasRole('super_admin', 'admin') && isModuleEnabled('analytics');
-  // Optical is clinically eye-specific — matches the backend specialty gate in tenant_security.py.
-  const canAccessOptical       = hasRole('super_admin', 'admin', 'doctor', 'optical_staff') && isModuleEnabled('optical') && isEyeHospitalFeatureEnabled;
+  // Receptionist can view invoices/payments at front desk — doctors don't handle billing.
+  const canAccessBilling       = hasRole('super_admin', 'admin', 'cashier', 'pharmacist', 'receptionist') && isModuleEnabled('billing');
+  // AnalyticsDashboard.tsx scopes its own panels per role (doctor→OPD only,
+  // cashier→revenue/financial only, etc.) — these are exactly the roles it
+  // already has panel logic for; report_viewer's sole job is reports/analytics.
+  const canAccessAnalytics     = hasRole('super_admin', 'admin', 'doctor', 'receptionist', 'pharmacist', 'cashier', 'inventory_manager', 'report_viewer') && isModuleEnabled('analytics');
+  // Optical Store is a back-of-store retail/dispensing operation, not part of a doctor's
+  // clinical workflow — only admin/super_admin (oversight) and optical_staff (the job) get it.
+  const canAccessOptical       = hasRole('super_admin', 'admin', 'optical_staff') && isModuleEnabled('optical') && isEyeHospitalFeatureEnabled;
+  // Report Viewer's whole job is the appointment reports export — no other role gets a
+  // sidebar entry for it since admin/super_admin already reach it via the Appointments dropdown.
+  const canAccessAppointmentReports = hasRole('report_viewer') && isModuleEnabled('appointments');
 
   // Fetch the current hospital's name + logo from the tenant-scoped /hospital endpoint.
   const loadBranding = useCallback(() => {
@@ -363,9 +370,11 @@ const Layout: React.FC = () => {
   if (hasRole('super_admin', 'admin')) {
     mainNavItems.push({ to: '/staff', label: 'Staff Directory', icon: 'badge' });
   }
-  // Analytics - admin only
   if (canAccessAnalytics) {
     mainNavItems.push({ to: '/analytics', label: 'Analytics', icon: 'monitoring' });
+  }
+  if (canAccessAppointmentReports) {
+    mainNavItems.push({ to: '/appointments/reports', label: 'Appointment Reports', icon: 'analytics' });
   }
 
   // ── Appointment navigation ── fully role-driven

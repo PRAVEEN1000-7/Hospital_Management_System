@@ -28,6 +28,12 @@ const invoiceService = {
     return response.data;
   },
 
+  /** Self-contained printable HTML for this invoice (used for both Print and Download PDF). */
+  async getInvoicePdfHtml(id: string): Promise<string> {
+    const response = await api.get(`/invoices/${id}/pdf`, { responseType: 'text' });
+    return response.data;
+  },
+
   async getByPatient(patientId: string, page = 1, limit = 10): Promise<PaginatedResponse<InvoiceListItem>> {
     const response = await api.get<PaginatedResponse<InvoiceListItem>>(`/invoices/patient/${patientId}`, {
       params: { page, limit },

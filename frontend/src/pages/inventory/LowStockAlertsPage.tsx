@@ -156,8 +156,13 @@ const LowStockAlertsPage: React.FC = () => {
       const items = selectedSuggestions.map(s => {
         const quantity = customQuantities.get(s.item_id) || s.suggestedQuantity;
         return {
-          item_type: 'medicine' as const,
+          // Low-stock alerts include both medicines AND optical products — hardcoding
+          // 'medicine' here mislabeled optical reorders, which later crashed with a
+          // foreign-key violation when the resulting GRN was accepted (the backend
+          // would try to create a MedicineBatch pointing at an optical product's id).
+          item_type: (s.item_type as 'medicine' | 'optical_product') || 'medicine',
           item_id: s.item_id,
+          item_name: s.item_name,
           quantity_ordered: quantity,
           unit_price: s.purchase_price || 0,
           total_price: quantity * (s.purchase_price || 0),
@@ -300,7 +305,7 @@ const LowStockAlertsPage: React.FC = () => {
                         />
                       </th>
                     )}
-                    <th className="px-4 py-3 text-left font-semibold text-slate-700">Medicine Name</th>
+                    <th className="px-4 py-3 text-left font-semibold text-slate-700">Item Name</th>
                     <th className="px-4 py-3 text-center font-semibold text-slate-700">Current Stock</th>
                     <th className="px-4 py-3 text-center font-semibold text-slate-700">Reorder Level</th>
                     <th className="px-4 py-3 text-center font-semibold text-slate-700">Suggested Qty</th>

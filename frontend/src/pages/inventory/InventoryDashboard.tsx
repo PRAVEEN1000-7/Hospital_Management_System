@@ -89,7 +89,7 @@ const InventoryDashboard: React.FC = () => {
                     <span className="bg-red-100 text-red-700 text-xs font-bold px-2 py-0.5 rounded-full">{data.low_stock_count}</span>
                   )}
                 </div>
-                <button onClick={() => navigate('/inventory/stock-movements')} className="text-xs font-semibold text-primary hover:underline">View All</button>
+                <button onClick={() => navigate('/inventory/low-stock')} className="text-xs font-semibold text-primary hover:underline">View All</button>
               </div>
               <div className="p-5">
                 {data.low_stock_items.length === 0 ? (

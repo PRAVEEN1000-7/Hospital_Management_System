@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useToast } from '../../contexts/ToastContext';
 import inventoryService from '../../services/inventoryService';
 import pharmacyService from '../../services/pharmacyService';
+import DateRangeFilter from '../../components/common/DateRangeFilter';
 import type { StockMovement } from '../../types/inventory';
 
 interface GroupedMovement {
@@ -71,6 +72,8 @@ const StockMovementsReport: React.FC = () => {
       if (itemType) (filters as any).item_type = itemType;
       if (itemId) (filters as any).item_id = itemId;
       if (movementType) (filters as any).movement_type = movementType;
+      if (dateFrom) (filters as any).date_from = dateFrom;
+      if (dateTo) (filters as any).date_to = dateTo;
 
       const res = await inventoryService.getStockMovements(page, 50, filters);
       setMovements(res.data);
@@ -270,6 +273,12 @@ const StockMovementsReport: React.FC = () => {
             Apply Filters
           </button>
         </div>
+
+        <DateRangeFilter
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          onChange={(from, to) => { setDateFrom(from); setDateTo(to); setPage(1); }}
+        />
       </div>
 
       {/* Movements List */}

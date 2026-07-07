@@ -199,6 +199,19 @@ class GRNItemResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class GRNItemBatchUpdate(BaseModel):
+    """Correct batch/packaging details on a received line item.
+
+    Only allowed while the GRN is still 'pending' — once verified/accepted,
+    stock movements and MedicineBatch/OpticalBatch rows have already been
+    created keyed by this batch_number, so changing it afterward would
+    desync the GRN record from the real inventory it produced.
+    """
+    batch_number: Optional[str] = Field(None, max_length=50)
+    manufactured_date: Optional[date] = None
+    expiry_date: Optional[date] = None
+
+
 class GRNCreate(BaseModel):
     purchase_order_id: Optional[str] = None
     supplier_id: str

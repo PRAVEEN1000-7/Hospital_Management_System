@@ -141,10 +141,11 @@ function getQuickLinks(role: string): QuickLink[] {
         { icon: 'event_note', iconColor: 'text-emerald-400', label: 'Appointments', to: '/appointments/manage' },
       ];
     case 'receptionist':
+      // No 'Reports' link — /appointments/reports (export-style reporting) is
+      // admin/report_viewer only, not a front-desk task.
       return [
         { icon: 'person_add', iconColor: 'text-blue-400', label: 'Patient Registration', to: '/register' },
         { icon: 'playlist_add', iconColor: 'text-amber-400', label: 'Waitlist', to: '/appointments/waitlist' },
-        { icon: 'analytics', iconColor: 'text-emerald-400', label: 'Reports', to: '/appointments/reports' },
       ];
     case 'pharmacist':
       return [

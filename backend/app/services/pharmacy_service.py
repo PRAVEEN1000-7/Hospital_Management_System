@@ -576,6 +576,7 @@ def create_sale(
 
     subtotal = Decimal("0")
     tax_total = Decimal("0")
+    line_discount_total = Decimal("0")
 
     for item_data in items_data:
         med = get_medicine_by_id(db, item_data["medicine_id"])
@@ -670,10 +671,15 @@ def create_sale(
         db.add(si)
         subtotal += line_subtotal
         tax_total += line_tax
+        line_discount_total += line_discount
 
     sale.subtotal = subtotal
     sale.tax_amount = tax_total
-    sale.total_amount = subtotal - sale.discount_amount + tax_total + sale.consultation_fee
+    # subtotal is the raw pre-discount sum (matches invoice_service convention); both
+    # per-line discounts and the flat header discount must be subtracted to get the
+    # real total, otherwise a per-line discount% is silently dropped and the patient
+    # is overcharged by that amount.
+    sale.total_amount = subtotal - line_discount_total - sale.discount_amount + tax_total + sale.consultation_fee
 
     if eye_features:
         from .billing_queue_service import compute_payment_breakdown

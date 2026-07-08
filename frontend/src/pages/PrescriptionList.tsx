@@ -49,7 +49,6 @@ const PrescriptionList: React.FC = () => {
   const confirm = useConfirm();
 
   const showOpticalTab = isModuleEnabled('optical') || isEyeHospitalFeatureEnabled;
-  const canDispenseOptical = user?.roles?.some(r => ['super_admin', 'admin', 'optical_staff'].includes(r)) ?? false;
   const [activeTab, setActiveTab] = useState<'medicine' | 'optical'>('medicine');
 
   const [prescriptions, setPrescriptions] = useState<PrescriptionListItem[]>([]);
@@ -360,16 +359,6 @@ const PrescriptionList: React.FC = () => {
                                 {optDownloadingId === rx.id ? 'progress_activity' : 'download'}
                               </span>
                             </button>
-                            {canDispenseOptical && (
-                              <button
-                                onClick={() => navigate(`/optical/sales/new?prescription_id=${rx.id}`)}
-                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold transition-colors ml-1"
-                                title="Dispense against this prescription"
-                              >
-                                <span className="material-symbols-outlined text-sm">point_of_sale</span>
-                                Dispense
-                              </button>
-                            )}
                           </div>
                         </td>
                       </tr>

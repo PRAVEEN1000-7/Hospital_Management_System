@@ -35,3 +35,5 @@ class Refund(Base):
     invoice = relationship("Invoice", back_populates="refunds")
     payment = relationship("Payment", back_populates="refunds")
     patient = relationship("Patient", foreign_keys=[patient_id])
+    requested_by_user = relationship("User", foreign_keys=[requested_by])
+    approved_by_user = relationship("User", foreign_keys=[approved_by])

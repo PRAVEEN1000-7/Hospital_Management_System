@@ -205,7 +205,18 @@ def list_payments(
             for r in (p.refunds or [])
             if r.status == "processed"
         )
-        net_amount = max(Decimal("0"), (p.amount or Decimal("0")) - refunded_amount)
+        # net_amount is the true refundable ceiling shown to staff when requesting a
+        # NEW refund — it must also reserve pending/approved refunds still in flight,
+        # not just already-processed ones, otherwise this shows more "refundable"
+        # than refund_service.request_refund will actually allow, and a cashier hits
+        # a confusing 400 ("exceeds available refundable amount") after the UI just
+        # told them the full amount was free.
+        reserved_amount = sum(
+            (r.amount or Decimal("0"))
+            for r in (p.refunds or [])
+            if r.status in ("pending", "approved", "processed")
+        )
+        net_amount = max(Decimal("0"), (p.amount or Decimal("0")) - reserved_amount)
         items.append(PaymentListItem(
             id=str(p.id),
             payment_number=p.payment_number,

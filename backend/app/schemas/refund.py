@@ -63,7 +63,10 @@ class RefundListItem(BaseModel):
     amount: Decimal
     reason_code: str
     reason_detail: Optional[str] = None
+    refund_mode: Optional[str] = None
     status: str
+    requested_by_name: Optional[str] = None
+    approved_by_name: Optional[str] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -85,6 +88,8 @@ class RefundResponse(BaseModel):
     status: str
     refund_mode: Optional[str]
     refund_reference: Optional[str]
+    requested_by_name: Optional[str] = None
+    approved_by_name: Optional[str] = None
     processed_at: Optional[datetime]
     created_at: datetime
     updated_at: datetime
@@ -115,6 +120,8 @@ class RefundResponse(BaseModel):
                 "status": obj.status,
                 "refund_mode": obj.refund_mode,
                 "refund_reference": obj.refund_reference,
+                "requested_by_name": obj.requested_by_user.full_name if obj.requested_by_user else None,
+                "approved_by_name": obj.approved_by_user.full_name if obj.approved_by_user else None,
                 "processed_at": obj.processed_at,
                 "created_at": obj.created_at,
                 "updated_at": obj.updated_at,

@@ -2,11 +2,14 @@
 Hospital settings router — manage hospital-level configuration.
 """
 import logging
+import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models.user import User
+from ..models.patient import Patient
+from ..models.invoice import Invoice
 from ..dependencies import get_current_active_user, require_admin_or_super_admin
 from ..services.settings_service import (
     get_hospital_settings,
@@ -17,6 +20,25 @@ from ..schemas.appointment import HospitalSettingsResponse, HospitalSettingsUpda
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/hospital-settings", tags=["Hospital Settings"])
+
+
+def _live_sequence_counters(db: Session, hospital_id: uuid.UUID) -> dict:
+    """Real counts for the "Sequence Counters" panel.
+
+    hospital_settings.patient_id_sequence / staff_id_sequence / invoice_sequence
+    are dead columns — patient/staff IDs are actually numbered through the
+    separate id_sequences table (patient_id_service.py), and invoice numbers
+    use a date+random-suffix scheme, so none of those three ever touch this
+    row and they stay at their default of 0 forever. prescription_sequence is
+    the one column that's genuinely wired up (prescription_service.py
+    increments it directly). Counting rows directly here instead of trusting
+    those three columns is what actually reflects reality.
+    """
+    return {
+        "patient_id_sequence": db.query(Patient).filter(Patient.hospital_id == hospital_id).count(),
+        "staff_id_sequence": db.query(User).filter(User.hospital_id == hospital_id).count(),
+        "invoice_sequence": db.query(Invoice).filter(Invoice.hospital_id == hospital_id).count(),
+    }
 
 
 @router.get("")
@@ -53,6 +75,7 @@ async def get_settings(
         if hasattr(val, "hex"):
             val = str(val)
         result[col.name] = val
+    result.update(_live_sequence_counters(db, current_user.hospital_id))
     return result
 
 
@@ -85,6 +108,7 @@ async def update_settings(
             if hasattr(val, "hex"):
                 val = str(val)
             result[col.name] = val
+        result.update(_live_sequence_counters(db, current_user.hospital_id))
         return result
     except HTTPException:
         raise

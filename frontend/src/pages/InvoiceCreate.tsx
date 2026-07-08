@@ -11,6 +11,7 @@ import type { HospitalDetails } from '../services/hospitalService';
 import type { Patient } from '../types/patient';
 import type { Medicine } from '../types/pharmacy';
 import type { TaxConfig, InvoiceType, InvoiceItemCreateData, InvoiceItemType, PaymentMode } from '../types/billing';
+import { genId } from '../utils/id';
 
 interface MedicineLookupResult {
   id: string;
@@ -63,7 +64,7 @@ const PAYMENT_MODES: { value: PaymentMode; label: string }[] = [
 ];
 
 const emptyLine = (type: InvoiceItemType = 'service'): LineItem => ({
-  key: crypto.randomUUID(),
+  key: genId(),
   item_type: type,
   reference_id: '',
   description: '',

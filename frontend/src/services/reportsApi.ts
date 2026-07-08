@@ -29,6 +29,7 @@ import type {
   PharmacyDashboard,
   InventoryDashboard,
 } from '../types/analytics.types';
+import { genId } from '../utils/id';
 import {
   mockDashboardSummary,
   mockDailyRevenue,
@@ -300,7 +301,7 @@ async function createScheduledReport(
   warn('ScheduleExportPanel (create)');
   await delay();
   return {
-    id: crypto.randomUUID(),
+    id: genId(),
     report_type: _payload.report_type,
     format: _payload.format,
     frequency: _payload.frequency,

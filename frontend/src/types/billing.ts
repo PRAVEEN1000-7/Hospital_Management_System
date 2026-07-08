@@ -227,6 +227,8 @@ export interface Refund {
   status: RefundStatus;
   refund_mode?: string;
   refund_reference?: string;
+  requested_by_name?: string;
+  approved_by_name?: string;
   processed_at?: string;
   created_at: string;
   updated_at: string;
@@ -242,7 +244,10 @@ export interface RefundListItem {
   amount: number;
   reason_code: RefundReasonCode;
   reason_detail?: string;
+  refund_mode?: string;
   status: RefundStatus;
+  requested_by_name?: string;
+  approved_by_name?: string;
   created_at: string;
 }
 

@@ -13,6 +13,7 @@ import type { PrescriptionItemCreate, Medicine, PrescriptionTemplate, EyeSide } 
 import type { OpticalPrescriptionCreateData } from '../types/optical';
 import type { Patient } from '../types/patient';
 import type { DoctorOption } from '../types/appointment';
+import { genId } from '../utils/id';
 import AvailabilityCalendar from '../components/common/AvailabilityCalendar';
 import { useDoctorMonthAvailability } from '../hooks/useDoctorMonthAvailability';
 import { formatLocalDateISO, formatMonthKey } from '../utils/calendarDate';
@@ -119,9 +120,7 @@ interface DiagnosisBlock {
 }
 
 const createBlock = (diagnosis = '', items?: PrescriptionItemCreate[]): DiagnosisBlock => ({
-  id: typeof crypto !== 'undefined' && crypto.randomUUID
-    ? crypto.randomUUID()
-    : Math.random().toString(36).substring(2) + Date.now().toString(36),
+  id: genId(),
   diagnosis,
   items: items && items.length > 0 ? items : [emptyItem()],
 });

@@ -151,7 +151,7 @@ const RefundList: React.FC = () => {
                   <th className="text-left px-4 py-3 font-semibold text-slate-600">Invoice #</th>
                   <th className="text-left px-4 py-3 font-semibold text-slate-600">Patient</th>
                   <th className="text-left px-4 py-3 font-semibold text-slate-600">Reason</th>
-                  <th className="text-left px-4 py-3 font-semibold text-slate-600">Requested On</th>
+                  <th className="text-left px-4 py-3 font-semibold text-slate-600">Requested By / On</th>
                   <th className="text-right px-4 py-3 font-semibold text-slate-600">Amount</th>
                   <th className="text-center px-4 py-3 font-semibold text-slate-600">Status</th>
                   {isBillingStaff && <th className="text-center px-4 py-3 font-semibold text-slate-600">Actions</th>}
@@ -173,13 +173,22 @@ const RefundList: React.FC = () => {
                       {r.reason_detail && (
                         <p className="text-slate-400 truncate max-w-[180px]">{r.reason_detail}</p>
                       )}
+                      {r.refund_mode && (
+                        <p className="text-slate-400 capitalize">via {r.refund_mode.replace('_', ' ')}</p>
+                      )}
                     </td>
-                    <td className="px-4 py-3 text-xs text-slate-500">{new Date(r.created_at).toLocaleDateString('en-IN')}</td>
+                    <td className="px-4 py-3 text-xs text-slate-500">
+                      <p className="text-slate-700 font-medium">{r.requested_by_name || '—'}</p>
+                      <p className="text-slate-400">{new Date(r.created_at).toLocaleDateString('en-IN')}</p>
+                    </td>
                     <td className="px-4 py-3 text-right font-bold text-amber-600">₹{fmt(r.amount)}</td>
                     <td className="px-4 py-3 text-center">
                       <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold ${STATUS_COLORS[r.status]}`}>
                         {r.status.charAt(0).toUpperCase() + r.status.slice(1)}
                       </span>
+                      {r.approved_by_name && ['approved', 'processed', 'rejected'].includes(r.status) && (
+                        <p className="text-[10px] text-slate-400 mt-1">by {r.approved_by_name}</p>
+                      )}
                     </td>
                     {isBillingStaff && (
                       <td className="px-4 py-3 text-center">

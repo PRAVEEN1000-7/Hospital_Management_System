@@ -367,7 +367,7 @@ const InvoiceDetail: React.FC = () => {
             {canMutate && ['partially_paid', 'paid'].includes(invoice.status) && (
               <button
                 onClick={() => {
-                  const completedPays = payments.filter(p => p.status === 'completed');
+                  const completedPays = payments.filter(p => p.status === 'completed' && Number(p.net_amount ?? p.amount) > 0);
                   setRefundPaymentId(completedPays.length === 1 ? completedPays[0].id : '');
                   setRefundAmount('');
                   setRefundReasonCode('billing_error');
@@ -616,6 +616,7 @@ const InvoiceDetail: React.FC = () => {
                   <tr>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Refund #</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Reason</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Requested By</th>
                     <th className="text-right px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Amount</th>
                     <th className="text-center px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Status</th>
                     {isBillingStaff && <th className="text-center px-4 py-2.5 text-xs font-semibold text-slate-500 uppercase">Actions</th>}
@@ -626,11 +627,15 @@ const InvoiceDetail: React.FC = () => {
                     <tr key={r.id}>
                       <td className="px-4 py-3 font-mono text-xs text-primary">{r.refund_number}</td>
                       <td className="px-4 py-3 text-xs text-slate-600">{r.reason_code.replace('_', ' ')}</td>
+                      <td className="px-4 py-3 text-xs text-slate-600">{r.requested_by_name || '—'}</td>
                       <td className="px-4 py-3 text-right font-semibold text-amber-700">₹{fmt(r.amount)}</td>
                       <td className="px-4 py-3 text-center">
                         <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${r.status === 'processed' ? 'bg-green-100 text-green-700' : r.status === 'approved' ? 'bg-blue-100 text-blue-700' : r.status === 'rejected' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-700'}`}>
                           {r.status}
                         </span>
+                        {r.approved_by_name && ['approved', 'processed', 'rejected'].includes(r.status) && (
+                          <p className="text-[10px] text-slate-400 mt-0.5">by {r.approved_by_name}</p>
+                        )}
                       </td>
                       {isBillingStaff && (
                         <td className="px-4 py-3 text-center">
@@ -808,8 +813,8 @@ const InvoiceDetail: React.FC = () => {
             <div className="space-y-4">
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">Payment to Refund *</label>
-                {payments.filter(p => p.status === 'completed').length === 0 ? (
-                  <p className="text-sm text-red-500">No completed payments found for this invoice.</p>
+                {payments.filter(p => p.status === 'completed' && Number(p.net_amount ?? p.amount) > 0).length === 0 ? (
+                  <p className="text-sm text-red-500">No refundable payments found for this invoice — completed payments here are either fully refunded already or have a refund already pending/approved.</p>
                 ) : (
                   <select
                     value={refundPaymentId}
@@ -817,7 +822,7 @@ const InvoiceDetail: React.FC = () => {
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
                   >
                     <option value="">Select payment…</option>
-                    {payments.filter(p => p.status === 'completed').map(p => (
+                    {payments.filter(p => p.status === 'completed' && Number(p.net_amount ?? p.amount) > 0).map(p => (
                       <option key={p.id} value={p.id}>
                         {p.payment_number} — {p.payment_mode.replace('_', ' ')} — Paid ₹{fmt(p.amount)} · Refundable ₹{fmt(Number(p.net_amount ?? p.amount))}
                       </option>

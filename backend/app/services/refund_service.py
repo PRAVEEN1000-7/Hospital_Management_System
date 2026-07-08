@@ -43,6 +43,8 @@ def _load_refund(db: Session, refund_id: str | uuid.UUID) -> Optional[Refund]:
             joinedload(Refund.invoice),
             joinedload(Refund.payment),
             joinedload(Refund.patient),
+            joinedload(Refund.requested_by_user),
+            joinedload(Refund.approved_by_user),
         )
         .filter(Refund.id == refund_id)
         .first()
@@ -207,6 +209,8 @@ def list_refunds(
             joinedload(Refund.invoice),
             joinedload(Refund.payment),
             joinedload(Refund.patient),
+            joinedload(Refund.requested_by_user),
+            joinedload(Refund.approved_by_user),
         )
         .filter(Refund.hospital_id == hospital_id)
     )
@@ -241,7 +245,10 @@ def list_refunds(
             amount=r.amount,
             reason_code=r.reason_code,
             reason_detail=r.reason_detail,
+            refund_mode=r.refund_mode,
             status=r.status,
+            requested_by_name=r.requested_by_user.full_name if r.requested_by_user else None,
+            approved_by_name=r.approved_by_user.full_name if r.approved_by_user else None,
             created_at=r.created_at,
         ))
 

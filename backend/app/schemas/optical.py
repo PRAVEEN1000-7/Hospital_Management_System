@@ -379,7 +379,9 @@ class OpticalStockAdjustmentCreate(BaseModel):
     batch_id: Optional[str] = None
     adjustment_type: str = Field(..., pattern="^(increase|decrease|write_off|damage|expired|correction|return)$")
     quantity: int  # Positive = stock in, Negative = stock out
-    reason: Optional[str] = None
+    # stock_adjustments.reason is NOT NULL at the DB level — see the same fix
+    # in schemas/pharmacy.py's StockAdjustmentCreate.
+    reason: str = Field(..., min_length=1, max_length=500)
 
 
 class OpticalStockAdjustmentResponse(BaseModel):

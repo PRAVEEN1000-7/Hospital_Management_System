@@ -565,8 +565,8 @@ def create_sale(
         discount_amount=data.get("discount_amount", Decimal("0")),
         notes=data.get("notes"),
         created_by=user_id,
-        payment_method=data.get("payment_method", "cash") if eye_features else "cash",
-        amount_tendered=Decimal(str(data.get("amount_tendered", 0))) if eye_features else Decimal("0"),
+        payment_method=data.get("payment_method", "cash"),
+        amount_tendered=Decimal(str(data.get("amount_tendered", 0))),
         consultation_fee=Decimal(str(data.get("consultation_fee", 0))) if eye_features else Decimal("0"),
         queue_token=queue_entry.queue_token if queue_entry else None,
         queue_status="collected" if queue_entry else None,
@@ -681,17 +681,15 @@ def create_sale(
     # is overcharged by that amount.
     sale.total_amount = subtotal - line_discount_total - sale.discount_amount + tax_total + sale.consultation_fee
 
-    if eye_features:
-        from .billing_queue_service import compute_payment_breakdown
-        breakdown = compute_payment_breakdown(sale.total_amount, amount_tendered=sale.amount_tendered)
-        sale.paid_amount = breakdown["paid_amount"]
-        sale.balance_amount = breakdown["balance_amount"]
-        sale.payment_status = breakdown["payment_status"]
-    else:
-        # Legacy behavior for general hospitals — no payment/queue tracking.
-        sale.paid_amount = sale.total_amount
-        sale.balance_amount = Decimal("0")
-        sale.payment_status = "paid"
+    # Always derive real payment status from what was actually tendered — this
+    # used to be hardcoded to "paid" for non-eye-hospital tenants regardless of
+    # amount received, hiding unpaid/partially-paid counter sales from cashiers
+    # and giving them no way to later collect the outstanding balance.
+    from .billing_queue_service import compute_payment_breakdown
+    breakdown = compute_payment_breakdown(sale.total_amount, amount_tendered=sale.amount_tendered)
+    sale.paid_amount = breakdown["paid_amount"]
+    sale.balance_amount = breakdown["balance_amount"]
+    sale.payment_status = breakdown["payment_status"]
 
     if queue_entry:
         queue_entry.sale_id = sale.id

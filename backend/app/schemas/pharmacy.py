@@ -517,7 +517,10 @@ class StockAdjustmentCreate(BaseModel):
     batch_id: Optional[str] = None
     adjustment_type: str = Field(..., pattern="^(increase|decrease|write_off|damage|expired|correction|return)$")
     quantity: int     # Positive = stock in, Negative = stock out
-    reason: Optional[str] = None
+    # The stock_adjustments table has a NOT NULL constraint on this column —
+    # it was previously typed Optional here, so a blank reason passed pydantic
+    # validation and only failed later as a raw 500 DB IntegrityError.
+    reason: str = Field(..., min_length=1, max_length=500)
 
 
 class StockAdjustmentResponse(BaseModel):

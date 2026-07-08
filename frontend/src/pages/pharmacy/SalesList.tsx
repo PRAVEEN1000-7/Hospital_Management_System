@@ -10,7 +10,13 @@ import DateRangeFilter from '../../components/common/DateRangeFilter';
 const PAYMENT_STATUS_COLORS: Record<string, string> = {
   paid: 'bg-green-100 text-green-700',
   pending: 'bg-amber-100 text-amber-700',
-  partial: 'bg-blue-100 text-blue-700',
+  partially_paid: 'bg-blue-100 text-blue-700',
+};
+
+const PAYMENT_STATUS_LABELS: Record<string, string> = {
+  paid: 'Paid',
+  pending: 'Pending',
+  partially_paid: 'Partial',
 };
 
 type PatientTypeFilter = 'all' | 'walk_in' | 'registered';
@@ -53,6 +59,34 @@ const SalesList: React.FC = () => {
   const [sortBy, setSortBy] = useState<SortBy>('sale_date');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const canCreateSale = Boolean(user?.roles?.some((r) => ['super_admin', 'admin', 'pharmacist', 'cashier'].includes(r)));
+  const canReceivePayment = Boolean(user?.roles?.some((r) => ['super_admin', 'admin', 'cashier', 'pharmacist'].includes(r)));
+
+  const [payingSale, setPayingSale] = useState<Sale | null>(null);
+  const [payAmount, setPayAmount] = useState(0);
+  const [payMethod, setPayMethod] = useState('cash');
+  const [paySaving, setPaySaving] = useState(false);
+
+  const openReceivePayment = (sale: Sale) => {
+    setPayingSale(sale);
+    setPayAmount(Number(sale.balance_amount) || 0);
+    setPayMethod(sale.payment_method || 'cash');
+  };
+
+  const handleReceivePayment = async () => {
+    if (!payingSale || payAmount <= 0) return;
+    setPaySaving(true);
+    try {
+      const newPaidTotal = Number(payingSale.paid_amount || 0) + payAmount;
+      await pharmacyService.markDispensingPaid(payingSale.id, newPaidTotal, payMethod);
+      toast.success('Payment recorded');
+      setPayingSale(null);
+      fetchSales();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to record payment');
+    } finally {
+      setPaySaving(false);
+    }
+  };
 
   const fetchSales = useCallback(async () => {
     setLoading(true);
@@ -204,6 +238,7 @@ const SalesList: React.FC = () => {
                 <th className="px-4 py-3 font-semibold text-slate-600">Total</th>
                 <th className="px-4 py-3 font-semibold text-slate-600">Payment</th>
                 <th className="px-4 py-3 font-semibold text-slate-600">Status</th>
+                <th className="px-4 py-3 font-semibold text-slate-600">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -219,8 +254,21 @@ const SalesList: React.FC = () => {
                   <td className="px-4 py-3 text-slate-600 capitalize">{s.payment_method || '-'}</td>
                   <td className="px-4 py-3">
                     <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${PAYMENT_STATUS_COLORS[s.payment_status] || 'bg-slate-100 text-slate-600'}`}>
-                      {s.payment_status}
+                      {PAYMENT_STATUS_LABELS[s.payment_status] || s.payment_status}
                     </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    {canReceivePayment && s.payment_status !== 'paid' ? (
+                      <button
+                        onClick={() => openReceivePayment(s)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100"
+                      >
+                        <span className="material-symbols-outlined text-sm">payments</span>
+                        Receive Payment
+                      </button>
+                    ) : (
+                      <span className="text-xs text-slate-400">—</span>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -245,6 +293,43 @@ const SalesList: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Receive Payment Modal */}
+      {payingSale && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setPayingSale(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-slate-900 mb-1">Receive Payment</h3>
+            <p className="text-sm text-slate-500 mb-4">{payingSale.invoice_number} — balance due ₹{Number(payingSale.balance_amount || 0).toFixed(2)}</p>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">Payment Method</label>
+                <select value={payMethod} onChange={(e) => setPayMethod(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none">
+                  <option value="cash">Cash</option>
+                  <option value="card">Card</option>
+                  <option value="upi">UPI</option>
+                  <option value="bank_transfer">Bank Transfer</option>
+                  <option value="insurance">Insurance</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">Amount Received</label>
+                <input type="number" min={0.01} max={Number(payingSale.balance_amount) || undefined} step={0.01}
+                  value={payAmount || ''}
+                  onChange={(e) => setPayAmount(parseFloat(e.target.value) || 0)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 mt-5">
+              <button onClick={() => setPayingSale(null)} className="px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 rounded-lg">Cancel</button>
+              <button onClick={handleReceivePayment} disabled={paySaving || payAmount <= 0}
+                className="px-4 py-2 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 shadow-sm disabled:opacity-50">
+                {paySaving ? 'Recording…' : 'Record Payment'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

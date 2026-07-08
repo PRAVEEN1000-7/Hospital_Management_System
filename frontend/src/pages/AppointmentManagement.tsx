@@ -11,7 +11,7 @@ import opticalService from '../services/opticalService';
 import AppointmentStatusBadge from '../components/appointments/AppointmentStatusBadge';
 import DateRangeFilter from '../components/common/DateRangeFilter';
 import { formatLocalDateISO } from '../utils/calendarDate';
-import type { Appointment, DoctorOption, AppointmentStatus, AppointmentStats } from '../types/appointment';
+import type { Appointment, DoctorOption, AppointmentStatus, AppointmentStats, TimeSlot } from '../types/appointment';
 import type { Invoice, PaymentMode } from '../types/billing';
 import type { PrescriptionListItem } from '../types/prescription';
 import type { OpticalPrescription } from '../types/optical';
@@ -48,6 +48,12 @@ const AppointmentManagement: React.FC = () => {
   const [detailAppt, setDetailAppt] = useState<Appointment | null>(null);
   const [cancelId, setCancelId] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState('');
+  const [rescheduleId, setRescheduleId] = useState<string | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState('');
+  const [rescheduleTime, setRescheduleTime] = useState('');
+  const [rescheduleSlots, setRescheduleSlots] = useState<TimeSlot[]>([]);
+  const [rescheduleDoctorId, setRescheduleDoctorId] = useState<string | null>(null);
+  const [rescheduleLoading, setRescheduleLoading] = useState(false);
   const [stats, setStats] = useState<AppointmentStats | null>(null);
   const [collectAppt, setCollectAppt] = useState<Appointment | null>(null);
   const [collectInvoice, setCollectInvoice] = useState<Invoice | null>(null);
@@ -108,15 +114,17 @@ const AppointmentManagement: React.FC = () => {
   useEffect(() => { scheduleService.getDoctors().then(setDoctors).catch(() => {}); }, []);
   useEffect(() => { fetchAppointments(); }, [fetchAppointments]);
 
-  // Sync from URL when global header search updates the query.
+  // Sync from URL when global header search updates the query. Deliberately
+  // depends only on `searchParams` — including `searchInput` here made this
+  // fire on every keystroke and immediately revert the just-typed text back
+  // to the last committed value before the URL had a chance to catch up.
   useEffect(() => {
     const urlSearch = searchParams.get('search') || '';
-    if (urlSearch !== searchInput) {
-      setSearchInput(urlSearch);
-      setSearch(urlSearch);
-      setPage(1);
-    }
-  }, [searchParams, searchInput]);
+    setSearchInput(urlSearch);
+    setSearch(urlSearch);
+    setPage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   // Keep URL in sync with table search state.
   useEffect(() => {
@@ -196,6 +204,36 @@ const AppointmentManagement: React.FC = () => {
       fetchStats();
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || 'Failed to cancel');
+    }
+  };
+
+  const openReschedule = (appt: Appointment) => {
+    setRescheduleId(appt.id);
+    setRescheduleDate('');
+    setRescheduleTime('');
+    setRescheduleSlots([]);
+    setRescheduleDoctorId(appt.doctor_id || null);
+  };
+
+  useEffect(() => {
+    if (!rescheduleDate || !rescheduleDoctorId) { setRescheduleSlots([]); return; }
+    setRescheduleLoading(true);
+    scheduleService.getAvailableSlots(rescheduleDoctorId, rescheduleDate)
+      .then(data => setRescheduleSlots(data.slots))
+      .catch(() => setRescheduleSlots([]))
+      .finally(() => setRescheduleLoading(false));
+  }, [rescheduleDate, rescheduleDoctorId]);
+
+  const handleReschedule = async () => {
+    if (!rescheduleId || !rescheduleDate || !rescheduleTime) return;
+    try {
+      await appointmentService.rescheduleAppointment(rescheduleId, rescheduleDate, rescheduleTime);
+      toast.success('Appointment rescheduled');
+      setRescheduleId(null);
+      fetchAppointments();
+      fetchStats();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to reschedule');
     }
   };
 
@@ -501,6 +539,9 @@ const AppointmentManagement: React.FC = () => {
                           <span className="material-symbols-outlined text-lg">task_alt</span>
                         </button>
                       )}
+                      <button onClick={() => openReschedule(appt)} className="p-1.5 text-amber-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg" title="Reschedule">
+                        <span className="material-symbols-outlined text-lg">event_repeat</span>
+                      </button>
                       <button onClick={() => { setCancelId(appt.id); setCancelReason(''); }} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Cancel">
                         <span className="material-symbols-outlined text-lg">cancel</span>
                       </button>
@@ -572,6 +613,9 @@ const AppointmentManagement: React.FC = () => {
                                   <span className="material-symbols-outlined text-lg">task_alt</span>
                                 </button>
                               )}
+                              <button onClick={() => openReschedule(appt)} className="p-1.5 text-amber-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg" title="Reschedule">
+                                <span className="material-symbols-outlined text-lg">event_repeat</span>
+                              </button>
                               <button onClick={() => { setCancelId(appt.id); setCancelReason(''); }} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Cancel">
                                 <span className="material-symbols-outlined text-lg">cancel</span>
                               </button>
@@ -771,6 +815,50 @@ const AppointmentManagement: React.FC = () => {
                 </button>
               )}
               <button onClick={() => setDetailAppt(null)} className="px-4 py-2.5 text-sm font-medium text-slate-500 hover:bg-slate-100 rounded-xl transition-colors">Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reschedule Modal */}
+      {rescheduleId && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setRescheduleId(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-slate-900 mb-2">Reschedule Appointment</h3>
+            <p className="text-sm text-slate-500 mb-4">Pick a new date and time.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">New Date</label>
+                <input type="date" value={rescheduleDate} min={new Date().toISOString().split('T')[0]}
+                  onChange={(e) => { setRescheduleDate(e.target.value); setRescheduleTime(''); }}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
+              </div>
+              {rescheduleDate && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">Available Slots</label>
+                  {rescheduleLoading ? (
+                    <p className="text-xs text-slate-400">Loading slots...</p>
+                  ) : rescheduleSlots.length === 0 ? (
+                    <p className="text-xs text-slate-400">No slots available on this date</p>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-2 max-h-40 overflow-y-auto">
+                      {rescheduleSlots.filter(s => s.available).map(s => (
+                        <button key={s.time} onClick={() => setRescheduleTime(s.time)}
+                          className={`px-2 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
+                            rescheduleTime === s.time ? 'bg-primary text-white border-primary' : 'border-slate-200 text-slate-600 hover:border-primary'
+                          }`}>
+                          {(() => { const [h, m] = s.time.split(':').map(Number); return `${h % 12 || 12}:${m.toString().padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`; })()}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-3 mt-4">
+              <button onClick={() => setRescheduleId(null)} className="px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 rounded-lg">Cancel</button>
+              <button onClick={handleReschedule} disabled={!rescheduleDate || !rescheduleTime}
+                className="px-4 py-2 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 shadow-sm disabled:opacity-50">Reschedule</button>
             </div>
           </div>
         </div>

@@ -38,13 +38,13 @@ const PatientDetail: React.FC = () => {
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    const allowedTypes = ['image/jpeg', 'image/png'];
     if (!allowedTypes.includes(file.type)) {
-      toast.error('Only JPEG, PNG, and WebP images are allowed');
+      toast.error('Only JPEG and PNG images are allowed');
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('File size must be less than 5MB');
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('File size must be less than 2MB');
       return;
     }
     setUploading(true);
@@ -52,8 +52,8 @@ const PatientDetail: React.FC = () => {
       const updatedPatient = await patientService.uploadPhoto(id!, file);
       setPatient(updatedPatient);
       toast.success('Photo uploaded successfully');
-    } catch {
-      toast.error('Failed to upload photo');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to upload photo');
     } finally {
       setUploading(false);
     }
@@ -93,6 +93,13 @@ const PatientDetail: React.FC = () => {
         </button>
         <div className="flex items-center gap-2">
           <button
+            onClick={() => navigate(`/patients/${id}/edit`)}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-sm font-semibold transition-colors active:scale-95"
+          >
+            <span className="material-icons text-lg">edit</span>
+            Edit Patient
+          </button>
+          <button
             onClick={() => navigate(`/patients/${id}/id-card`)}
             className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold transition-colors active:scale-95"
           >
@@ -128,7 +135,7 @@ const PatientDetail: React.FC = () => {
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/jpeg,image/png,image/webp"
+              accept="image/jpeg,image/png"
               onChange={handlePhotoUpload}
               className="hidden"
             />

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import {
   TITLE_OPTIONS, GENDER_OPTIONS, BLOOD_GROUP_OPTIONS,
@@ -54,10 +54,13 @@ type FD = {
 
 const Register: React.FC = () => {
   const navigate = useNavigate();
+  const { id: patientId } = useParams<{ id?: string }>();
+  const isEditMode = !!patientId;
   const toast = useToast();
   const { triggerRefresh } = useDashboardRefresh();
   const { isEyeHospitalFeatureEnabled } = useAuth();
   const [serverError, setServerError] = useState<string | null>(null);
+  const [loadingPatient, setLoadingPatient] = useState(isEditMode);
 
   // Patient History block (BRD v1.1 §2) — eye-hospital feature pack only
   const [reasonForVisit, setReasonForVisit] = useState('');
@@ -86,6 +89,7 @@ const Register: React.FC = () => {
     handleSubmit,
     watch,
     setValue,
+    reset,
     formState: { isSubmitting },
   } = useForm<FD>({
     // No zodResolver — eliminates @hookform/resolvers v3 + zod v4 version mismatch
@@ -99,6 +103,49 @@ const Register: React.FC = () => {
       emergency_contact_country_code: '+91', emergency_contact_relation: ''
     },
   });
+
+  // Edit mode: load the existing patient and prefill the form. The backend's
+  // PUT /patients/{id} expects the same full field set as create (it's not a
+  // partial PATCH), so every field must be populated before the form is usable.
+  useEffect(() => {
+    if (!patientId) return;
+    let cancelled = false;
+    patientService.getPatient(patientId).then(p => {
+      if (cancelled) return;
+      reset({
+        title: (p as unknown as { title?: string }).title || '',
+        first_name: p.first_name || '',
+        last_name: p.last_name || '',
+        date_of_birth: p.date_of_birth ? p.date_of_birth.slice(0, 10) : '',
+        gender: p.gender || '',
+        blood_group: p.blood_group || '',
+        phone_country_code: p.phone_country_code || '+91',
+        phone_number: p.phone_number || '',
+        email: p.email || '',
+        address_line_1: p.address_line_1 || '',
+        address_line_2: p.address_line_2 || '',
+        city: p.city || '',
+        state: p.state || '',
+        pin_code: p.pin_code || '',
+        country: p.country || 'India',
+        emergency_contact_name: p.emergency_contact_name || '',
+        emergency_contact_phone: p.emergency_contact_phone || '',
+        emergency_contact_country_code: p.emergency_contact_country_code || '+91',
+        emergency_contact_relation: p.emergency_contact_relation || '',
+      });
+      setReasonForVisit(p.reason_for_visit || '');
+      setSymptoms(p.symptoms || []);
+      setBloodSugarValue(p.blood_sugar_value != null ? String(p.blood_sugar_value) : '');
+      setBloodSugarUnit(p.blood_sugar_unit || 'mg/dL');
+    }).catch(() => {
+      toast.error('Failed to load patient details');
+      navigate('/patients');
+    }).finally(() => {
+      if (!cancelled) setLoadingPatient(false);
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patientId]);
 
   const watchCountry = watch('country');
   const watchState = watch('state');
@@ -238,7 +285,7 @@ const Register: React.FC = () => {
     // Step 2: call backend
     setFieldErrors({});
     setServerError(null);
-    feLogger.info('patient_registration', 'Submitting patient registration form');
+    feLogger.info('patient_registration', isEditMode ? 'Submitting patient update form' : 'Submitting patient registration form');
     try {
       const payload: Record<string, unknown> = { ...data };
       if (isEyeHospitalFeatureEnabled) {
@@ -247,6 +294,16 @@ const Register: React.FC = () => {
         payload.blood_sugar_value = bloodSugarValue ? Number(bloodSugarValue) : undefined;
         payload.blood_sugar_unit = bloodSugarValue ? bloodSugarUnit : undefined;
       }
+
+      if (isEditMode && patientId) {
+        const result = await patientService.updatePatient(patientId, payload as any);
+        feLogger.info('patient_registration', `Patient updated: ${result.patient_reference_number}`);
+        toast.success('Patient details updated successfully');
+        triggerRefresh();
+        setTimeout(() => navigate(`/patients/${patientId}`), 1000);
+        return;
+      }
+
       const result = await patientService.createPatient(payload as any);
       feLogger.info('patient_registration', `Patient registered: ${result.patient_reference_number}`);
       toast.success(`Patient registered successfully! ID: ${result.patient_reference_number}`);
@@ -271,9 +328,9 @@ const Register: React.FC = () => {
         const detail = axiosError.response?.data?.detail;
         message = Array.isArray(detail)
           ? detail.map((d) => d.msg).join('\n')
-          : (typeof detail === 'string' ? detail : null) ?? 'Registration failed. Please try again.';
+          : (typeof detail === 'string' ? detail : null) ?? (isEditMode ? 'Update failed. Please try again.' : 'Registration failed. Please try again.');
       }
-      feLogger.error('patient_registration', `Registration failed: ${message}`);
+      feLogger.error('patient_registration', `${isEditMode ? 'Update' : 'Registration'} failed: ${message}`);
       setServerError(message);
       toast.error(message);
     }
@@ -298,6 +355,14 @@ const Register: React.FC = () => {
     }
   };
 
+  if (loadingPatient) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="w-6 h-6 border-4 border-slate-200 border-t-primary rounded-full animate-spin" />
+      </div>
+    );
+  }
+
   return (
     <div>
       {/* Header */}
@@ -308,10 +373,12 @@ const Register: React.FC = () => {
           </button>
           <div>
             <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-              <span className="material-symbols-outlined text-primary">person_add</span>
-              Patient Registration
+              <span className="material-symbols-outlined text-primary">{isEditMode ? 'edit' : 'person_add'}</span>
+              {isEditMode ? 'Edit Patient' : 'Patient Registration'}
             </h1>
-            <p className="text-slate-500 text-sm">Fill in the patient details to create a new record.</p>
+            <p className="text-slate-500 text-sm">
+              {isEditMode ? 'Update the patient\'s details below.' : 'Fill in the patient details to create a new record.'}
+            </p>
           </div>
         </div>
       </header>
@@ -663,7 +730,7 @@ const Register: React.FC = () => {
           <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
             <span className="material-symbols-outlined text-red-500 flex-shrink-0 text-xl">error</span>
             <div>
-              <p className="text-sm font-semibold text-red-700">Registration failed</p>
+              <p className="text-sm font-semibold text-red-700">{isEditMode ? 'Update failed' : 'Registration failed'}</p>
               <p className="text-sm text-red-600 mt-0.5 whitespace-pre-line">{serverError}</p>
             </div>
           </div>
@@ -684,12 +751,12 @@ const Register: React.FC = () => {
             {isSubmitting ? (
               <>
                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Registering...
+                {isEditMode ? 'Updating...' : 'Registering...'}
               </>
             ) : (
               <>
-                <span className="material-icons text-lg">person_add</span>
-                Patient Registration
+                <span className="material-icons text-lg">{isEditMode ? 'save' : 'person_add'}</span>
+                {isEditMode ? 'Save Changes' : 'Patient Registration'}
               </>
             )}
           </button>

@@ -350,6 +350,13 @@ class TenantService:
                     enabled_at=datetime.utcnow() if is_enabled else None,
                 )
                 db.add(tenant_module)
+                # SessionLocal is autoflush=False, so without this the row above
+                # stays pending and invisible to the next existence check — a
+                # module that's both directly included AND a dependency of
+                # another included module (resolved just below) would then get
+                # added a second time in the same transaction, violating the
+                # (tenant_id, module_id) unique constraint at commit.
+                db.flush()
 
             if is_enabled:
                 TenantService._resolve_module_dependencies(db, tenant_id, module)
@@ -382,7 +389,11 @@ class TenantService:
                     enabled_at=datetime.utcnow()
                 )
                 db.add(tenant_module)
-            
+                # See the matching comment in _enable_modules_for_plan — autoflush
+                # is off, so this must be flushed before any later existence
+                # check (in this recursive call or the caller's loop) can see it.
+                db.flush()
+
             # Recursive dependency resolution
             TenantService._resolve_module_dependencies(db, tenant_id, req_module)
     
@@ -601,6 +612,10 @@ class TenantService:
                     enabled_at=datetime.utcnow() if is_enabled else None
                 )
                 db.add(tenant_module)
+                # autoflush is off — flush so the dependency resolution below
+                # (and any later iteration of this loop) sees this row and
+                # doesn't try to insert a duplicate (tenant_id, module_id) row.
+                db.flush()
             else:
                 # Prevent disabling core modules
                 if module.is_core and not is_enabled:

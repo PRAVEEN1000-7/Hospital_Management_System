@@ -290,9 +290,9 @@ const NewSale: React.FC = () => {
         prescription_date: prescriptionDate || undefined,
         discount_amount: discountAmount,
         notes: notes || undefined,
-        ...(isEyeHospitalFeatureEnabled
-          ? { payment_method: paymentMethod, amount_tendered: amountTendered, consultation_fee: consultationFee }
-          : {}),
+        payment_method: paymentMethod,
+        amount_tendered: amountTendered,
+        ...(isEyeHospitalFeatureEnabled ? { consultation_fee: consultationFee } : {}),
         items: cart.map(({ medicine_id, batch_id, quantity, unit_price, discount_percent, tax_percent, dosage_instructions, duration_days }) => ({
           medicine_id, batch_id: batch_id || undefined, quantity, unit_price,
           discount_percent: discount_percent || undefined, tax_percent: tax_percent || undefined,
@@ -366,19 +366,17 @@ const NewSale: React.FC = () => {
               <input value={doctorName} onChange={e => setDoctorName(e.target.value)}
                 className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
             </div>
-            {isEyeHospitalFeatureEnabled && (
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Payment Method</label>
-                <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary">
-                  <option value="cash">Cash</option>
-                  <option value="card">Card</option>
-                  <option value="upi">UPI</option>
-                  <option value="bank_transfer">Bank Transfer</option>
-                  <option value="insurance">Insurance</option>
-                </select>
-              </div>
-            )}
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Payment Method</label>
+              <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary">
+                <option value="cash">Cash</option>
+                <option value="card">Card</option>
+                <option value="upi">UPI</option>
+                <option value="bank_transfer">Bank Transfer</option>
+                <option value="insurance">Insurance</option>
+              </select>
+            </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
             <div>
@@ -556,20 +554,22 @@ const NewSale: React.FC = () => {
                 <span>Grand Total</span>
                 <span className="text-primary">₹{grandTotal.toFixed(2)}</span>
               </div>
-              {isEyeHospitalFeatureEnabled && (
-                <>
-                  <div className="flex justify-between text-sm items-center pt-2 border-t border-slate-200">
-                    <span className="text-slate-500">{paymentMethod === 'cash' ? 'Cash' : paymentMethod === 'upi' ? 'UPI' : paymentMethod === 'bank_transfer' ? 'Bank Transfer' : 'Amount'} Received</span>
-                    <input type="number" min={0} step={0.01} value={amountTendered || ''}
-                      onChange={e => setAmountTendered(parseFloat(e.target.value) || 0)}
-                      className="w-24 px-2 py-1 text-sm text-right border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
-                  </div>
-                  <div className="flex justify-between text-sm font-semibold">
-                    <span className={changeOrDue >= 0 ? 'text-slate-500' : 'text-red-500'}>{changeOrDue >= 0 ? 'Balance Returned' : 'Amount Due'}</span>
-                    <span className={changeOrDue >= 0 ? 'text-emerald-600' : 'text-red-600'}>₹{Math.abs(changeOrDue).toFixed(2)}</span>
-                  </div>
-                </>
-              )}
+              <div className="flex justify-between text-sm items-center pt-2 border-t border-slate-200">
+                <span className="text-slate-500">{paymentMethod === 'cash' ? 'Cash' : paymentMethod === 'upi' ? 'UPI' : paymentMethod === 'bank_transfer' ? 'Bank Transfer' : 'Amount'} Received</span>
+                <div className="flex items-center gap-1.5">
+                  <button type="button" onClick={() => setAmountTendered(grandTotal)}
+                    className="px-2 py-1 text-[10px] font-semibold text-primary border border-primary/30 rounded hover:bg-primary/5">
+                    Full
+                  </button>
+                  <input type="number" min={0} step={0.01} value={amountTendered || ''}
+                    onChange={e => setAmountTendered(parseFloat(e.target.value) || 0)}
+                    className="w-24 px-2 py-1 text-sm text-right border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
+                </div>
+              </div>
+              <div className="flex justify-between text-sm font-semibold">
+                <span className={changeOrDue >= 0 ? 'text-slate-500' : 'text-red-500'}>{changeOrDue >= 0 ? 'Balance Returned' : 'Amount Due'}</span>
+                <span className={changeOrDue >= 0 ? 'text-emerald-600' : 'text-red-600'}>₹{Math.abs(changeOrDue).toFixed(2)}</span>
+              </div>
             </div>
           </div>
         </div>

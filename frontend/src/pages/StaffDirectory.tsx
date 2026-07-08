@@ -235,15 +235,19 @@ const StaffDirectory: React.FC = () => {
     return () => { if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current); };
   }, [searchInput]);
 
-  // Sync search state from URL when global header search updates it.
+  // Sync search state from URL when the global header search navigates here
+  // (e.g. "/staff?search=foo"). Deliberately depends only on `searchParams` —
+  // including `searchInput` here made this effect re-fire on every keystroke,
+  // and since the URL hadn't caught up yet it would immediately revert the
+  // just-typed character back to the last committed value, making the search
+  // box appear to reject all input.
   useEffect(() => {
     const urlSearch = searchParams.get('search') || '';
-    if (urlSearch !== searchInput) {
-      setSearchInput(urlSearch);
-      setSearch(urlSearch);
-      setPage(1);
-    }
-  }, [searchParams, searchInput]);
+    setSearchInput(urlSearch);
+    setSearch(urlSearch);
+    setPage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   // Keep URL query in sync with page-level search box.
   useEffect(() => {
@@ -751,6 +755,8 @@ const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => void; o
   const [isSaving, setIsSaving] = useState(false);
   const [usernameError, setUsernameError] = useState('');
   const [usernameChecking, setUsernameChecking] = useState(false);
+  const [emailError, setEmailError] = useState('');
+  const [emailChecking, setEmailChecking] = useState(false);
   const passwordTriggerMounted = useRef(false);
 
   const { register, handleSubmit, watch, setValue, trigger, formState: { errors, isValid, isSubmitting } } = useForm<CreateFormData>({
@@ -826,6 +832,27 @@ const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => void; o
     return () => { clearTimeout(timeout); setUsernameChecking(false); };
   }, [username]);
 
+  // Debounced email uniqueness check against backend — mirrors the username
+  // check above, since duplicate emails were previously only caught at submit.
+  useEffect(() => {
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setEmailError('');
+      return;
+    }
+    setEmailChecking(true);
+    const timeout = setTimeout(async () => {
+      try {
+        const { exists } = await userService.checkEmail(email);
+        setEmailError(exists ? 'This email is already registered' : '');
+      } catch {
+        // Silently fail — backend will validate on submit
+      } finally {
+        setEmailChecking(false);
+      }
+    }, 500);
+    return () => { clearTimeout(timeout); setEmailChecking(false); };
+  }, [email]);
+
   const fullName = `${firstName} ${lastName}`.trim();
 
   const strengthChecks = [
@@ -839,7 +866,7 @@ const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => void; o
 
   // Determine if the form is ready to submit
   const hasErrors = Object.keys(errors).length > 0;
-  const isFormReady = isValid && !hasErrors && !usernameError && !usernameChecking;
+  const isFormReady = isValid && !hasErrors && !usernameError && !usernameChecking && !emailError && !emailChecking;
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -873,7 +900,7 @@ const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => void; o
   };
 
   const onSubmit = async (data: CreateFormData) => {
-    if (usernameError) return;
+    if (usernameError || emailError) return;
     setIsSaving(true);
     setSubmitError('');
     try {
@@ -960,8 +987,10 @@ const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => void; o
               <input {...register('last_name')} className={`input-field ${inputErr(errors.last_name)}`} placeholder="e.g. Jenkins" onKeyDown={blockNonAlpha} />
             </Field>
           </div>
-          <Field label="Email Address *" error={errors.email?.message}>
-            <input {...register('email')} type="email" className={`input-field ${inputErr(errors.email)}`} placeholder="sarah.j@hospital.com" />
+          <Field label="Email Address *" error={errors.email?.message || emailError}>
+            <input {...register('email')} type="email" className={`input-field ${inputErr(errors.email || emailError)}`} placeholder="sarah.j@hospital.com" />
+            {emailChecking && <p className="text-xs text-blue-500 mt-1 flex items-center gap-1"><span className="material-icons text-xs animate-spin">sync</span>Checking availability...</p>}
+            {!emailChecking && !errors.email && !emailError && email.includes('@') && <p className="text-xs text-green-600 mt-1 flex items-center gap-1"><span className="material-icons text-xs">check_circle</span>Email available</p>}
           </Field>
           <Field label="Username (for login) *" error={errors.username?.message || usernameError}>
             <input {...register('username')} className={`input-field ${inputErr(errors.username || usernameError)}`} placeholder="Auto-filled from email" />

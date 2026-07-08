@@ -238,6 +238,14 @@ const App: React.FC = () => {
                   <PatientIdCard />
                 </ProtectedRoute>
               } />
+              <Route path="/patients/:id/edit" element={
+                <ProtectedRoute
+                  allowedRoles={['super_admin', 'admin', 'receptionist']}
+                  requiredModule="patients"
+                >
+                  <Register />
+                </ProtectedRoute>
+              } />
               <Route path="/register" element={
                 <ProtectedRoute
                   allowedRoles={['super_admin', 'admin', 'receptionist']}

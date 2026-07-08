@@ -16,10 +16,14 @@ const PharmacyDashboard: React.FC = () => {
     const loadDashboard = async () => {
       setLoading(true);
       try {
-        // Fetch dashboard stats and pending prescriptions count in parallel
+        // Fetch dashboard stats and pending prescriptions count in parallel.
+        // Explicitly request status='pending' — with no filter this endpoint
+        // now returns BOTH pending and dispensed (see PendingPrescriptions.tsx's
+        // "All Status" filter), which would otherwise inflate this count with
+        // prescriptions that have already been fully dispensed.
         const [dashboard, pendingRes] = await Promise.all([
           pharmacyService.getDashboard(),
-          pharmacyService.getPendingPrescriptions(1, 1).catch(() => ({ total: 0 })),
+          pharmacyService.getPendingPrescriptions(1, 1, 'pending').catch(() => ({ total: 0 })),
         ]);
         
         setStats(dashboard);

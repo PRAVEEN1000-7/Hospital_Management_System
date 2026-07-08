@@ -3,7 +3,7 @@ Patients router — works with new hms_db UUID schema.
 """
 import logging
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from typing import Optional
@@ -24,8 +24,10 @@ from ..services.patient_service import (
     create_patient,
     get_patient_by_id,
     get_patient_by_mobile,
+    get_patient_by_email,
     update_patient,
     soft_delete_patient,
+    save_patient_photo,
     list_patients as list_patients_service,
 )
 
@@ -66,6 +68,18 @@ async def create_new_patient(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="A patient with this phone number already exists in this hospital",
             )
+
+        # Check email uniqueness within this hospital only (email is optional,
+        # so only enforce this when the patient actually provided one).
+        if patient.email:
+            existing_email_patient = get_patient_by_email(
+                db, patient.email, hospital_id=current_user.hospital_id
+            )
+            if existing_email_patient:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="A patient with this email address already exists in this hospital",
+                )
 
         # Patient History block is part of the eye-hospital feature pack —
         # ignore it for hospitals not classified eye_hospital/multi_specialty.
@@ -174,6 +188,17 @@ async def update_existing_patient(
                     detail="Phone number already exists in this hospital",
                 )
 
+        # Check email uniqueness within this hospital only (skip if unchanged/blank)
+        if patient_data.email and patient_data.email != db_patient.email:
+            existing_email = get_patient_by_email(
+                db, patient_data.email, hospital_id=current_user.hospital_id
+            )
+            if existing_email and str(existing_email.id) != patient_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="A patient with this email address already exists in this hospital",
+                )
+
         if not is_eye_hospital_feature_enabled(current_user.hospital):
             patient_data.reason_for_visit = None
             patient_data.symptoms = None
@@ -190,6 +215,28 @@ async def update_existing_patient(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update patient.",
+        )
+
+
+@router.post("/{patient_id}/photo", response_model=PatientResponse)
+async def upload_patient_photo(
+    patient_id: str,
+    photo: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(patient_update_role_guard),
+):
+    """Upload/replace a patient's profile photo."""
+    try:
+        patient = save_patient_photo(db, patient_id, photo, hospital_id=current_user.hospital_id)
+        return PatientResponse.model_validate(patient)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error uploading photo for patient {patient_id}: {e}", exc_info=True)
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to upload photo.",
         )
 
 

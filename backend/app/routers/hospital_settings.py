@@ -40,10 +40,16 @@ async def get_settings(
             hospital_code=hospital_code,
         )
         logger.info("Auto-created hospital_settings for hospital %s", current_user.hospital_id)
-    # Return all setting columns as a dict
+    # Return all setting columns as a dict. Rows created outside this ORM
+    # path (e.g. seeded directly in SQL, or columns added by a later ALTER
+    # TABLE with no backfill) can have a real NULL where the model declares a
+    # Python-side default — backfill those here so the settings form always
+    # shows a sensible value instead of a blank field.
     result = {}
     for col in settings.__table__.columns:
         val = getattr(settings, col.name)
+        if val is None and col.default is not None and not callable(col.default.arg):
+            val = col.default.arg
         if hasattr(val, "hex"):
             val = str(val)
         result[col.name] = val

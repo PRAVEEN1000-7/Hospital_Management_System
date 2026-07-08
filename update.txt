@@ -35,3 +35,24 @@ it should function as, if the check box is enabled , the patient will be consult
 6. also check the all the print option and the downlaod option in the invoice is works perfectly ,with the correct formate.
 
 7.mainly focus on the stock and other things in the inventory, all these things in the section are mapped correct and works perfeclty by onr by one,because the each is depend on the before and the next one.
+
+
+-- 08-07-2026
+
+
+1. in the staff directory the search is not working
+2. after creating the patient record ,i cant able to edit their details.i want the option to edit that as well and that should update in all the places.
+3. failed to upload patient image
+while creating patient i used already exists mail also allowed
+while creating the staff it not validate both the user name and gmail .but now it validate the user name only
+4. in the queue display i face this issue - some value are zero .but it correctly fetch the prescription ,no Reschedule appointment option in the appoinment
+5. in the billing invoice i face this issue - not able to create new invoice.when i click it open the blank page. Default values applied when missing .System Configuration and Hospital Settings it not fille the default values
+6. the data mention in this prormpt is for explain,check the logic and fix it 
+    In pharmacist login 5 prescriptions had been dispensed out of 7 but still it shows pending prescription as 7
+7. in the sales -> In cashier login the unpaid and partially paid payments are shown as paid status And there isn't a option to receive payments by the cashier for pending payments
+
+
+
+-- need review
+
+1. mail service issue.

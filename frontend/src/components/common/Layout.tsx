@@ -135,7 +135,10 @@ const Layout: React.FC = () => {
     const fetchPendingCount = async () => {
       setLoadingPendingCount(true);
       try {
-        const result = await pharmacyService.getPendingPrescriptions(1, 1);
+        // Explicitly request status='pending' — with no filter this endpoint
+        // returns both pending and dispensed prescriptions, which would inflate
+        // this sidebar badge with prescriptions that are already fully dispensed.
+        const result = await pharmacyService.getPendingPrescriptions(1, 1, 'pending');
         setPendingPrescriptionCount(result.total);
       } catch (err) {
         setPendingPrescriptionCount(0);

@@ -64,6 +64,7 @@ const StockAdjustments: React.FC = () => {
     e.preventDefault();
     if (!medicineId) { toast.error('Select a medicine'); return; }
     if (quantity <= 0) { toast.error('Quantity must be positive'); return; }
+    if (!reason.trim()) { toast.error('Reason is required'); return; }
 
     setSaving(true);
     try {
@@ -72,7 +73,7 @@ const StockAdjustments: React.FC = () => {
         batch_id: batchId || undefined,
         adjustment_type: adjustmentType,
         quantity,
-        reason: reason || undefined,
+        reason: reason.trim(),
       });
       toast.success('Stock adjustment created');
       setShowForm(false);
@@ -135,8 +136,9 @@ const StockAdjustments: React.FC = () => {
             </div>
           </div>
           <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Reason</label>
-            <input value={reason} onChange={e => setReason(e.target.value)}
+            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Reason *</label>
+            <input value={reason} onChange={e => setReason(e.target.value)} required
+              placeholder="e.g. Damaged in transit, expired stock, physical count correction..."
               className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
           </div>
           <div className="flex justify-end">

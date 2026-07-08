@@ -30,6 +30,11 @@ export const userService = {
     return response.data;
   },
 
+  async checkEmail(email: string): Promise<{ exists: boolean }> {
+    const response = await api.get<{ exists: boolean }>(`/users/check-email/${encodeURIComponent(email)}`);
+    return response.data;
+  },
+
   async updateUser(id: string, data: UserUpdateData): Promise<UserData> {
     const response = await api.put<UserData>(`/users/${id}`, data);
     return response.data;

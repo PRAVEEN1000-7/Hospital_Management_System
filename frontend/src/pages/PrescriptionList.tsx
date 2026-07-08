@@ -154,15 +154,17 @@ const PrescriptionList: React.FC = () => {
     return () => clearTimeout(timer);
   }, [searchInput]);
 
-  // Sync from URL when global header search updates the query.
+  // Sync from URL when global header search updates the query. Deliberately
+  // depends only on `searchParams` — including `searchInput` here made this
+  // fire on every keystroke and immediately revert the just-typed text back
+  // to the last committed value before the URL had a chance to catch up.
   useEffect(() => {
     const urlSearch = searchParams.get('search') || '';
-    if (urlSearch !== searchInput) {
-      setSearchInput(urlSearch);
-      setSearch(urlSearch);
-      setPage(1);
-    }
-  }, [searchParams, searchInput]);
+    setSearchInput(urlSearch);
+    setSearch(urlSearch);
+    setPage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   // Keep URL in sync with table search state.
   useEffect(() => {

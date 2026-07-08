@@ -1,16 +1,30 @@
 """
 Patient service — works with new hms_db UUID schema.
 """
+import logging
+import os
+import shutil
 import uuid
+from datetime import datetime
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_, func
 from math import ceil
 from typing import Optional
+from fastapi import UploadFile, HTTPException, status
 from ..config import settings
 from ..models.patient import Patient
 from ..models.user import Hospital
 from ..schemas.patient import PatientCreate, PatientUpdate, PaginatedPatientResponse, PatientListItem
 from ..services.patient_id_service import generate_patient_id
+from .user_service import (
+    UPLOAD_DIR,
+    ALLOWED_PHOTO_EXTENSIONS,
+    MAX_PHOTO_SIZE_MB,
+    ensure_upload_directory,
+    _has_valid_photo_signature,
+)
+
+logger = logging.getLogger(__name__)
 
 
 def generate_prn(db: Session, hospital_id: uuid.UUID, gender: str = "Unknown") -> str:
@@ -84,6 +98,21 @@ def get_patient_by_mobile(db: Session, phone_number: str, hospital_id=None) -> O
     """
     q = db.query(Patient).filter(
         Patient.phone_number == phone_number,
+        Patient.is_deleted == False,
+    )
+    if hospital_id is not None:
+        q = q.filter(Patient.hospital_id == hospital_id)
+    return q.first()
+
+
+def get_patient_by_email(db: Session, email: str, hospital_id=None) -> Optional[Patient]:
+    """Find a patient by email within a specific hospital (multi-tenant safe).
+
+    Case-insensitive, same rationale as get_patient_by_mobile — email is
+    optional on a patient record, so callers must skip this check when blank.
+    """
+    q = db.query(Patient).filter(
+        func.lower(Patient.email) == email.lower(),
         Patient.is_deleted == False,
     )
     if hospital_id is not None:
@@ -201,4 +230,73 @@ def soft_delete_patient(db: Session, patient_id: str | uuid.UUID, user_id: uuid.
     patient.is_deleted = True
     patient.updated_by = user_id
     db.commit()
+    return patient
+
+
+def save_patient_photo(
+    db: Session, patient_id: str | uuid.UUID, file: UploadFile, hospital_id: Optional[uuid.UUID] = None
+) -> Patient:
+    """Save a patient's profile photo — mirrors user_service.save_user_photo's
+    validation (extension + magic-byte signature + size) and shares the same
+    upload directory, distinguished by a "patient_" filename prefix.
+    """
+    ensure_upload_directory()
+
+    file_ext = os.path.splitext(file.filename or "")[1].lower()
+    if file_ext not in ALLOWED_PHOTO_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid file type. Allowed: {', '.join(sorted(ALLOWED_PHOTO_EXTENSIONS))}",
+        )
+
+    if file_ext == '.jpeg':
+        file_ext = '.jpg'
+
+    if not _has_valid_photo_signature(file, file_ext):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File content does not match its extension.",
+        )
+
+    file.file.seek(0, 2)
+    file_size_bytes = file.file.tell()
+    file.file.seek(0)
+
+    file_size_mb = file_size_bytes / (1024 * 1024)
+    if file_size_mb > MAX_PHOTO_SIZE_MB:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File too large. Maximum size: {MAX_PHOTO_SIZE_MB}MB",
+        )
+
+    patient = get_patient_by_id(db, patient_id, hospital_id=hospital_id)
+    if not patient:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
+
+    if patient.photo_url:
+        old_photo_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))), patient.photo_url.lstrip('/')
+        )
+        if os.path.exists(old_photo_path):
+            try:
+                os.remove(old_photo_path)
+            except Exception:
+                pass
+
+    filename = f"patient_{patient.id}_{int(datetime.now().timestamp())}{file_ext}"
+    file_path = os.path.join(UPLOAD_DIR, filename)
+
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    except Exception as e:
+        logger.error("Failed to write photo file for patient %s: %s", patient_id, e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to save photo. Please try again.",
+        )
+
+    patient.photo_url = f"/uploads/photos/{filename}"
+    db.commit()
+    db.refresh(patient)
     return patient

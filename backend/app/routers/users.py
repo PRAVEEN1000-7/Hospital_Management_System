@@ -5,6 +5,7 @@ import logging
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func
 from typing import Optional
 from ..database import get_db
 from ..models.user import User, UserRole, Role
@@ -67,9 +68,9 @@ async def create_new_user(
                 detail="Username already exists",
             )
 
-        # Check email uniqueness within this hospital
+        # Check email uniqueness within this hospital (case-insensitive)
         existing = db.query(User).filter(
-            User.email == user_data.email,
+            func.lower(User.email) == user_data.email.lower(),
             User.hospital_id == current_user.hospital_id,
             User.is_deleted == False,
         ).first()
@@ -202,6 +203,25 @@ async def check_username_exists(
     return {"exists": existing is not None}
 
 
+@router.get("/check-email/{email}")
+async def check_email_exists(
+    email: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_or_super_admin),
+):
+    """Check if an email already exists within the current hospital (case-insensitive)."""
+    existing = (
+        db.query(User)
+        .filter(
+            func.lower(User.email) == email.lower(),
+            User.hospital_id == current_user.hospital_id,
+            User.is_deleted == False,
+        )
+        .first()
+    )
+    return {"exists": existing is not None}
+
+
 @router.get("/{user_id}", response_model=UserResponse)
 async def get_user(
     user_id: str,
@@ -241,12 +261,12 @@ async def update_existing_user(
                 detail="Only Super Admin can modify Super Admin accounts",
             )
 
-        # Check email uniqueness within this hospital if email is being changed
-        if user_data.email and user_data.email != target_user.email:
+        # Check email uniqueness within this hospital if email is being changed (case-insensitive)
+        if user_data.email and user_data.email.lower() != (target_user.email or '').lower():
             existing = (
                 db.query(User)
                 .filter(
-                    User.email == user_data.email,
+                    func.lower(User.email) == user_data.email.lower(),
                     User.hospital_id == current_user.hospital_id,
                     User.id != target_user.id,
                     User.is_deleted == False,

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_
 from math import ceil
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import UploadFile, HTTPException, status
 from ..models.user import User, UserRole, Role, Hospital
 from ..models.appointment import Doctor
@@ -262,7 +262,7 @@ def delete_user(db: Session, user_id: str | uuid.UUID) -> Optional[User]:
         return None
     
     user.is_deleted = True
-    user.deleted_at = datetime.now()
+    user.deleted_at = datetime.now(timezone.utc)
     db.commit()
     
     logger.info(f"Soft deleted user: {user.username}")

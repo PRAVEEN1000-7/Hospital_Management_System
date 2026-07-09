@@ -10,6 +10,7 @@ import hospitalService from '../services/hospitalService';
 import type { HospitalDetails } from '../services/hospitalService';
 import HospitalLogo from '../components/common/HospitalLogo';
 import { htmlStringToPdf } from '../utils/pdf';
+import { formatDateOnly } from '../utils/calendarDate';
 import type { Patient } from '../types/patient';
 import type { Invoice, PaymentListItem, PaymentMode, InvoiceStatus, RefundReasonCode, RefundListItem } from '../types/billing';
 
@@ -319,7 +320,7 @@ const InvoiceDetail: React.FC = () => {
             <div>
               <h1 className="text-xl font-bold text-slate-900">Invoice #{invoice.invoice_number}</h1>
               <p className="text-sm text-slate-500">
-                {new Date(invoice.invoice_date).toLocaleDateString('en-IN', { dateStyle: 'long' })}
+                {formatDateOnly(invoice.invoice_date, 'dd MMMM yyyy')}
               </p>
             </div>
             <span className={`inline-flex px-3 py-1 rounded-full text-xs font-semibold ${STATUS_COLORS[invoice.status]}`}>
@@ -426,8 +427,8 @@ const InvoiceDetail: React.FC = () => {
                 <p className="text-slate-500 text-sm mt-0.5">{invoiceTypeLabel}</p>
               </div>
               <div className="text-right text-sm text-slate-600">
-                <p><span className="font-semibold">Date:</span> {new Date(invoice.invoice_date).toLocaleDateString('en-IN')}</p>
-                {invoice.due_date && <p><span className="font-semibold">Due:</span> {new Date(invoice.due_date).toLocaleDateString('en-IN')}</p>}
+                <p><span className="font-semibold">Date:</span> {formatDateOnly(invoice.invoice_date)}</p>
+                {invoice.due_date && <p><span className="font-semibold">Due:</span> {formatDateOnly(invoice.due_date)}</p>}
                 {invoice.appointment_id && (
                   <p><span className="font-semibold">Appointment:</span> {invoice.appointment_id.slice(0, 8).toUpperCase()}</p>
                 )}
@@ -453,7 +454,7 @@ const InvoiceDetail: React.FC = () => {
                     <span className="capitalize">{patient.gender}</span>
                   )}
                   {patient.date_of_birth && (
-                    <span>DOB: {new Date(patient.date_of_birth).toLocaleDateString('en-IN')}</span>
+                    <span>DOB: {formatDateOnly(patient.date_of_birth)}</span>
                   )}
                 </div>
               )}
@@ -586,7 +587,7 @@ const InvoiceDetail: React.FC = () => {
                   {payments.map(p => (
                     <tr key={p.id}>
                       <td className="px-4 py-3 font-mono text-xs text-primary">{p.payment_number}</td>
-                      <td className="px-4 py-3 text-slate-600">{new Date(p.payment_date).toLocaleDateString('en-IN')}</td>
+                      <td className="px-4 py-3 text-slate-600">{formatDateOnly(p.payment_date)}</td>
                       <td className="px-4 py-3 capitalize text-slate-600">{p.payment_mode.replace('_', ' ')}</td>
                       <td className="px-4 py-3 text-slate-400 text-xs">{p.payment_reference || '—'}</td>
                       <td className="px-4 py-3 text-right font-semibold text-green-700">₹{fmt(p.amount)}</td>

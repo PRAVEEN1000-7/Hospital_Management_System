@@ -133,6 +133,19 @@ const inventoryService = {
     return res.data;
   },
 
+  async getStockMovementSummary(
+    filters?: { item_type?: string; item_id?: string; movement_type?: string; date_from?: string; date_to?: string },
+  ): Promise<{ total_in: number; total_out: number; net_balance: number; total_movements: number }> {
+    const params: Record<string, string> = {};
+    if (filters?.item_type) params.item_type = filters.item_type;
+    if (filters?.item_id) params.item_id = filters.item_id;
+    if (filters?.movement_type) params.movement_type = filters.movement_type;
+    if (filters?.date_from) params.date_from = filters.date_from;
+    if (filters?.date_to) params.date_to = filters.date_to;
+    const res = await api.get('/inventory/stock-movements/summary', { params });
+    return res.data;
+  },
+
   // ── Stock Adjustments ──────────────────────────────────────────────────
   async getAdjustments(page = 1, limit = 10, status?: string): Promise<PaginatedResponse<StockAdjustment>> {
     const params: Record<string, string | number> = { page, limit };

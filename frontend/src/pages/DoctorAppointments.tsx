@@ -5,7 +5,7 @@ import { useToast } from '../contexts/ToastContext';
 import appointmentService from '../services/appointmentService';
 import AppointmentStatusBadge from '../components/appointments/AppointmentStatusBadge';
 import type { Appointment } from '../types/appointment';
-import { formatLocalDateISO } from '../utils/calendarDate';
+import { formatLocalDateISO, formatDateOnly } from '../utils/calendarDate';
 
 const DoctorAppointments: React.FC = () => {
   const { user } = useAuth();
@@ -117,7 +117,7 @@ const DoctorAppointments: React.FC = () => {
       ) : filtered.length === 0 ? (
         <div className="text-center py-20 text-slate-400 bg-white rounded-xl border border-slate-200">
           <span className="material-symbols-outlined text-5xl mb-3 block">event_available</span>
-          <p className="text-sm font-medium">No appointments for {new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+          <p className="text-sm font-medium">No appointments for {formatDateOnly(selectedDate, 'EEEE, MMMM d')}</p>
         </div>
       ) : (
         <div className="space-y-3">

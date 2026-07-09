@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import pharmacyService from '../../services/pharmacyService';
 import { useToast } from '../../contexts/ToastContext';
 import type { PharmacyQueueEntry, PharmacyQueueStatus } from '../../types/pharmacy';
+import { formatTimeOnly } from '../../utils/calendarDate';
 
 const POLL_INTERVAL_MS = 15000;
 
@@ -148,7 +149,7 @@ const PharmacyQueue: React.FC = () => {
                       )}
                     </td>
                     <td className="px-4 py-3 text-slate-600">
-                      {new Date(entry.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {formatTimeOnly(entry.created_at)}
                     </td>
                     <td className="px-4 py-3">
                       <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${STATUS_COLORS[entry.status]}`}>

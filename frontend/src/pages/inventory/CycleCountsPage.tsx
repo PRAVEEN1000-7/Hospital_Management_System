@@ -5,6 +5,7 @@ import pharmacyService from '../../services/pharmacyService';
 import opticalService from '../../services/opticalService';
 import SearchableSelect, { type SuggestionOption } from '../../components/common/SearchableSelect';
 import type { CycleCount, CycleCountCreate } from '../../types/inventory';
+import { formatDateOnly } from '../../utils/calendarDate';
 
 const STATUS_COLORS: Record<string, string> = {
   in_progress: 'bg-blue-50 text-blue-700',
@@ -256,7 +257,7 @@ const CycleCountsPage: React.FC = () => {
                       <td className="px-4 py-4">
                         <button onClick={() => setDetailCC(cc)} className="text-sm font-semibold text-primary hover:underline">{cc.count_number}</button>
                       </td>
-                      <td className="px-4 py-4 hidden lg:table-cell text-sm text-slate-600">{new Date(cc.count_date).toLocaleDateString()}</td>
+                      <td className="px-4 py-4 hidden lg:table-cell text-sm text-slate-600">{formatDateOnly(cc.count_date)}</td>
                       <td className="px-4 py-4 text-center text-sm text-slate-700">{cc.items.length}</td>
                       <td className="px-4 py-4 text-center hidden md:table-cell">
                         {variances > 0 ? (
@@ -417,7 +418,7 @@ const CycleCountsPage: React.FC = () => {
             <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between rounded-t-2xl z-10">
               <div>
                 <h2 className="text-lg font-bold text-slate-900">{detailCC.count_number}</h2>
-                <p className="text-sm text-slate-500">{new Date(detailCC.count_date).toLocaleDateString()}</p>
+                <p className="text-sm text-slate-500">{formatDateOnly(detailCC.count_date)}</p>
               </div>
               <button onClick={() => setDetailCC(null)} className="p-1 hover:bg-slate-100 rounded-lg transition-colors">
                 <span className="material-symbols-outlined text-slate-500">close</span>

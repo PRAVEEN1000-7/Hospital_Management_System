@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import pharmacyService from '../../services/pharmacyService';
 import type { PendingPrescription } from '../../services/pharmacyService';
+import { formatDateTime } from '../../utils/calendarDate';
 
 const STATUS_BADGES: Record<string, { label: string; color: string; icon: string }> = {
   finalized: { label: 'Pending', color: 'bg-blue-100 text-blue-700', icon: '⏳' },
@@ -254,7 +255,7 @@ const PendingPrescriptions: React.FC = () => {
                             {rx.prescription_number}
                           </div>
                           <div className="text-xs text-slate-500 mt-0.5">
-                            {new Date(rx.created_at).toLocaleDateString()}
+                            {formatDateTime(rx.created_at, 'dd MMM yyyy')}
                           </div>
                         </div>
                       </td>
@@ -360,7 +361,7 @@ const PendingPrescriptions: React.FC = () => {
                         </div>
                       </div>
                       <div className="text-xs text-slate-500">
-                        {new Date(rx.created_at).toLocaleDateString()}
+                        {formatDateTime(rx.created_at, 'dd MMM yyyy')}
                       </div>
                     </div>
                     {getStatusBadge(rx.status)}

@@ -16,6 +16,7 @@ export interface User {
   hospital_name?: string;
   hospital_code?: string;
   hospital_specialty?: string; // 'general' | 'eye_hospital' | 'multi_specialty'
+  hospital_timezone?: string; // IANA timezone, e.g. "Asia/Kolkata" — display timestamps in this zone, not the browser's
   reference_number?: string;
   avatar_url?: string | null;
 }

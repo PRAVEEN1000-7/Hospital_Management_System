@@ -92,7 +92,8 @@ def _build_user_response(user: User) -> UserResponse:
     is_super_admin = 'super_admin' in (user.roles or [])
     hospital_name = user.hospital.name if user.hospital and not is_super_admin else None
     hospital_specialty = user.hospital.specialty if user.hospital and not is_super_admin else None
-    
+    hospital_timezone = user.hospital.timezone if user.hospital and not is_super_admin else None
+
     return UserResponse(
         id=str(user.id),
         username=user.username,
@@ -105,6 +106,7 @@ def _build_user_response(user: User) -> UserResponse:
         hospital_name=hospital_name,
         hospital_code=user.hospital.code if user.hospital and not is_super_admin else None,
         hospital_specialty=hospital_specialty,
+        hospital_timezone=hospital_timezone,
         reference_number=user.reference_number,
         avatar_url=user.avatar_url,
     )

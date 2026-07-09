@@ -10,6 +10,7 @@ import type { HospitalDetails } from '../../services/hospitalService';
 import type { PaymentMode } from '../../types/billing';
 import { patientService } from '../../services/patientService';
 import HospitalLogo from '../../components/common/HospitalLogo';
+import { formatDateTime, formatDateOnly } from '../../utils/calendarDate';
 
 interface DispensingItem {
   id: string;
@@ -205,11 +206,7 @@ const DispensingBilling: React.FC = () => {
   const resolvedPrn = patientPrn || dispensing.patient_reference_number || '';
   const balance = cashReceived !== '' ? Number(cashReceived) - Number(dispensing.net_amount) : null;
 
-  const fmtExpiry = (d?: string) => {
-    if (!d) return '—';
-    const dt = new Date(d);
-    return `${String(dt.getMonth() + 1).padStart(2, '0')}/${String(dt.getFullYear()).slice(-2)}`;
-  };
+  const fmtExpiry = (d?: string) => formatDateOnly(d, 'MM/yy');
 
   return (
     <>
@@ -266,7 +263,7 @@ const DispensingBilling: React.FC = () => {
         <div className="px-8 py-3 flex justify-between text-sm print:px-4">
           <div className="text-slate-700">
             <strong>Dispensing No:</strong> {dispensing.dispensing_number}<br />
-            <strong>Date:</strong> {new Date(billTimestamp).toLocaleString()}
+            <strong>Date:</strong> {formatDateTime(billTimestamp)}
           </div>
           <div className="text-right text-slate-700">
             <strong>Status:</strong> <span className="capitalize">{dispensing.status}</span>
@@ -415,7 +412,7 @@ const DispensingBilling: React.FC = () => {
         <div className="px-8 py-6 bg-slate-50 border-t border-slate-200 print:hidden">
           <div className="flex justify-between items-center text-xs text-slate-500">
             <div>
-              Generated on {new Date(billTimestamp).toLocaleString()}
+              Generated on {formatDateTime(billTimestamp)}
             </div>
             <div className="flex items-center gap-2">
               <span className="material-symbols-outlined text-sm">verified</span>

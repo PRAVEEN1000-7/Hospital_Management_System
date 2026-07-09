@@ -4,6 +4,7 @@ import { useToast } from '../contexts/ToastContext';
 import paymentService from '../services/paymentService';
 import type { PaymentListItem, PaymentMode } from '../types/billing';
 import DateRangeFilter from '../components/common/DateRangeFilter';
+import { formatDateOnly } from '../utils/calendarDate';
 
 const MODE_LABELS: Record<string, string> = {
   cash: 'Cash',
@@ -201,7 +202,7 @@ const PaymentList: React.FC = () => {
                     <td className="px-4 py-3 font-mono text-xs text-primary font-semibold">{p.payment_number}</td>
                     <td className="px-4 py-3 font-mono text-xs text-slate-500">{p.invoice_number}</td>
                     <td className="px-4 py-3 font-medium text-slate-800">{p.patient_name}</td>
-                    <td className="px-4 py-3 text-slate-500">{new Date(p.payment_date).toLocaleDateString('en-IN')}</td>
+                    <td className="px-4 py-3 text-slate-500">{formatDateOnly(p.payment_date)}</td>
                     <td className="px-4 py-3 text-center">
                       <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold ${MODE_COLORS[p.payment_mode] ?? 'bg-slate-100 text-slate-600'}`}>
                         {MODE_LABELS[p.payment_mode] ?? p.payment_mode}

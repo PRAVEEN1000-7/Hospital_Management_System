@@ -3,7 +3,7 @@ Super Admin authentication and management service.
 Uses existing users table with super_admin role.
 """
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple, Dict, Any
 
 from sqlalchemy.orm import Session, joinedload
@@ -85,7 +85,7 @@ class SuperAdminService:
         """Update last login timestamp"""
         user = db.query(User).filter(User.id == user_id).first()
         if user:
-            user.last_login_at = datetime.utcnow()
+            user.last_login_at = datetime.now(timezone.utc)
             db.commit()
     
     @staticmethod

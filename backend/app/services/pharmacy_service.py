@@ -20,6 +20,7 @@ from ..models.pharmacy import (
 )
 from ..models.user import Hospital
 from ..core.tenant_security import is_eye_hospital_feature_enabled
+from ..core.hospital_time import hospital_today_by_id
 
 logger = logging.getLogger(__name__)
 
@@ -1005,7 +1006,7 @@ def list_stock_adjustments(
 # ══════════════════════════════════════════════════
 
 def get_pharmacy_dashboard(db: Session, hospital_id: uuid.UUID) -> dict:
-    today = date.today()
+    today = hospital_today_by_id(db, hospital_id)
     thirty_days = today + timedelta(days=30)
 
     medicines = db.query(Medicine.id, Medicine.reorder_level).filter(
@@ -1084,8 +1085,8 @@ def get_pharmacy_sales_trend(
 ) -> list[dict]:
     """Get pharmacy sales trend for the last N days."""
     from ..models.pharmacy import PharmacySale
-    
-    today = date.today()
+
+    today = hospital_today_by_id(db, hospital_id)
     start_date = today - timedelta(days=days - 1)
     
     # Query daily sales
@@ -1135,8 +1136,8 @@ def get_pharmacy_top_medicines(
 ) -> list[dict]:
     """Get top selling medicines by quantity and revenue."""
     from ..models.pharmacy import PharmacySale, PharmacySaleItem
-    
-    today = date.today()
+
+    today = hospital_today_by_id(db, hospital_id)
     start_date = today - timedelta(days=days - 1)
     
     # Query top medicines by quantity sold

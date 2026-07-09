@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useToast } from '../../contexts/ToastContext';
 import inventoryService from '../../services/inventoryService';
 import type { InventoryDashboardData, LowStockItem, ExpiringItem } from '../../types/inventory';
+import { formatDateOnly } from '../../utils/calendarDate';
 
 const InventoryDashboard: React.FC = () => {
   const toast = useToast();
@@ -141,7 +142,7 @@ const InventoryDashboard: React.FC = () => {
                           <p className="text-xs text-slate-400">Batch: {item.batch_number || '—'} · Qty: {item.quantity}</p>
                         </div>
                         <span className="text-sm font-medium text-amber-600">
-                          {new Date(item.expiry_date).toLocaleDateString()}
+                          {formatDateOnly(item.expiry_date)}
                         </span>
                       </div>
                     ))}

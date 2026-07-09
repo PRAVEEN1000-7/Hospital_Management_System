@@ -447,6 +447,24 @@ async def list_stock_movements(
     return {**result, "data": data}
 
 
+@movements_router.get("/summary")
+async def stock_movement_summary(
+    item_type: Optional[str] = None,
+    item_id: Optional[str] = None,
+    movement_type: Optional[str] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(inventory_view_roles),
+):
+    """Stock in/out/net totals across ALL rows matching the filters (not just one page)."""
+    return svc.get_stock_movement_summary(
+        db, current_user.hospital_id,
+        item_type=item_type, item_id=item_id, movement_type=movement_type,
+        date_from=date_from, date_to=date_to,
+    )
+
+
 # ═════════════════════════════════════════════════════════════════════════════
 #  STOCK ADJUSTMENTS
 # ═════════════════════════════════════════════════════════════════════════════

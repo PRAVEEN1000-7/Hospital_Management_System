@@ -26,6 +26,7 @@ from ..database import get_db
 from ..models.user import Hospital
 from ..models.appointment import Doctor, Appointment, AppointmentQueue
 from ..core.tenant_security import is_eye_hospital_feature_enabled
+from ..core.hospital_time import hospital_today
 from ..services.settings_service import get_hospital_settings
 from ..services import billing_queue_service, optical_service
 from ..schemas.public_queue import PublicQueueDisplayResponse, PublicQueueColumn, PublicQueueToken
@@ -34,9 +35,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/public", tags=["Public Queue Display"])
 
 
-def _doctor_walk_in_tokens(db: Session, hospital_id: uuid.UUID, doctor_id: Optional[uuid.UUID]) -> list[dict]:
+def _doctor_walk_in_tokens(db: Session, hospital_id: uuid.UUID, doctor_id: Optional[uuid.UUID], today: date) -> list[dict]:
     """Today's active walk-in queue tokens for one doctor, explicitly scoped to hospital_id."""
-    today = date.today()
     query = (
         db.query(AppointmentQueue)
         .join(Appointment, Appointment.id == AppointmentQueue.appointment_id)
@@ -82,7 +82,7 @@ async def get_public_queue_display(
     doctor2_id = getattr(settings, "queue_display_doctor2_id", None) if settings else None
 
     # Resolve active doctors in the queue dynamically (only doctors with active tokens today)
-    today = date.today()
+    today = hospital_today(hospital.timezone)
     active_doctor_ids = (
         db.query(AppointmentQueue.doctor_id)
         .join(Appointment, Appointment.id == AppointmentQueue.appointment_id)
@@ -109,7 +109,7 @@ async def get_public_queue_display(
                 PublicQueueColumn(
                     id=f"doctor_{doc_id}",
                     name=doc_name,
-                    tokens=[PublicQueueToken(**t) for t in _doctor_walk_in_tokens(db, hospital.id, doc_id)],
+                    tokens=[PublicQueueToken(**t) for t in _doctor_walk_in_tokens(db, hospital.id, doc_id, today)],
                 )
             )
     else:
@@ -117,13 +117,13 @@ async def get_public_queue_display(
         columns.append(PublicQueueColumn(
             id="doctor1",
             name=_doctor_label(db, doctor1_id, "Doctor 1"),
-            tokens=[PublicQueueToken(**t) for t in _doctor_walk_in_tokens(db, hospital.id, doctor1_id)] if doctor1_id else [],
+            tokens=[PublicQueueToken(**t) for t in _doctor_walk_in_tokens(db, hospital.id, doctor1_id, today)] if doctor1_id else [],
         ))
         if show_doctor2:
             columns.append(PublicQueueColumn(
                 id="doctor2",
                 name=_doctor_label(db, doctor2_id, "Doctor 2"),
-                tokens=[PublicQueueToken(**t) for t in _doctor_walk_in_tokens(db, hospital.id, doctor2_id)] if doctor2_id else [],
+                tokens=[PublicQueueToken(**t) for t in _doctor_walk_in_tokens(db, hospital.id, doctor2_id, today)] if doctor2_id else [],
             ))
 
     if show_pharmacy:

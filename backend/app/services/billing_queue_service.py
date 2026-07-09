@@ -12,6 +12,8 @@ from typing import Optional
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from ..core.hospital_time import hospital_today_by_id
+
 QUEUE_STATUSES = ("waiting", "being_served", "ready", "collected")
 
 
@@ -54,7 +56,7 @@ def generate_daily_queue_token(db: Session, hospital_id: uuid.UUID, model) -> in
     OpticalSale), scoped to this hospital and reset each day — same idea as
     the existing AppointmentQueue token generator, applied to sales.
     """
-    today = date.today()
+    today = hospital_today_by_id(db, hospital_id)
     last_token = (
         db.query(func.max(model.queue_token))
         .filter(
@@ -137,7 +139,7 @@ def list_pharmacy_queue_entries(db: Session, hospital_id: uuid.UUID) -> list[dic
         db.query(PharmacyQueueEntry)
         .filter(
             PharmacyQueueEntry.hospital_id == hospital_id,
-            func.date(PharmacyQueueEntry.created_at) == date.today(),
+            func.date(PharmacyQueueEntry.created_at) == hospital_today_by_id(db, hospital_id),
         )
         .order_by(PharmacyQueueEntry.queue_token.asc())
         .all()
@@ -174,7 +176,7 @@ def find_open_pharmacy_queue_entry_for_patient(db: Session, hospital_id: uuid.UU
             PharmacyQueueEntry.hospital_id == hospital_id,
             PharmacyQueueEntry.patient_id == patient_id,
             PharmacyQueueEntry.status != "collected",
-            func.date(PharmacyQueueEntry.created_at) == date.today(),
+            func.date(PharmacyQueueEntry.created_at) == hospital_today_by_id(db, hospital_id),
         )
         .order_by(PharmacyQueueEntry.created_at.asc())
         .first()

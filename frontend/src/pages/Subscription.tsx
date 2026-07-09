@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
 import { useToast } from '../contexts/ToastContext';
+import { formatDateTime } from '../utils/calendarDate';
 
 interface SubscriptionPlan {
   id: string;
@@ -46,7 +47,7 @@ const CATEGORY_COLOR: Record<string, string> = {
 };
 
 const fmt = (d?: string | null) =>
-  d ? new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '—';
+  d ? formatDateTime(d, 'MMMM d, yyyy') : '—';
 
 const Subscription: React.FC = () => {
   const [subscription, setSubscription] = useState<SubscriptionDetails | null>(null);

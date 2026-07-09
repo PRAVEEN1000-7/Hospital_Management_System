@@ -3,7 +3,7 @@ Tenant management service for multi-tenant operations.
 """
 import uuid
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Dict, Any
 from math import ceil
 
@@ -147,7 +147,7 @@ class TenantService:
             email=email,
             status='pending',
             is_verified=True, # Auto-verify
-            verified_at=datetime.utcnow(),
+            verified_at=datetime.now(timezone.utc),
             onboarding_completed=False,
             onboarding_step='plan',
             specialty=specialty,
@@ -279,8 +279,8 @@ class TenantService:
             # Re-assigning a plan — update in place rather than blocking the admin action.
             existing_sub.plan_id = plan_id
             existing_sub.status = 'active'
-            existing_sub.current_period_start = datetime.utcnow()
-            existing_sub.current_period_end = datetime.utcnow() + timedelta(days=30)
+            existing_sub.current_period_start = datetime.now(timezone.utc)
+            existing_sub.current_period_end = datetime.now(timezone.utc) + timedelta(days=30)
             existing_sub.trial_ends_at = None
             subscription = existing_sub
         else:
@@ -289,9 +289,9 @@ class TenantService:
                 tenant_id=tenant.id,
                 plan_id=plan_id,
                 status='trialing',
-                trial_ends_at=datetime.utcnow() + timedelta(days=14),
-                current_period_start=datetime.utcnow(),
-                current_period_end=datetime.utcnow() + timedelta(days=30)
+                trial_ends_at=datetime.now(timezone.utc) + timedelta(days=14),
+                current_period_start=datetime.now(timezone.utc),
+                current_period_end=datetime.now(timezone.utc) + timedelta(days=30)
             )
             db.add(subscription)
         
@@ -304,7 +304,7 @@ class TenantService:
             
         # Update tenant status
         tenant.status = 'active'
-        tenant.updated_at = datetime.utcnow()
+        tenant.updated_at = datetime.now(timezone.utc)
         
         # Log audit
         audit = AuditLog(
@@ -341,13 +341,13 @@ class TenantService:
                 # Only upgrade — never force-disable a module that was manually enabled
                 if is_enabled and not existing.is_enabled:
                     existing.is_enabled = True
-                    existing.enabled_at = datetime.utcnow()
+                    existing.enabled_at = datetime.now(timezone.utc)
             else:
                 tenant_module = TenantModule(
                     tenant_id=tenant_id,
                     module_id=module.id,
                     is_enabled=is_enabled,
-                    enabled_at=datetime.utcnow() if is_enabled else None,
+                    enabled_at=datetime.now(timezone.utc) if is_enabled else None,
                 )
                 db.add(tenant_module)
                 # SessionLocal is autoflush=False, so without this the row above
@@ -380,13 +380,13 @@ class TenantService:
             
             if existing and not existing.is_enabled:
                 existing.is_enabled = True
-                existing.enabled_at = datetime.utcnow()
+                existing.enabled_at = datetime.now(timezone.utc)
             elif not existing:
                 tenant_module = TenantModule(
                     tenant_id=tenant_id,
                     module_id=req_module.id,
                     is_enabled=True,
-                    enabled_at=datetime.utcnow()
+                    enabled_at=datetime.now(timezone.utc)
                 )
                 db.add(tenant_module)
                 # See the matching comment in _enable_modules_for_plan — autoflush
@@ -416,7 +416,7 @@ class TenantService:
             return None
 
         tenant.status = 'suspended'
-        tenant.updated_at = datetime.utcnow()
+        tenant.updated_at = datetime.now(timezone.utc)
 
         # Cancel active subscription
         active_sub = db.query(TenantSubscription).filter(
@@ -425,7 +425,7 @@ class TenantService:
         ).first()
         if active_sub:
             active_sub.status = 'cancelled'
-            active_sub.cancelled_at = datetime.utcnow()
+            active_sub.cancelled_at = datetime.now(timezone.utc)
             active_sub.cancellation_reason = f"Tenant suspended: {reason}"
 
         # Deactivate all users in this tenant's hospitals
@@ -470,7 +470,7 @@ class TenantService:
             return None
 
         tenant.status = 'active'
-        tenant.updated_at = datetime.utcnow()
+        tenant.updated_at = datetime.now(timezone.utc)
 
         # Re-activate users
         hospital_ids = db.query(Hospital.id).filter(
@@ -527,7 +527,7 @@ class TenantService:
             if hospital:
                 hospital.specialty = specialty
         
-        tenant.updated_at = datetime.utcnow()
+        tenant.updated_at = datetime.now(timezone.utc)
         
         # Log audit
         if old_values:
@@ -609,7 +609,7 @@ class TenantService:
                     module_id=module.id,
                     is_enabled=is_enabled,
                     enabled_by=changed_by if is_enabled else None,
-                    enabled_at=datetime.utcnow() if is_enabled else None
+                    enabled_at=datetime.now(timezone.utc) if is_enabled else None
                 )
                 db.add(tenant_module)
                 # autoflush is off — flush so the dependency resolution below
@@ -623,7 +623,7 @@ class TenantService:
                     
                 tenant_module.is_enabled = is_enabled
                 if is_enabled and not tenant_module.enabled_at:
-                    tenant_module.enabled_at = datetime.utcnow()
+                    tenant_module.enabled_at = datetime.now(timezone.utc)
                     tenant_module.enabled_by = changed_by
             
             # Resolve dependencies when enabling
@@ -690,7 +690,7 @@ class TenantService:
             plan_dist[code] = count
         
         # Recent signups (last 30 days)
-        thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+        thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
         recent = db.query(Tenant).filter(
             Tenant.created_at >= thirty_days_ago
         ).count()

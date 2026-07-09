@@ -15,6 +15,7 @@ from ..models.patient import Patient
 from ..models.user import User
 from ..models.invoice import Invoice
 from .notification_service import notify_hospital_users
+from ..core.hospital_time import hospital_today_by_id
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,7 @@ def _create_queue_entry(db: Session, appt: Appointment) -> None:
     if not (
         appt.doctor_id
         and appt.appointment_date
-        and appt.appointment_date >= date.today()
+        and appt.appointment_date >= hospital_today_by_id(db, appt.hospital_id)
         and appt.appointment_type in QUEUE_SUPPORTED_TYPES
     ):
         return

@@ -4,11 +4,16 @@ import { format, differenceInYears } from 'date-fns';
 import patientService from '../services/patientService';
 import type { Patient } from '../types/patient';
 import { useToast } from '../contexts/ToastContext';
+import { useAuth } from '../contexts/AuthContext';
+
+const EDIT_ALLOWED_ROLES = ['super_admin', 'admin', 'receptionist'];
 
 const PatientDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const toast = useToast();
+  const { user } = useAuth();
+  const canEdit = Boolean(user?.roles?.some(r => EDIT_ALLOWED_ROLES.includes(r)));
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [patient, setPatient] = useState<Patient | null>(null);
   const [loading, setLoading] = useState(true);
@@ -92,13 +97,15 @@ const PatientDetail: React.FC = () => {
           <span className="text-sm font-semibold">Back</span>
         </button>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => navigate(`/patients/${id}/edit`)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-sm font-semibold transition-colors active:scale-95"
-          >
-            <span className="material-icons text-lg">edit</span>
-            Edit Patient
-          </button>
+          {canEdit && (
+            <button
+              onClick={() => navigate(`/patients/${id}/edit`)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-sm font-semibold transition-colors active:scale-95"
+            >
+              <span className="material-icons text-lg">edit</span>
+              Edit Patient
+            </button>
+          )}
           <button
             onClick={() => navigate(`/patients/${id}/id-card`)}
             className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold transition-colors active:scale-95"

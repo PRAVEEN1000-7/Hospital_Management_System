@@ -6,6 +6,7 @@ import { useConfirm } from '../contexts/ConfirmContext';
 import prescriptionService from '../services/prescriptionService';
 import { htmlStringToPdf } from '../utils/pdf';
 import type { Prescription, PrescriptionListItem } from '../types/prescription';
+import { formatDateTime } from '../utils/calendarDate';
 
 const PrescriptionDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -493,14 +494,14 @@ const PrescriptionDetail: React.FC = () => {
               <div className="flex justify-between">
                 <span className="text-slate-400">Created</span>
                 <span className="font-medium text-slate-700">
-                  {new Date(rx.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  {formatDateTime(rx.created_at, 'dd MMM yyyy')}
                 </span>
               </div>
               {rx.finalized_at && (
                 <div className="flex justify-between">
                   <span className="text-slate-400">Finalized</span>
                   <span className="font-medium text-slate-700">
-                    {new Date(rx.finalized_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    {formatDateTime(rx.finalized_at, 'dd MMM yyyy')}
                   </span>
                 </div>
               )}
@@ -545,7 +546,7 @@ const PrescriptionDetail: React.FC = () => {
                         {item.prescription_number}
                       </span>
                       <span className="text-[10px] text-slate-400">
-                        {new Date(item.created_at).toLocaleDateString()}
+                        {formatDateTime(item.created_at, 'dd MMM yyyy')}
                       </span>
                     </div>
                     <p className="text-[10px] text-slate-500 mt-0.5 truncate">

@@ -13,6 +13,7 @@ from sqlalchemy import func, or_, case
 
 from .pharmacy_service import _filter_model_data
 from .notification_service import notify_hospital_users
+from ..core.hospital_time import hospital_today_by_id
 from ..models.optical import OpticalProduct, OpticalBatch, OpticalPrescription, OpticalSale, OpticalSaleItem
 
 logger = logging.getLogger(__name__)
@@ -613,7 +614,7 @@ def create_sale(db: Session, hospital_id: uuid.UUID, data: dict, user_id: uuid.U
 
 def list_optical_queue(db: Session, hospital_id: uuid.UUID) -> list[dict]:
     """Today's optical sales ordered by queue token — the Waiting/Being Served/Ready/Collected board."""
-    today = date.today()
+    today = hospital_today_by_id(db, hospital_id)
     sales = (
         db.query(OpticalSale)
         .filter(
@@ -906,7 +907,7 @@ def list_stock_adjustments(db: Session, hospital_id: uuid.UUID, product_id: Opti
 # ══════════════════════════════════════════════════
 
 def get_optical_dashboard(db: Session, hospital_id: uuid.UUID) -> dict:
-    today = date.today()
+    today = hospital_today_by_id(db, hospital_id)
     thirty_days = today + timedelta(days=30)
 
     products = db.query(OpticalProduct.id, OpticalProduct.reorder_level).filter(
@@ -993,7 +994,7 @@ def get_optical_dashboard(db: Session, hospital_id: uuid.UUID) -> dict:
 
 
 def get_optical_sales_trend(db: Session, hospital_id: uuid.UUID, days: int = 30) -> list[dict]:
-    today = date.today()
+    today = hospital_today_by_id(db, hospital_id)
     start_date = today - timedelta(days=days - 1)
 
     results = db.query(
@@ -1029,7 +1030,7 @@ def get_optical_sales_trend(db: Session, hospital_id: uuid.UUID, days: int = 30)
 
 
 def get_optical_top_products(db: Session, hospital_id: uuid.UUID, days: int = 30, limit: int = 10) -> list[dict]:
-    today = date.today()
+    today = hospital_today_by_id(db, hospital_id)
     start_date = today - timedelta(days=days - 1)
 
     results = db.query(

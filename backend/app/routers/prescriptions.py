@@ -15,6 +15,7 @@ from ..models.appointment import Doctor, Appointment, AppointmentQueue
 from ..models.prescription import Medicine as MedicineModel, PrescriptionTemplate
 from ..dependencies import get_current_active_user
 from ..core.tenant_security import is_eye_hospital_feature_enabled
+from ..core.hospital_time import hospital_today
 from ..schemas.prescription import (
     PrescriptionCreate,
     PrescriptionUpdate,
@@ -215,7 +216,7 @@ async def finalize_rx(
 
         # If doctor provided a follow-up date, create a future follow-up appointment
         # so it appears in Upcoming queue views.
-        if rx.follow_up_date and rx.follow_up_date > date.today() and rx.patient_id and rx.doctor_id:
+        if rx.follow_up_date and rx.follow_up_date > hospital_today(current_user.hospital.timezone if current_user.hospital else None) and rx.patient_id and rx.doctor_id:
             existing_follow_up = (
                 db.query(Appointment)
                 .filter(
@@ -288,7 +289,7 @@ async def finalize_and_complete_queue(
 
         # If doctor provided a follow-up date, create a future follow-up appointment
         # so it appears in Upcoming queue views.
-        if rx.follow_up_date and rx.follow_up_date > date.today() and rx.patient_id and rx.doctor_id:
+        if rx.follow_up_date and rx.follow_up_date > hospital_today(current_user.hospital.timezone if current_user.hospital else None) and rx.patient_id and rx.doctor_id:
             existing_follow_up = (
                 db.query(Appointment)
                 .filter(

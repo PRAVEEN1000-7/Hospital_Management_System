@@ -5,7 +5,7 @@ from math import ceil
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from datetime import datetime
+from datetime import datetime, timezone
 
 from ..database import get_db
 from ..dependencies import get_current_active_user
@@ -85,7 +85,7 @@ async def mark_notification_read(
 
     if not n.is_read:
         n.is_read = True
-        n.read_at = datetime.utcnow()
+        n.read_at = datetime.now(timezone.utc)
         db.commit()
         db.refresh(n)
 
@@ -97,7 +97,7 @@ async def mark_all_read(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     (
         db.query(Notification)
         .filter(

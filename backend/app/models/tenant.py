@@ -2,7 +2,7 @@
 Tenant and SaaS models for multi-tenant architecture.
 """
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 
 from sqlalchemy import (
@@ -193,7 +193,10 @@ class TenantSubscription(Base):
         """Check if trial period is still valid"""
         if self.status != "trialing" or not self.trial_ends_at:
             return False
-        return datetime.now() < self.trial_ends_at
+        # trial_ends_at is a timestamptz column — psycopg2 returns it tz-aware,
+        # so comparing against naive datetime.now() raises TypeError the moment
+        # a tenant is actually in "trialing" status. Must compare aware-to-aware.
+        return datetime.now(timezone.utc) < self.trial_ends_at
     
     @property
     def effective_features(self) -> Dict[str, Any]:
@@ -341,7 +344,7 @@ class UsageTracking(Base):
     def increment(self, amount: int = 1):
         """Increment usage count"""
         self.usage_count += amount
-        self.updated_at = datetime.now()
+        self.updated_at = datetime.now(timezone.utc)
 
 
 class BillingInvoice(Base):

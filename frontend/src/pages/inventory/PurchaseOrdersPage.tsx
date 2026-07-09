@@ -5,6 +5,7 @@ import { useToast } from '../../contexts/ToastContext';
 import inventoryService from '../../services/inventoryService';
 import type { PurchaseOrder, Supplier } from '../../types/inventory';
 import DateRangeFilter from '../../components/common/DateRangeFilter';
+import { formatDateOnly } from '../../utils/calendarDate';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-slate-100 text-slate-600',
@@ -178,8 +179,8 @@ const PurchaseOrdersPage: React.FC = () => {
                       <p className="text-xs text-slate-400">{po.items.length} item(s)</p>
                     </td>
                     <td className="px-4 py-4 hidden md:table-cell text-sm text-slate-700">{po.supplier_name || '—'}</td>
-                    <td className="px-4 py-4 hidden lg:table-cell text-sm text-slate-600">{new Date(po.order_date).toLocaleDateString()}</td>
-                    <td className="px-4 py-4 hidden lg:table-cell text-sm text-slate-600">{po.expected_delivery_date ? new Date(po.expected_delivery_date).toLocaleDateString() : '—'}</td>
+                    <td className="px-4 py-4 hidden lg:table-cell text-sm text-slate-600">{formatDateOnly(po.order_date)}</td>
+                    <td className="px-4 py-4 hidden lg:table-cell text-sm text-slate-600">{po.expected_delivery_date ? formatDateOnly(po.expected_delivery_date) : '—'}</td>
                     <td className="px-4 py-4 text-right text-sm font-semibold text-slate-900">{formatCurrency(po.total_amount)}</td>
                     <td className="px-4 py-4 text-center">
                       <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold capitalize ${STATUS_COLORS[po.status] || 'bg-slate-100 text-slate-600'}`}>
@@ -260,11 +261,11 @@ const PurchaseOrdersPage: React.FC = () => {
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 <div>
                   <p className="text-xs text-slate-400">Order Date</p>
-                  <p className="text-sm font-medium text-slate-900">{new Date(detailPO.order_date).toLocaleDateString()}</p>
+                  <p className="text-sm font-medium text-slate-900">{formatDateOnly(detailPO.order_date)}</p>
                 </div>
                 <div>
                   <p className="text-xs text-slate-400">Expected Delivery</p>
-                  <p className="text-sm font-medium text-slate-900">{detailPO.expected_delivery_date ? new Date(detailPO.expected_delivery_date).toLocaleDateString() : '—'}</p>
+                  <p className="text-sm font-medium text-slate-900">{detailPO.expected_delivery_date ? formatDateOnly(detailPO.expected_delivery_date) : '—'}</p>
                 </div>
                 <div>
                   <p className="text-xs text-slate-400">Status</p>

@@ -9,6 +9,7 @@ import { htmlStringToPdf } from '../utils/pdf';
 import type { PrescriptionListItem, PaginatedResponse } from '../types/prescription';
 import type { OpticalPrescription } from '../types/optical';
 import DateRangeFilter from '../components/common/DateRangeFilter';
+import { formatDateTime } from '../utils/calendarDate';
 
 const STATUS_OPTIONS = [
   { value: '', label: 'All Statuses' },
@@ -340,7 +341,7 @@ const PrescriptionList: React.FC = () => {
                           {fmt(rx.left_sph)} / {fmt(rx.left_cyl)} / {rx.left_axis ?? '—'}°
                         </td>
                         <td className="px-4 py-3 text-sm text-slate-500">
-                          {new Date(rx.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          {formatDateTime(rx.created_at, 'MMM d, yyyy')}
                         </td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex justify-end items-center gap-1">
@@ -443,9 +444,7 @@ const PrescriptionList: React.FC = () => {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-500">
-                      {new Date(rx.created_at).toLocaleDateString('en-US', {
-                        month: 'short', day: 'numeric', year: 'numeric',
-                      })}
+                      {formatDateTime(rx.created_at, 'MMM d, yyyy')}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex justify-end gap-1">

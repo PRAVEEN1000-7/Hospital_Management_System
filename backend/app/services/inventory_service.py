@@ -8,7 +8,7 @@ import uuid
 from datetime import date, datetime, timedelta
 from typing import Optional
 
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, case
 from sqlalchemy.orm import Session, joinedload
 
 from ..models.inventory import (
@@ -1064,6 +1064,45 @@ def list_stock_movements(
         .all()
     )
     return {**_paginate(total, page, limit), "data": movements}
+
+
+def get_stock_movement_summary(
+    db: Session, hospital_id: uuid.UUID,
+    item_type: Optional[str] = None, item_id: Optional[str] = None,
+    movement_type: Optional[str] = None,
+    date_from: Optional[date] = None, date_to: Optional[date] = None,
+) -> dict:
+    """Aggregate stock-in / stock-out totals across ALL rows matching the given
+    filters — not just the current page. The Stock Movements screen's summary
+    cards previously summed only the 10-50 rows on the current page, which
+    silently understated (or overstated, depending on sort) the true totals
+    the moment there was more than one page of results.
+    """
+    q = db.query(
+        func.coalesce(func.sum(case((StockMovement.quantity > 0, StockMovement.quantity), else_=0)), 0),
+        func.coalesce(func.sum(case((StockMovement.quantity < 0, -StockMovement.quantity), else_=0)), 0),
+        func.count(StockMovement.id),
+    ).filter(StockMovement.hospital_id == hospital_id)
+    if item_type:
+        q = q.filter(StockMovement.item_type == item_type)
+    if item_id:
+        q = q.filter(StockMovement.item_id == uuid.UUID(item_id))
+    if movement_type:
+        q = q.filter(StockMovement.movement_type == movement_type)
+    if date_from:
+        q = q.filter(func.date(StockMovement.created_at) >= date_from)
+    if date_to:
+        q = q.filter(func.date(StockMovement.created_at) <= date_to)
+
+    total_in, total_out, count = q.first()
+    total_in = int(total_in or 0)
+    total_out = int(total_out or 0)
+    return {
+        "total_in": total_in,
+        "total_out": total_out,
+        "net_balance": total_in - total_out,
+        "total_movements": int(count or 0),
+    }
 
 
 def _format_movement_response(m: StockMovement, db: Session) -> dict:

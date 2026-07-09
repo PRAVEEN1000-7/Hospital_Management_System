@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import refundService from '../services/refundService';
 import type { RefundListItem, RefundStatus } from '../types/billing';
+import { formatDateTime } from '../utils/calendarDate';
 
 const STATUS_COLORS: Record<RefundStatus, string> = {
   pending: 'bg-amber-100 text-amber-700',
@@ -179,7 +180,7 @@ const RefundList: React.FC = () => {
                     </td>
                     <td className="px-4 py-3 text-xs text-slate-500">
                       <p className="text-slate-700 font-medium">{r.requested_by_name || '—'}</p>
-                      <p className="text-slate-400">{new Date(r.created_at).toLocaleDateString('en-IN')}</p>
+                      <p className="text-slate-400">{formatDateTime(r.created_at, 'dd MMM yyyy')}</p>
                     </td>
                     <td className="px-4 py-3 text-right font-bold text-amber-600">₹{fmt(r.amount)}</td>
                     <td className="px-4 py-3 text-center">

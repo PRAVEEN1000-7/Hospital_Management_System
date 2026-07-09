@@ -39,6 +39,7 @@ class UserResponse(BaseModel):
     hospital_name: Optional[str] = None
     hospital_code: Optional[str] = None
     hospital_specialty: Optional[str] = None
+    hospital_timezone: Optional[str] = None
     reference_number: Optional[str] = None
     avatar_url: Optional[str] = None
 

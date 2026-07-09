@@ -10,6 +10,7 @@ import type { QueueStatus as QueueStatusType, QueueItem, DoctorOption, Appointme
 import AppointmentStatusBadge from '../components/appointments/AppointmentStatusBadge';
 import AvailabilityCalendar from '../components/common/AvailabilityCalendar';
 import { useDoctorMonthAvailability } from '../hooks/useDoctorMonthAvailability';
+import { formatTimeOnly, formatDateOnly } from '../utils/calendarDate';
 import { formatLocalDateISO, formatMonthKey } from '../utils/calendarDate';
 import type { Patient } from '../types/patient';
 
@@ -1295,7 +1296,7 @@ const WalkInQueue: React.FC = () => {
                       <td className="px-4 py-3 text-center">
                         <span className="text-xs text-slate-500">
                           {receptionTab === 'completed' && item.consultation_end_at
-                            ? new Date(item.consultation_end_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+                            ? formatTimeOnly(item.consultation_end_at)
                             : timeAgo(item.check_in_at)}
                         </span>
                       </td>
@@ -1425,7 +1426,7 @@ const WalkInQueue: React.FC = () => {
                       {appt.check_in_at && (
                         <div className="mt-1.5 flex items-center gap-1.5 text-xs text-slate-400">
                           <span className="material-symbols-outlined text-sm">login</span>
-                          Checked in at {new Date(appt.check_in_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                          Checked in at {formatTimeOnly(appt.check_in_at)}
                         </div>
                       )}
                     </div>
@@ -1511,7 +1512,7 @@ const WalkInQueue: React.FC = () => {
                             <span className={`text-[10px] font-bold ${pri.text}`}>{pri.label}</span>
                             {item.consultation_end_at && (
                               <span className="text-xs text-slate-400">
-                                Completed {new Date(item.consultation_end_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                                Completed {formatTimeOnly(item.consultation_end_at)}
                               </span>
                             )}
                           </div>
@@ -1803,9 +1804,7 @@ const WalkInQueue: React.FC = () => {
               <div className="bg-slate-50 rounded-xl p-3">
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Date of Birth</p>
                 <p className="text-sm font-semibold text-slate-800">
-                  {detailItem.patient_date_of_birth
-                    ? new Date(detailItem.patient_date_of_birth).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-                    : '—'}
+                  {detailItem.patient_date_of_birth ? formatDateOnly(detailItem.patient_date_of_birth) : '—'}
                 </p>
               </div>
               <div className="bg-slate-50 rounded-xl p-3">
@@ -1842,17 +1841,13 @@ const WalkInQueue: React.FC = () => {
                 <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-3">
                   <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider mb-1">Called At</p>
                   <p className="text-sm font-semibold text-indigo-900">
-                    {detailItem.called_at
-                      ? new Date(detailItem.called_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
-                      : '—'}
+                    {detailItem.called_at ? formatTimeOnly(detailItem.called_at) : '—'}
                   </p>
                 </div>
                 <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-3">
                   <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider mb-1">Consultation Start</p>
                   <p className="text-sm font-semibold text-indigo-900">
-                    {detailItem.consultation_start_at
-                      ? new Date(detailItem.consultation_start_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
-                      : '—'}
+                    {detailItem.consultation_start_at ? formatTimeOnly(detailItem.consultation_start_at) : '—'}
                   </p>
                 </div>
               </div>

@@ -11,6 +11,8 @@ from typing import Optional
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 
+from ..core.hospital_time import hospital_today_by_id
+
 from ..models.settlement import DailySettlement
 from ..models.payment import Payment
 from ..models.refund import Refund
@@ -93,7 +95,7 @@ def _to_response(db: Session, record: DailySettlement) -> SettlementResponse:
 def create_settlement(
     db: Session, data: SettlementCreate, user_id: uuid.UUID, hospital_id: uuid.UUID
 ) -> DailySettlement:
-    settlement_date = data.settlement_date or date.today()
+    settlement_date = data.settlement_date or hospital_today_by_id(db, hospital_id)
 
     # Prevent duplicate open settlements for same cashier + date
     existing = (

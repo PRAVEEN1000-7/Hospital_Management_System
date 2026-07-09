@@ -10,7 +10,7 @@ import prescriptionService from '../services/prescriptionService';
 import opticalService from '../services/opticalService';
 import AppointmentStatusBadge from '../components/appointments/AppointmentStatusBadge';
 import DateRangeFilter from '../components/common/DateRangeFilter';
-import { formatLocalDateISO } from '../utils/calendarDate';
+import { formatLocalDateISO, formatDateOnly, formatTimeOnly } from '../utils/calendarDate';
 import type { Appointment, DoctorOption, AppointmentStatus, AppointmentStats, TimeSlot } from '../types/appointment';
 import type { Invoice, PaymentMode } from '../types/billing';
 import type { PrescriptionListItem } from '../types/prescription';
@@ -323,13 +323,13 @@ const AppointmentManagement: React.FC = () => {
     return `${h % 12 || 12}:${m.toString().padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
   };
 
-  // For walk-ins start_time is null — fall back to check_in_at (arrival time)
+  // For walk-ins start_time is null — fall back to check_in_at (arrival time).
+  // check_in_at is a real timestamp, so it must be converted to the hospital's
+  // timezone (not read via getHours()/getMinutes(), which reflect whatever
+  // timezone the viewer's own device happens to be on).
   const getApptTime = (appt: Appointment): string | undefined => {
     if (appt.start_time) return appt.start_time;
-    if (appt.check_in_at) {
-      const d = new Date(appt.check_in_at);
-      return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
-    }
+    if (appt.check_in_at) return formatTimeOnly(appt.check_in_at, 'HH:mm');
     return undefined;
   };
 
@@ -507,7 +507,7 @@ const AppointmentManagement: React.FC = () => {
                 <div className="flex items-center gap-3 mt-2 text-xs text-slate-500">
                   <span className="flex items-center gap-1">
                     <span className="material-symbols-outlined text-sm">calendar_today</span>
-                    {new Date(appt.appointment_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    {formatDateOnly(appt.appointment_date, 'MMM d')}
                   </span>
                   <span className="flex items-center gap-1">
                     <span className="material-symbols-outlined text-sm">schedule</span>
@@ -580,7 +580,7 @@ const AppointmentManagement: React.FC = () => {
                       <td className="px-4 py-3 font-medium text-slate-900">{appt.patient_name || '—'}</td>
                       <td className="px-4 py-3 text-slate-600">{appt.doctor_name || '—'}</td>
                       <td className="px-4 py-3 text-slate-600">
-                        {new Date(appt.appointment_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        {formatDateOnly(appt.appointment_date, 'MMM d')}
                         <span className="text-slate-300 mx-1">·</span>
                         {formatTime(getApptTime(appt))}
                         {!appt.start_time && appt.check_in_at && <span className="ml-1 text-[10px] text-slate-400">(arrival)</span>}
@@ -674,7 +674,7 @@ const AppointmentManagement: React.FC = () => {
                 {[
                   ['Patient', detailAppt.patient_name || '—'],
                   ['Doctor', detailAppt.doctor_name || '—'],
-                  ['Date', new Date(detailAppt.appointment_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })],
+                  ['Date', formatDateOnly(detailAppt.appointment_date, 'MMM d, yyyy')],
                   [detailAppt.start_time ? 'Time' : 'Arrival', formatTime(getApptTime(detailAppt))],
                   ['Type', detailAppt.appointment_type],
                   ['Visit', detailAppt.visit_type || '—'],

@@ -27,6 +27,7 @@ from ..services.waitlist_service import (
     check_already_on_waitlist,
 )
 from ..services.notification_service import notify_hospital_users
+from ..core.hospital_time import hospital_today
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/walk-ins", tags=["Walk-in Registration"])
@@ -124,8 +125,8 @@ def _next_position(db: Session, doctor_id: uuid.UUID, queue_date: date) -> int:
     )
     return (waiting or 0) + 1
 
-def _ensure_today_queue_action(qe: "AppointmentQueue") -> None:
-    if qe.queue_date != date.today():
+def _ensure_today_queue_action(qe: "AppointmentQueue", hospital_timezone: Optional[str] = None) -> None:
+    if qe.queue_date != hospital_today(hospital_timezone):
         raise HTTPException(
             status_code=400,
             detail="Queue actions are allowed only for today's queue.",
@@ -144,7 +145,7 @@ async def register_walk_in(
     )
 
     try:
-        today = date.today()
+        today = hospital_today(current_user.hospital.timezone if current_user.hospital else None)
         now = datetime.now(timezone.utc)
 
         # Validate patient exists
@@ -307,14 +308,15 @@ async def get_queue_status(
     Queue number remains the original sequential token number.
     """
     # Parse queue_date or default to today
-    target_date = date.today()
+    hospital_tz = current_user.hospital.timezone if current_user.hospital else None
+    target_date = hospital_today(hospital_tz)
     if queue_date:
         try:
             target_date = datetime.strptime(queue_date, "%Y-%m-%d").date()
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid queue_date format. Use YYYY-MM-DD")
 
-    today = date.today()
+    today = hospital_today(hospital_tz)
 
     # Auto-detect doctor role → filter to own queue
     resolved_doctor_id: Optional[uuid.UUID] = None
@@ -406,7 +408,7 @@ async def get_queue_status(
                 patient_emergency_contact_relation = patient.emergency_contact_relation
                 # Compute age from date_of_birth or stored age_years
                 if patient.date_of_birth:
-                    age_delta = date.today() - patient.date_of_birth
+                    age_delta = today - patient.date_of_birth
                     patient_age = age_delta.days // 365
                 elif patient.age_years is not None:
                     patient_age = patient.age_years
@@ -481,7 +483,7 @@ async def call_patient(
 
     if qe.status != "waiting":
         raise HTTPException(status_code=400, detail="Only 'waiting' patients can be called")
-    _ensure_today_queue_action(qe)
+    _ensure_today_queue_action(qe, current_user.hospital.timezone if current_user.hospital else None)
 
     qe.status = "called"
     qe.called_at = datetime.now(timezone.utc)
@@ -522,7 +524,7 @@ async def send_to_doctor_queue(
             status_code=400,
             detail="Only 'waiting' or 'called' patients can be sent to doctor",
         )
-    _ensure_today_queue_action(qe)
+    _ensure_today_queue_action(qe, current_user.hospital.timezone if current_user.hospital else None)
 
     qe.status = "sent_to_doctor"
     db.commit()
@@ -549,7 +551,7 @@ async def start_consultation(
 
     if qe.status not in ("waiting", "called", "sent_to_doctor"):
         raise HTTPException(status_code=400, detail="Patient must be in 'waiting', 'called', or 'sent_to_doctor' status to start consultation")
-    _ensure_today_queue_action(qe)
+    _ensure_today_queue_action(qe, current_user.hospital.timezone if current_user.hospital else None)
 
     qe.status = "in_consultation"
 
@@ -582,7 +584,7 @@ async def complete_patient(
 
     if qe.status not in ("called", "in_consultation"):
         raise HTTPException(status_code=400, detail="Patient must be in 'called' or 'in_consultation' status to complete")
-    _ensure_today_queue_action(qe)
+    _ensure_today_queue_action(qe, current_user.hospital.timezone if current_user.hospital else None)
 
     qe.status = "completed"
 
@@ -612,7 +614,7 @@ async def skip_patient(
         raise HTTPException(status_code=404, detail="Queue entry not found")
 
     _require_queue_actor(db, current_user, qe)
-    _ensure_today_queue_action(qe)
+    _ensure_today_queue_action(qe, current_user.hospital.timezone if current_user.hospital else None)
 
     qe.status = "skipped"
 
@@ -756,7 +758,7 @@ async def assign_doctor_to_walkin(
     appt.doctor_id = doctor_uuid
     db.flush()
 
-    today = date.today()
+    today = hospital_today(current_user.hospital.timezone if current_user.hospital else None)
     # Remove old queue entry if reassigning
     db.query(AppointmentQueue).filter(
         AppointmentQueue.appointment_id == appt_uuid,
@@ -807,7 +809,7 @@ async def get_today_walkins(
     current_user: User = Depends(get_current_active_user),
 ):
     """List today's walk-in appointments."""
-    today = date.today()
+    today = hospital_today(current_user.hospital.timezone if current_user.hospital else None)
     query = db.query(Appointment).filter(
         Appointment.appointment_date == today,
         Appointment.appointment_type.in_(["walk-in", "walk_in"]),
@@ -836,7 +838,7 @@ async def get_unassigned_walkins(
     List today's walk-in appointments that have no doctor assigned.
     These patients were registered but not yet routed to any doctor's queue.
     """
-    today = date.today()
+    today = hospital_today(current_user.hospital.timezone if current_user.hospital else None)
     appointments = (
         db.query(Appointment)
         .filter(
@@ -888,7 +890,7 @@ async def get_doctor_queue_loads(
     current_user: User = Depends(get_current_active_user),
 ):
     """Return queue load per doctor (total patient count) for the Send-to-Doctor / referral modal."""
-    load_date = date.today()
+    load_date = hospital_today(current_user.hospital.timezone if current_user.hospital else None)
     if target_date:
         try:
             load_date = datetime.strptime(target_date, "%Y-%m-%d").date()
@@ -933,7 +935,7 @@ async def get_upcoming_queue(
         if doc:
             resolved_doctor_id = doc.id
 
-    today = date.today()
+    today = hospital_today(current_user.hospital.timezone if current_user.hospital else None)
     end_date = today + timedelta(days=days)
 
     query = (
@@ -1077,7 +1079,7 @@ async def refer_patient_to_doctor(
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
 
-        today = date.today()
+        today = hospital_today(current_user.hospital.timezone if current_user.hospital else None)
         if referral_date < today:
             raise HTTPException(status_code=400, detail="Referral date cannot be in the past")
 

@@ -13,6 +13,8 @@ from typing import Optional
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_, func
 
+from ..core.hospital_time import hospital_today_by_id
+
 from ..models.payment import Payment
 from ..models.invoice import Invoice
 from ..models.patient import Patient
@@ -109,7 +111,7 @@ def record_payment(
         amount=data.amount,
         payment_mode=data.payment_mode,
         payment_reference=data.payment_reference,
-        payment_date=data.payment_date or date.today(),
+        payment_date=data.payment_date or hospital_today_by_id(db, hospital_id),
         status="completed",
         received_by=user_id,
         notes=data.notes,

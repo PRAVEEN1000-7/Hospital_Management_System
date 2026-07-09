@@ -3,7 +3,7 @@ Subscription management service for billing and plan lifecycle.
 """
 import uuid
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Dict, Any
 from decimal import Decimal
 
@@ -82,7 +82,7 @@ class SubscriptionService:
             if hasattr(plan, key):
                 setattr(plan, key, value)
         
-        plan.updated_at = datetime.utcnow()
+        plan.updated_at = datetime.now(timezone.utc)
         db.commit()
         db.refresh(plan)
         return plan
@@ -107,7 +107,7 @@ class SubscriptionService:
         **kwargs
     ) -> TenantSubscription:
         """Create a new subscription for tenant"""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         
         subscription = TenantSubscription(
             tenant_id=tenant_id,
@@ -141,13 +141,13 @@ class SubscriptionService:
         if immediate:
             # Immediate change
             subscription.plan_id = new_plan_id
-            subscription.updated_at = datetime.utcnow()
+            subscription.updated_at = datetime.now(timezone.utc)
         else:
             # Schedule change at period end
             subscription.custom_features = {
                 **(subscription.custom_features or {}),
                 'pending_plan_change': str(new_plan_id),
-                'plan_change_scheduled_at': datetime.utcnow().isoformat()
+                'plan_change_scheduled_at': datetime.now(timezone.utc).isoformat()
             }
         
         # Log audit
@@ -183,10 +183,10 @@ class SubscriptionService:
             subscription.cancel_at_period_end = True
         else:
             subscription.status = 'cancelled'
-            subscription.cancelled_at = datetime.utcnow()
+            subscription.cancelled_at = datetime.now(timezone.utc)
         
         subscription.cancellation_reason = reason
-        subscription.updated_at = datetime.utcnow()
+        subscription.updated_at = datetime.now(timezone.utc)
         
         # Log audit
         audit = AuditLog(
@@ -218,7 +218,7 @@ class SubscriptionService:
         if not subscription:
             raise ValueError("No subscription found")
         
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         
         # Create new subscription period
         if new_plan_id:
@@ -271,7 +271,7 @@ class SubscriptionService:
             ).scalar() or 0
         else:
             # For storage and unknown types fall back to UsageTracking sum
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             usage = db.query(UsageTracking).filter(
                 UsageTracking.tenant_id == tenant_id,
                 UsageTracking.resource_type == resource_type,
@@ -295,7 +295,7 @@ class SubscriptionService:
 
         current = SubscriptionService._get_real_count(db, tenant_id, resource_type)
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         percentage = 0
         if max_limit and max_limit > 0:
             percentage = (current / max_limit) * 100
@@ -320,7 +320,7 @@ class SubscriptionService:
         quantity: int = 1
     ) -> UsageTracking:
         """Track resource usage"""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         
         usage = db.query(UsageTracking).filter(
             UsageTracking.tenant_id == tenant_id,
@@ -385,7 +385,7 @@ class BillingService:
     def generate_invoice_number() -> str:
         """Generate unique invoice number"""
         from datetime import datetime
-        timestamp = datetime.utcnow().strftime("%Y%m%d")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d")
         unique = uuid.uuid4().hex[:6].upper()
         return f"INV-{timestamp}-{unique}"
     
@@ -400,7 +400,7 @@ class BillingService:
         due_date: Optional[datetime] = None
     ) -> BillingInvoice:
         """Create a new billing invoice"""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         
         if not due_date:
             due_date = now + timedelta(days=7)
@@ -446,13 +446,13 @@ class BillingService:
         
         if invoice.amount_due <= 0:
             invoice.status = 'paid'
-            invoice.paid_at = datetime.utcnow()
+            invoice.paid_at = datetime.now(timezone.utc)
         else:
             invoice.status = 'partially_paid'
         
         invoice.payment_method = payment_method
         invoice.payment_reference = payment_reference
-        invoice.updated_at = datetime.utcnow()
+        invoice.updated_at = datetime.now(timezone.utc)
         
         db.commit()
         db.refresh(invoice)

@@ -8,6 +8,7 @@ import pharmacyService, {
   type DispenseItemData,
 } from '../../services/pharmacyService';
 import type { MedicineBatch } from '../../types/pharmacy';
+import { formatDateOnly, formatDateTime } from '../../utils/calendarDate';
 
 type DispensingPrescriptionItem = PrescriptionItemWithStock;
 
@@ -604,7 +605,7 @@ const DispensingScreen: React.FC = () => {
               <InfoRow 
                 icon="event" 
                 label="Date" 
-                value={new Date(prescription.created_at).toLocaleString()} 
+                value={formatDateTime(prescription.created_at)}
               />
             </div>
           </div>
@@ -813,7 +814,7 @@ const DispensingScreen: React.FC = () => {
                               </span>
                               {selectedBatch.expiry_date && (
                                 <span className="text-xs">
-                                  Exp: {new Date(selectedBatch.expiry_date).toLocaleDateString()}
+                                  Exp: {formatDateOnly(selectedBatch.expiry_date)}
                                 </span>
                               )}
                             </div>
@@ -840,7 +841,7 @@ const DispensingScreen: React.FC = () => {
                           >
                             {item.available_batches.map((batch) => (
                               <option key={batch.id} value={batch.id}>
-                                {batch.batch_number} | Exp: {new Date(batch.expiry_date).toLocaleDateString()} | Stock: {batch.quantity}
+                                {batch.batch_number} | Exp: {formatDateOnly(batch.expiry_date)} | Stock: {batch.quantity}
                               </option>
                             ))}
                           </select>

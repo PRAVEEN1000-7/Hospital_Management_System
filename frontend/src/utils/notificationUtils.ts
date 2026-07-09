@@ -2,6 +2,7 @@
  * Notification utilities for role-based notifications
  */
 import type { AppNotification } from '../services/notificationsService';
+import { formatDateTime } from './calendarDate';
 
 export interface NotificationTarget {
   path: string;
@@ -131,5 +132,5 @@ export const getRelativeTime = (dateString: string): string => {
   if (diffHours < 24) return `${diffHours}h ago`;
   if (diffDays < 7) return `${diffDays}d ago`;
   
-  return date.toLocaleDateString();
+  return formatDateTime(dateString, 'dd MMM yyyy');
 };

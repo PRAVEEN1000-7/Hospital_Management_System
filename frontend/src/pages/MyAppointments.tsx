@@ -5,6 +5,7 @@ import appointmentService from '../services/appointmentService';
 import scheduleService from '../services/scheduleService';
 import AppointmentStatusBadge from '../components/appointments/AppointmentStatusBadge';
 import type { Appointment, AppointmentStatus, TimeSlot, DoctorOption } from '../types/appointment';
+import { formatDateOnly } from '../utils/calendarDate';
 
 const MyAppointments: React.FC = () => {
   const { user } = useAuth();
@@ -98,7 +99,7 @@ const MyAppointments: React.FC = () => {
 
   const displayList = activeTab === 'upcoming' ? upcoming : past;
 
-  const formatDate = (d: string) => new Date(d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+  const formatDate = (d: string) => formatDateOnly(d, 'EEE, MMM d, yyyy');
   const formatTime = (t?: string) => {
     if (!t) return '—';
     const [h, m] = t.split(':').map(Number);
@@ -136,7 +137,7 @@ const MyAppointments: React.FC = () => {
               <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                 {/* Date Block */}
                 <div className="flex-shrink-0 w-16 h-16 bg-primary/5 rounded-xl flex flex-col items-center justify-center">
-                  <span className="text-xs font-bold text-primary uppercase">{new Date(appt.appointment_date).toLocaleDateString('en-US', { month: 'short' })}</span>
+                  <span className="text-xs font-bold text-primary uppercase">{formatDateOnly(appt.appointment_date, 'MMM')}</span>
                   <span className="text-xl font-bold text-primary">{new Date(appt.appointment_date).getDate()}</span>
                 </div>
                 {/* Info */}

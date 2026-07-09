@@ -19,6 +19,7 @@ from ..schemas.appointment import (
     WaitlistResponse,
     PaginatedWaitlistResponse,
 )
+from ..core.hospital_time import hospital_today_by_id
 from ..services.waitlist_service import (
     add_to_waitlist,
     get_waitlist,
@@ -247,7 +248,7 @@ async def book_from_waitlist(
                 raise HTTPException(status_code=404, detail="Selected doctor not found")
             target_doctor_id = override_uuid
 
-        today = date.today()
+        today = hospital_today_by_id(db, entry.hospital_id)
 
         # Ensure the target doctor actually has room today before promoting —
         # without this check, "Book" would silently assign the patient even
@@ -368,7 +369,7 @@ async def waitlist_stats(
     if target_date:
         q = q.filter(Waitlist.preferred_date == target_date)
     else:
-        q = q.filter(Waitlist.preferred_date >= date.today())
+        q = q.filter(Waitlist.preferred_date >= hospital_today_by_id(db, current_user.hospital_id))
 
     total_waiting = q.filter(Waitlist.status == "waiting").count()
     total_booked = q.filter(Waitlist.status == "booked").count()

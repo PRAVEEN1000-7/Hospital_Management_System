@@ -5,7 +5,7 @@ Logs all critical operations with full tenant context.
 import logging
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 from enum import Enum
 
@@ -102,7 +102,10 @@ class AuditLogger:
         """
         
         audit_record = {
-            "timestamp": datetime.utcnow().isoformat(),
+            # tz-aware so the ISO string carries an explicit "+00:00" — a naive
+            # utcnow().isoformat() looks identical to local time to any reader
+            # (human or code) parsing this log line later.
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "action": action.value,
             "severity": severity.value,
             "user_id": str(user.id) if user else None,

@@ -14,6 +14,8 @@ from typing import Optional
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_, func
 
+from ..core.hospital_time import hospital_today_by_id
+
 from ..models.pharmacy import MedicineBatch
 from ..models.prescription import Medicine
 from ..models.invoice import Invoice, InvoiceItem
@@ -217,7 +219,7 @@ def create_invoice(
     db: Session, data: InvoiceCreate, user_id: uuid.UUID, hospital_id: uuid.UUID
 ) -> Invoice:
     invoice_number = generate_invoice_number()
-    invoice_date = data.invoice_date or date.today()
+    invoice_date = data.invoice_date or hospital_today_by_id(db, hospital_id)
     due_date = data.due_date
 
     if data.invoice_type == "opd" and not _is_opd_credit_allowed(db, hospital_id):

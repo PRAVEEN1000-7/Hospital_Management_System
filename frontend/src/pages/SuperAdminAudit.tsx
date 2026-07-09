@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { superAdminApi } from '../services/superAdminApi';
+import { formatDateTime } from '../utils/calendarDate';
 
 interface AuditLog {
   id: string;
@@ -46,11 +47,7 @@ const statusColor = (s: number | null): string => {
   return 'text-emerald-600';
 };
 
-const fmt = (d: string) =>
-  new Date(d).toLocaleString('en-IN', {
-    year: 'numeric', month: 'short', day: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  });
+const fmt = (d: string) => formatDateTime(d, 'MMM d, yyyy hh:mm a');
 
 const SuperAdminAudit: React.FC = () => {
   const [logs, setLogs] = useState<AuditLog[]>([]);

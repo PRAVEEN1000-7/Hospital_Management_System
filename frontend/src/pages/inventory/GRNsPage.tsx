@@ -4,6 +4,7 @@ import { useToast } from '../../contexts/ToastContext';
 import inventoryService from '../../services/inventoryService';
 import type { GoodsReceiptNote } from '../../types/inventory';
 import DateRangeFilter from '../../components/common/DateRangeFilter';
+import { formatDateOnly } from '../../utils/calendarDate';
 
 const STATUS_COLORS: Record<string, string> = {
   pending: 'bg-amber-50 text-amber-700',
@@ -138,7 +139,7 @@ const GRNsPage: React.FC = () => {
                       <button onClick={() => setDetailGRN(grn)} className="text-sm font-semibold text-primary hover:underline">{grn.grn_number}</button>
                     </td>
                     <td className="px-4 py-4 hidden md:table-cell text-sm text-slate-700">{grn.po_number || '—'}</td>
-                    <td className="px-4 py-4 hidden lg:table-cell text-sm text-slate-600">{new Date(grn.receipt_date).toLocaleDateString()}</td>
+                    <td className="px-4 py-4 hidden lg:table-cell text-sm text-slate-600">{formatDateOnly(grn.receipt_date)}</td>
                     <td className="px-4 py-4 text-center text-sm text-slate-700">{grn.items.length}</td>
                     <td className="px-4 py-4 text-center">
                       <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold capitalize ${STATUS_COLORS[grn.status] || 'bg-slate-100 text-slate-600'}`}>
@@ -212,7 +213,7 @@ const GRNsPage: React.FC = () => {
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 <div>
                   <p className="text-xs text-slate-400">Received Date</p>
-                  <p className="text-sm font-medium text-slate-900">{new Date(detailGRN.receipt_date).toLocaleDateString()}</p>
+                  <p className="text-sm font-medium text-slate-900">{formatDateOnly(detailGRN.receipt_date)}</p>
                 </div>
                 <div>
                   <p className="text-xs text-slate-400">Status</p>
@@ -292,7 +293,7 @@ const GRNsPage: React.FC = () => {
                                   ? 'text-red-600 font-semibold'
                                   : 'text-slate-600'
                               }>
-                                {new Date(item.expiry_date).toLocaleDateString()}
+                                {formatDateOnly(item.expiry_date)}
                               </span>
                             ) : '—'}
                           </td>

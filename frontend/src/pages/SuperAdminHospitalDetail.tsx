@@ -25,6 +25,7 @@ import { superAdminApi } from '../services/superAdminApi';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../contexts/ConfirmContext';
 import userService from '../services/userService';
+import { formatDateTime } from '../utils/calendarDate';
 
 interface Tenant {
   id: string;
@@ -113,7 +114,7 @@ const categoryOf = (cat: string) =>
   CATEGORY_META[cat?.toLowerCase()] ?? { label: cat, color: 'bg-slate-100 text-slate-600' };
 
 const fmt = (dateStr?: string | null) =>
-  dateStr ? new Date(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
+  dateStr ? formatDateTime(dateStr, 'MMM d, yyyy') : '—';
 
 const InfoRow: React.FC<{ label: string; value?: string | null; mono?: boolean }> = ({ label, value, mono }) => (
   <div className="flex justify-between py-2.5 border-b border-slate-100 last:border-0">

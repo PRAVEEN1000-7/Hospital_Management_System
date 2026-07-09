@@ -4,6 +4,7 @@ import inventoryService from '../../services/inventoryService';
 import pharmacyService from '../../services/pharmacyService';
 import DateRangeFilter from '../../components/common/DateRangeFilter';
 import type { StockMovement } from '../../types/inventory';
+import { formatDateTime, formatTimeOnly } from '../../utils/calendarDate';
 
 interface GroupedMovement {
   date: string;
@@ -14,7 +15,6 @@ interface MovementStats {
   totalIn: number;
   totalOut: number;
   netBalance: number;
-  lastMovement?: StockMovement;
 }
 
 const MOVEMENT_TYPE_LABELS: Record<string, { label: string; icon: string; color: string }> = {
@@ -44,12 +44,14 @@ const StockMovementsReport: React.FC = () => {
   const [dateTo, setDateTo] = useState('');
   const [medicines, setMedicines] = useState<any[]>([]);
 
-  // Stats
+  // Stats — fetched from a dedicated summary endpoint that aggregates ALL rows
+  // matching the current filters, not just the current page (see fetchSummary).
   const [stats, setStats] = useState<MovementStats>({
     totalIn: 0,
     totalOut: 0,
     netBalance: 0,
   });
+  const [statsLoading, setStatsLoading] = useState(true);
 
   // Fetch medicines for filter
   useEffect(() => {
@@ -64,39 +66,24 @@ const StockMovementsReport: React.FC = () => {
     loadMedicines();
   }, []);
 
-  // Fetch movements
+  const buildFilters = useCallback(() => {
+    const filters: { item_type?: string; item_id?: string; movement_type?: string; date_from?: string; date_to?: string } = {};
+    if (itemType) filters.item_type = itemType;
+    if (itemId) filters.item_id = itemId;
+    if (movementType) filters.movement_type = movementType;
+    if (dateFrom) filters.date_from = dateFrom;
+    if (dateTo) filters.date_to = dateTo;
+    return filters;
+  }, [itemType, itemId, movementType, dateFrom, dateTo]);
+
+  // Fetch the current page of movements (for the list itself)
   const fetchMovements = useCallback(async () => {
     setLoading(true);
     try {
-      const filters = {};
-      if (itemType) (filters as any).item_type = itemType;
-      if (itemId) (filters as any).item_id = itemId;
-      if (movementType) (filters as any).movement_type = movementType;
-      if (dateFrom) (filters as any).date_from = dateFrom;
-      if (dateTo) (filters as any).date_to = dateTo;
-
-      const res = await inventoryService.getStockMovements(page, 50, filters);
+      const res = await inventoryService.getStockMovements(page, 50, buildFilters());
       setMovements(res.data);
       setTotalPages(res.total_pages);
       setTotal(res.total);
-
-      // Calculate stats
-      let totalIn = 0;
-      let totalOut = 0;
-      res.data.forEach(m => {
-        if (m.quantity > 0) {
-          totalIn += m.quantity;
-        } else {
-          totalOut += Math.abs(m.quantity);
-        }
-      });
-
-      setStats({
-        totalIn,
-        totalOut,
-        netBalance: totalIn - totalOut,
-        lastMovement: res.data[0],
-      });
     } catch (err) {
       console.error(err);
       toast.error('Failed to load stock movements');
@@ -104,15 +91,34 @@ const StockMovementsReport: React.FC = () => {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, itemType, itemId, movementType, dateFrom, dateTo]);
+  }, [page, buildFilters]);
+
+  // Fetch true totals across ALL matching rows (not just the current page) —
+  // a plain page-local sum would silently understate these the moment there's
+  // more than one page of results for the active filters.
+  const fetchSummary = useCallback(async () => {
+    setStatsLoading(true);
+    try {
+      const res = await inventoryService.getStockMovementSummary(buildFilters());
+      setStats({ totalIn: res.total_in, totalOut: res.total_out, netBalance: res.net_balance });
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setStatsLoading(false);
+    }
+  }, [buildFilters]);
 
   useEffect(() => {
     fetchMovements();
   }, [fetchMovements]);
 
+  useEffect(() => {
+    fetchSummary();
+  }, [fetchSummary]);
+
   // Group movements by date
   const groupedByDate = movements.reduce((acc: GroupedMovement[], m) => {
-    const date = new Date(m.created_at).toLocaleDateString();
+    const date = formatDateTime(m.created_at, 'dd MMM yyyy');
     const existing = acc.find(g => g.date === date);
     if (existing) {
       existing.movements.push(m);
@@ -137,8 +143,8 @@ const StockMovementsReport: React.FC = () => {
     const csv = [
       ['Date', 'Time', 'Item', 'Type', 'Movement', 'Quantity', 'Balance', 'Reference', 'Notes'].join(','),
       ...movements.map(m => [
-        new Date(m.created_at).toLocaleDateString(),
-        new Date(m.created_at).toLocaleTimeString(),
+        formatDateTime(m.created_at, 'dd MMM yyyy'),
+        formatTimeOnly(m.created_at, 'HH:mm:ss'),
         m.item_name || 'Unknown',
         MOVEMENT_TYPE_LABELS[m.movement_type]?.label || m.movement_type,
         m.quantity > 0 ? 'IN' : 'OUT',
@@ -182,7 +188,7 @@ const StockMovementsReport: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs text-slate-500 font-medium">Total Stock In</p>
-              <p className="text-2xl font-bold text-emerald-600 mt-1">{stats.totalIn}</p>
+              <p className="text-2xl font-bold text-emerald-600 mt-1">{statsLoading ? '—' : stats.totalIn}</p>
             </div>
             <div className="w-12 h-12 rounded-lg bg-emerald-50 flex items-center justify-center">
               <span className="material-symbols-outlined text-emerald-600">arrow_downward</span>
@@ -194,7 +200,7 @@ const StockMovementsReport: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs text-slate-500 font-medium">Total Stock Out</p>
-              <p className="text-2xl font-bold text-red-600 mt-1">{stats.totalOut}</p>
+              <p className="text-2xl font-bold text-red-600 mt-1">{statsLoading ? '—' : stats.totalOut}</p>
             </div>
             <div className="w-12 h-12 rounded-lg bg-red-50 flex items-center justify-center">
               <span className="material-symbols-outlined text-red-600">arrow_upward</span>
@@ -207,7 +213,7 @@ const StockMovementsReport: React.FC = () => {
             <div>
               <p className="text-xs text-slate-500 font-medium">Net Balance</p>
               <p className={`text-2xl font-bold mt-1 ${stats.netBalance >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                {stats.netBalance}
+                {statsLoading ? '—' : stats.netBalance}
               </p>
             </div>
             <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${stats.netBalance >= 0 ? 'bg-emerald-50' : 'bg-red-50'}`}>
@@ -294,58 +300,72 @@ const StockMovementsReport: React.FC = () => {
         </div>
       ) : (
         <div className="space-y-4">
-          {groupedByDate.map((group) => (
-            <div key={group.date} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="bg-slate-50 px-4 py-3 border-b border-slate-200">
-                <p className="font-semibold text-slate-900">{group.date}</p>
-              </div>
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Time</th>
+                    <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Item</th>
+                    <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Type</th>
+                    <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Reference</th>
+                    <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">By</th>
+                    <th className="text-right px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Qty</th>
+                    <th className="text-right px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Balance</th>
+                    <th className="text-right px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Cost</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {groupedByDate.map((group) => (
+                    <React.Fragment key={group.date}>
+                      <tr>
+                        <td colSpan={8} className="px-3 py-2 bg-slate-50/80 text-xs font-bold text-slate-600 border-y border-slate-100 sticky top-0">
+                          {group.date}
+                          <span className="ml-2 font-normal text-slate-400">({group.movements.length})</span>
+                        </td>
+                      </tr>
+                      {group.movements.map((m, idx) => {
+                        const type = MOVEMENT_TYPE_LABELS[m.movement_type] || {
+                          label: m.movement_type.toUpperCase(),
+                          icon: 'data_usage',
+                          color: 'text-slate-600 bg-slate-50',
+                        };
+                        const ref = [m.reference_type, m.notes].filter(Boolean).join(' — ');
 
-              <div className="divide-y divide-slate-100">
-                {group.movements.map((m, idx) => {
-                  const type = MOVEMENT_TYPE_LABELS[m.movement_type] || {
-                    label: m.movement_type.toUpperCase(),
-                    icon: 'data_usage',
-                    color: 'text-slate-600 bg-slate-50',
-                  };
-
-                  return (
-                    <div key={idx} className="p-4 hover:bg-slate-50 transition-colors">
-                      <div className="flex items-start gap-4">
-                        <div className={`w-10 h-10 rounded-lg ${type.color} flex items-center justify-center shrink-0`}>
-                          <span className="material-symbols-outlined text-lg">{type.icon}</span>
-                        </div>
-
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between gap-4">
-                            <div>
-                              <p className="font-semibold text-slate-900">{m.item_name || 'Unknown Item'}</p>
-                              <p className="text-xs text-slate-500 mt-1">
-                                {type.label} · {new Date(m.created_at).toLocaleTimeString()}
-                              </p>
-                              {m.notes && <p className="text-xs text-slate-600 mt-2">{m.notes}</p>}
-                            </div>
-
-                            <div className="text-right shrink-0">
-                              <p className={`text-lg font-bold ${m.quantity > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                                {m.quantity > 0 ? '+' : ''}{m.quantity}
-                              </p>
-                              <p className="text-xs text-slate-500 mt-1">Balance: {m.balance_after}</p>
-                            </div>
-                          </div>
-
-                          <div className="flex gap-4 mt-3 text-xs text-slate-500 flex-wrap">
-                            {m.reference_type && <span>Ref: {m.reference_type}</span>}
-                            {m.performed_by_name && <span>By: {m.performed_by_name}</span>}
-                            {m.unit_cost && <span>Cost: ₹{m.unit_cost.toFixed(2)}</span>}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                        return (
+                          <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50/60 transition-colors align-top">
+                            <td className="px-3 py-2.5 text-xs text-slate-500 whitespace-nowrap">
+                              {formatTimeOnly(m.created_at, 'hh:mm a')}
+                            </td>
+                            <td className="px-3 py-2.5 font-medium text-slate-900 max-w-[220px] truncate" title={m.item_name || 'Unknown Item'}>
+                              {m.item_name || 'Unknown Item'}
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap ${type.color}`}>
+                                <span className="material-symbols-outlined text-[13px]">{type.icon}</span>
+                                {type.label}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2.5 text-xs text-slate-500 max-w-[200px] truncate" title={ref || undefined}>
+                              {ref || '—'}
+                            </td>
+                            <td className="px-3 py-2.5 text-xs text-slate-500 whitespace-nowrap">{m.performed_by_name || '—'}</td>
+                            <td className={`px-3 py-2.5 text-right font-bold whitespace-nowrap ${m.quantity > 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                              {m.quantity > 0 ? '+' : ''}{m.quantity}
+                            </td>
+                            <td className="px-3 py-2.5 text-right text-slate-600 whitespace-nowrap">{m.balance_after}</td>
+                            <td className="px-3 py-2.5 text-right text-slate-500 whitespace-nowrap">
+                              {m.unit_cost ? `₹${m.unit_cost.toFixed(2)}` : '—'}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          ))}
+          </div>
 
           {/* Pagination */}
           <div className="flex items-center justify-between">

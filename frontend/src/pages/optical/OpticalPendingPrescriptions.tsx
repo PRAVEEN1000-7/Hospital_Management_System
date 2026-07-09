@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import opticalService from '../../services/opticalService';
 import type { PendingOpticalPrescription } from '../../services/opticalService';
+import { formatDateTime } from '../../utils/calendarDate';
 
 const STATUS_BADGES: Record<string, { label: string; color: string }> = {
   finalized: { label: 'Pending', color: 'bg-blue-100 text-blue-700' },
@@ -184,7 +185,7 @@ const OpticalPendingPrescriptions: React.FC = () => {
                       <td className="px-6 py-4">
                         <div className="text-sm font-medium text-slate-900">{rx.prescription_number}</div>
                         <div className="text-xs text-slate-500 mt-0.5">
-                          {new Date(rx.created_at).toLocaleDateString('en-IN')}
+                          {formatDateTime(rx.created_at, 'dd MMM yyyy')}
                         </div>
                       </td>
                       <td className="px-6 py-4">
@@ -251,7 +252,7 @@ const OpticalPendingPrescriptions: React.FC = () => {
                   <div className="flex items-start justify-between mb-3">
                     <div>
                       <div className="text-sm font-semibold text-slate-900">{rx.prescription_number}</div>
-                      <div className="text-xs text-slate-500">{new Date(rx.created_at).toLocaleDateString('en-IN')}</div>
+                      <div className="text-xs text-slate-500">{formatDateTime(rx.created_at, 'dd MMM yyyy')}</div>
                     </div>
                     <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${badge.color}`}>
                       {badge.label}

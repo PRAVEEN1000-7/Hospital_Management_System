@@ -4,6 +4,7 @@ import type { User, AuthState, LoginCredentials } from '../types/auth';
 import authService from '../services/authService';
 import { hospitalService } from '../services/hospitalService';
 import api from '../services/api';
+import { setActiveTimeZone } from '../utils/calendarDate';
 
 // The public Queue Display kiosk (/public/queue/:code) is intentionally
 // unauthenticated and standalone — it must never trigger auth/tenant calls
@@ -43,6 +44,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     isLoading: false,
   });
   const [enabledModules, setEnabledModules] = useState<string[]>([]);
+
+  // Every timestamp in the app should render in the logged-in user's HOSPITAL
+  // timezone (set at hospital creation / in Hospital Settings), not whatever
+  // timezone the viewer's own device happens to be on — a clinic's schedule
+  // is fixed to its own local time regardless of where staff are logging in
+  // from. calendarDate.ts's formatters read this module-level value as their
+  // default so every screen converts the same way without prop-drilling it
+  // through every call site.
+  useEffect(() => {
+    setActiveTimeZone(state.user?.hospital_timezone);
+  }, [state.user?.hospital_timezone]);
 
   const fetchModules = useCallback(async () => {
     if (!state.isAuthenticated || isPublicRoute(location.pathname)) return;

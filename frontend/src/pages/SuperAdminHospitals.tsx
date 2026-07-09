@@ -17,6 +17,7 @@ import {
 import { superAdminApi } from '../services/superAdminApi';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../contexts/ConfirmContext';
+import { formatDateTime } from '../utils/calendarDate';
 
 interface Tenant {
   id: string;
@@ -307,7 +308,7 @@ const SuperAdminHospitals: React.FC = () => {
                         <div className="text-sm text-gray-500">{tenant.phone}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {new Date(tenant.created_at).toLocaleDateString()}
+                        {formatDateTime(tenant.created_at, 'dd MMM yyyy')}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <div className="flex items-center justify-end gap-2">

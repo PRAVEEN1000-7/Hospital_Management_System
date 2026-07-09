@@ -5,6 +5,7 @@ import { useToast } from '../contexts/ToastContext';
 import invoiceService from '../services/invoiceService';
 import type { InvoiceListItem, InvoiceStatus } from '../types/billing';
 import DateRangeFilter from '../components/common/DateRangeFilter';
+import { formatDateOnly } from '../utils/calendarDate';
 
 const STATUS_COLORS: Record<InvoiceStatus, string> = {
   draft: 'bg-slate-100 text-slate-600',
@@ -192,7 +193,7 @@ const InvoiceList: React.FC = () => {
                     <td className="px-4 py-3 font-medium text-slate-800">{inv.patient_name}</td>
                     <td className="px-4 py-3 capitalize text-slate-600">{inv.invoice_type}</td>
                     <td className="px-4 py-3 text-slate-500">
-                      {new Date(inv.invoice_date).toLocaleDateString('en-IN')}
+                      {formatDateOnly(inv.invoice_date)}
                     </td>
                     <td className="px-4 py-3 text-right font-semibold text-slate-800">
                       ₹{fmt(inv.total_amount)}

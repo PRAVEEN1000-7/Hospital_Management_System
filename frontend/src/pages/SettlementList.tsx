@@ -4,6 +4,7 @@ import { useToast } from '../contexts/ToastContext';
 import settlementService from '../services/settlementService';
 import type { SettlementListItem, SettlementStatus } from '../types/billing';
 import DateRangeFilter from '../components/common/DateRangeFilter';
+import { formatDateOnly } from '../utils/calendarDate';
 
 const STATUS_COLORS: Record<SettlementStatus, string> = {
   open: 'bg-amber-100 text-amber-700',
@@ -159,7 +160,7 @@ const SettlementList: React.FC = () => {
                 {settlements.map(s => (
                   <tr key={s.id} className="hover:bg-slate-50/60 transition-colors">
                     <td className="px-4 py-3 font-medium text-slate-800">
-                      {new Date(s.settlement_date + 'T00:00:00').toLocaleDateString('en-IN', { dateStyle: 'medium' })}
+                      {formatDateOnly(s.settlement_date)}
                     </td>
                     <td className="px-4 py-3 text-slate-600">{s.cashier_name}</td>
                     <td className="px-4 py-3 text-right text-slate-700">₹{fmt(s.total_collected)}</td>

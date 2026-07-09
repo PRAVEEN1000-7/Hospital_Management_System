@@ -3,6 +3,7 @@ import { useToast } from '../../contexts/ToastContext';
 import inventoryService from '../../services/inventoryService';
 import type { StockMovement } from '../../types/inventory';
 import DateRangeFilter from '../../components/common/DateRangeFilter';
+import { formatDateTime } from '../../utils/calendarDate';
 
 const TYPE_COLORS: Record<string, string> = {
   stock_in: 'bg-emerald-50 text-emerald-700',
@@ -112,7 +113,7 @@ const StockMovementsPage: React.FC = () => {
               <tbody className="divide-y divide-slate-100">
                 {movements.map(m => (
                   <tr key={m.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="px-4 py-4 text-sm text-slate-600 whitespace-nowrap">{new Date(m.created_at).toLocaleDateString()}</td>
+                    <td className="px-4 py-4 text-sm text-slate-600 whitespace-nowrap">{formatDateTime(m.created_at, 'dd MMM yyyy')}</td>
                     <td className="px-4 py-4">
                       <p className="text-sm font-medium text-slate-900">{m.item_name || m.item_id}</p>
                       <p className="text-xs text-slate-400 capitalize">{m.item_type}</p>

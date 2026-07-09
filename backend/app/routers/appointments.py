@@ -34,6 +34,7 @@ from ..services.appointment_service import (
 )
 from ..services.schedule_service import is_doctor_on_leave, get_available_slots
 from ..services.notification_service import notify_hospital_users
+from ..core.hospital_time import hospital_today
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/appointments", tags=["Appointments"])
@@ -188,7 +189,7 @@ async def doctor_today(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    target_date = query_date or date.today()
+    target_date = query_date or hospital_today(current_user.hospital.timezone if current_user.hospital else None)
     # Resolve: try as Doctor.id first, then fall back to Doctor.user_id
     # so the frontend can pass either the doctor UUID or the logged-in user UUID
     resolved_doctor_id = doctor_id

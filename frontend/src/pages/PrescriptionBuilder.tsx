@@ -16,7 +16,7 @@ import type { DoctorOption } from '../types/appointment';
 import { genId } from '../utils/id';
 import AvailabilityCalendar from '../components/common/AvailabilityCalendar';
 import { useDoctorMonthAvailability } from '../hooks/useDoctorMonthAvailability';
-import { formatLocalDateISO, formatMonthKey } from '../utils/calendarDate';
+import { formatLocalDateISO, formatMonthKey, formatDateTime } from '../utils/calendarDate';
 
 const FREQUENCY_OPTIONS = ['1-0-0', '0-1-0', '0-0-1', '1-0-1', '1-1-0', '0-1-1', '1-1-1', '1-1-1-1'];
 const DURATION_UNITS = ['days', 'weeks', 'months'];
@@ -1948,7 +1948,7 @@ const PatientRxHistory: React.FC<{ patientId: string }> = ({ patientId }) => {
             >
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-medium text-slate-800">
-                  {new Date(rx.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  {formatDateTime(rx.created_at, 'MMM d, yyyy')}
                 </p>
                 <p className="text-[10px] text-slate-400 truncate">{rx.diagnosis || 'No diagnosis'}</p>
               </div>

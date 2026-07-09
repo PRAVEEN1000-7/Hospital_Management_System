@@ -4,6 +4,7 @@ import { useToast } from '../contexts/ToastContext';
 import scheduleService from '../services/scheduleService';
 import doctorService from '../services/doctorService';
 import type { DoctorSchedule, DoctorScheduleCreate, DoctorLeave, DoctorLeaveCreate, DoctorOption } from '../types/appointment';
+import { formatDateOnly } from '../utils/calendarDate';
 
 // Backend uses 0=Sunday, 1=Monday ... 6=Saturday
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -289,7 +290,7 @@ const DoctorSchedulePage: React.FC = () => {
                       <p className="text-sm font-semibold text-slate-700 mt-1">
                         {lv.leave_date}
                         <span className="ml-2 text-xs font-medium text-slate-400">
-                          {new Date(lv.leave_date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long' })}
+                          {formatDateOnly(lv.leave_date, 'EEEE')}
                         </span>
                       </p>
                       {lv.reason && <p className="text-xs text-slate-400 mt-0.5">[{lv.reason}]</p>}
@@ -388,7 +389,7 @@ const DoctorSchedulePage: React.FC = () => {
                 {leaveDate && (
                   <p className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
                     <span className="material-symbols-outlined text-xs">calendar_today</span>
-                    {new Date(leaveDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                    {formatDateOnly(leaveDate, 'EEEE, MMMM d, yyyy')}
                   </p>
                 )}
               </div>

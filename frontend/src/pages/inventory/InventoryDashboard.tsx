@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '../../contexts/ToastContext';
+import { useAuth } from '../../contexts/AuthContext';
 import inventoryService from '../../services/inventoryService';
 import type { InventoryDashboardData, LowStockItem, ExpiringItem } from '../../types/inventory';
 import { formatDateOnly } from '../../utils/calendarDate';
@@ -8,8 +9,14 @@ import { formatDateOnly } from '../../utils/calendarDate';
 const InventoryDashboard: React.FC = () => {
   const toast = useToast();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [data, setData] = useState<InventoryDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // /inventory/adjustments and /inventory/cycle-counts* only allow these
+  // roles — matches ProtectedRoute's allowedRoles, so a pharmacist (who can
+  // reach this dashboard) doesn't get silently bounced to /dashboard on click.
+  const canAdjustInventory = Boolean(user?.roles?.some(r => ['super_admin', 'admin', 'inventory_manager'].includes(r)));
 
   const fetchDashboard = useCallback(async () => {
     setLoading(true);
@@ -30,7 +37,7 @@ const InventoryDashboard: React.FC = () => {
     { label: 'Active Suppliers', value: data.total_suppliers, icon: 'local_shipping', color: 'bg-blue-500', link: '/inventory/suppliers' },
     { label: 'Active POs', value: data.active_purchase_orders, icon: 'receipt_long', color: 'bg-emerald-500', link: '/inventory/purchase-orders' },
     { label: 'Pending GRNs', value: data.pending_grns, icon: 'inventory_2', color: 'bg-amber-500', link: '/inventory/grns' },
-    { label: 'Pending Adjustments', value: data.pending_adjustments, icon: 'tune', color: 'bg-purple-500', link: '/inventory/adjustments' },
+    ...(canAdjustInventory ? [{ label: 'Pending Adjustments', value: data.pending_adjustments, icon: 'tune', color: 'bg-purple-500', link: '/inventory/adjustments' }] : []),
   ] : [];
 
   return (
@@ -162,8 +169,10 @@ const InventoryDashboard: React.FC = () => {
                 { label: 'Purchase Orders', icon: 'receipt_long', path: '/inventory/purchase-orders' },
                 { label: 'Goods Receipt', icon: 'inventory_2', path: '/inventory/grns' },
                 { label: 'Stock Report', icon: 'swap_vert', path: '/inventory/stock-movements' },
-                { label: 'Adjustments', icon: 'tune', path: '/inventory/adjustments' },
-                { label: 'Cycle Counts', icon: 'fact_check', path: '/inventory/cycle-counts' },
+                ...(canAdjustInventory ? [
+                  { label: 'Adjustments', icon: 'tune', path: '/inventory/adjustments' },
+                  { label: 'Cycle Counts', icon: 'fact_check', path: '/inventory/cycle-counts' },
+                ] : []),
               ].map((action) => (
                 <button
                   key={action.path}

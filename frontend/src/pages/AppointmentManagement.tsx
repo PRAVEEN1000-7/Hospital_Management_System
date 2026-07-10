@@ -469,6 +469,7 @@ const AppointmentManagement: React.FC = () => {
             dateFrom={dateFrom}
             dateTo={dateTo}
             onChange={(from, to) => { setDateFrom(from); setDateTo(to); setPage(1); }}
+            hideClear
           />
         </div>
         <div className="flex gap-2 mt-3">
@@ -479,7 +480,7 @@ const AppointmentManagement: React.FC = () => {
             <option value="walk-in">Walk-in</option>
           </select>
           <button onClick={handleSearch} className="px-4 py-2 bg-primary text-white text-sm font-semibold rounded-lg hover:bg-primary/90 shadow-sm">Search</button>
-          <button onClick={() => { setSearchInput(''); setSearch(''); setFilterDoctor(''); setDateFrom(today); setDateTo(today); setFilterStatus(''); setFilterType(''); setPage(1); }}
+          <button onClick={() => { setSearchInput(''); setSearch(''); setFilterDoctor(''); setDateFrom(''); setDateTo(''); setFilterStatus(''); setFilterType(''); setPage(1); }}
             className="px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 rounded-lg">Clear</button>
         </div>
       </div>

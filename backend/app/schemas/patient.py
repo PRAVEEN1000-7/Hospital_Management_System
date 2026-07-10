@@ -1,5 +1,5 @@
 from decimal import Decimal
-from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator, computed_field
+from pydantic import BaseModel, Field, field_validator, model_validator, computed_field
 from typing import Optional, Any
 from datetime import date, datetime
 
@@ -26,7 +26,9 @@ class PatientBase(BaseModel):
     phone_country_code: str = Field(default="+1", pattern=r"^\+[0-9]{1,4}$")
     phone_number: str = Field(..., pattern=r"^\d{10}$",
                                description="Phone number digits only (exactly 10 digits)")
-    email: Optional[EmailStr] = None
+    # Plain text, not RFC-validated — some patients only have an informal
+    # or partial email on file; rejecting those blocked patient creation.
+    email: Optional[str] = Field(None, max_length=255)
     address_line_1: Optional[str] = Field(None, max_length=255)
     address_line_2: Optional[str] = Field(None, max_length=255)
     city: Optional[str] = Field(None, max_length=100)

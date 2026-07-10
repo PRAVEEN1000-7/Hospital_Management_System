@@ -464,8 +464,7 @@ const DispensingBilling: React.FC = () => {
         </button>
         <button
           onClick={handlePaymentAndPrint}
-          disabled={processing || (!!dispensing.prescription_id && dispensing.consultation_fee_collected === false)}
-          title={dispensing.prescription_id && dispensing.consultation_fee_collected === false ? 'Collect consultation fee first' : undefined}
+          disabled={processing}
           className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
         >
           <span className="material-symbols-outlined text-sm">payment</span>

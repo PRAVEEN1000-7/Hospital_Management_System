@@ -6,6 +6,10 @@ export interface DateRangeFilterProps {
   onChange: (from: string, to: string) => void;
   className?: string;
   maxDate?: string; // defaults to today
+  /** Hide this component's own inline "Clear" link — set when the parent
+   * page already has its own single Clear button, to avoid two controls
+   * with slightly different behavior sitting next to each other. */
+  hideClear?: boolean;
 }
 
 interface Preset {
@@ -51,6 +55,7 @@ const DateRangeFilter: React.FC<DateRangeFilterProps> = ({
   onChange,
   className = '',
   maxDate,
+  hideClear = false,
 }) => {
   const today = toISO(new Date());
   const max = maxDate ?? today;
@@ -81,7 +86,7 @@ const DateRangeFilter: React.FC<DateRangeFilterProps> = ({
           key={p.key}
           type="button"
           onClick={() => handlePreset(p.key)}
-          className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors whitespace-nowrap ${
+          className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors whitespace-nowrap ${
             activePreset === p.key
               ? 'bg-primary text-white border-primary shadow-sm'
               : 'bg-white text-slate-600 border-slate-200 hover:border-primary/40 hover:text-primary'
@@ -101,29 +106,29 @@ const DateRangeFilter: React.FC<DateRangeFilterProps> = ({
           value={dateFrom}
           max={dateTo || max}
           onChange={e => onChange(e.target.value, dateTo)}
-          className={`px-2 py-1.5 border rounded-lg text-xs bg-white outline-none transition-colors
+          className={`px-3 py-2 border rounded-lg text-sm bg-white outline-none transition-colors
             focus:ring-2 focus:ring-primary/20 focus:border-primary
             ${activePreset === 'custom' || (!activePreset && dateFrom) ? 'border-primary/50' : 'border-slate-200'}
-            w-[130px]`}
+            w-[145px]`}
           placeholder="From date"
         />
-        <span className="text-slate-400 text-xs select-none">→</span>
+        <span className="text-slate-400 text-sm select-none">→</span>
         <input
           type="date"
           value={dateTo}
           min={dateFrom || undefined}
           max={max}
           onChange={e => onChange(dateFrom, e.target.value)}
-          className={`px-2 py-1.5 border rounded-lg text-xs bg-white outline-none transition-colors
+          className={`px-3 py-2 border rounded-lg text-sm bg-white outline-none transition-colors
             focus:ring-2 focus:ring-primary/20 focus:border-primary
             ${activePreset === 'custom' || (!activePreset && dateTo) ? 'border-primary/50' : 'border-slate-200'}
-            w-[130px]`}
+            w-[145px]`}
           placeholder="To date"
         />
       </div>
 
       {/* Clear link — only visible when a date is set */}
-      {(dateFrom || dateTo) && (
+      {!hideClear && (dateFrom || dateTo) && (
         <button
           type="button"
           onClick={handleClear}

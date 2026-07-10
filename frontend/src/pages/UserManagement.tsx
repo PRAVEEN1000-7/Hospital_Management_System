@@ -60,6 +60,8 @@ const userEditSchema = z.object({
   specialization: z.string().optional(),
   qualification: z.string().optional(),
   registration_number: z.string().optional(),
+  consultation_fee: z.union([z.string(), z.number()]).optional(),
+  follow_up_fee: z.union([z.string(), z.number()]).optional(),
 }).superRefine((data, ctx) => {
   if (data.role === 'doctor') {
     if (!data.specialization) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Specialization is required for doctors', path: ['specialization'] });
@@ -695,6 +697,8 @@ const EditUserModal: React.FC<{ user: UserData; onClose: () => void; onSuccess: 
       specialization: user.specialization || '',
       qualification: user.qualification || '',
       registration_number: user.registration_number || '',
+      consultation_fee: user.consultation_fee ?? '',
+      follow_up_fee: user.follow_up_fee ?? '',
     },
   });
   
@@ -763,6 +767,8 @@ const EditUserModal: React.FC<{ user: UserData; onClose: () => void; onSuccess: 
         payload.specialization = data.specialization;
         payload.qualification = data.qualification;
         payload.registration_number = data.registration_number;
+        payload.consultation_fee = data.consultation_fee !== '' && data.consultation_fee != null ? Number(data.consultation_fee) : undefined;
+        payload.follow_up_fee = data.follow_up_fee !== '' && data.follow_up_fee != null ? Number(data.follow_up_fee) : undefined;
       }
       await userService.updateUser(user.id, payload);
       
@@ -876,6 +882,14 @@ const EditUserModal: React.FC<{ user: UserData; onClose: () => void; onSuccess: 
               </Field>
               <Field label="Registration Number" error={errors.registration_number?.message}>
                 <input {...register('registration_number')} className="input-field" placeholder="e.g. MCI-12345" />
+              </Field>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Consultation Fee (₹)" error={errors.consultation_fee?.message}>
+                <input {...register('consultation_fee')} type="number" min="0" step="0.01" className="input-field" placeholder="e.g. 500" />
+              </Field>
+              <Field label="Follow-up Fee (₹)" error={errors.follow_up_fee?.message}>
+                <input {...register('follow_up_fee')} type="number" min="0" step="0.01" className="input-field" placeholder="e.g. 200" />
               </Field>
             </div>
           </section>

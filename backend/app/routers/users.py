@@ -6,6 +6,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from typing import Optional
 from ..database import get_db
 from ..models.user import User, UserRole, Role
@@ -56,28 +57,32 @@ async def create_new_user(
             if tenant:
                 UserCapacityValidator.validate_user_creation(tenant.id, db)
 
-        # Check username uniqueness within this hospital
+        # Username and email are unique platform-wide (not just per hospital) —
+        # login resolves a user by username alone, and password-reset by email
+        # alone, neither one knowing the hospital in advance, so the DB
+        # constraint is a plain global UNIQUE, not composite with hospital_id.
+        # Checking only within current_user.hospital_id here used to let this
+        # pass, then fail with a raw IntegrityError at commit — the "hospital
+        # conflict" crash — the moment the same username/email already existed
+        # in a different hospital.
         existing = db.query(User).filter(
             User.username == user_data.username.lower(),
-            User.hospital_id == current_user.hospital_id,
             User.is_deleted == False,
         ).first()
         if existing:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Username already exists",
+                detail="This username is already taken (usernames must be unique platform-wide, not just within your hospital)",
             )
 
-        # Check email uniqueness within this hospital (case-insensitive)
         existing = db.query(User).filter(
             func.lower(User.email) == user_data.email.lower(),
-            User.hospital_id == current_user.hospital_id,
             User.is_deleted == False,
         ).first()
         if existing:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email already exists",
+                detail="This email is already registered (emails must be unique platform-wide, not just within your hospital)",
             )
 
         # Validate that the role's primary optional modules are enabled for the tenant.
@@ -107,28 +112,38 @@ async def create_new_user(
                         detail=f"Role '{user_data.role}' requires modules that are not enabled: {', '.join(missing)}"
                     )
 
-        user = create_user(
-            db,
-            username=user_data.username,
-            email=user_data.email,
-            password=user_data.password,
-            first_name=user_data.first_name,
-            last_name=user_data.last_name,
-            role_name=user_data.role,
-            hospital_id=str(current_user.hospital_id),
-            phone=user_data.phone_number,
-            # Doctor-specific fields
-            specialization=user_data.specialization,
-            qualification=user_data.qualification,
-            registration_number=user_data.registration_number,
-            registration_authority=user_data.registration_authority,
-            experience_years=user_data.experience_years,
-            consultation_fee=user_data.consultation_fee,
-            follow_up_fee=user_data.follow_up_fee,
-            bio=user_data.bio,
-            department_id=user_data.department_id,
-            created_by_id=current_user.id,
-        )
+        try:
+            user = create_user(
+                db,
+                username=user_data.username,
+                email=user_data.email,
+                password=user_data.password,
+                first_name=user_data.first_name,
+                last_name=user_data.last_name,
+                role_name=user_data.role,
+                hospital_id=str(current_user.hospital_id),
+                phone=user_data.phone_number,
+                # Doctor-specific fields
+                specialization=user_data.specialization,
+                qualification=user_data.qualification,
+                registration_number=user_data.registration_number,
+                registration_authority=user_data.registration_authority,
+                experience_years=user_data.experience_years,
+                consultation_fee=user_data.consultation_fee,
+                follow_up_fee=user_data.follow_up_fee,
+                bio=user_data.bio,
+                department_id=user_data.department_id,
+                created_by_id=current_user.id,
+            )
+        except IntegrityError:
+            # Defense in depth: covers the rare case the pre-checks above miss,
+            # e.g. a soft-deleted user still holding the username/email — the
+            # DB's global unique constraint doesn't know about is_deleted.
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Username or email is already taken platform-wide",
+            )
 
         # Send welcome email if requested
         if send_email:
@@ -261,13 +276,13 @@ async def update_existing_user(
                 detail="Only Super Admin can modify Super Admin accounts",
             )
 
-        # Check email uniqueness within this hospital if email is being changed (case-insensitive)
+        # Email is unique platform-wide, not just within this hospital — see
+        # the matching note on the create-user uniqueness check above.
         if user_data.email and user_data.email.lower() != (target_user.email or '').lower():
             existing = (
                 db.query(User)
                 .filter(
                     func.lower(User.email) == user_data.email.lower(),
-                    User.hospital_id == current_user.hospital_id,
                     User.id != target_user.id,
                     User.is_deleted == False,
                 )
@@ -276,7 +291,7 @@ async def update_existing_user(
             if existing:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Email already exists",
+                    detail="This email is already registered (emails must be unique platform-wide, not just within your hospital)",
                 )
 
         update_fields = user_data.model_dump(exclude_unset=True)
@@ -321,7 +336,7 @@ async def update_existing_user(
 
         # Handle doctor-specific fields
         doctor_fields = {}
-        for field in ("specialization", "qualification", "registration_number"):
+        for field in ("specialization", "qualification", "registration_number", "consultation_fee", "follow_up_fee"):
             if field in update_fields:
                 doctor_fields[field] = update_fields.pop(field)
 
@@ -336,7 +351,14 @@ async def update_existing_user(
                         setattr(doctor, key, value)
 
         # Update remaining user fields
-        user = update_user(db, user_id, **update_fields)
+        try:
+            user = update_user(db, user_id, **update_fields)
+        except IntegrityError:
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email is already taken platform-wide",
+            )
 
         logger.info("User updated: %s by %s (doctor_fields=%s)", target_user.username, current_user.username, list(doctor_fields.keys()) if doctor_fields else "none")
 

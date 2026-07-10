@@ -105,6 +105,8 @@ class UserUpdate(BaseModel):
     specialization: Optional[str] = Field(None, max_length=100)
     qualification: Optional[str] = Field(None, max_length=255)
     registration_number: Optional[str] = Field(None, max_length=50)
+    consultation_fee: Optional[float] = Field(None, ge=0)
+    follow_up_fee: Optional[float] = Field(None, ge=0)
 
     @field_validator("role")
     @classmethod
@@ -151,6 +153,8 @@ class UserResponse(BaseModel):
     specialization: Optional[str] = None
     qualification: Optional[str] = None
     registration_number: Optional[str] = None
+    consultation_fee: Optional[float] = None
+    follow_up_fee: Optional[float] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -163,11 +167,15 @@ class UserResponse(BaseModel):
             specialization = None
             qualification = None
             registration_number = None
+            consultation_fee = None
+            follow_up_fee = None
             if hasattr(data, 'doctor_profile') and data.doctor_profile:
                 doc = data.doctor_profile[0] if isinstance(data.doctor_profile, list) else data.doctor_profile
                 specialization = getattr(doc, 'specialization', None)
                 qualification = getattr(doc, 'qualification', None)
                 registration_number = getattr(doc, 'registration_number', None)
+                consultation_fee = getattr(doc, 'consultation_fee', None)
+                follow_up_fee = getattr(doc, 'follow_up_fee', None)
             return {
                 "id": str(data.id),
                 "username": data.username,
@@ -188,6 +196,8 @@ class UserResponse(BaseModel):
                 "specialization": specialization,
                 "qualification": qualification,
                 "registration_number": registration_number,
+                "consultation_fee": float(consultation_fee) if consultation_fee is not None else None,
+                "follow_up_fee": float(follow_up_fee) if follow_up_fee is not None else None,
             }
         if isinstance(data, dict):
             if "id" in data and not isinstance(data["id"], str):

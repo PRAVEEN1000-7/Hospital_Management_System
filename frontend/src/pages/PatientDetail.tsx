@@ -106,13 +106,15 @@ const PatientDetail: React.FC = () => {
               Edit Patient
             </button>
           )}
-          <button
-            onClick={() => navigate(`/patients/${id}/id-card`)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold transition-colors active:scale-95"
-          >
-            <span className="material-icons text-lg">badge</span>
-            View ID Card
-          </button>
+          {canEdit && (
+            <button
+              onClick={() => navigate(`/patients/${id}/id-card`)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold transition-colors active:scale-95"
+            >
+              <span className="material-icons text-lg">badge</span>
+              View ID Card
+            </button>
+          )}
         </div>
       </div>
 

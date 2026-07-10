@@ -51,6 +51,11 @@ const PharmacyDashboard: React.FC = () => {
     );
   }
 
+  // /pharmacy/sales/new only allows these roles — matches ProtectedRoute's
+  // allowedRoles for that route, so inventory_manager (who can reach this
+  // dashboard) doesn't get silently bounced to /dashboard on click.
+  const canSell = Boolean(user?.roles?.some(r => ['super_admin', 'admin', 'pharmacist', 'cashier'].includes(r)));
+
   const cards = [
     {
       label: 'Pending Prescriptions',
@@ -97,10 +102,12 @@ const PharmacyDashboard: React.FC = () => {
           </p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => navigate('/pharmacy/sales/new')}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 transition-colors">
-            <span className="material-symbols-outlined text-base">point_of_sale</span> New Sale
-          </button>
+          {canSell && (
+            <button onClick={() => navigate('/pharmacy/sales/new')}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 transition-colors">
+              <span className="material-symbols-outlined text-base">point_of_sale</span> New Sale
+            </button>
+          )}
           <button onClick={() => navigate('/pharmacy/medicines/new')}
             className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-primary bg-white border border-primary/30 rounded-lg hover:bg-primary/5 transition-colors">
             <span className="material-symbols-outlined text-base">add</span> Add Medicine
@@ -184,7 +191,7 @@ const PharmacyDashboard: React.FC = () => {
         {[
           { label: 'Pending Prescriptions Queue', desc: 'Dispense medicines from prescriptions', icon: 'queue', to: '/pharmacy/pending-prescriptions' },
           { label: 'Medicine Inventory', desc: 'Browse & manage all medicines', icon: 'medication', to: '/pharmacy/medicines' },
-          { label: 'New Sale / Dispense', desc: 'Create a pharmacy sale', icon: 'point_of_sale', to: '/pharmacy/sales/new' },
+          ...(canSell ? [{ label: 'New Sale / Dispense', desc: 'Create a pharmacy sale', icon: 'point_of_sale', to: '/pharmacy/sales/new' }] : []),
           { label: 'Sales History', desc: 'View past sales & invoices', icon: 'receipt_long', to: '/pharmacy/sales' },
           { label: 'Stock Adjustments', desc: 'Manual stock corrections', icon: 'tune', to: '/pharmacy/stock-adjustments' },
         ].map((item) => (

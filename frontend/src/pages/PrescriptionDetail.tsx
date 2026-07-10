@@ -398,7 +398,7 @@ const PrescriptionDetail: React.FC = () => {
             </h3>
 
             <div className="border border-slate-200 rounded-lg overflow-hidden">
-              {isEyeHospital ? (
+              {isEyeHospital && rx.items?.some(item => item.eye_side) ? (
                 <>
                   {/* Eye Hospital Drug Prescription columns — S.No | Medicine | LE | RE | Dosage | Frequency */}
                   <div className="grid grid-cols-[40px_1fr_50px_50px_120px_120px] gap-2 bg-slate-100 border-b border-slate-200 px-4 py-2.5">

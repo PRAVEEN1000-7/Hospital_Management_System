@@ -26,6 +26,8 @@ export interface PendingPrescription {
   dispensed_items: number;
   pending_items: number;
   items: PrescriptionItemWithStock[];
+  /** Informational only — dispensing is never blocked on this. */
+  consultation_fee_collected?: boolean;
 }
 
 export interface PrescriptionItemWithStock {
@@ -50,7 +52,10 @@ export interface PrescriptionItemWithStock {
 }
 
 export interface DispenseItemData {
-  prescription_item_id: string;
+  // Omit/undefined for an extra item added by the pharmacist that isn't on
+  // the prescription (extra medicine, or a cataloged non-medicine pharmacy
+  // item) — it skips prescribed-quantity validation on the backend.
+  prescription_item_id?: string;
   medicine_id: string;
   batch_id: string;
   quantity: number;
@@ -73,7 +78,7 @@ export interface DispensingResult {
 }
 
 export interface DispensingPreviewItem {
-  prescription_item_id: string;
+  prescription_item_id: string | null;
   medicine_id: string | null;
   medicine_name: string;
   quantity: number;

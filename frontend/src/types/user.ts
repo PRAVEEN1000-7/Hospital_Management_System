@@ -17,6 +17,8 @@ export interface UserData {
   specialization?: string | null;
   qualification?: string | null;
   registration_number?: string | null;
+  consultation_fee?: number | null;
+  follow_up_fee?: number | null;
 }
 
 export interface UserCreateData {
@@ -51,6 +53,8 @@ export interface UserUpdateData {
   specialization?: string;
   qualification?: string;
   registration_number?: string;
+  consultation_fee?: number;
+  follow_up_fee?: number;
 }
 
 export interface PasswordResetData {

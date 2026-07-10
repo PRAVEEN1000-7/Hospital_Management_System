@@ -96,6 +96,8 @@ async def get_prescription_for_dispensing(
             limit=1,
         )
 
+        from ..models.prescription import Prescription
+
         # Find the prescription in results
         for rx in result.get("data", []):
             if rx["id"] == prescription_id:
@@ -112,10 +114,13 @@ async def get_prescription_for_dispensing(
                         f"Batches: {batch_count} | "
                         f"Available qty: {item.get('available_quantity', 0)}"
                     )
+                rx_row = db.query(Prescription).filter(Prescription.id == prescription_id).first()
+                rx["consultation_fee_collected"] = svc.check_consultation_fee_collected(
+                    db, rx_row.appointment_id if rx_row else None
+                )
                 return rx
 
         # If not in pending queue, check if it exists
-        from ..models.prescription import Prescription
         rx = db.query(Prescription).filter(
             Prescription.id == prescription_id,
             Prescription.hospital_id == current_user.hospital_id,
@@ -131,7 +136,8 @@ async def get_prescription_for_dispensing(
 
         # Enrich and return
         enriched = svc._enrich_prescription_for_dispensing(db, rx)
-        
+        enriched["consultation_fee_collected"] = svc.check_consultation_fee_collected(db, rx.appointment_id)
+
         logger.info(
             f"Prescription {prescription_id} enriched for dispensing. "
             f"Items: {len(enriched.get('items', []))}, "
@@ -145,7 +151,7 @@ async def get_prescription_for_dispensing(
                 f"Batches: {batch_count} | "
                 f"Available qty: {item.get('available_quantity', 0)}"
             )
-        
+
         return enriched
 
     except HTTPException:
@@ -167,7 +173,10 @@ class MarkPaidRequest(BaseModel):
 
 
 class DispenseItemInput(BaseModel):
-    prescription_item_id: str
+    # None/omitted for an extra item added by the pharmacist that isn't on
+    # the prescription (extra medicine, or a cataloged non-medicine pharmacy
+    # item) — see dispensing_service.dispense_prescription.
+    prescription_item_id: Optional[str] = None
     medicine_id: str
     batch_id: str
     quantity: int = Field(gt=0)

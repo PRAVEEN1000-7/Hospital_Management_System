@@ -7,7 +7,7 @@ import pharmacyService, {
   type PrescriptionItemWithStock,
   type DispenseItemData,
 } from '../../services/pharmacyService';
-import type { MedicineBatch } from '../../types/pharmacy';
+import type { Medicine, MedicineBatch } from '../../types/pharmacy';
 import { formatDateOnly, formatDateTime } from '../../utils/calendarDate';
 
 type DispensingPrescriptionItem = PrescriptionItemWithStock;
@@ -31,6 +31,19 @@ interface DispensingItem extends DispensingPrescriptionItem {
   remainingQty: number;
   skip: boolean;
   skipReason?: string;
+}
+
+// A medicine (or cataloged non-medicine pharmacy item — Medicine.category
+// "other"/"consumable") the pharmacist adds at dispense time that isn't on
+// the prescription. Sent with prescription_item_id omitted so the backend
+// skips prescribed-quantity validation entirely.
+interface ExtraDispensingItem {
+  clientId: string;
+  medicine_id: string;
+  medicine_name: string;
+  available_batches: MedicineBatch[];
+  selectedBatchId?: string;
+  quantity: number;
 }
 
 const calculatePrescribedQuantity = (item: Pick<DispensingPrescriptionItem, 'frequency' | 'duration_value' | 'duration_unit' | 'quantity'>) => {
@@ -92,6 +105,13 @@ const DispensingScreen: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [notes, setNotes] = useState('');
+
+  // Extra items — medicines or cataloged non-medicine pharmacy items the
+  // pharmacist adds at dispense time, not on the original prescription.
+  const [extraItems, setExtraItems] = useState<ExtraDispensingItem[]>([]);
+  const [extraItemSearch, setExtraItemSearch] = useState('');
+  const [extraItemResults, setExtraItemResults] = useState<Medicine[]>([]);
+  const [showExtraItemSearch, setShowExtraItemSearch] = useState(false);
 
   const role = user?.roles?.[0];
   const hasPharmacyAccess = ['pharmacist', 'admin', 'super_admin'].includes(role || '');
@@ -211,6 +231,76 @@ const DispensingScreen: React.FC = () => {
     );
   };
 
+  // Debounced medicine search for the "Add Item" control.
+  useEffect(() => {
+    if (!showExtraItemSearch || !extraItemSearch.trim()) {
+      setExtraItemResults([]);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      try {
+        const res = await pharmacyService.getMedicines(1, 10, extraItemSearch.trim(), '', true);
+        if (!cancelled) setExtraItemResults(res.data || []);
+      } catch {
+        if (!cancelled) setExtraItemResults([]);
+      }
+    }, 300);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [extraItemSearch, showExtraItemSearch]);
+
+  const handleAddExtraItem = async (medicine: Medicine) => {
+    try {
+      const batches = await pharmacyService.getAvailableBatches(medicine.id, 1);
+      const validBatches = batches.filter((b) => b.quantity > 0 && new Date(b.expiry_date) > new Date());
+      const firstBatch = validBatches[0];
+      setExtraItems((prev) => [...prev, {
+        clientId: `${medicine.id}-${Date.now()}`,
+        medicine_id: medicine.id,
+        medicine_name: `${medicine.name} ${medicine.strength || ''}`.trim(),
+        available_batches: validBatches,
+        selectedBatchId: firstBatch?.id,
+        quantity: firstBatch ? 1 : 0,
+      }]);
+    } catch {
+      showToast('error', `Failed to load batches for ${medicine.name}`);
+    }
+    setExtraItemSearch('');
+    setExtraItemResults([]);
+    setShowExtraItemSearch(false);
+  };
+
+  const handleExtraItemBatchChange = (clientId: string, batchId: string) => {
+    setExtraItems((prev) => prev.map((item) => item.clientId === clientId ? { ...item, selectedBatchId: batchId } : item));
+  };
+
+  const handleExtraItemQuantityChange = (clientId: string, quantity: number) => {
+    setExtraItems((prev) => prev.map((item) => {
+      if (item.clientId !== clientId) return item;
+      const batch = item.available_batches.find((b) => b.id === item.selectedBatchId);
+      const maxQty = batch?.quantity ?? 0;
+      return { ...item, quantity: Math.min(Math.max(0, quantity), maxQty) };
+    }));
+  };
+
+  const handleRemoveExtraItem = (clientId: string) => {
+    setExtraItems((prev) => prev.filter((item) => item.clientId !== clientId));
+  };
+
+  // Extra items ready to submit — has a batch selected and a positive quantity.
+  const extraItemsPayload: DispenseItemData[] = extraItems
+    .filter((item) => item.quantity > 0 && item.selectedBatchId)
+    .map((item) => {
+      const batch = item.available_batches.find((b) => b.id === item.selectedBatchId);
+      return {
+        medicine_id: item.medicine_id,
+        batch_id: item.selectedBatchId!,
+        quantity: item.quantity,
+        unit_price: Number(batch?.selling_price || 0),
+      };
+    });
+  const extraItemsCost = extraItemsPayload.reduce((sum, it) => sum + it.quantity * it.unit_price, 0);
+
   // Determine read-only mode early (before useEffect that uses it)
   const isReadOnly = searchParams.get('mode') === 'view' || (prescription?.status === 'dispensed');
   const clinicalNotesForDisplay = sanitizeClinicalNotes(prescription?.clinical_notes);
@@ -235,19 +325,22 @@ const DispensingScreen: React.FC = () => {
     const fetchPreview = async () => {
       try {
         // Build items array for preview API
-        const itemsForPreview = dispensingItems
-          .filter((item) => !item.skip && !item.is_dispensed && item.dispensedQty > 0 && item.remainingQty > 0 && item.medicine_id !== null)
-          .map((item) => {
-            const selectedBatch = item.available_batches.find((b) => b.id === item.selectedBatchId);
-            const fallbackBatch = selectedBatch || item.available_batches[0];
-            return {
-              prescription_item_id: item.id,
-              medicine_id: item.medicine_id!,
-              batch_id: item.selectedBatchId || '',
-              quantity: item.dispensedQty,
-              unit_price: Number(fallbackBatch?.selling_price || 0),
-            };
-          });
+        const itemsForPreview = [
+          ...dispensingItems
+            .filter((item) => !item.skip && !item.is_dispensed && item.dispensedQty > 0 && item.remainingQty > 0 && item.medicine_id !== null)
+            .map((item) => {
+              const selectedBatch = item.available_batches.find((b) => b.id === item.selectedBatchId);
+              const fallbackBatch = selectedBatch || item.available_batches[0];
+              return {
+                prescription_item_id: item.id,
+                medicine_id: item.medicine_id!,
+                batch_id: item.selectedBatchId || '',
+                quantity: item.dispensedQty,
+                unit_price: Number(fallbackBatch?.selling_price || 0),
+              };
+            }),
+          ...extraItemsPayload,
+        ];
 
         if (itemsForPreview.length === 0) {
           // All items skipped or already dispensed
@@ -289,7 +382,8 @@ const DispensingScreen: React.FC = () => {
     // Debounce the preview fetch
     const timeoutId = setTimeout(fetchPreview, 300);
     return () => clearTimeout(timeoutId);
-  }, [dispensingItems, prescriptionId, isReadOnly]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dispensingItems, extraItems, prescriptionId, isReadOnly]);
 
   // Use backend preview data if available, otherwise fallback to local calculation
   const totals = previewData || (() => {
@@ -320,14 +414,19 @@ const DispensingScreen: React.FC = () => {
       itemsToDispense++;
     });
 
+    currentSubtotal += extraItemsCost;
+    overallDispensedValue += extraItemsCost;
+    itemsToDispense += extraItemsPayload.length;
+
     return { currentSubtotal, overallDispensedValue, itemsToDispense, itemsSkipped };
   })();
   const currentTransactionTotal = Number((totals as any).currentSubtotal ?? (totals as any).subtotal ?? 0);
   const overallDispensedTotal = Number((totals as any).overallDispensedValue ?? 0);
   const canSubmit =
     totals.itemsToDispense > 0 ||
+    extraItemsPayload.length > 0 ||
     dispensingItems.every((item) => item.skip || item.is_dispensed || item.remainingQty <= 0);
-  const isSkipOnlySubmit = !isReadOnly && canSubmit && totals.itemsToDispense === 0;
+  const isSkipOnlySubmit = !isReadOnly && canSubmit && totals.itemsToDispense === 0 && extraItemsPayload.length === 0;
 
   // Handle dispensing submission
   const handleDispense = async () => {
@@ -423,7 +522,11 @@ const DispensingScreen: React.FC = () => {
         });
       });
 
+      itemsToDispense.push(...extraItemsPayload);
+
       // All-skipped case: record inability to dispense and mark prescription closed
+      // (only when there are truly no extra items either — extras alone should
+      // still go through the normal dispense path below).
       if (itemsToDispense.length === 0 && allSkipped) {
         const allSkippedNotes = [
           'Unable to dispense - all items skipped.',
@@ -689,6 +792,16 @@ const DispensingScreen: React.FC = () => {
                 {totals.itemsSkipped > 0 && <span className="ml-2">| {totals.itemsSkipped} skipped</span>}
               </p>
             </div>
+
+            {/* Consultation fee status — informational only, never blocks dispensing */}
+            {prescription.consultation_fee_collected === false && (
+              <div className="mx-6 mt-4 flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <span className="material-symbols-outlined text-amber-600 text-lg flex-shrink-0">info</span>
+                <p className="text-sm text-amber-800">
+                  Consultation fee not yet collected for this patient — dispensing can still proceed.
+                </p>
+              </div>
+            )}
 
             {/* Medicine Items List */}
             <div className="p-6 space-y-4">
@@ -977,6 +1090,104 @@ const DispensingScreen: React.FC = () => {
                 );
               })}
             </div>
+
+            {/* Extra Items — medicines or cataloged non-medicine pharmacy items
+                not on the original prescription, added by the pharmacist here. */}
+            {!isReadOnly && (
+              <div className="px-6 pb-2">
+                <div className="border-t border-slate-200 pt-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold text-slate-700">Extra Items</h3>
+                    {!showExtraItemSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setShowExtraItemSearch(true)}
+                        className="text-sm text-emerald-600 hover:text-emerald-700 font-semibold flex items-center gap-1"
+                      >
+                        <span className="material-symbols-outlined text-sm">add_circle</span>
+                        Add Item
+                      </button>
+                    )}
+                  </div>
+
+                  {showExtraItemSearch && (
+                    <div className="relative mb-3">
+                      <input
+                        autoFocus
+                        value={extraItemSearch}
+                        onChange={(e) => setExtraItemSearch(e.target.value)}
+                        placeholder="Search medicine or pharmacy item by name..."
+                        className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => { setShowExtraItemSearch(false); setExtraItemSearch(''); setExtraItemResults([]); }}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        <span className="material-symbols-outlined text-lg">close</span>
+                      </button>
+                      {extraItemResults.length > 0 && (
+                        <div className="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
+                          {extraItemResults.map((med) => (
+                            <button
+                              key={med.id}
+                              type="button"
+                              onClick={() => handleAddExtraItem(med)}
+                              className="w-full text-left px-3 py-2 text-sm hover:bg-emerald-50 flex items-center justify-between gap-2"
+                            >
+                              <span>
+                                <span className="font-medium text-slate-900">{med.name}</span>
+                                {med.strength && <span className="text-slate-500"> {med.strength}</span>}
+                              </span>
+                              {med.category && <span className="text-xs text-slate-400">{med.category}</span>}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {extraItems.length > 0 && (
+                    <div className="space-y-2">
+                      {extraItems.map((item) => (
+                        <div key={item.clientId} className="flex items-center gap-2 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                          <span className="flex-1 text-sm font-medium text-slate-900 truncate">{item.medicine_name}</span>
+                          <select
+                            value={item.selectedBatchId || ''}
+                            onChange={(e) => handleExtraItemBatchChange(item.clientId, e.target.value)}
+                            className="px-2 py-1.5 text-xs border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500"
+                            disabled={item.available_batches.length === 0}
+                          >
+                            {item.available_batches.length === 0 && <option value="">No stock</option>}
+                            {item.available_batches.map((batch) => (
+                              <option key={batch.id} value={batch.id}>
+                                {batch.batch_number} | Exp: {formatDateOnly(batch.expiry_date)} | Stock: {batch.quantity}
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            type="number"
+                            min={0}
+                            max={item.available_batches.find((b) => b.id === item.selectedBatchId)?.quantity || 0}
+                            value={item.quantity || ''}
+                            onChange={(e) => handleExtraItemQuantityChange(item.clientId, parseInt(e.target.value) || 0)}
+                            className="w-20 px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 font-semibold"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveExtraItem(item.clientId)}
+                            className="text-slate-400 hover:text-red-600"
+                            title="Remove"
+                          >
+                            <span className="material-symbols-outlined text-lg">delete</span>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Notes Section */}
             <div className="px-6 pb-6">

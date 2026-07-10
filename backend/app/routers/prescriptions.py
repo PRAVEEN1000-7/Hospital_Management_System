@@ -435,7 +435,9 @@ async def get_prescription_pdf(
     # replaces the generic Dosage/Frequency/Duration/Qty/Route table for eye
     # hospitals — distinct from both the general format and the separate
     # Optical (lens spec) prescription.
-    eye_format = is_eye_hospital_feature_enabled(hospital)
+    eye_format = is_eye_hospital_feature_enabled(hospital) and any(
+        item.get("eye_side") for item in enriched.get("items", [])
+    )
 
     # This HTML is rendered client-side via document.write() with no further
     # sanitization (SECURITY_AUDIT.md M2), so every value that ultimately

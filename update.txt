@@ -56,3 +56,15 @@ while creating the staff it not validate both the user name and gmail .but now i
 -- need review
 
 1. mail service issue.
+
+
+-- 10-07-2025
+
+1. consultation fee for the doctor is not calculated and not maintain the perfect record in the application.the action are only shown in the list with any filters,if i apply any fileter ,the action are hide out.also the clear option is not working perfectly and their is 2 option ,cause conflicts.also keep the filter options size that will match to all other filter options.
+2. some the router redirect to the other module and the function.everytime not the same, one sometimes some new module and the section face errors.
+3. doctor create the prescription and it is the final one.at the time of deispence,give the flexible to add some other extra things are medicine at the time of dispencing.also can able to add some time that are not related to medicine but available i the pharmacy.
+4. email validation ,currently its a optional one,allow that field to get input as a text and make that field into a flexiable one.dont add more number of constraints to that field.
+5. at the time of dispencing show the status of the patientif they paid the consulation fee or not.but dont make that is necessaary to pay the consulation fee first before go for the prescription.keep the flexiblity.
+6. i face some issue in the hospital details conflicts while create the user with same name in another hospital.so make sure everythings are works based on the multi tenant id,because it is the first level of filters.
+7. in each login show the role of that user in full visible one .in the left bottom corner ,the role and name is vsisble.instread of that place add the visiblity in the top right corner of the each user login page.keep the exisiting drop down as it is near to that left add this details (between notification and the drop down).
+8. in the prescription output,if the prescription constains atleast one eye category medicine then add the column re and le.if their is not eye medicine category ,dont add the column at the time of view and print .not at the time of creating the prescription.

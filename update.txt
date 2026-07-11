@@ -93,3 +93,7 @@ Fixed
 7. in the doctor dashboard ,the consulation fee is shown as 0 ,but the today collected works perfectly.check that and fix tht as well.
 8. In all payments, the amount collected and refunded back but the net collected is showing as 1600 it the example bug.
 also in the ui theri is a more empty space in left and right side of the table view.fix that  ui issue as well. also tht show be flex one and suitable to different screen size.
+
+
+
+-- db need to update in the live server

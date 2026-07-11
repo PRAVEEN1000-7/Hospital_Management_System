@@ -99,19 +99,6 @@ def _require_queue_actor(db: Session, user: User, qe: "AppointmentQueue"):
     )
 
 
-def _next_queue_number(db: Session, doctor_id: uuid.UUID, queue_date: date) -> int:
-    """Get next queue number for a doctor on a given date."""
-    max_num = (
-        db.query(func.max(AppointmentQueue.queue_number))
-        .filter(
-            AppointmentQueue.doctor_id == doctor_id,
-            AppointmentQueue.queue_date == queue_date,
-        )
-        .scalar()
-    )
-    return (max_num or 0) + 1
-
-
 def _next_position(db: Session, doctor_id: uuid.UUID, queue_date: date) -> int:
     """Get next position in queue."""
     waiting = (
@@ -261,7 +248,9 @@ async def register_walk_in(
         # Add to queue if doctor assigned
         queue_entry = None
         if doctor_id:
-            q_num = _next_queue_number(db, doctor_id, today)
+            from ..services.billing_queue_service import get_or_assign_visit_token
+
+            q_num = get_or_assign_visit_token(db, current_user.hospital_id, appointment_id=appt.id)
             q_pos = _next_position(db, doctor_id, today)
             queue_entry = AppointmentQueue(
                 appointment_id=appt.id,
@@ -764,7 +753,12 @@ async def assign_doctor_to_walkin(
         AppointmentQueue.appointment_id == appt_uuid,
     ).delete()
 
-    q_num = _next_queue_number(db, doctor_uuid, today)
+    from ..services.billing_queue_service import get_or_assign_visit_token
+
+    # Reuses appt's existing visit_token (set when the walk-in was first
+    # registered) rather than minting a new one — reassigning to a
+    # different doctor must not change the patient's token.
+    q_num = get_or_assign_visit_token(db, appt.hospital_id, appointment_id=appt.id)
     q_pos = _next_position(db, doctor_uuid, today)
     queue_entry = AppointmentQueue(
         appointment_id=appt.id,
@@ -1144,8 +1138,15 @@ async def refer_patient_to_doctor(
         db.add(referral_appt)
         db.flush()
 
+        from ..services.billing_queue_service import get_or_assign_visit_token
+
+        # Inherit the original appointment's visit token so the patient keeps
+        # the same number with the new doctor instead of getting a fresh one.
+        if original_appt.visit_token:
+            referral_appt.visit_token = original_appt.visit_token
+
         # ── Add to target doctor's queue for the referral date ──
-        q_num = _next_queue_number(db, to_doctor_uuid, referral_date)
+        q_num = get_or_assign_visit_token(db, original_appt.hospital_id, appointment_id=referral_appt.id)
         q_pos = _next_position(db, to_doctor_uuid, referral_date)
         new_queue = AppointmentQueue(
             appointment_id=referral_appt.id,

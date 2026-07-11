@@ -50,23 +50,76 @@ def compute_payment_breakdown(
     }
 
 
-def generate_daily_queue_token(db: Session, hospital_id: uuid.UUID, model) -> int:
+def _next_hospital_wide_daily_token(db: Session, hospital_id: uuid.UUID) -> int:
     """
-    Next sequential dispensing-queue token for `model` (PharmacySale or
-    OpticalSale), scoped to this hospital and reset each day — same idea as
-    the existing AppointmentQueue token generator, applied to sales.
+    Max token issued anywhere for this hospital today — doctor queue,
+    pharmacy, or optical — plus one. Used by get_or_assign_visit_token() so
+    a brand-new visit never collides with a token already handed out by a
+    different department.
+
+    Uses the UTC-range day-boundary check (hospital_today_utc_range_by_id),
+    not func.date(): func.date() compares using the DB session's own
+    timezone, not the hospital's, which silently breaks daily reset for any
+    hospital not in that exact timezone (see the queue-reset fix this
+    replaced).
     """
+    from ..models.appointment import Appointment
+    from ..models.pharmacy import PharmacyQueueEntry, PharmacySale
+    from ..models.optical import OpticalSale
+
     day_start, day_end = hospital_today_utc_range_by_id(db, hospital_id)
-    last_token = (
-        db.query(func.max(model.queue_token))
-        .filter(
-            model.hospital_id == hospital_id,
-            model.created_at >= day_start,
-            model.created_at < day_end,
+
+    def _max_today(model, token_col):
+        return (
+            db.query(func.max(token_col))
+            .filter(
+                model.hospital_id == hospital_id,
+                model.created_at >= day_start,
+                model.created_at < day_end,
+            )
+            .scalar()
         )
-        .scalar()
-    )
-    return (last_token or 0) + 1
+
+    maxes = [
+        _max_today(Appointment, Appointment.visit_token),
+        _max_today(PharmacyQueueEntry, PharmacyQueueEntry.queue_token),
+        _max_today(PharmacySale, PharmacySale.queue_token),
+        _max_today(OpticalSale, OpticalSale.queue_token),
+    ]
+    return max((m for m in maxes if m is not None), default=0) + 1
+
+
+def get_or_assign_visit_token(
+    db: Session, hospital_id: uuid.UUID, appointment_id: Optional[uuid.UUID] = None
+) -> int:
+    """
+    The one token for a patient's whole visit — shared by every department
+    they pass through that day (doctor queue, a referral to a second
+    doctor, pharmacy, optical, billing) instead of each one minting its own
+    daily counter.
+
+    If `appointment_id` is given and that appointment already has a token
+    (including one inherited from a referral's parent appointment — see
+    walk_ins.py's referral flow, which copies the parent's visit_token onto
+    the child before calling this), that same token is returned — a visit
+    is only ever assigned one token, no matter how many times this is
+    called for it. Otherwise a new hospital-wide token is minted and, if an
+    appointment was given, persisted onto it so every later lookup for this
+    visit reuses it.
+    """
+    from ..models.appointment import Appointment
+
+    appt = None
+    if appointment_id:
+        appt = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+        if appt and appt.visit_token:
+            return appt.visit_token
+
+    token = _next_hospital_wide_daily_token(db, hospital_id)
+    if appt:
+        appt.visit_token = token
+        db.flush()
+    return token
 
 
 def advance_queue_status(sale, new_status: str, performed_at: Optional[datetime] = None) -> None:
@@ -97,18 +150,23 @@ def enqueue_pharmacy_queue_entry(
     patient_id: Optional[uuid.UUID] = None,
     patient_name: Optional[str] = None,
     doctor_name: Optional[str] = None,
+    appointment_id: Optional[uuid.UUID] = None,
 ):
     """Create a Waiting pharmacy-queue entry — auto (from a finalized
-    prescription) or manual (walk-in, no prescription)."""
+    prescription) or manual (walk-in, no prescription). `appointment_id`
+    (the finalized prescription's own, when there is one) lets this entry
+    inherit the patient's existing visit token instead of minting a new
+    one — see get_or_assign_visit_token."""
     from ..models.pharmacy import PharmacyQueueEntry
 
     entry = PharmacyQueueEntry(
         hospital_id=hospital_id,
-        queue_token=generate_daily_queue_token(db, hospital_id, PharmacyQueueEntry),
+        queue_token=get_or_assign_visit_token(db, hospital_id, appointment_id),
         prescription_id=prescription.id if prescription else None,
         patient_id=patient_id,
         patient_name=patient_name,
         doctor_name=doctor_name,
+        appointment_id=appointment_id,
         status="waiting",
     )
     db.add(entry)

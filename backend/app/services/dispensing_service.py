@@ -606,16 +606,23 @@ def dispense_prescription(
     if not rx.is_finalized:
         raise ValueError("Prescription must be finalized before dispensing")
     
+    # A prescription-linked dispensing sale inherits its visit's shared
+    # token — same one the doctor queue and pharmacy queue entry already
+    # carry for this patient — instead of showing no token at all.
+    from .billing_queue_service import get_or_assign_visit_token
+
     # Create pharmacy_dispensing record
     dispensing = PharmacySale(
         hospital_id=hospital_id,
         invoice_number=_generate_dispensing_number(db, hospital_id),
         patient_id=rx.patient_id,
+        appointment_id=rx.appointment_id,
         sale_type="prescription",
         status="dispensed",
         created_by=user_id,  # Use created_by (which maps to dispensed_by in DB)
         notes=notes,
         created_at=datetime.now(timezone.utc),
+        queue_token=get_or_assign_visit_token(db, hospital_id, appointment_id=rx.appointment_id),
     )
     db.add(dispensing)
     db.flush()

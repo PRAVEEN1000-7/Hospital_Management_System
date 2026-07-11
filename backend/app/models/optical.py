@@ -148,6 +148,10 @@ class OpticalSale(Base):
     queue_token = Column(Integer)
     queue_status = Column(String(20), default="waiting")
     queue_called_at = Column(DateTime(timezone=True))
+    # Links back to the originating visit so this sale inherits that visit's
+    # shared token instead of minting its own — nullable because a pure
+    # walk-in optical sale has no appointment at all.
+    appointment_id = Column(UUID(as_uuid=True), ForeignKey("appointments.id"), nullable=True)
 
     hospital = relationship("Hospital", foreign_keys=[hospital_id])
     patient = relationship("Patient", foreign_keys=[patient_id])

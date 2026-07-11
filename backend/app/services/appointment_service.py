@@ -20,19 +20,6 @@ from ..core.hospital_time import hospital_today_by_id
 logger = logging.getLogger(__name__)
 
 
-def _next_queue_number(db: Session, doctor_id: uuid.UUID, queue_date: date) -> int:
-    """Return next queue number for a doctor/date pair."""
-    max_num = (
-        db.query(func.max(AppointmentQueue.queue_number))
-        .filter(
-            AppointmentQueue.doctor_id == doctor_id,
-            AppointmentQueue.queue_date == queue_date,
-        )
-        .scalar()
-    )
-    return (max_num or 0) + 1
-
-
 def _next_queue_position(db: Session, doctor_id: uuid.UUID, queue_date: date) -> int:
     """Return next queue position for active queue items on a date."""
     active = (
@@ -64,13 +51,15 @@ def _create_queue_entry(db: Session, appt: Appointment) -> None:
         and appt.appointment_type in QUEUE_SUPPORTED_TYPES
     ):
         return
+    from .billing_queue_service import get_or_assign_visit_token
+
     db.flush()
     db.add(
         AppointmentQueue(
             appointment_id=appt.id,
             doctor_id=appt.doctor_id,
             queue_date=appt.appointment_date,
-            queue_number=_next_queue_number(db, appt.doctor_id, appt.appointment_date),
+            queue_number=get_or_assign_visit_token(db, appt.hospital_id, appointment_id=appt.id),
             position=_next_queue_position(db, appt.doctor_id, appt.appointment_date),
             status="waiting",
         )

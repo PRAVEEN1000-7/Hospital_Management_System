@@ -86,6 +86,10 @@ class PharmacySale(Base):
     queue_token = Column(Integer)
     queue_status = Column(String(20), default="waiting")
     queue_called_at = Column(DateTime(timezone=True))
+    # Links this sale back to the originating visit so it can inherit that
+    # visit's shared token instead of minting its own — nullable because a
+    # pure walk-in counter sale has no appointment at all.
+    appointment_id = Column(UUID(as_uuid=True), ForeignKey("appointments.id"), nullable=True)
 
     hospital = relationship("Hospital", foreign_keys=[hospital_id])
     patient = relationship("Patient", foreign_keys=[patient_id])
@@ -131,6 +135,9 @@ class PharmacyQueueEntry(Base):
     queue_token = Column(Integer, nullable=False)
     prescription_id = Column(UUID(as_uuid=True), ForeignKey("prescriptions.id"), nullable=True)
     patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id"), nullable=True)
+    # Links back to the originating visit so this entry inherits that
+    # visit's shared token instead of minting its own.
+    appointment_id = Column(UUID(as_uuid=True), ForeignKey("appointments.id"), nullable=True)
     patient_name = Column(String(200))  # free-text fallback for walk-ins with no patient record
     doctor_name = Column(String(200))   # denormalized at enqueue time
     status = Column(String(20), nullable=False, default="waiting")  # waiting | being_served | collected

@@ -593,6 +593,7 @@ def finalize_prescription(
             prescription=rx,
             patient_id=rx.patient_id,
             doctor_name=f"Dr. {doctor.user.full_name}" if doctor and doctor.user else None,
+            appointment_id=rx.appointment_id,
         )
 
     db.commit()

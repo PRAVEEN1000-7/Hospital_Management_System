@@ -556,10 +556,23 @@ def create_sale(
         from .billing_queue_service import find_open_pharmacy_queue_entry_for_patient
         queue_entry = find_open_pharmacy_queue_entry_for_patient(db, hospital_id, patient_id)
 
+    # A queue_entry's own queue_token is already the patient's shared visit
+    # token (assigned via get_or_assign_visit_token when it was enqueued) —
+    # reuse it as-is. With no queue entry (pure walk-in counter sale, no
+    # prescription/queue involved), still draw from the same hospital-wide
+    # sequence instead of leaving the sale with no token at all.
+    from .billing_queue_service import get_or_assign_visit_token
+    sale_appointment_id = queue_entry.appointment_id if queue_entry else None
+    sale_queue_token = (
+        queue_entry.queue_token if queue_entry
+        else get_or_assign_visit_token(db, hospital_id, appointment_id=None)
+    )
+
     sale = PharmacySale(
         hospital_id=hospital_id,
         invoice_number=_generate_invoice_number(db, hospital_id),
         patient_id=patient_id,
+        appointment_id=sale_appointment_id,
         sale_type="counter_sale",
         status="dispensed",
         sale_date=datetime.now(timezone.utc),
@@ -569,7 +582,7 @@ def create_sale(
         payment_method=data.get("payment_method", "cash"),
         amount_tendered=Decimal(str(data.get("amount_tendered", 0))),
         consultation_fee=Decimal(str(data.get("consultation_fee", 0))) if eye_features else Decimal("0"),
-        queue_token=queue_entry.queue_token if queue_entry else None,
+        queue_token=sale_queue_token,
         queue_status="collected" if queue_entry else None,
     )
     db.add(sale)

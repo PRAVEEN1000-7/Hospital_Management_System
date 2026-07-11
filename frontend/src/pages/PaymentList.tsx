@@ -37,11 +37,12 @@ const getRefundedAmount = (p: PaymentListItem): number => {
   return p.status === 'reversed' ? toNumber(p.amount) : 0;
 };
 
-const getNetAmount = (p: PaymentListItem): number => {
-  const net = toNumber((p as PaymentListItem & { net_amount?: unknown }).net_amount);
-  if (net > 0 || p.status === 'reversed') return net;
-  return toNumber(p.amount);
-};
+// The backend already computes net_amount correctly (amount minus refunds —
+// 0 for a fully-refunded payment). Just trust it — a "net > 0 ? net : amount"
+// fallback here would mistake a legitimate net of 0 for a missing value and
+// silently show the raw amount instead, hiding the refund.
+const getNetAmount = (p: PaymentListItem): number =>
+  toNumber((p as PaymentListItem & { net_amount?: unknown }).net_amount);
 
 const PaymentList: React.FC = () => {
   const navigate = useNavigate();
@@ -95,7 +96,7 @@ const PaymentList: React.FC = () => {
   const netCollected = payments.reduce((s, p) => s + getNetAmount(p), 0);
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="p-4 sm:p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">
@@ -116,7 +117,7 @@ const PaymentList: React.FC = () => {
 
       {/* Stats Card */}
       {!invoiceId && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <div className="bg-white rounded-xl border border-slate-200 p-4">
             <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Net Collected</p>
             <p className="text-2xl font-bold text-green-600 mt-1">₹{fmt(netCollected)}</p>
@@ -129,7 +130,7 @@ const PaymentList: React.FC = () => {
             <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Refunded</p>
             <p className="text-2xl font-bold text-red-600 mt-1">₹{fmt(totalRefunded)}</p>
           </div>
-          <div className="bg-white rounded-xl border border-slate-200 p-4 sm:col-span-3">
+          <div className="bg-white rounded-xl border border-slate-200 p-4">
             <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Transactions</p>
             <p className="text-2xl font-bold text-slate-800 mt-1">{total}</p>
           </div>

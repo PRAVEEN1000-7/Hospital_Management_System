@@ -294,15 +294,9 @@ async def book_from_waitlist(
 
         # Add to queue
         from sqlalchemy import func as sqlfunc
-        max_num = (
-            db.query(sqlfunc.max(AppointmentQueue.queue_number))
-            .filter(
-                AppointmentQueue.doctor_id == target_doctor_id,
-                AppointmentQueue.queue_date == today,
-            )
-            .scalar()
-        )
-        q_num = (max_num or 0) + 1
+        from ..services.billing_queue_service import get_or_assign_visit_token
+
+        q_num = get_or_assign_visit_token(db, entry.hospital_id, appointment_id=appt.id)
 
         waiting_count = (
             db.query(sqlfunc.count(AppointmentQueue.id))

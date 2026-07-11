@@ -41,6 +41,9 @@ interface ExtraDispensingItem {
   clientId: string;
   medicine_id: string;
   medicine_name: string;
+  generic_name?: string | null;
+  dispense_unit: string;
+  units_per_pack: number;
   available_batches: MedicineBatch[];
   selectedBatchId?: string;
   quantity: number;
@@ -269,6 +272,9 @@ const DispensingScreen: React.FC = () => {
         clientId: `${medicine.id}-${Date.now()}`,
         medicine_id: medicine.id,
         medicine_name: `${medicine.name} ${medicine.strength || ''}`.trim(),
+        generic_name: medicine.generic_name,
+        dispense_unit: medicine.unit_of_measure || 'unit',
+        units_per_pack: medicine.units_per_pack || 1,
         available_batches: validBatches,
         selectedBatchId: firstBatch?.id,
         quantity: firstBatch ? 1 : 0,
@@ -1226,41 +1232,167 @@ const DispensingScreen: React.FC = () => {
                   )}
 
                   {extraItems.length > 0 && (
-                    <div className="space-y-2">
-                      {extraItems.map((item) => (
-                        <div key={item.clientId} className="flex items-center gap-2 p-3 bg-slate-50 rounded-lg border border-slate-200">
-                          <span className="flex-1 text-sm font-medium text-slate-900 truncate">{item.medicine_name}</span>
-                          <select
-                            value={item.selectedBatchId || ''}
-                            onChange={(e) => handleExtraItemBatchChange(item.clientId, e.target.value)}
-                            className="px-2 py-1.5 text-xs border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500"
-                            disabled={item.available_batches.length === 0}
+                    <div className="space-y-3">
+                      {extraItems.map((item) => {
+                        const selectedBatch = item.available_batches.find((b) => b.id === item.selectedBatchId);
+                        const totalAvailable = item.available_batches.reduce((s, b) => s + (b.quantity || 0), 0);
+                        const isOutOfStock = totalAvailable === 0;
+                        const unitPrice = selectedBatch?.selling_price || 0;
+                        const lineTotal = item.quantity * unitPrice;
+
+                        return (
+                          <div
+                            key={item.clientId}
+                            className={`border-2 rounded-xl p-4 transition-all ${
+                              isOutOfStock ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200 hover:border-emerald-300'
+                            }`}
                           >
-                            {item.available_batches.length === 0 && <option value="">No stock</option>}
-                            {item.available_batches.map((batch) => (
-                              <option key={batch.id} value={batch.id}>
-                                {batch.batch_number} | Exp: {formatDateOnly(batch.expiry_date)} | Stock: {batch.quantity}
-                              </option>
-                            ))}
-                          </select>
-                          <input
-                            type="number"
-                            min={0}
-                            max={item.available_batches.find((b) => b.id === item.selectedBatchId)?.quantity || 0}
-                            value={item.quantity || ''}
-                            onChange={(e) => handleExtraItemQuantityChange(item.clientId, parseInt(e.target.value) || 0)}
-                            className="w-20 px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 font-semibold"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveExtraItem(item.clientId)}
-                            className="text-slate-400 hover:text-red-600"
-                            title="Remove"
-                          >
-                            <span className="material-symbols-outlined text-lg">delete</span>
-                          </button>
-                        </div>
-                      ))}
+                            {/* Header */}
+                            <div className="flex items-start justify-between gap-2 mb-3">
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-semibold text-slate-900 text-base truncate">{item.medicine_name}</span>
+                                  <span className="text-[10px] px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full font-bold uppercase tracking-wide">
+                                    Extra Item
+                                  </span>
+                                </div>
+                                {item.generic_name && (
+                                  <div className="text-xs text-slate-500 mt-0.5">Generic: {item.generic_name}</div>
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveExtraItem(item.clientId)}
+                                className="text-slate-400 hover:text-red-600 p-1 shrink-0"
+                                title="Remove"
+                              >
+                                <span className="material-symbols-outlined text-lg">delete</span>
+                              </button>
+                            </div>
+
+                            {/* Stock Status Alert */}
+                            <div className={`mb-3 p-3 rounded-lg flex items-center gap-2 ${
+                              isOutOfStock ? 'bg-red-100 text-red-700' : selectedBatch ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                            }`}>
+                              <span className="material-symbols-outlined text-lg">
+                                {isOutOfStock ? 'error' : selectedBatch ? 'check_circle' : 'warning'}
+                              </span>
+                              <div className="text-sm">
+                                {isOutOfStock ? (
+                                  <span className="font-semibold">❌ Out of Stock</span>
+                                ) : selectedBatch ? (
+                                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                                    <span><span className="font-semibold">Selected batch:</span> {selectedBatch.quantity} units</span>
+                                    <span><span className="font-semibold">Total available:</span> {totalAvailable} units</span>
+                                    {selectedBatch.expiry_date && (
+                                      <span className="text-xs">Exp: {formatDateOnly(selectedBatch.expiry_date)}</span>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className="font-semibold">⚠️ No stock available</span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Batch + Quantity controls */}
+                            {!isOutOfStock && (
+                              <div className="grid grid-cols-2 gap-4 mb-3">
+                                <div>
+                                  <label className="block text-xs font-semibold text-slate-600 uppercase mb-1.5">Select Batch</label>
+                                  <select
+                                    value={item.selectedBatchId || ''}
+                                    onChange={(e) => handleExtraItemBatchChange(item.clientId, e.target.value)}
+                                    className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 transition-all"
+                                  >
+                                    {item.available_batches.map((batch) => (
+                                      <option key={batch.id} value={batch.id}>
+                                        {batch.batch_number} | Exp: {formatDateOnly(batch.expiry_date)} | Stock: {batch.quantity}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-semibold text-slate-600 uppercase mb-1.5 flex justify-between items-center">
+                                    <span>Dispense Quantity</span>
+                                    {item.units_per_pack > 1 && (
+                                      <span className="text-[10px] text-slate-400 font-normal normal-case">Pack size: {item.units_per_pack}</span>
+                                    )}
+                                  </label>
+                                  <div className="flex gap-2">
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      max={selectedBatch?.quantity || 0}
+                                      value={item.quantity || ''}
+                                      onChange={(e) => handleExtraItemQuantityChange(item.clientId, parseInt(e.target.value) || 0)}
+                                      className="flex-1 px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 transition-all font-semibold"
+                                    />
+                                    {item.units_per_pack > 1 && (
+                                      <div className="flex gap-1">
+                                        {Math.floor((selectedBatch?.quantity || 0) / item.units_per_pack) > 0 && (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              const strips = Math.floor((selectedBatch?.quantity || 0) / item.units_per_pack);
+                                              handleExtraItemQuantityChange(item.clientId, strips * item.units_per_pack);
+                                            }}
+                                            className="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 transition-colors"
+                                          >
+                                            {Math.floor((selectedBatch?.quantity || 0) / item.units_per_pack)} Strips
+                                          </button>
+                                        )}
+                                        <button
+                                          type="button"
+                                          onClick={() => handleExtraItemQuantityChange(item.clientId, selectedBatch?.quantity || 0)}
+                                          className="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"
+                                        >
+                                          All
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                  {item.units_per_pack > 1 && item.quantity > 0 && (
+                                    <div className="text-[11px] text-emerald-800 mt-1.5 font-medium flex items-center gap-1 bg-emerald-50/50 rounded border border-emerald-100/50 px-2 py-0.5 w-fit">
+                                      <span className="material-symbols-outlined text-[13px] text-emerald-600">inventory_2</span>
+                                      <span>
+                                        Dispensing: <span className="font-bold">{Math.floor(item.quantity / item.units_per_pack)} strips</span>
+                                        {item.quantity % item.units_per_pack > 0 && (
+                                          <> + <span className="font-bold">{item.quantity % item.units_per_pack} loose</span></>
+                                        )}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Price breakdown — same visual style as prescribed items, minus
+                                Dose/Day and Days Covered since an extra item has no prescribed
+                                frequency/duration to measure coverage against. */}
+                            {unitPrice > 0 && item.quantity > 0 && (
+                              <div className="mt-2 p-3 bg-blue-50 border border-blue-100 rounded-lg">
+                                <div className="grid grid-cols-3 gap-2">
+                                  <div className="text-center">
+                                    <div className="text-[9px] text-blue-500 uppercase font-bold tracking-wide">Unit Price</div>
+                                    <div className="text-sm font-bold text-blue-900 leading-tight">₹{unitPrice.toFixed(2)}</div>
+                                    <div className="text-[9px] text-blue-400">per {item.dispense_unit}</div>
+                                  </div>
+                                  <div className="text-center border-l border-blue-100">
+                                    <div className="text-[9px] text-blue-500 uppercase font-bold tracking-wide">Quantity</div>
+                                    <div className="text-sm font-bold text-blue-900 leading-tight">{item.quantity}</div>
+                                    <div className="text-[9px] text-blue-400">{item.dispense_unit}(s)</div>
+                                  </div>
+                                  <div className="text-center border-l border-blue-100">
+                                    <div className="text-[9px] text-blue-500 uppercase font-bold tracking-wide">Line Total</div>
+                                    <div className="text-sm font-bold text-emerald-700 leading-tight">₹{lineTotal.toFixed(2)}</div>
+                                    <div className="text-[9px] text-blue-400">extra item</div>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>

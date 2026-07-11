@@ -477,13 +477,23 @@ def create_sale(db: Session, hospital_id: uuid.UUID, data: dict, user_id: uuid.U
                     f"An eye prescription is required to sell {product.name} ({product.category})"
                 )
 
-    from .billing_queue_service import generate_daily_queue_token
+    from .billing_queue_service import get_or_assign_visit_token
+
+    # A prescription-linked sale inherits that visit's shared token instead
+    # of minting its own — a pure walk-in optical sale (no prescription)
+    # still draws from the same hospital-wide sequence, just isn't tied to
+    # any appointment.
+    sale_appointment_id = None
+    if prescription_id:
+        rx = db.query(OpticalPrescription).filter(OpticalPrescription.id == uuid.UUID(prescription_id)).first()
+        sale_appointment_id = rx.appointment_id if rx else None
 
     sale = OpticalSale(
         hospital_id=hospital_id,
         invoice_number=_generate_order_number(db, hospital_id),
         patient_id=uuid.UUID(data["patient_id"]),
         prescription_id=uuid.UUID(prescription_id) if prescription_id else None,
+        appointment_id=sale_appointment_id,
         sale_type=data.get("sale_type", "new"),
         status="placed",
         frame_product_id=uuid.UUID(data["frame_product_id"]) if data.get("frame_product_id") else None,
@@ -494,7 +504,7 @@ def create_sale(db: Session, hospital_id: uuid.UUID, data: dict, user_id: uuid.U
         payment_method=data.get("payment_method", "cash"),
         amount_tendered=Decimal(str(data.get("amount_tendered", 0))),
         advance_amount=Decimal(str(data.get("advance_amount", 0))),
-        queue_token=generate_daily_queue_token(db, hospital_id, OpticalSale),
+        queue_token=get_or_assign_visit_token(db, hospital_id, sale_appointment_id),
         queue_status="waiting",
     )
     db.add(sale)

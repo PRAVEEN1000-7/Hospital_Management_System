@@ -127,6 +127,11 @@ class Appointment(Base):
     priority = Column(String(10), default="normal")  # 'normal','urgent','emergency'
     status = Column(String(20), nullable=False, default="scheduled")
     current_doctor_sequence = Column(Integer, default=1)
+    # The one token for this patient's whole visit — assigned once (see
+    # billing_queue_service.get_or_assign_visit_token) and reused by every
+    # department they pass through that day (doctor queue, pharmacy,
+    # optical), instead of each department minting its own daily counter.
+    visit_token = Column(Integer)
     parent_appointment_id = Column(UUID(as_uuid=True), ForeignKey("appointments.id"))
     chief_complaint = Column(Text)
     cancel_reason = Column(String(255))

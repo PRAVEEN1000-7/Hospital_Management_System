@@ -79,7 +79,7 @@ api.interceptors.request.use(
 
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     const url = error.config?.url || 'unknown';
     const statusCode = error.response?.status;
     const method = (error.config?.method || 'unknown').toUpperCase();
@@ -92,7 +92,28 @@ api.interceptors.response.use(
 
     if (statusCode === 401) {
       const requestUrl = error.config?.url || '';
-      if (!requestUrl.includes('/auth/login') && !requestUrl.includes('/auth/refresh')) {
+      const isAuthEndpoint = requestUrl.includes('/auth/login') || requestUrl.includes('/auth/refresh');
+
+      // The request interceptor already refreshes proactively when a token is
+      // close to expiry, but that can still miss (a request already in flight
+      // when expiry was crossed, a network blip during that refresh, clock
+      // skew). Without this fallback, any 401 that slips through means an
+      // instant, unrecoverable logout — which is what made session expiry
+      // look like "the invoices page is broken" instead of "please wait, retrying".
+      if (!isAuthEndpoint && !error.config?._retriedAfterRefresh) {
+        error.config._retriedAfterRefresh = true;
+        if (!refreshPromise) {
+          refreshPromise = refreshAccessToken().finally(() => { refreshPromise = null; });
+        }
+        const refreshed = await refreshPromise;
+        if (refreshed) {
+          error.config.headers = error.config.headers || {};
+          error.config.headers.Authorization = `Bearer ${refreshed}`;
+          return api(error.config);
+        }
+      }
+
+      if (!isAuthEndpoint) {
         feLogger.warn('api', 'Session expired — redirecting to login');
         localStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');

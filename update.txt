@@ -97,3 +97,15 @@ also in the ui theri is a more empty space in left and right side of the table v
 
 
 -- db need to update in the live server
+
+
+
+
+
+
+
+
+
+-- review
+
+1. department and the specilization difference and need?

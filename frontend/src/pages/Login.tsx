@@ -131,6 +131,9 @@ const Login: React.FC = () => {
                 <label className="block text-sm font-semibold text-slate-700" htmlFor="password">
                   Password
                 </label>
+                <Link to="/forgot-password" className="text-sm font-medium text-primary hover:underline">
+                  Forgot password?
+                </Link>
               </div>
               <div className="relative group">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">

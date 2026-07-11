@@ -105,9 +105,9 @@ const StockMovementsPage: React.FC = () => {
                   <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Item</th>
                   <th className="px-4 py-3.5 text-center text-xs font-bold text-slate-600 uppercase tracking-wider">Type</th>
                   <th className="px-4 py-3.5 text-right text-xs font-bold text-slate-600 uppercase tracking-wider">Quantity</th>
-                  <th className="px-4 py-3.5 text-right text-xs font-bold text-slate-600 uppercase tracking-wider hidden md:table-cell">Balance</th>
-                  <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider hidden lg:table-cell">Batch</th>
-                  <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider hidden lg:table-cell">Reference</th>
+                  <th className="px-4 py-3.5 text-right text-xs font-bold text-slate-600 uppercase tracking-wider">Balance</th>
+                  <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Batch</th>
+                  <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Reference</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -128,9 +128,9 @@ const StockMovementsPage: React.FC = () => {
                         {m.quantity >= 0 ? '+' : ''}{m.quantity}
                       </span>
                     </td>
-                    <td className="px-4 py-4 text-right text-sm font-medium text-slate-700 hidden md:table-cell">{m.balance_after ?? '—'}</td>
-                    <td className="px-4 py-4 text-sm text-slate-600 hidden lg:table-cell">{m.batch_id || '—'}</td>
-                    <td className="px-4 py-4 text-sm text-slate-600 hidden lg:table-cell">{m.reference_type ? `${m.reference_type}` : '—'}</td>
+                    <td className="px-4 py-4 text-right text-sm font-medium text-slate-700">{m.balance_after ?? '—'}</td>
+                    <td className="px-4 py-4 text-sm text-slate-600">{m.batch_id || '—'}</td>
+                    <td className="px-4 py-4 text-sm text-slate-600">{m.reference_type ? `${m.reference_type}` : '—'}</td>
                   </tr>
                 ))}
               </tbody>

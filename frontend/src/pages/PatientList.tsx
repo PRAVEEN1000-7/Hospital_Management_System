@@ -362,8 +362,8 @@ const PatientList: React.FC = () => {
                   <th className="px-4 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">PRN</th>
                   <th className="px-4 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Name</th>
                   <th className="px-4 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Gender</th>
-                  <th className="px-4 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider hidden sm:table-cell">Blood</th>
-                  <th className="px-4 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider hidden lg:table-cell">
+                  <th className="px-4 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Blood</th>
+                  <th className="px-4 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">
                     {sortBy === 'updated_at' ? 'Last Updated' : 'Registered'}
                   </th>
                   <th className="px-4 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider w-24">Actions</th>
@@ -394,7 +394,7 @@ const PatientList: React.FC = () => {
                     <td className="px-4 py-4">
                       <span className="text-sm">{patient.gender}</span>
                     </td>
-                    <td className="px-4 py-4 hidden sm:table-cell">
+                    <td className="px-4 py-4">
                       {patient.blood_group ? (
                         <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-red-100 text-red-700 uppercase tracking-wide">
                           {patient.blood_group}
@@ -403,7 +403,7 @@ const PatientList: React.FC = () => {
                         <span className="text-sm text-slate-400">—</span>
                       )}
                     </td>
-                    <td className="px-4 py-4 hidden lg:table-cell">
+                    <td className="px-4 py-4">
                       {sortBy === 'updated_at' ? (
                         <span className="text-sm">{format(new Date(patient.updated_at), 'MMM dd, yyyy, hh:mm a')}</span>
                       ) : (

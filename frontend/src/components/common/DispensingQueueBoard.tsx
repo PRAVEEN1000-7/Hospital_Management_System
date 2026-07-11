@@ -96,6 +96,7 @@ const DispensingQueueBoard: React.FC<Props> = ({ title, entries, loading, advanc
             <p className="font-medium">No orders in today's queue</p>
           </div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
@@ -154,6 +155,7 @@ const DispensingQueueBoard: React.FC<Props> = ({ title, entries, loading, advanc
               })}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </div>

@@ -242,9 +242,9 @@ const CycleCountsPage: React.FC = () => {
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Count Number</th>
-                  <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider hidden lg:table-cell">Count Date</th>
+                  <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Count Date</th>
                   <th className="px-4 py-3.5 text-center text-xs font-bold text-slate-600 uppercase tracking-wider">Items</th>
-                  <th className="px-4 py-3.5 text-center text-xs font-bold text-slate-600 uppercase tracking-wider hidden md:table-cell">Variances</th>
+                  <th className="px-4 py-3.5 text-center text-xs font-bold text-slate-600 uppercase tracking-wider">Variances</th>
                   <th className="px-4 py-3.5 text-center text-xs font-bold text-slate-600 uppercase tracking-wider">Status</th>
                   <th className="px-4 py-3.5 text-right text-xs font-bold text-slate-600 uppercase tracking-wider">Actions</th>
                 </tr>
@@ -257,9 +257,9 @@ const CycleCountsPage: React.FC = () => {
                       <td className="px-4 py-4">
                         <button onClick={() => setDetailCC(cc)} className="text-sm font-semibold text-primary hover:underline">{cc.count_number}</button>
                       </td>
-                      <td className="px-4 py-4 hidden lg:table-cell text-sm text-slate-600">{formatDateOnly(cc.count_date)}</td>
+                      <td className="px-4 py-4 text-sm text-slate-600">{formatDateOnly(cc.count_date)}</td>
                       <td className="px-4 py-4 text-center text-sm text-slate-700">{cc.items.length}</td>
-                      <td className="px-4 py-4 text-center hidden md:table-cell">
+                      <td className="px-4 py-4 text-center">
                         {variances > 0 ? (
                           <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-50 text-red-600">{variances} variance(s)</span>
                         ) : (

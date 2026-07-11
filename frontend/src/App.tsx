@@ -12,6 +12,7 @@ import ProtectedRoute from './components/common/ProtectedRoute';
 import Layout from './components/common/Layout';
 import Login from './pages/Login';
 import ResetPassword from './pages/ResetPassword';
+import ForgotPassword from './pages/ForgotPassword';
 
 // Super Admin imports
 import SuperAdminLayout from './components/SuperAdmin/SuperAdminLayout';
@@ -146,6 +147,7 @@ const App: React.FC = () => {
             {/* Public */}
             <Route path="/login" element={<Login />} />
             <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
             {/* Public Queue Display kiosk — no auth, no Layout/sidebar. Scoped to one
                 hospital by its public code (BRD v1.1 §3). */}
             <Route path="/public/queue/:hospitalCode" element={<PublicQueueDisplay />} />

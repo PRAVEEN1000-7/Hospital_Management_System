@@ -295,10 +295,10 @@ const SuppliersPage: React.FC = () => {
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Supplier</th>
-                  <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider hidden lg:table-cell">Categories</th>
-                  <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider hidden md:table-cell">Contact</th>
-                  <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider hidden lg:table-cell">Payment Terms</th>
-                  <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider hidden xl:table-cell">Lead Time</th>
+                  <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Categories</th>
+                  <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Contact</th>
+                  <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Payment Terms</th>
+                  <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Lead Time</th>
                   <th className="px-4 py-3.5 text-center text-xs font-bold text-slate-600 uppercase tracking-wider">Status</th>
                   <th className="px-4 py-3.5 text-right text-xs font-bold text-slate-600 uppercase tracking-wider">Actions</th>
                 </tr>
@@ -310,7 +310,7 @@ const SuppliersPage: React.FC = () => {
                       <p className="text-sm font-semibold text-slate-900">{s.name}</p>
                       <p className="text-xs text-slate-400">{s.code}</p>
                     </td>
-                    <td className="px-4 py-4 hidden lg:table-cell">
+                    <td className="px-4 py-4">
                       <div className="flex flex-wrap gap-1">
                         {s.product_categories && s.product_categories.length > 0 ? (
                           s.product_categories.slice(0, 3).map(cat => {
@@ -334,12 +334,12 @@ const SuppliersPage: React.FC = () => {
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-4 hidden md:table-cell">
+                    <td className="px-4 py-4">
                       <p className="text-sm text-slate-700">{s.contact_person || '—'}</p>
                       <p className="text-xs text-slate-400">{s.phone || s.email || '—'}</p>
                     </td>
-                    <td className="px-4 py-4 hidden lg:table-cell text-sm text-slate-600">{s.payment_terms || '—'}</td>
-                    <td className="px-4 py-4 hidden xl:table-cell text-sm text-slate-600">{s.lead_time_days ? `${s.lead_time_days} days` : '—'}</td>
+                    <td className="px-4 py-4 text-sm text-slate-600">{s.payment_terms || '—'}</td>
+                    <td className="px-4 py-4 text-sm text-slate-600">{s.lead_time_days ? `${s.lead_time_days} days` : '—'}</td>
                     <td className="px-4 py-4 text-center">
                       <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${s.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
                         {s.is_active ? 'Active' : 'Inactive'}

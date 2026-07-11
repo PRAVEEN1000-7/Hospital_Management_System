@@ -197,7 +197,7 @@ const AdjustmentsPage: React.FC = () => {
                   <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Item</th>
                   <th className="px-4 py-3.5 text-center text-xs font-bold text-slate-600 uppercase tracking-wider">Type</th>
                   <th className="px-4 py-3.5 text-right text-xs font-bold text-slate-600 uppercase tracking-wider">Qty</th>
-                  <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider hidden md:table-cell">Reason</th>
+                  <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Reason</th>
                   <th className="px-4 py-3.5 text-center text-xs font-bold text-slate-600 uppercase tracking-wider">Status</th>
                   <th className="px-4 py-3.5 text-right text-xs font-bold text-slate-600 uppercase tracking-wider">Actions</th>
                 </tr>
@@ -216,7 +216,7 @@ const AdjustmentsPage: React.FC = () => {
                       </span>
                     </td>
                     <td className="px-4 py-4 text-right text-sm font-semibold text-slate-900">{adj.quantity}</td>
-                    <td className="px-4 py-4 text-sm text-slate-600 hidden md:table-cell max-w-[200px] truncate">{adj.reason}</td>
+                    <td className="px-4 py-4 text-sm text-slate-600 max-w-[200px] truncate">{adj.reason}</td>
                     <td className="px-4 py-4 text-center">
                       <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold capitalize ${STATUS_COLORS[adj.status] || 'bg-slate-100 text-slate-600'}`}>
                         {adj.status}

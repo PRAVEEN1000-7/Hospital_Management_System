@@ -125,8 +125,8 @@ const GRNsPage: React.FC = () => {
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">GRN Number</th>
-                  <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider hidden md:table-cell">PO Number</th>
-                  <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider hidden lg:table-cell">Received Date</th>
+                  <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">PO Number</th>
+                  <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Received Date</th>
                   <th className="px-4 py-3.5 text-center text-xs font-bold text-slate-600 uppercase tracking-wider">Items</th>
                   <th className="px-4 py-3.5 text-center text-xs font-bold text-slate-600 uppercase tracking-wider">Status</th>
                   <th className="px-4 py-3.5 text-right text-xs font-bold text-slate-600 uppercase tracking-wider">Actions</th>
@@ -138,8 +138,8 @@ const GRNsPage: React.FC = () => {
                     <td className="px-4 py-4">
                       <button onClick={() => setDetailGRN(grn)} className="text-sm font-semibold text-primary hover:underline">{grn.grn_number}</button>
                     </td>
-                    <td className="px-4 py-4 hidden md:table-cell text-sm text-slate-700">{grn.po_number || '—'}</td>
-                    <td className="px-4 py-4 hidden lg:table-cell text-sm text-slate-600">{formatDateOnly(grn.receipt_date)}</td>
+                    <td className="px-4 py-4 text-sm text-slate-700">{grn.po_number || '—'}</td>
+                    <td className="px-4 py-4 text-sm text-slate-600">{formatDateOnly(grn.receipt_date)}</td>
                     <td className="px-4 py-4 text-center text-sm text-slate-700">{grn.items.length}</td>
                     <td className="px-4 py-4 text-center">
                       <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold capitalize ${STATUS_COLORS[grn.status] || 'bg-slate-100 text-slate-600'}`}>
@@ -247,9 +247,9 @@ const GRNsPage: React.FC = () => {
                       <tr>
                         <th className="px-3 py-2.5 text-left text-xs font-bold text-slate-600">Item</th>
                         <th className="px-3 py-2.5 text-right text-xs font-bold text-slate-600">Qty Received</th>
-                        <th className="px-3 py-2.5 text-left text-xs font-bold text-slate-600 hidden sm:table-cell">Batch No</th>
-                        <th className="px-3 py-2.5 text-left text-xs font-bold text-slate-600 hidden md:table-cell">Expiry Date</th>
-                        <th className="px-3 py-2.5 text-left text-xs font-bold text-slate-600 hidden lg:table-cell">Rejection Reason</th>
+                        <th className="px-3 py-2.5 text-left text-xs font-bold text-slate-600">Batch No</th>
+                        <th className="px-3 py-2.5 text-left text-xs font-bold text-slate-600">Expiry Date</th>
+                        <th className="px-3 py-2.5 text-left text-xs font-bold text-slate-600">Rejection Reason</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -281,12 +281,12 @@ const GRNsPage: React.FC = () => {
                               {item.quantity_accepted !== null ? item.quantity_accepted : item.quantity_received}
                             </span>
                           </td>
-                          <td className="px-3 py-3 text-sm text-slate-600 hidden sm:table-cell">
+                          <td className="px-3 py-3 text-sm text-slate-600">
                             {item.batch_number || (
                               <span className="text-slate-400 text-xs">—</span>
                             )}
                           </td>
-                          <td className="px-3 py-3 text-sm text-slate-600 hidden md:table-cell">
+                          <td className="px-3 py-3 text-sm text-slate-600">
                             {item.expiry_date ? (
                               <span className={
                                 new Date(item.expiry_date) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
@@ -297,7 +297,7 @@ const GRNsPage: React.FC = () => {
                               </span>
                             ) : '—'}
                           </td>
-                          <td className="px-3 py-3 text-sm text-slate-600 hidden lg:table-cell">
+                          <td className="px-3 py-3 text-sm text-slate-600">
                             {item.rejection_reason ? (
                               <span className="text-red-600">{item.rejection_reason}</span>
                             ) : (

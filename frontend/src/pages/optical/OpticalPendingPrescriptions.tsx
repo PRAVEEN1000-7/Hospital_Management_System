@@ -165,6 +165,7 @@ const OpticalPendingPrescriptions: React.FC = () => {
         <>
           {/* Desktop Table */}
           <div className="hidden lg:block bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
@@ -240,6 +241,7 @@ const OpticalPendingPrescriptions: React.FC = () => {
                 })}
               </tbody>
             </table>
+            </div>
           </div>
 
           {/* Mobile Cards */}

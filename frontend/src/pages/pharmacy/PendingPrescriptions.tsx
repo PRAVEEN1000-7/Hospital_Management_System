@@ -198,6 +198,7 @@ const PendingPrescriptions: React.FC = () => {
         <>
           {/* Table View (Desktop) */}
           <div className="hidden lg:block bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
@@ -332,6 +333,7 @@ const PendingPrescriptions: React.FC = () => {
                 })}
               </tbody>
             </table>
+            </div>
           </div>
 
           {/* Card View (Mobile) */}

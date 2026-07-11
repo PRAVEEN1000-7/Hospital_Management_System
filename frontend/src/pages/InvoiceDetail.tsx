@@ -469,6 +469,7 @@ const InvoiceDetail: React.FC = () => {
             <div className="px-5 py-3 border-b border-slate-100">
               <p className="text-sm font-semibold text-slate-700">Items</p>
             </div>
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-slate-100">
                 <tr>
@@ -514,6 +515,7 @@ const InvoiceDetail: React.FC = () => {
                 ))}
               </tbody>
             </table>
+            </div>
 
             {/* Totals */}
             <div className="p-5 bg-slate-100 border-t border-slate-200">
@@ -570,6 +572,7 @@ const InvoiceDetail: React.FC = () => {
               <div className="px-5 py-3 border-b border-slate-100">
                 <p className="text-sm font-semibold text-slate-700">Payment History</p>
               </div>
+              <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-slate-100">
                   <tr>
@@ -602,6 +605,7 @@ const InvoiceDetail: React.FC = () => {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           )}
 
@@ -612,6 +616,7 @@ const InvoiceDetail: React.FC = () => {
                 <p className="text-sm font-semibold text-slate-700">Refund History</p>
                 <p className="text-xs text-slate-500">Stay on this invoice to complete refund workflow</p>
               </div>
+              <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-slate-100">
                   <tr>
@@ -678,6 +683,7 @@ const InvoiceDetail: React.FC = () => {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           )}
         </div>

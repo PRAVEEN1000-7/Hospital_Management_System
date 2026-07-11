@@ -163,9 +163,9 @@ const PurchaseOrdersPage: React.FC = () => {
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">PO Number</th>
-                  <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider hidden md:table-cell">Supplier</th>
-                  <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider hidden lg:table-cell">Order Date</th>
-                  <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider hidden lg:table-cell">Expected</th>
+                  <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Supplier</th>
+                  <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Order Date</th>
+                  <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Expected</th>
                   <th className="px-4 py-3.5 text-right text-xs font-bold text-slate-600 uppercase tracking-wider">Total</th>
                   <th className="px-4 py-3.5 text-center text-xs font-bold text-slate-600 uppercase tracking-wider">Status</th>
                   <th className="px-4 py-3.5 text-right text-xs font-bold text-slate-600 uppercase tracking-wider">Actions</th>
@@ -178,9 +178,9 @@ const PurchaseOrdersPage: React.FC = () => {
                       <button onClick={() => setDetailPO(po)} className="text-sm font-semibold text-primary hover:underline">{po.po_number}</button>
                       <p className="text-xs text-slate-400">{po.items.length} item(s)</p>
                     </td>
-                    <td className="px-4 py-4 hidden md:table-cell text-sm text-slate-700">{po.supplier_name || '—'}</td>
-                    <td className="px-4 py-4 hidden lg:table-cell text-sm text-slate-600">{formatDateOnly(po.order_date)}</td>
-                    <td className="px-4 py-4 hidden lg:table-cell text-sm text-slate-600">{po.expected_delivery_date ? formatDateOnly(po.expected_delivery_date) : '—'}</td>
+                    <td className="px-4 py-4 text-sm text-slate-700">{po.supplier_name || '—'}</td>
+                    <td className="px-4 py-4 text-sm text-slate-600">{formatDateOnly(po.order_date)}</td>
+                    <td className="px-4 py-4 text-sm text-slate-600">{po.expected_delivery_date ? formatDateOnly(po.expected_delivery_date) : '—'}</td>
                     <td className="px-4 py-4 text-right text-sm font-semibold text-slate-900">{formatCurrency(po.total_amount)}</td>
                     <td className="px-4 py-4 text-center">
                       <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold capitalize ${STATUS_COLORS[po.status] || 'bg-slate-100 text-slate-600'}`}>

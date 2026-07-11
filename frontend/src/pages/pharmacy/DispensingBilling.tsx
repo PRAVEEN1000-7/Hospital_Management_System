@@ -294,7 +294,7 @@ const DispensingBilling: React.FC = () => {
         </div>
 
         {/* Items Table — BRD §5.5 column order: S.No | Medicine | Qty | Pack | Batch | Expiry Date | Amount */}
-        <div className="px-8 py-4 print:p-4">
+        <div className="px-8 py-4 print:p-4 overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="bg-slate-100">

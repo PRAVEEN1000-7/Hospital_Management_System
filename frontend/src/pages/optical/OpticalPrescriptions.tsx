@@ -85,6 +85,7 @@ const OpticalPrescriptions: React.FC = () => {
             <p className="font-medium">No eye prescriptions yet</p>
           </div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
@@ -153,6 +154,7 @@ const OpticalPrescriptions: React.FC = () => {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </div>

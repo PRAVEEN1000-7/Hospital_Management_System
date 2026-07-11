@@ -76,6 +76,7 @@ const OpticalSales: React.FC = () => {
             <p className="font-medium">No sales found</p>
           </div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
@@ -104,6 +105,7 @@ const OpticalSales: React.FC = () => {
               ))}
             </tbody>
           </table>
+          </div>
         )}
 
         {totalPages > 1 && (

@@ -553,6 +553,12 @@ const InvoiceDetail: React.FC = () => {
                       <span>₹{fmt(invoice.balance_amount)}</span>
                     </div>
                   )}
+                  {invoice.balance_amount < 0 && (
+                    <div className="flex justify-between text-blue-600 font-semibold">
+                      <span>Returned (Change)</span>
+                      <span>₹{fmt(Math.abs(invoice.balance_amount))}</span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

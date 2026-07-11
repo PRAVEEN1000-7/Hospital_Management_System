@@ -14,6 +14,7 @@ from ..models.appointment import Appointment, AppointmentQueue, AppointmentStatu
 from ..models.patient import Patient
 from ..models.user import User
 from ..models.invoice import Invoice
+from ..models.payment import Payment
 from .notification_service import notify_hospital_users
 from ..core.hospital_time import hospital_today_by_id
 
@@ -771,9 +772,16 @@ def get_doctor_today_summary(db: Session, doctor_id: uuid.UUID, hospital_id: uui
     """
     Today's patients handled and consultation fee total for one doctor —
     "handled" means actually seen (in-progress or completed), not merely
-    scheduled/waiting. The fee total is the amount actually COLLECTED
-    (Invoice.paid_amount), not just billed, since an unpaid invoice isn't
-    revenue yet. Falls back to the doctor's own consultation_fee rate when an
+    scheduled/waiting.
+
+    The collected total is keyed off Payment.payment_date == today, not the
+    appointment's own date. Those are different things: a patient seen today
+    may not have paid yet (nothing to collect), while a patient seen days ago
+    may pay their overdue consultation fee today (real cash collected today).
+    Filtering by appointment_date silently dropped every payment in the
+    latter, far more common, case — a doctor with a backlog of unpaid visits
+    getting settled today would show ₹0 collected despite cash actually
+    coming in. Falls back to the doctor's own consultation_fee rate when an
     appointment has no invoice yet, purely for the per-patient "expected fee"
     display — never counted into the collected total.
     """
@@ -799,7 +807,6 @@ def get_doctor_today_summary(db: Session, doctor_id: uuid.UUID, hospital_id: uui
     doctor_rate = float(doctor.consultation_fee) if doctor and doctor.consultation_fee else 0.0
 
     patients = []
-    collected_total = 0.0
     seen_patient_ids = set()
     for appt in appointments:
         seen_patient_ids.add(appt.patient_id)
@@ -813,7 +820,6 @@ def get_doctor_today_summary(db: Session, doctor_id: uuid.UUID, hospital_id: uui
         fee_amount = float(invoice.total_amount) if invoice and invoice.total_amount else doctor_rate
         paid_amount = float(invoice.paid_amount) if invoice and invoice.paid_amount else 0.0
         fee_collected = bool(invoice and float(invoice.balance_amount or 0) <= 0)
-        collected_total += paid_amount
 
         patient = db.query(Patient).filter(Patient.id == appt.patient_id).first()
         patients.append({
@@ -827,11 +833,25 @@ def get_doctor_today_summary(db: Session, doctor_id: uuid.UUID, hospital_id: uui
             "fee_collected": fee_collected,
         })
 
+    collected_total = (
+        db.query(func.coalesce(func.sum(Payment.amount), 0))
+        .join(Invoice, Payment.invoice_id == Invoice.id)
+        .join(Appointment, Invoice.appointment_id == Appointment.id)
+        .filter(
+            Appointment.doctor_id == doctor_id,
+            Appointment.hospital_id == hospital_id,
+            Invoice.invoice_type == "opd",
+            Payment.payment_date == today,
+            Payment.status == "completed",
+        )
+        .scalar()
+    )
+
     return {
         "doctor_id": str(doctor_id),
         "date": str(today),
         "consultation_fee_rate": doctor_rate,
         "patients_handled": len(seen_patient_ids),
-        "consultation_fee_collected_total": round(collected_total, 2),
+        "consultation_fee_collected_total": round(float(collected_total or 0), 2),
         "patients": patients,
     }

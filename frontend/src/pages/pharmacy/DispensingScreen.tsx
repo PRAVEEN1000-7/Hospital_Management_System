@@ -76,6 +76,47 @@ const calculatePrescribedQuantity = (item: Pick<DispensingPrescriptionItem, 'fre
   return Math.ceil(dailyUnits * durationDays);
 };
 
+// Previews how a requested quantity will actually be pulled from stock —
+// mirrors the backend's FEFO allocation in dispensing_service.py's
+// _allocate_and_dispense_batches (selected batch first, then remaining
+// batches in expiry order) so the pharmacist can see the true batch
+// breakdown *before* submitting, instead of believing everything comes from
+// the one batch they picked while the backend silently splits it behind
+// the scenes.
+interface BatchAllocationPreview { batch: MedicineBatch; qty: number; }
+function previewBatchSplit(
+  qty: number,
+  selectedBatchId: string | undefined,
+  batches: MedicineBatch[],
+): BatchAllocationPreview[] {
+  if (qty <= 0 || !selectedBatchId) return [];
+  const selected = batches.find((b) => b.id === selectedBatchId);
+  if (!selected) return [];
+
+  const allocations: BatchAllocationPreview[] = [];
+  let remaining = qty;
+
+  const fromSelected = Math.min(selected.quantity, remaining);
+  if (fromSelected > 0) {
+    allocations.push({ batch: selected, qty: fromSelected });
+    remaining -= fromSelected;
+  }
+
+  if (remaining > 0) {
+    // available_batches already arrives sorted by expiry_date ascending (FEFO)
+    const others = batches.filter((b) => b.id !== selectedBatchId && b.quantity > 0);
+    for (const b of others) {
+      if (remaining <= 0) break;
+      const alloc = Math.min(b.quantity, remaining);
+      if (alloc <= 0) continue;
+      allocations.push({ batch: b, qty: alloc });
+      remaining -= alloc;
+    }
+  }
+
+  return allocations;
+}
+
 // Daily dose count parsed from frequency (e.g. "1-0-1" or "2 times a day" → 2).
 // Same parsing calculatePrescribedQuantity uses internally, exposed separately
 // so the per-item card can show the day-wise split (price/unit, doses/day,
@@ -955,6 +996,31 @@ const DispensingScreen: React.FC = () => {
                       </div>
                     )}
 
+                    {/* Batch split warning — the selected batch alone can't cover the
+                        entered quantity, so the backend will auto-pull the rest from
+                        other batches (soonest-expiring first). Show that breakdown
+                        instead of letting the pharmacist believe it all comes from
+                        the batch they picked. */}
+                    {!item.skip && selectedBatch && item.dispensedQty > selectedBatch.quantity && (() => {
+                      const allocations = previewBatchSplit(item.dispensedQty, item.selectedBatchId, item.available_batches);
+                      const extra = allocations.slice(1);
+                      if (extra.length === 0) return null;
+                      return (
+                        <div className="mb-4 p-3 rounded-lg bg-blue-50 border border-blue-200 text-blue-800 text-sm">
+                          <div className="flex items-center gap-2 font-semibold mb-1">
+                            <span className="material-symbols-outlined text-lg">call_split</span>
+                            Selected batch only has {selectedBatch.quantity} — the rest will be pulled from other batches
+                          </div>
+                          <ul className="pl-6 list-disc space-y-0.5">
+                            <li>{allocations[0].qty} units from {allocations[0].batch.batch_number} (exp {formatDateOnly(allocations[0].batch.expiry_date)})</li>
+                            {extra.map(a => (
+                              <li key={a.batch.id}>{a.qty} units from {a.batch.batch_number} (exp {formatDateOnly(a.batch.expiry_date)})</li>
+                            ))}
+                          </ul>
+                        </div>
+                      );
+                    })()}
+
                     {/* Dispensing Controls */}
                     {!item.skip && !isOutOfStock && !item.is_dispensed && !isReadOnly && (
                       <div className="grid grid-cols-2 gap-4 mb-3">
@@ -1293,6 +1359,30 @@ const DispensingScreen: React.FC = () => {
                                 )}
                               </div>
                             </div>
+
+                            {/* Batch split warning — same reasoning as the prescribed-item
+                                card above: don't let the pharmacist believe this all comes
+                                from the selected batch when the backend will actually pull
+                                the shortfall from other (soonest-expiring) batches. */}
+                            {selectedBatch && item.quantity > selectedBatch.quantity && (() => {
+                              const allocations = previewBatchSplit(item.quantity, item.selectedBatchId, item.available_batches);
+                              const extra = allocations.slice(1);
+                              if (extra.length === 0) return null;
+                              return (
+                                <div className="mb-3 p-3 rounded-lg bg-blue-50 border border-blue-200 text-blue-800 text-sm">
+                                  <div className="flex items-center gap-2 font-semibold mb-1">
+                                    <span className="material-symbols-outlined text-lg">call_split</span>
+                                    Selected batch only has {selectedBatch.quantity} — the rest will be pulled from other batches
+                                  </div>
+                                  <ul className="pl-6 list-disc space-y-0.5">
+                                    <li>{allocations[0].qty} units from {allocations[0].batch.batch_number} (exp {formatDateOnly(allocations[0].batch.expiry_date)})</li>
+                                    {extra.map(a => (
+                                      <li key={a.batch.id}>{a.qty} units from {a.batch.batch_number} (exp {formatDateOnly(a.batch.expiry_date)})</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              );
+                            })()}
 
                             {/* Batch + Quantity controls */}
                             {!isOutOfStock && (

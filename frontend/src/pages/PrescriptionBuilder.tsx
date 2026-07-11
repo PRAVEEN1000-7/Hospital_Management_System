@@ -344,7 +344,9 @@ const PrescriptionBuilder: React.FC = () => {
     setShowReferModal(true);
     setReferDoctorId('');
     setReferDate('');
-    setReferReason('');
+    // Pre-fill from what the referring doctor has already written, instead of
+    // making them retype the same observation as the referral reason.
+    setReferReason(clinicalNotes || '');
     setReferDoctorLoad(null);
     setReferCalendarMonth(today.slice(0, 7));
     resetReferAvailability();
@@ -653,8 +655,13 @@ const PrescriptionBuilder: React.FC = () => {
   const handleSave = async (
     finalize: boolean = false,
     completeQueue: boolean = false,
-  ) => {
-    if (!patient) { showToast('error', 'Please select a patient'); return; }
+    // Referral doesn't require a written prescription — a doctor may refer
+    // out without prescribing anything themselves — and must not navigate
+    // away mid-referral, since the referral call still needs to run after.
+    skipEmptyCheck: boolean = false,
+    silent: boolean = false,
+  ): Promise<string | null> => {
+    if (!patient) { showToast('error', 'Please select a patient'); return null; }
 
     // Flatten blocks into single diagnosis string & ordered items for the API
     const allDiagnoses = blocks.map(b => b.diagnosis.trim()).filter(Boolean).join('; ');
@@ -666,12 +673,12 @@ const PrescriptionBuilder: React.FC = () => {
     );
     const hasOpticalFields = Object.values(opticalRx).some(v => v !== undefined && v !== '');
     const hasOptical = isEyeHospital && addOpticalRx && hasOpticalFields;
-    if (validItems.length === 0 && !hasOptical) {
+    if (validItems.length === 0 && !hasOptical && !skipEmptyCheck) {
       showToast('error', isEyeHospital
         ? 'Please add at least one medicine or fill out the optical prescription.'
         : 'Add at least one medicine'
       );
-      return;
+      return null;
     }
 
     // Common vitals payload
@@ -763,12 +770,14 @@ const PrescriptionBuilder: React.FC = () => {
         } else {
           navigate(`/prescriptions/${rxId}`);
         }
-      } else {
+      } else if (!silent) {
         showToast('success', isEditMode ? 'Prescription updated' : 'Prescription saved as draft');
         if (!isEditMode) navigate('/prescriptions');
       }
+      return rxId;
     } catch (err: any) {
       showToast('error', err?.response?.data?.detail || 'Failed to save prescription');
+      return null;
     } finally {
       setSaving(false);
     }
@@ -1849,6 +1858,20 @@ const PrescriptionBuilder: React.FC = () => {
                   if (!referDoctorId || !referDate || !queueId) return;
                   setReferSaving(true);
                   try {
+                    // Save whatever the referring doctor has already written
+                    // (clinical notes, diagnosis, medicines, optical Rx) before
+                    // handing off — referring used to be a dead-end action that
+                    // silently discarded any unsaved documentation.
+                    const hasDraftContent =
+                      clinicalNotes.trim() ||
+                      advice.trim() ||
+                      blocks.some(b => b.diagnosis.trim() || b.items.some(i => i.medicine_name.trim())) ||
+                      (isEyeHospital && addOpticalRx && Object.values(opticalRx).some(v => v !== undefined && v !== ''));
+                    if (hasDraftContent) {
+                      const savedId = await handleSave(false, false, true, true);
+                      if (!savedId) { setReferSaving(false); return; }
+                    }
+
                     const result = await walkInService.referToDoctor({
                       queue_id: queueId,
                       to_doctor_id: referDoctorId,
@@ -1866,7 +1889,7 @@ const PrescriptionBuilder: React.FC = () => {
                 disabled={!referDoctorId || !referDate || referSaving || isSelectedReferralDateUnavailable}
                 className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-orange-500 rounded-xl hover:bg-orange-600 disabled:opacity-50 shadow-sm transition-all">
                 <span className="material-symbols-outlined text-base">send</span>
-                {referSaving ? 'Referring...' : 'Confirm Referral'}
+                {referSaving ? 'Saving & Referring...' : 'Save & Refer to Doctor'}
               </button>
             </div>
           </div>

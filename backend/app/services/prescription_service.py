@@ -24,7 +24,7 @@ from .notification_service import notify_hospital_users
 from ..models.pharmacy import PharmacySale, PharmacySaleItem, PharmacyQueueEntry
 from ..models.user import Hospital
 from ..core.tenant_security import is_eye_hospital_feature_enabled
-from ..core.hospital_time import hospital_today_by_id
+from ..core.hospital_time import hospital_today_utc_range_by_id
 
 logger = logging.getLogger(__name__)
 
@@ -498,10 +498,12 @@ def finalize_prescription(
                     OpticalPrescription.appointment_id == rx.appointment_id
                 ).count() > 0
             else:
+                day_start, day_end = hospital_today_utc_range_by_id(db, rx.hospital_id)
                 has_optical = db.query(OpticalPrescription).filter(
                     OpticalPrescription.patient_id == rx.patient_id,
                     OpticalPrescription.doctor_id == rx.doctor_id,
-                    func.date(OpticalPrescription.created_at) == hospital_today_by_id(db, rx.hospital_id),
+                    OpticalPrescription.created_at >= day_start,
+                    OpticalPrescription.created_at < day_end,
                 ).count() > 0
 
         if not has_optical:
@@ -569,10 +571,12 @@ def finalize_prescription(
                 OpticalPrescription.appointment_id == rx.appointment_id
             ).first()
         else:
+            day_start, day_end = hospital_today_utc_range_by_id(db, rx.hospital_id)
             opt_rx = db.query(OpticalPrescription).filter(
                 OpticalPrescription.patient_id == rx.patient_id,
                 OpticalPrescription.doctor_id == rx.doctor_id,
-                func.date(OpticalPrescription.created_at) == hospital_today_by_id(db, rx.hospital_id),
+                OpticalPrescription.created_at >= day_start,
+                OpticalPrescription.created_at < day_end,
             ).first()
         if opt_rx:
             opt_rx.is_finalized = True

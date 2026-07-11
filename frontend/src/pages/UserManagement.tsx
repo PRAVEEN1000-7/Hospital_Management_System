@@ -10,6 +10,7 @@ import api from '../services/api';
 import type { UserData, UserCreateData, UserUpdateData } from '../types/user';
 import { ROLE_TEXT_COLORS, ROLE_LABELS } from '../utils/constants';
 import { useToast } from '../contexts/ToastContext';
+import { useAuth } from '../contexts/AuthContext';
 
 const userCreateSchema = z.object({
   username: z.string().min(3, 'Min 3 characters').max(50),
@@ -91,6 +92,13 @@ const ROLES = [
   'pharmacist', 'optical_staff', 'cashier', 'inventory_manager',
   'report_viewer', 'staff',
 ];
+
+// Only a super_admin may grant the super_admin role (matches the backend
+// check in routers/users.py: "Only Super Admin can create Super Admin
+// accounts") — hide it from the dropdown for everyone else so admins don't
+// see an option that always fails.
+const getAssignableRoles = (currentUserRoles: string[] = []) =>
+  ROLES.filter(r => r !== 'super_admin' || currentUserRoles.includes('super_admin'));
 
 // Departments available per role. Empty array = department field hidden.
 const ALL_DEPARTMENTS = [
@@ -237,6 +245,7 @@ const UserManagement: React.FC = () => {
                 <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Full Name</th>
                 <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider hidden md:table-cell">Email</th>
                 <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Role</th>
+                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider hidden md:table-cell">Consultation Fee</th>
                 <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Status</th>
                 <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider hidden lg:table-cell">Last Login</th>
                 <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Actions</th>
@@ -245,13 +254,13 @@ const UserManagement: React.FC = () => {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-16">
+                  <td colSpan={8} className="text-center py-16">
                     <div className="w-6 h-6 border-4 border-slate-200 border-t-primary rounded-full animate-spin mx-auto" />
                   </td>
                 </tr>
               ) : users.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-16 text-slate-500">
+                  <td colSpan={8} className="text-center py-16 text-slate-500">
                     <span className="material-icons text-4xl text-slate-300 mb-2">group_off</span>
                     <p className="text-lg font-medium">No users found</p>
                   </td>
@@ -285,6 +294,17 @@ const UserManagement: React.FC = () => {
                     <td className="px-6 py-4 text-sm text-slate-700">{`${user.roles?.includes('doctor') ? 'Dr. ' : ''}${user.first_name} ${user.last_name}`}</td>
                     <td className="px-6 py-4 text-sm text-slate-500 hidden md:table-cell">{user.email}</td>
                     <td className="px-6 py-4">{getRoleBadge(user.roles?.[0] || '')}</td>
+                    <td className="px-6 py-4 text-sm hidden md:table-cell">
+                      {user.roles?.includes('doctor') ? (
+                        user.consultation_fee ? (
+                          <span className="font-semibold text-slate-700">₹{Number(user.consultation_fee).toLocaleString()}</span>
+                        ) : (
+                          <span className="text-amber-600 text-xs font-semibold">Not set</span>
+                        )
+                      ) : (
+                        <span className="text-slate-300">—</span>
+                      )}
+                    </td>
                     <td className="px-6 py-4 text-center">
                       <span className={`px-2.5 py-1 text-[11px] font-bold rounded-full ${user.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
                         {user.is_active ? 'Active' : 'Inactive'}
@@ -412,6 +432,8 @@ const Modal: React.FC<{ title: string; onClose: () => void; children: React.Reac
 
 // ---------- Create User Modal ----------
 const CreateUserModal: React.FC<{ onClose: () => void; onSuccess: () => void; onError: (msg: string) => void }> = ({ onClose, onSuccess, onError }) => {
+  const { user: currentUser } = useAuth();
+  const assignableRoles = getAssignableRoles(currentUser?.roles);
   const [photoPreview, setPhotoPreview] = useState<string>('');
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoError, setPhotoError] = useState('');
@@ -588,7 +610,7 @@ const CreateUserModal: React.FC<{ onClose: () => void; onSuccess: () => void; on
             <Field label="Role" error={errors.role?.message}>
               <select {...register('role')} className="input-field">
                 <option value="">Select role</option>
-                {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>)}
+                {assignableRoles.map(r => <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>)}
               </select>
             </Field>
           </div>
@@ -673,6 +695,8 @@ const CreateUserModal: React.FC<{ onClose: () => void; onSuccess: () => void; on
 
 // ---------- Edit User Modal ----------
 const EditUserModal: React.FC<{ user: UserData; onClose: () => void; onSuccess: () => void; onError: (msg: string) => void }> = ({ user, onClose, onSuccess, onError }) => {
+  const { user: currentUser } = useAuth();
+  const assignableRoles = getAssignableRoles(currentUser?.roles);
   const toast = useToast();
   const [photoPreview, setPhotoPreview] = useState<string>(user.avatar_url ? userService.getPhotoUrl(user.avatar_url) || '' : '');
   const [photoFile, setPhotoFile] = useState<File | null>(null);
@@ -857,7 +881,7 @@ const EditUserModal: React.FC<{ user: UserData; onClose: () => void; onSuccess: 
           <div className="grid grid-cols-1 gap-4">
             <Field label="Role" error={errors.role?.message}>
               <select {...register('role')} className="input-field">
-                {ROLES.map(r => <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>)}
+                {assignableRoles.map(r => <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>)}
               </select>
             </Field>
           </div>

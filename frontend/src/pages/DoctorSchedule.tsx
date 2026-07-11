@@ -5,6 +5,7 @@ import scheduleService from '../services/scheduleService';
 import doctorService from '../services/doctorService';
 import type { DoctorSchedule, DoctorScheduleCreate, DoctorLeave, DoctorLeaveCreate, DoctorOption } from '../types/appointment';
 import { formatDateOnly } from '../utils/calendarDate';
+import { getErrorMessage } from '../utils/errorMessage';
 
 // Backend uses 0=Sunday, 1=Monday ... 6=Saturday
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -84,8 +85,8 @@ const DoctorSchedulePage: React.FC = () => {
       toast.success('Schedule slot added');
       setShowForm(false);
       fetchData();
-    } catch (err: any) {
-      toast.error(err?.response?.data?.detail || 'Failed to add schedule');
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Failed to add schedule'));
     }
   };
 
@@ -117,8 +118,8 @@ const DoctorSchedulePage: React.FC = () => {
       toast.success('Schedule slot updated');
       setEditSlot(null);
       fetchData();
-    } catch (err: any) {
-      toast.error(err?.response?.data?.detail || 'Failed to update schedule');
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Failed to update schedule'));
     }
   };
 
@@ -135,8 +136,8 @@ const DoctorSchedulePage: React.FC = () => {
       setShowLeaveForm(false);
       setLeaveDate(''); setLeaveReason(''); setLeaveCategory('Personal'); setLeaveType('full_day');
       fetchData();
-    } catch (err: any) {
-      toast.error(err?.response?.data?.detail || 'Failed to add leave');
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Failed to add leave'));
     }
   };
 

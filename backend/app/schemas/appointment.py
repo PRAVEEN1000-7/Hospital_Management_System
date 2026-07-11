@@ -69,7 +69,7 @@ class DoctorScheduleUpdate(BaseModel):
     start_time: Optional[time] = None
     end_time: Optional[time] = None
     slot_duration_minutes: Optional[int] = Field(default=None, ge=5, le=120)
-    max_patients: Optional[int] = Field(default=None, ge=1, le=10)
+    max_patients: Optional[int] = Field(default=None, ge=1, le=100)
     break_start_time: Optional[time] = None
     break_end_time: Optional[time] = None
     is_active: Optional[bool] = None

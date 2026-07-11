@@ -414,10 +414,9 @@ const PatientList: React.FC = () => {
                       <div className="flex items-center justify-end gap-1">
                         <button
                           onClick={() => navigate(`/patients/${patient.id}`)}
-                          className="p-1.5 hover:bg-primary/10 rounded-lg text-slate-400 hover:text-primary transition-colors"
-                          title="View"
+                          className="px-2.5 py-1.5 text-xs font-semibold hover:bg-primary/10 rounded-lg text-primary transition-colors"
                         >
-                          <span className="material-icons text-base">visibility</span>
+                          View
                         </button>
                         {canDelete && (
                           <button

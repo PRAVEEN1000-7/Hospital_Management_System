@@ -13,7 +13,7 @@ from sqlalchemy import func, or_, case
 
 from .pharmacy_service import _filter_model_data
 from .notification_service import notify_hospital_users
-from ..core.hospital_time import hospital_today_by_id
+from ..core.hospital_time import hospital_today_by_id, hospital_today_utc_range_by_id
 from ..models.optical import OpticalProduct, OpticalBatch, OpticalPrescription, OpticalSale, OpticalSaleItem
 
 logger = logging.getLogger(__name__)
@@ -614,12 +614,13 @@ def create_sale(db: Session, hospital_id: uuid.UUID, data: dict, user_id: uuid.U
 
 def list_optical_queue(db: Session, hospital_id: uuid.UUID) -> list[dict]:
     """Today's optical sales ordered by queue token — the Waiting/Being Served/Ready/Collected board."""
-    today = hospital_today_by_id(db, hospital_id)
+    day_start, day_end = hospital_today_utc_range_by_id(db, hospital_id)
     sales = (
         db.query(OpticalSale)
         .filter(
             OpticalSale.hospital_id == hospital_id,
-            func.date(OpticalSale.created_at) == today,
+            OpticalSale.created_at >= day_start,
+            OpticalSale.created_at < day_end,
         )
         .order_by(OpticalSale.queue_token.asc())
         .all()

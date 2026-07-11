@@ -68,3 +68,28 @@ while creating the staff it not validate both the user name and gmail .but now i
 6. i face some issue in the hospital details conflicts while create the user with same name in another hospital.so make sure everythings are works based on the multi tenant id,because it is the first level of filters.
 7. in each login show the role of that user in full visible one .in the left bottom corner ,the role and name is vsisble.instread of that place add the visiblity in the top right corner of the each user login page.keep the exisiting drop down as it is near to that left add this details (between notification and the drop down).
 8. in the prescription output,if the prescription constains atleast one eye category medicine then add the column re and le.if their is not eye medicine category ,dont add the column at the time of view and print .not at the time of creating the prescription.
+
+
+
+---  11-07-2026
+
+
+1. In patient directory, for Patient please generate AI avatar for their id card based on child, man, woman,old man,old woman
+2. Enable queue display for receptionist login and also here the 6 patient is in waiting list but it is noted as Next in line. Make it as Waiting.
+3. The token number is assigned based on the doctor’s my patient queue but it should be assigned based on the patient queue
+For example. The patient with token 2 is visiting doctor 1 as 2nd patient then he is visiting doctor 2 as 1st patient means it should not show in queue display as 1st patient. From start to end if he is token number 2 he is the token number 2 for all the doctor,pharmacy,billing etc…
+
+
+
+
+Fixed
+
+1. superadmin option shown in the admin ,staff register form.
+2. view icon in the patient directory under the action column. -> need the view test for the asy understanding
+3. token refersh one status -> (for the everyday it refersh and start from the count one).
+4. in the dispencing the splitup for the tablete price oksy.but ui want the some more clear one for the easy visible and the understanding.
+5. still now i cant able to understand the logic in the total.paid,balance and the amount filed.give the simple explaination about that and how the logic works by together.    
+6. make sure to collect the collect the consultation fee at the single time itself.
+7. in the doctor dashboard ,the consulation fee is shown as 0 ,but the today collected works perfectly.check that and fix tht as well.
+8. In all payments, the amount collected and refunded back but the net collected is showing as 1600 it the example bug.
+also in the ui theri is a more empty space in left and right side of the table view.fix that  ui issue as well. also tht show be flex one and suitable to different screen size.

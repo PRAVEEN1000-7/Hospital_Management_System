@@ -1039,12 +1039,34 @@ const DispensingScreen: React.FC = () => {
                             const totalDays = prescribedQuantity / dailyDoseCount;
                             const daysCoveredNow = item.dispensedQty / dailyDoseCount;
                             const lineTotal = item.dispensedQty * unitPrice;
+                            const fullyCovered = daysCoveredNow >= totalDays;
                             const fmtDays = (d: number) => (Number.isInteger(d) ? d : d.toFixed(1));
+                            const unitLabel = item.dispense_unit || 'unit';
                             return (
-                              <div className="mt-2 p-2 bg-blue-50 border border-blue-100 rounded-lg text-[11px] text-blue-800">
-                                <div>₹{unitPrice.toFixed(2)} / {item.dispense_unit || 'unit'} · {dailyDoseCount} {item.dispense_unit || 'unit'}(s)/day</div>
-                                <div className="font-semibold mt-0.5">
-                                  Dispensing {item.dispensedQty} covers {fmtDays(daysCoveredNow)} of {fmtDays(totalDays)} prescribed day(s) · Total: ₹{lineTotal.toFixed(2)}
+                              <div className="mt-2 p-3 bg-blue-50 border border-blue-100 rounded-lg">
+                                <div className="grid grid-cols-4 gap-2">
+                                  <div className="text-center">
+                                    <div className="text-[9px] text-blue-500 uppercase font-bold tracking-wide">Unit Price</div>
+                                    <div className="text-sm font-bold text-blue-900 leading-tight">₹{unitPrice.toFixed(2)}</div>
+                                    <div className="text-[9px] text-blue-400">per {unitLabel}</div>
+                                  </div>
+                                  <div className="text-center border-l border-blue-100">
+                                    <div className="text-[9px] text-blue-500 uppercase font-bold tracking-wide">Dose/Day</div>
+                                    <div className="text-sm font-bold text-blue-900 leading-tight">{dailyDoseCount}</div>
+                                    <div className="text-[9px] text-blue-400">{unitLabel}(s) daily</div>
+                                  </div>
+                                  <div className="text-center border-l border-blue-100">
+                                    <div className="text-[9px] text-blue-500 uppercase font-bold tracking-wide">Days Covered</div>
+                                    <div className={`text-sm font-bold leading-tight ${fullyCovered ? 'text-emerald-700' : 'text-amber-700'}`}>
+                                      {fmtDays(daysCoveredNow)} <span className="text-blue-400 font-normal">/ {fmtDays(totalDays)}</span>
+                                    </div>
+                                    <div className="text-[9px] text-blue-400">{fullyCovered ? 'full course' : 'partial'}</div>
+                                  </div>
+                                  <div className="text-center border-l border-blue-100">
+                                    <div className="text-[9px] text-blue-500 uppercase font-bold tracking-wide">Line Total</div>
+                                    <div className="text-sm font-bold text-emerald-700 leading-tight">₹{lineTotal.toFixed(2)}</div>
+                                    <div className="text-[9px] text-blue-400">for {item.dispensedQty} {unitLabel}(s)</div>
+                                  </div>
                                 </div>
                               </div>
                             );

@@ -912,12 +912,23 @@ const AppointmentManagement: React.FC = () => {
                   <div>
                     <label className="block text-xs font-medium text-slate-500 mb-1">Amount</label>
                     <input
-                      type="text"
-                      readOnly
-                      value={collectAmount}
+                      type="number"
+                      min="0.01"
+                      max={Number(collectInvoice.balance_amount || 0)}
+                      step="0.01"
+                      value={collectAmount || ''}
+                      onChange={(e) => {
+                        const balance = Number(collectInvoice.balance_amount || 0);
+                        const raw = parseFloat(e.target.value) || 0;
+                        setCollectAmount(Math.min(Math.max(0, raw), balance));
+                      }}
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
                     />
-                    <p className="text-[11px] text-slate-400 mt-1">Fixed by consultation billing template</p>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      {collectAmount < Number(collectInvoice.balance_amount || 0)
+                        ? `Partial payment — Rs ${formatMoney(Number(collectInvoice.balance_amount || 0) - collectAmount)} will remain after this`
+                        : 'Defaults to the full outstanding balance — edit to record a partial payment'}
+                    </p>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-500 mb-1">Payment Mode</label>
@@ -935,6 +946,7 @@ const AppointmentManagement: React.FC = () => {
                       type="date"
                       value={collectDate}
                       onChange={(e) => setCollectDate(e.target.value)}
+                      onClick={(e) => (e.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.()}
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
                     />
                   </div>

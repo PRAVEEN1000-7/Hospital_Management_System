@@ -12,7 +12,7 @@ from typing import Optional
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from ..core.hospital_time import hospital_today_by_id
+from ..core.hospital_time import hospital_today_utc_range_by_id
 
 QUEUE_STATUSES = ("waiting", "being_served", "ready", "collected")
 
@@ -56,12 +56,13 @@ def generate_daily_queue_token(db: Session, hospital_id: uuid.UUID, model) -> in
     OpticalSale), scoped to this hospital and reset each day — same idea as
     the existing AppointmentQueue token generator, applied to sales.
     """
-    today = hospital_today_by_id(db, hospital_id)
+    day_start, day_end = hospital_today_utc_range_by_id(db, hospital_id)
     last_token = (
         db.query(func.max(model.queue_token))
         .filter(
             model.hospital_id == hospital_id,
-            func.date(model.created_at) == today,
+            model.created_at >= day_start,
+            model.created_at < day_end,
         )
         .scalar()
     )
@@ -135,11 +136,13 @@ def list_pharmacy_queue_entries(db: Session, hospital_id: uuid.UUID) -> list[dic
     """Today's pharmacy queue entries ordered by token."""
     from ..models.pharmacy import PharmacyQueueEntry
 
+    day_start, day_end = hospital_today_utc_range_by_id(db, hospital_id)
     rows = (
         db.query(PharmacyQueueEntry)
         .filter(
             PharmacyQueueEntry.hospital_id == hospital_id,
-            func.date(PharmacyQueueEntry.created_at) == hospital_today_by_id(db, hospital_id),
+            PharmacyQueueEntry.created_at >= day_start,
+            PharmacyQueueEntry.created_at < day_end,
         )
         .order_by(PharmacyQueueEntry.queue_token.asc())
         .all()
@@ -170,13 +173,15 @@ def find_open_pharmacy_queue_entry_for_patient(db: Session, hospital_id: uuid.UU
     counter-sale flow (NewSale.tsx) to link a manually-added walk-in to its bill."""
     from ..models.pharmacy import PharmacyQueueEntry
 
+    day_start, day_end = hospital_today_utc_range_by_id(db, hospital_id)
     return (
         db.query(PharmacyQueueEntry)
         .filter(
             PharmacyQueueEntry.hospital_id == hospital_id,
             PharmacyQueueEntry.patient_id == patient_id,
             PharmacyQueueEntry.status != "collected",
-            func.date(PharmacyQueueEntry.created_at) == hospital_today_by_id(db, hospital_id),
+            PharmacyQueueEntry.created_at >= day_start,
+            PharmacyQueueEntry.created_at < day_end,
         )
         .order_by(PharmacyQueueEntry.created_at.asc())
         .first()

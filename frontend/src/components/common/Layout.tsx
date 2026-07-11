@@ -406,6 +406,7 @@ const Layout: React.FC = () => {
     } else if (hasRole('doctor')) {
       appointmentItems.push(
         { to: '/appointments/queue', label: 'Today Patients', icon: 'queue' },
+        { to: '/appointments/my-schedule', label: 'My Patients', icon: 'groups' },
         { to: '/appointments/doctor-schedule', label: 'Manage My Schedule', icon: 'edit_calendar' },
         { to: '/appointments/waitlist', label: 'Waitlist', icon: 'playlist_add' },
       );

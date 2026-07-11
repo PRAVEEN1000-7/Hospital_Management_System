@@ -153,6 +153,14 @@ const Register: React.FC = () => {
   const watchTitle = watch('title');
   const watchGender = watch('gender');
 
+  // Native <input type="date"> can report intermediate/partial values while
+  // the year is still being typed digit-by-digit (e.g. "0002" before "2026"
+  // is fully typed), which briefly computes as a wildly wrong age. Gate the
+  // title auto-correction below on the field having been left (blurred) at
+  // least once since it was last focused, so it only runs once DOB entry is
+  // actually complete — not on every keystroke.
+  const [dobBlurred, setDobBlurred] = useState(false);
+
   // Clear server error on any change.
   // After first submit: re-validate live so each field's error clears the moment it is fixed.
   // Before first submit: no inline errors shown at all — pristine form experience.
@@ -184,8 +192,9 @@ const Register: React.FC = () => {
     // is "unknown", not "confirmed adult". Without this guard, picking "Baby"
     // or "Master" before entering a DOB was immediately reverted to blank by
     // the second condition below, since !isChild was true for the wrong reason.
-    // Only cross-verify the title against age once we actually have a DOB.
-    if (!watchDob) return;
+    // Only cross-verify the title against age once we actually have a DOB —
+    // and only once the DOB field has been left, not mid-typing (see dobBlurred).
+    if (!watchDob || !dobBlurred) return;
 
     if (isChild && watchTitle && ADULT_ONLY_TITLES.includes(watchTitle)) {
       // Gender may not be selected yet at this point — "Baby" is the safe
@@ -198,19 +207,19 @@ const Register: React.FC = () => {
       setValue('title', '');
       toast.info('Please select a title — patient is 5 years or older');
     }
-  }, [isChild, watchDob, watchTitle, watchGender, setValue]);
+  }, [isChild, watchDob, watchTitle, watchGender, dobBlurred, setValue]);
 
   // Refine Baby ↔ Master once gender becomes known/changes (e.g. gender picked
   // after DOB, or changed afterwards) — this is the one place age AND gender
   // both determine a single correct title, unlike the adult titles above.
   useEffect(() => {
-    if (!watchDob || !isChild || !watchGender) return;
+    if (!watchDob || !dobBlurred || !isChild || !watchGender) return;
     if (watchTitle === 'Baby' && watchGender === 'Male') {
       setValue('title', 'Master');
     } else if (watchTitle === 'Master' && watchGender !== 'Male') {
       setValue('title', 'Baby');
     }
-  }, [watchGender, isChild, watchDob, watchTitle, setValue]);
+  }, [watchGender, isChild, watchDob, watchTitle, dobBlurred, setValue]);
 
   useEffect(() => {
     if (watchState && STATE_COUNTRY_MAP[watchState]) {
@@ -471,6 +480,8 @@ const Register: React.FC = () => {
               <input
                 {...register('date_of_birth')}
                 type="date"
+                onFocus={() => setDobBlurred(false)}
+                onBlur={(e) => { register('date_of_birth').onBlur(e); setDobBlurred(true); }}
                 className={fieldErrors.date_of_birth ? inputErrorClass : inputClass}
                 min="1900-01-01"
                 max={new Date().toISOString().split('T')[0]}

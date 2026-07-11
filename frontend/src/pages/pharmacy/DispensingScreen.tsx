@@ -73,6 +73,17 @@ const calculatePrescribedQuantity = (item: Pick<DispensingPrescriptionItem, 'fre
   return Math.ceil(dailyUnits * durationDays);
 };
 
+// Daily dose count parsed from frequency (e.g. "1-0-1" or "2 times a day" → 2).
+// Same parsing calculatePrescribedQuantity uses internally, exposed separately
+// so the per-item card can show the day-wise split (price/unit, doses/day,
+// how many days a given quantity covers) alongside the plain unit count.
+const getDailyDoseCount = (frequency?: string | null): number => {
+  if (!frequency) return 0;
+  const parts = frequency.match(/\d+(?:\.\d+)?/g);
+  if (!parts?.length) return 0;
+  return parts.reduce((total, part) => total + Number(part), 0);
+};
+
 const getDisplayStatusLabel = (status: string) => {
   if (status === 'finalized') return 'pending';
   return status.replace('_', ' ');
@@ -1021,6 +1032,23 @@ const DispensingScreen: React.FC = () => {
                               Remaining quantity will be auto-allocated from additional batches in this dispense.
                             </div>
                           )}
+                          {(() => {
+                            const dailyDoseCount = getDailyDoseCount(item.frequency);
+                            const unitPrice = selectedBatch?.selling_price || 0;
+                            if (!dailyDoseCount || !unitPrice || item.dispensedQty <= 0) return null;
+                            const totalDays = prescribedQuantity / dailyDoseCount;
+                            const daysCoveredNow = item.dispensedQty / dailyDoseCount;
+                            const lineTotal = item.dispensedQty * unitPrice;
+                            const fmtDays = (d: number) => (Number.isInteger(d) ? d : d.toFixed(1));
+                            return (
+                              <div className="mt-2 p-2 bg-blue-50 border border-blue-100 rounded-lg text-[11px] text-blue-800">
+                                <div>₹{unitPrice.toFixed(2)} / {item.dispense_unit || 'unit'} · {dailyDoseCount} {item.dispense_unit || 'unit'}(s)/day</div>
+                                <div className="font-semibold mt-0.5">
+                                  Dispensing {item.dispensedQty} covers {fmtDays(daysCoveredNow)} of {fmtDays(totalDays)} prescribed day(s) · Total: ₹{lineTotal.toFixed(2)}
+                                </div>
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
                     )}
@@ -1090,6 +1118,34 @@ const DispensingScreen: React.FC = () => {
                 );
               })}
             </div>
+
+            {/* Already-dispensed extra items — added by the pharmacist during a
+                previous (or this) dispensing session, not tied to any
+                prescription line. Read-only; shown whenever any exist, in
+                both view mode and while dispensing further items. */}
+            {!!prescription.extra_items?.length && (
+              <div className="px-6 pb-2">
+                <div className="border-t border-slate-200 pt-4">
+                  <h3 className="text-sm font-semibold text-slate-700 mb-3">Extra Items Dispensed</h3>
+                  <div className="space-y-2">
+                    {prescription.extra_items.map((item) => (
+                      <div key={item.id} className="flex items-center justify-between gap-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-slate-900 truncate">{item.medicine_name}</p>
+                          {item.batch_number && (
+                            <p className="text-xs text-slate-500">Batch: {item.batch_number}</p>
+                          )}
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-sm font-semibold text-slate-900">{item.quantity} units</p>
+                          <p className="text-xs text-slate-500">₹{item.total_price.toFixed(2)}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Extra Items — medicines or cataloged non-medicine pharmacy items
                 not on the original prescription, added by the pharmacist here. */}

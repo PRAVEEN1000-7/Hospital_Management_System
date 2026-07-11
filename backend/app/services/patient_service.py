@@ -120,10 +120,6 @@ def get_patient_by_email(db: Session, email: str, hospital_id=None) -> Optional[
     return q.first()
 
 
-def get_patient_by_email(db: Session, email: str) -> Optional[Patient]:
-    return db.query(Patient).filter(Patient.email == email, Patient.is_deleted == False).first()
-
-
 def get_patient_by_prn(db: Session, prn: str) -> Optional[Patient]:
     return db.query(Patient).filter(Patient.patient_reference_number == prn, Patient.is_deleted == False).first()
 

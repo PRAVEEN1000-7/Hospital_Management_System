@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
-import appointmentService from '../services/appointmentService';
+import appointmentService, { type DoctorTodaySummary } from '../services/appointmentService';
 import AppointmentStatusBadge from '../components/appointments/AppointmentStatusBadge';
 import type { Appointment } from '../types/appointment';
 import { formatLocalDateISO, formatDateOnly } from '../utils/calendarDate';
@@ -14,9 +14,13 @@ const DoctorAppointments: React.FC = () => {
 
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedDate, setSelectedDate] = useState(formatLocalDateISO());
+  const today = formatLocalDateISO();
+  const [selectedDate, setSelectedDate] = useState(today);
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [notesModal, setNotesModal] = useState<{ id: string; notes: string } | null>(null);
+  // Patients handled + consultation fee collected today — only meaningful for
+  // "today" (the backend summary is always today-scoped), not other dates.
+  const [todaySummary, setTodaySummary] = useState<DoctorTodaySummary | null>(null);
 
   const fetchAppointments = useCallback(async () => {
     if (!user?.id) return;
@@ -31,6 +35,20 @@ const DoctorAppointments: React.FC = () => {
   }, [user?.id, selectedDate]);
 
   useEffect(() => { fetchAppointments(); }, [fetchAppointments]);
+
+  useEffect(() => {
+    if (!user?.id || selectedDate !== today) {
+      setTodaySummary(null);
+      return;
+    }
+    appointmentService.getDoctorTodaySummary(user.id)
+      .then(setTodaySummary)
+      .catch(() => setTodaySummary(null));
+  }, [user?.id, selectedDate, today]);
+
+  const feeByAppointmentId = new Map(
+    (todaySummary?.patients || []).map(p => [p.appointment_id, p])
+  );
 
   const filtered = statusFilter
     ? appointments.filter(a => a.status === statusFilter)
@@ -82,6 +100,26 @@ const DoctorAppointments: React.FC = () => {
         <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)}
           className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
       </div>
+
+      {/* Today's patients handled + consultation fee collected */}
+      {todaySummary && (
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <div className="bg-gradient-to-br from-primary/5 to-blue-50 rounded-xl border border-primary/10 p-4">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Patients Handled Today</span>
+              <span className="material-symbols-outlined text-primary">groups</span>
+            </div>
+            <p className="text-2xl font-bold text-slate-900">{todaySummary.patients_handled}</p>
+          </div>
+          <div className="bg-gradient-to-br from-emerald-50 to-emerald-50/50 rounded-xl border border-emerald-100 p-4">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Consultation Fee Collected</span>
+              <span className="material-symbols-outlined text-emerald-600">account_balance_wallet</span>
+            </div>
+            <p className="text-2xl font-bold text-slate-900">₹{todaySummary.consultation_fee_collected_total.toLocaleString()}</p>
+          </div>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -139,6 +177,12 @@ const DoctorAppointments: React.FC = () => {
                     )}
                     {appt.priority && appt.priority !== 'routine' && (
                       <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${appt.priority === 'emergency' ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'}`}>{appt.priority}</span>
+                    )}
+                    {feeByAppointmentId.has(appt.id) && (
+                      <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full flex items-center gap-0.5 ${feeByAppointmentId.get(appt.id)!.fee_collected ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500'}`}>
+                        <span className="material-symbols-outlined" style={{ fontSize: '11px' }}>payments</span>
+                        {feeByAppointmentId.get(appt.id)!.fee_collected ? 'Fee Paid' : 'Fee Pending'} · ₹{feeByAppointmentId.get(appt.id)!.fee_amount.toLocaleString()}
+                      </span>
                     )}
                   </div>
                   <p className="text-sm text-slate-500">{appt.appointment_number} · {appt.visit_type || 'General'}</p>

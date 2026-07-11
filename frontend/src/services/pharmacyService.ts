@@ -28,6 +28,20 @@ export interface PendingPrescription {
   items: PrescriptionItemWithStock[];
   /** Informational only — dispensing is never blocked on this. */
   consultation_fee_collected?: boolean;
+  /** Already-dispensed items not tied to any prescription line — added by
+   * the pharmacist at dispense time. Read-only when viewing a past dispense. */
+  extra_items?: DispensedExtraItem[];
+}
+
+export interface DispensedExtraItem {
+  id: string;
+  medicine_id: string | null;
+  medicine_name: string;
+  batch_id: string | null;
+  batch_number: string | null;
+  quantity: number;
+  unit_price: number;
+  total_price: number;
 }
 
 export interface PrescriptionItemWithStock {

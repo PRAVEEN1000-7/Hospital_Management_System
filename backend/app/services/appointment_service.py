@@ -774,3 +774,75 @@ def get_enhanced_stats(
         "peak_hours": sorted(hour_map.values(), key=lambda x: x["hour"]),
         "cancellation_reasons": list(reason_map.values()),
     }
+
+
+# ── Doctor's own patients-handled + consultation fee total ─────────────────
+
+def get_doctor_today_summary(db: Session, doctor_id: uuid.UUID, hospital_id: uuid.UUID) -> dict:
+    """
+    Today's patients handled and consultation fee total for one doctor —
+    "handled" means actually seen (in-progress or completed), not merely
+    scheduled/waiting. The fee total is the amount actually COLLECTED
+    (Invoice.paid_amount), not just billed, since an unpaid invoice isn't
+    revenue yet. Falls back to the doctor's own consultation_fee rate when an
+    appointment has no invoice yet, purely for the per-patient "expected fee"
+    display — never counted into the collected total.
+    """
+    today = hospital_today_by_id(db, hospital_id)
+
+    doctor = db.query(Doctor).filter(
+        Doctor.id == doctor_id, Doctor.hospital_id == hospital_id,
+    ).first()
+
+    appointments = (
+        db.query(Appointment)
+        .filter(
+            Appointment.doctor_id == doctor_id,
+            Appointment.hospital_id == hospital_id,
+            Appointment.appointment_date == today,
+            Appointment.is_deleted == False,
+            Appointment.status.in_(["completed", "in-progress"]),
+        )
+        .order_by(Appointment.start_time.asc())
+        .all()
+    )
+
+    doctor_rate = float(doctor.consultation_fee) if doctor and doctor.consultation_fee else 0.0
+
+    patients = []
+    collected_total = 0.0
+    seen_patient_ids = set()
+    for appt in appointments:
+        seen_patient_ids.add(appt.patient_id)
+
+        invoice = (
+            db.query(Invoice)
+            .filter(Invoice.appointment_id == appt.id, Invoice.is_deleted == False)
+            .order_by(Invoice.created_at.desc())
+            .first()
+        )
+        fee_amount = float(invoice.total_amount) if invoice and invoice.total_amount else doctor_rate
+        paid_amount = float(invoice.paid_amount) if invoice and invoice.paid_amount else 0.0
+        fee_collected = bool(invoice and float(invoice.balance_amount or 0) <= 0)
+        collected_total += paid_amount
+
+        patient = db.query(Patient).filter(Patient.id == appt.patient_id).first()
+        patients.append({
+            "appointment_id": str(appt.id),
+            "patient_id": str(appt.patient_id),
+            "patient_name": patient.full_name if patient else None,
+            "patient_reference_number": patient.patient_reference_number if patient else None,
+            "status": appt.status,
+            "start_time": str(appt.start_time) if appt.start_time else None,
+            "fee_amount": fee_amount,
+            "fee_collected": fee_collected,
+        })
+
+    return {
+        "doctor_id": str(doctor_id),
+        "date": str(today),
+        "consultation_fee_rate": doctor_rate,
+        "patients_handled": len(seen_patient_ids),
+        "consultation_fee_collected_total": round(collected_total, 2),
+        "patients": patients,
+    }

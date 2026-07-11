@@ -31,6 +31,7 @@ from ..services.appointment_service import (
     check_double_booking,
     enrich_appointment,
     enrich_appointments,
+    get_doctor_today_summary,
 )
 from ..services.schedule_service import is_doctor_on_leave, get_available_slots
 from ..services.notification_service import notify_hospital_users
@@ -226,6 +227,46 @@ async def doctor_today(
         doctor_id=resolved_doctor_id, date_from=target_date, date_to=target_date,
     )
     return enrich_appointments(db, rows)
+
+
+@router.get("/doctor/{doctor_id}/today-summary")
+async def doctor_today_summary(
+    doctor_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Today's patients handled + consultation fee collected total for one
+    doctor. A doctor may only view their own summary; admin/super_admin/
+    receptionist can view any doctor in their hospital (front-desk needs to
+    see collections)."""
+    import uuid as _uuid
+    try:
+        parsed = _uuid.UUID(doctor_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid doctor_id")
+
+    doctor = (
+        db.query(Doctor)
+        .filter(Doctor.id == parsed, Doctor.hospital_id == current_user.hospital_id)
+        .first()
+    )
+    if not doctor:
+        doctor = (
+            db.query(Doctor)
+            .filter(Doctor.user_id == parsed, Doctor.hospital_id == current_user.hospital_id)
+            .first()
+        )
+    if not doctor:
+        raise HTTPException(status_code=404, detail="Doctor not found")
+
+    is_self = doctor.user_id == current_user.id
+    is_front_office = bool(
+        current_user.roles and set(current_user.roles) & {"admin", "super_admin", "receptionist"}
+    )
+    if not is_self and not is_front_office:
+        raise HTTPException(status_code=403, detail="Not authorized to view this doctor's summary")
+
+    return get_doctor_today_summary(db, doctor.id, current_user.hospital_id)
 
 
 @router.get("/{appointment_id}", response_model=AppointmentResponse)

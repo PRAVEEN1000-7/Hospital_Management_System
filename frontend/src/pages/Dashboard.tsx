@@ -9,6 +9,7 @@ import userService from '../services/userService';
 import doctorService from '../services/doctorService';
 import walkInService from '../services/walkInService';
 import waitlistService from '../services/waitlistService';
+import appointmentService, { type DoctorTodaySummary } from '../services/appointmentService';
 import { useToast } from '../contexts/ToastContext';
 import type { DoctorProfile } from '../types/doctor';
 
@@ -183,6 +184,7 @@ const Dashboard: React.FC = () => {
   const [queueInProgress, setQueueInProgress] = useState<number>(0);
   const [queueCompleted, setQueueCompleted] = useState<number>(0);
   const [waitlistWaiting, setWaitlistWaiting] = useState<number>(0);
+  const [doctorTodaySummary, setDoctorTodaySummary] = useState<DoctorTodaySummary | null>(null);
 
   const role = user?.roles?.[0] || '';
   const isDoctor = role === 'doctor';
@@ -220,7 +222,14 @@ const Dashboard: React.FC = () => {
 
       // Doctor-specific data
       if (isDoctor) {
-        try { const profile = await doctorService.getMyProfile(); setDoctorProfile(profile); } catch { /* may not exist */ }
+        try {
+          const profile = await doctorService.getMyProfile();
+          setDoctorProfile(profile);
+          try {
+            const summary = await appointmentService.getDoctorTodaySummary(profile.id);
+            setDoctorTodaySummary(summary);
+          } catch { /* silent */ }
+        } catch { /* may not exist */ }
         try {
           const queueData = await walkInService.getQueueStatus();
           setQueueWaiting(queueData.total_waiting || 0);
@@ -395,6 +404,12 @@ const Dashboard: React.FC = () => {
                 <span className="inline-flex items-center gap-1 px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-xs font-bold">
                   <span className="material-symbols-outlined text-sm">payments</span>
                   Consultation ₹{Number(doctorProfile.consultation_fee).toLocaleString()}
+                </span>
+              )}
+              {doctorTodaySummary && (
+                <span className="inline-flex items-center gap-1 px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-bold" title="Consultation fees actually collected today, across all your patients">
+                  <span className="material-symbols-outlined text-sm">account_balance_wallet</span>
+                  Today's Collected ₹{doctorTodaySummary.consultation_fee_collected_total.toLocaleString()}
                 </span>
               )}
               {doctorProfile.employee_id && (

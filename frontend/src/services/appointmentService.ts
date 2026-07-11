@@ -4,6 +4,26 @@ import type {
   PaginatedResponse, AppointmentStats, EnhancedAppointmentStats,
 } from '../types/appointment';
 
+export interface DoctorTodayPatient {
+  appointment_id: string;
+  patient_id: string;
+  patient_name: string | null;
+  patient_reference_number: string | null;
+  status: string;
+  start_time: string | null;
+  fee_amount: number;
+  fee_collected: boolean;
+}
+
+export interface DoctorTodaySummary {
+  doctor_id: string;
+  date: string;
+  consultation_fee_rate: number;
+  patients_handled: number;
+  consultation_fee_collected_total: number;
+  patients: DoctorTodayPatient[];
+}
+
 interface AppointmentFilters {
   doctor_id?: string;
   patient_id?: string;
@@ -39,6 +59,11 @@ const appointmentService = {
     const params: Record<string, string> = {};
     if (queryDate) params.query_date = queryDate;
     const res = await api.get<Appointment[]>(`/appointments/doctor/${doctorId}/today`, { params });
+    return res.data;
+  },
+
+  async getDoctorTodaySummary(doctorId: string): Promise<DoctorTodaySummary> {
+    const res = await api.get<DoctorTodaySummary>(`/appointments/doctor/${doctorId}/today-summary`);
     return res.data;
   },
 

@@ -884,6 +884,49 @@ def dispense_prescription(
     }
 
 
+def get_dispensed_extra_items(db: Session, prescription_id: str | uuid.UUID) -> list[dict]:
+    """
+    Extra items (added by the pharmacist at dispense time, not tied to any
+    prescription line) already dispensed for this prescription — surfaced
+    when re-viewing an already-dispensed prescription, since these have no
+    PrescriptionItem row of their own to reconstruct from (see
+    dispense_prescription's "extra item" branch).
+    """
+    if isinstance(prescription_id, str):
+        prescription_id = uuid.UUID(prescription_id)
+
+    linked_sale_ids = (
+        db.query(PharmacySaleItem.sale_id)
+        .join(PrescriptionItem, PrescriptionItem.id == PharmacySaleItem.prescription_item_id)
+        .filter(PrescriptionItem.prescription_id == prescription_id)
+        .distinct()
+        .subquery()
+    )
+    extra_rows = (
+        db.query(PharmacySaleItem)
+        .filter(
+            PharmacySaleItem.sale_id.in_(db.query(linked_sale_ids.c.sale_id)),
+            PharmacySaleItem.prescription_item_id.is_(None),
+        )
+        .all()
+    )
+
+    result = []
+    for item in extra_rows:
+        resolved_name = item.medicine_name or (item.medicine.name if item.medicine else None) or "Item"
+        result.append({
+            "id": str(item.id),
+            "medicine_id": str(item.medicine_id) if item.medicine_id else None,
+            "medicine_name": resolved_name,
+            "batch_id": str(item.batch_id) if item.batch_id else None,
+            "batch_number": item.batch.batch_number if item.batch else None,
+            "quantity": item.quantity,
+            "unit_price": float(item.unit_price) if item.unit_price else 0,
+            "total_price": float(item.total_price) if item.total_price else 0,
+        })
+    return result
+
+
 def check_consultation_fee_collected(db: Session, appointment_id: Optional[uuid.UUID]) -> bool:
     """
     Whether the consultation invoice tied to this appointment is fully paid.

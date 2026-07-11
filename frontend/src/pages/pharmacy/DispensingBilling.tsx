@@ -33,6 +33,9 @@ interface DispensingRecord {
   patient_reference_number?: string;
   prescription_id?: string | null;
   consultation_fee_collected?: boolean;
+  consultation_fee_amount?: number;
+  consultation_appointment_id?: string | null;
+  consultation_doctor_name?: string | null;
   sale_type: string;
   status: string;
   total_amount: number;
@@ -131,31 +134,63 @@ const DispensingBilling: React.FC = () => {
         return;
       }
 
-      // Step 1: Create pharmacy invoice with line items
-      const invoice = await invoiceService.create({
-        patient_id: dispensing.patient_id,
-        invoice_type: 'pharmacy',
-        discount_amount: dispensing.discount_amount || undefined,
-        notes: dispensing.notes || undefined,
-        items: dispensing.items.map((item, idx) => ({
+      // Outstanding consultation fee gets billed as the first line item of
+      // this same invoice instead of a separate reception trip. Prescription
+      // finalization already auto-creates a standalone "opd" consultation
+      // invoice for the appointment (see get_or_create_consultation_invoice_
+      // for_appointment) — void that one now so the fee isn't billed twice.
+      const hasConsultationFee = consultationFeeDue > 0 && !!dispensing.consultation_appointment_id;
+      if (hasConsultationFee) {
+        try {
+          const staleConsultInvoice = await invoiceService.getOrCreateConsultationInvoice(dispensing.consultation_appointment_id!);
+          if (staleConsultInvoice.status !== 'paid' && staleConsultInvoice.status !== 'void') {
+            await invoiceService.void(staleConsultInvoice.id);
+          }
+        } catch {
+          // Non-fatal — worst case a stray unpaid consultation invoice is left
+          // behind; the combined invoice below still bills the fee correctly.
+        }
+      }
+
+      // Step 1: Create invoice with line items — consultation fee first (if
+      // outstanding), then medicines. "combined" is the invoice_type that
+      // allows mixing consultation + medicine line items on one invoice.
+      const invoiceItems = [
+        ...(hasConsultationFee ? [{
+          item_type: 'consultation' as const,
+          description: dispensing.consultation_doctor_name
+            ? `Consultation Fee - Dr. ${dispensing.consultation_doctor_name}`
+            : 'Consultation Fee',
+          quantity: 1,
+          unit_price: consultationFeeDue,
+          display_order: 0,
+        }] : []),
+        ...dispensing.items.map((item, idx) => ({
           item_type: 'medicine' as const,
           reference_id: item.medicine_id,
           description: item.medicine_name || 'Medicine',
           quantity: item.quantity,
           unit_price: item.unit_price,
           batch_number: item.batch_number,
-          display_order: idx + 1,
+          display_order: hasConsultationFee ? idx + 1 : idx,
         })),
+      ];
+      const invoice = await invoiceService.create({
+        patient_id: dispensing.patient_id,
+        invoice_type: hasConsultationFee ? 'combined' : 'pharmacy',
+        discount_amount: dispensing.discount_amount || undefined,
+        notes: dispensing.notes || undefined,
+        items: invoiceItems,
       });
 
       // Step 2: Issue the invoice so it can accept payments
       await invoiceService.issue(invoice.id);
 
-      // Step 3: Record payment
+      // Step 3: Record payment for the full amount, including the folded-in consultation fee
       await paymentService.record({
         invoice_id: invoice.id,
         patient_id: dispensing.patient_id,
-        amount: dispensing.net_amount,
+        amount: grandTotal,
         payment_mode: paymentMode,
         payment_reference: paymentRef.trim() || undefined,
       });
@@ -163,6 +198,8 @@ const DispensingBilling: React.FC = () => {
       // Step 4: Sync the dispensing record's own payment_status — the invoice
       // created above has no link back to it, so without this the Sales list
       // keeps showing this sale as "pending" even though it's now paid.
+      // (Only the medicines portion — the consultation fee isn't part of the
+      // PharmacySale record.)
       try {
         await pharmacyService.markDispensingPaid(dispensing.id, dispensing.net_amount, paymentMode);
       } catch {
@@ -172,7 +209,7 @@ const DispensingBilling: React.FC = () => {
       showToast('success', 'Payment recorded successfully');
       window.print();
       navigate('/pharmacy/pending-prescriptions', {
-        state: { billingComplete: true, dispensingNumber: dispensing.dispensing_number, amount: dispensing.net_amount },
+        state: { billingComplete: true, dispensingNumber: dispensing.dispensing_number, amount: grandTotal },
       });
     } catch (err: any) {
       showToast('error', err?.response?.data?.detail || 'Failed to process payment');
@@ -204,7 +241,14 @@ const DispensingBilling: React.FC = () => {
 
   const billTimestamp = dispensing.dispensed_at || dispensing.created_at;
   const resolvedPrn = patientPrn || dispensing.patient_reference_number || '';
-  const balance = cashReceived !== '' ? Number(cashReceived) - Number(dispensing.net_amount) : null;
+  // Outstanding consultation fee gets folded into this same bill (as its own
+  // line item) instead of requiring a separate trip to reception — so the
+  // amount actually due, and therefore change/balance, must include it too.
+  const consultationFeeDue = dispensing.prescription_id && dispensing.consultation_fee_collected === false
+    ? Number(dispensing.consultation_fee_amount || 0)
+    : 0;
+  const grandTotal = Number(dispensing.net_amount) + consultationFeeDue;
+  const balance = cashReceived !== '' ? Number(cashReceived) - grandTotal : null;
 
   const fmtExpiry = (d?: string) => formatDateOnly(d, 'MM/yy');
 
@@ -308,9 +352,26 @@ const DispensingBilling: React.FC = () => {
               </tr>
             </thead>
             <tbody>
+              {consultationFeeDue > 0 && (
+                <tr className="border-b border-slate-100 print:border-slate-200 bg-blue-50/50 print:bg-transparent">
+                  <td className="py-3 px-2 text-sm text-slate-600 print:text-slate-900">1</td>
+                  <td className="py-3 px-2">
+                    <div className="text-sm font-medium text-slate-900">
+                      Consultation Fee{dispensing.consultation_doctor_name ? ` — Dr. ${dispensing.consultation_doctor_name}` : ''}
+                    </div>
+                  </td>
+                  <td className="py-3 px-2 text-center text-sm text-slate-600 print:text-slate-900">1</td>
+                  <td className="py-3 px-2 text-center text-sm text-slate-600 print:text-slate-900">—</td>
+                  <td className="py-3 px-2 text-sm text-slate-600 print:text-slate-900">—</td>
+                  <td className="py-3 px-2 text-sm text-slate-600 print:text-slate-900">—</td>
+                  <td className="py-3 px-2 text-right text-sm font-semibold text-slate-900">
+                    ₹{fmt(consultationFeeDue)}
+                  </td>
+                </tr>
+              )}
               {dispensing.items.map((item, index) => (
                 <tr key={item.id} className="border-b border-slate-100 print:border-slate-200">
-                  <td className="py-3 px-2 text-sm text-slate-600 print:text-slate-900">{index + 1}</td>
+                  <td className="py-3 px-2 text-sm text-slate-600 print:text-slate-900">{consultationFeeDue > 0 ? index + 2 : index + 1}</td>
                   <td className="py-3 px-2">
                     <div className="text-sm font-medium text-slate-900">{item.medicine_name || 'Medicine'}</div>
                   </td>
@@ -353,9 +414,15 @@ const DispensingBilling: React.FC = () => {
                   <span className="font-medium">₹{fmt(Number(dispensing.tax_amount))}</span>
                 </div>
               )}
+              {consultationFeeDue > 0 && (
+                <div className="flex justify-between text-sm text-slate-600">
+                  <span>Consultation Fee:</span>
+                  <span className="font-medium">₹{fmt(consultationFeeDue)}</span>
+                </div>
+              )}
               <div className="flex justify-between text-lg font-bold text-slate-900 pt-2 border-t border-slate-200 print:border-slate-900">
                 <span>Total:</span>
-                <span>₹{fmt(Number(dispensing.net_amount))}</span>
+                <span>₹{fmt(grandTotal)}</span>
               </div>
               {/* Cash Received — visible in screen UI (print:hidden) and printed only when filled */}
               <div className="flex justify-between items-center text-sm text-slate-600 pt-1 print:hidden">
@@ -366,7 +433,7 @@ const DispensingBilling: React.FC = () => {
                   step="0.01"
                   value={cashReceived}
                   onChange={e => setCashReceived(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                  placeholder={fmt(Number(dispensing.net_amount))}
+                  placeholder={fmt(grandTotal)}
                   className="w-32 px-2 py-1 border border-slate-300 rounded text-sm text-right bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
                 />
               </div>
@@ -442,14 +509,16 @@ const DispensingBilling: React.FC = () => {
         </div>
       </div>
 
-      {/* Consultation fee gate — only shown when fee hasn't been collected for a prescription-linked sale */}
-      {dispensing.prescription_id && dispensing.consultation_fee_collected === false && (
-        <div className="mt-6 flex items-start gap-3 p-4 bg-amber-50 border border-amber-300 rounded-xl print:hidden">
-          <span className="material-symbols-outlined text-amber-600 mt-0.5 flex-shrink-0">warning</span>
+      {/* Outstanding consultation fee — folded into this same bill (see the
+          Consultation Fee line item + Total above) instead of sending the
+          patient to reception separately. */}
+      {consultationFeeDue > 0 && (
+        <div className="mt-6 flex items-start gap-3 p-4 bg-blue-50 border border-blue-200 rounded-xl print:hidden">
+          <span className="material-symbols-outlined text-blue-600 mt-0.5 flex-shrink-0">info</span>
           <div>
-            <p className="text-sm font-semibold text-amber-800">Consultation Fee Not Collected</p>
-            <p className="text-sm text-amber-700 mt-0.5">
-              Please collect the doctor's consultation fee at the reception counter before processing medicine payment.
+            <p className="text-sm font-semibold text-blue-800">Consultation Fee Included</p>
+            <p className="text-sm text-blue-700 mt-0.5">
+              This patient's ₹{fmt(consultationFeeDue)} consultation fee hasn't been collected yet — it's been added to this bill so it can be collected together with the medicines.
             </p>
           </div>
         </div>
@@ -500,7 +569,7 @@ const DispensingBilling: React.FC = () => {
               step="0.01"
               value={cashReceived}
               onChange={e => setCashReceived(e.target.value === '' ? '' : parseFloat(e.target.value))}
-              placeholder={fmt(Number(dispensing.net_amount))}
+              placeholder={fmt(grandTotal)}
               className="w-40 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 text-right"
             />
             {cashReceived !== '' && balance !== null && (

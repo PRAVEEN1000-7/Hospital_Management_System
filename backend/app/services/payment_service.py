@@ -31,6 +31,22 @@ def generate_payment_number() -> str:
     return f"PAY-{date_str}-{suffix}"
 
 
+def payment_net_amount(payment: Payment) -> Decimal:
+    """What's actually still collected on this payment — its amount minus any
+    refunds against it that are pending/approved/processed. Pending/approved
+    are reserved too, not just processed ones: a refund that's been requested
+    or approved is effectively committed money leaving, so counting it as
+    still "collected" until the processed step would overstate revenue for
+    the window in between. Shared by the payments list (Net column) and any
+    dashboard/report that sums real collections, so they can't drift apart."""
+    reserved = sum(
+        (r.amount or Decimal("0"))
+        for r in (payment.refunds or [])
+        if r.status in ("pending", "approved", "processed")
+    )
+    return max(Decimal("0"), (payment.amount or Decimal("0")) - reserved)
+
+
 def _load_payment(db: Session, payment_id: str | uuid.UUID) -> Optional[Payment]:
     if isinstance(payment_id, str):
         try:
@@ -207,18 +223,7 @@ def list_payments(
             for r in (p.refunds or [])
             if r.status == "processed"
         )
-        # net_amount is the true refundable ceiling shown to staff when requesting a
-        # NEW refund — it must also reserve pending/approved refunds still in flight,
-        # not just already-processed ones, otherwise this shows more "refundable"
-        # than refund_service.request_refund will actually allow, and a cashier hits
-        # a confusing 400 ("exceeds available refundable amount") after the UI just
-        # told them the full amount was free.
-        reserved_amount = sum(
-            (r.amount or Decimal("0"))
-            for r in (p.refunds or [])
-            if r.status in ("pending", "approved", "processed")
-        )
-        net_amount = max(Decimal("0"), (p.amount or Decimal("0")) - reserved_amount)
+        net_amount = payment_net_amount(p)
         items.append(PaymentListItem(
             id=str(p.id),
             payment_number=p.payment_number,

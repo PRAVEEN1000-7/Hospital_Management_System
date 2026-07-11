@@ -227,6 +227,9 @@ export interface Refund {
   status: RefundStatus;
   refund_mode?: string;
   refund_reference?: string;
+  invoice_item_id?: string;
+  invoice_item_description?: string;
+  restock_quantity?: number;
   requested_by_name?: string;
   approved_by_name?: string;
   processed_at?: string;
@@ -259,6 +262,8 @@ export interface RefundCreateData {
   reason_code: RefundReasonCode;
   reason_detail?: string;
   refund_mode?: string;
+  invoice_item_id?: string;
+  restock_quantity?: number;
 }
 
 export interface RefundProcessData {

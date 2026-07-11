@@ -41,6 +41,12 @@ const refundService = {
     const response = await api.patch<Refund>(`/refunds/${id}/process`, data || {});
     return response.data;
   },
+
+  /** Self-contained printable HTML refund receipt (used for both Print and Download PDF). */
+  async getPdfHtml(id: string): Promise<string> {
+    const response = await api.get(`/refunds/${id}/pdf`, { responseType: 'text' });
+    return response.data;
+  },
 };
 
 export default refundService;

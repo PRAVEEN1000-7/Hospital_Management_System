@@ -95,6 +95,20 @@ const RefundList: React.FC = () => {
     } finally { setProcessing(null); }
   };
 
+  const handlePrintReceipt = async (refundId: string) => {
+    try {
+      const html = await refundService.getPdfHtml(refundId);
+      const win = window.open('', '_blank');
+      if (win) {
+        win.document.write(html);
+        win.document.close();
+        setTimeout(() => win.print(), 500);
+      }
+    } catch {
+      showToast('error', 'Failed to generate refund receipt');
+    }
+  };
+
   const handleProcess = async () => {
     setProcessing(processTargetId);
     try {
@@ -224,7 +238,15 @@ const RefundList: React.FC = () => {
                               Process
                             </button>
                           )}
-                          {['processed', 'rejected'].includes(r.status) && (
+                          {r.status === 'processed' && (
+                            <button
+                              onClick={() => handlePrintReceipt(r.id)}
+                              className="px-2 py-1 bg-slate-50 text-slate-600 border border-slate-200 rounded text-xs font-medium hover:bg-slate-100 flex items-center gap-1"
+                            >
+                              <span className="material-symbols-outlined text-[14px]">print</span> Receipt
+                            </button>
+                          )}
+                          {r.status === 'rejected' && (
                             <span className="text-slate-300 text-xs">—</span>
                           )}
                         </div>

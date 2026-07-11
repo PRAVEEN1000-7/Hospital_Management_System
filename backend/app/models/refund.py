@@ -18,6 +18,10 @@ class Refund(Base):
     invoice_id = Column(UUID(as_uuid=True), ForeignKey("invoices.id"), nullable=False)
     payment_id = Column(UUID(as_uuid=True), ForeignKey("payments.id"), nullable=False)
     patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id"), nullable=False)
+    # Which line item this refund covers (nullable — only set when refunding
+    # a specific item, e.g. a medicine, so stock can be restored precisely).
+    invoice_item_id = Column(UUID(as_uuid=True), ForeignKey("invoice_items.id"), nullable=True)
+    restock_quantity = Column(Numeric(10, 2), nullable=True)
     amount = Column(Numeric(12, 2), nullable=False)
     reason_code = Column(String(50), nullable=False)   # service_not_provided | billing_error | patient_request | duplicate | other
     reason_detail = Column(Text)
@@ -33,6 +37,7 @@ class Refund(Base):
     # Relationships
     hospital = relationship("Hospital", foreign_keys=[hospital_id])
     invoice = relationship("Invoice", back_populates="refunds")
+    invoice_item = relationship("InvoiceItem", foreign_keys=[invoice_item_id])
     payment = relationship("Payment", back_populates="refunds")
     patient = relationship("Patient", foreign_keys=[patient_id])
     requested_by_user = relationship("User", foreign_keys=[requested_by])

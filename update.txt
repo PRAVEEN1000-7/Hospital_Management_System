@@ -97,7 +97,8 @@ also in the ui theri is a more empty space in left and right side of the table v
 
 
 -- db need to update in the live server
-
+    06 new
+    07 new
 
 
 
@@ -109,3 +110,31 @@ also in the ui theri is a more empty space in left and right side of the table v
 -- review
 
 1. department and the specilization difference and need?
+
+
+
+
+
+BUG-12 — Consultation/Today's Collected showing ₹0
+Root cause: get_doctor_today_summary() computed "today's collected" by finding appointments dated today and summing whatever their invoices had ever collected — completely missing payments made today for appointments from other days (e.g., a backlog of unpaid visits getting settled). I verified this against live data for a real doctor: the old query returned ₹300, the corrected one (keyed off Payment.payment_date == today instead of appointment date) returned ₹1,060 — ₹760 of real cash collected today was being silently dropped. Also changed the "Consultation ₹0" fee badge to show "Fee not set" instead of a misleading ₹0 when a doctor's rate was never configured (the DB defaults it to 0, not null).
+
+BUG-21 — Refer-to-doctor
+The "Refer to Doctor" action was a dead-end: it called the referral API directly without saving the referring doctor's own clinical notes/medicines/optical Rx first, silently discarding anything typed. Fixed by making it a real "Save & Refer to Doctor" action — it now saves any drafted content first (skipping the "must have a medicine" requirement, since referring without prescribing is valid) and only proceeds to refer if that succeeds. Also pre-fills the Referral Reason field from the doctor's clinical notes instead of requiring a retype.
+
+BUG-23 — Batch dispensing quantity mismatch
+The quantity input let a pharmacist type up to the medicine's total stock across all batches, not the selected batch's own stock — so entering a quantity larger than the chosen batch could hold triggered a silent cross-batch split on the backend (which does auto-FEFO-split) with zero visibility to the pharmacist. Added a clear breakdown panel that shows exactly which batches (soonest-expiring first, confirmed the backend already sorts this way everywhere) will supply the shortfall, so nothing is silent anymore. Applied to both prescribed items and extra items.
+
+BUG-25 — Invoice missing Returned/Change amount
+Found the exact gap: the Totals section only rendered a "Balance Due" row when balance_amount > 0; when a patient overpays (balance goes negative), that row just disappeared with no substitute — confirmed against a real overpaid invoice in the DB (Total ₹200, Paid ₹210, Balance -10, silently showing nothing). Added a "Returned (Change)" row for the negative case.
+
+BUG-26 — Consultation fee not collected in billing
+The system already knew the fee was outstanding — it just showed a warning telling staff to go collect it separately at reception instead of collecting it itself. Since DispensingBilling.tsx already builds a real Invoice at payment time, I now prepend a "Consultation Fee" line item to that same invoice (using the combined invoice type that already supports mixing consultation + medicine items) and void the stray standalone consultation invoice that prescription-finalization auto-creates, so it's never double-billed. The Total, Cash Received, and Change now include it automatically.
+
+BUG-27 — Net collected wrong after refund; no refund invoice
+The "Net Collected" bug itself was already fixed earlier this session (PaymentList.tsx). Digging further, I found the same refund-blindness bug freshly baked into today's BUG-12 fix: get_doctor_today_summary summed raw Payment.amount for 'completed' payments, but a partially refunded payment stays 'completed' (only a full refund flips it to 'reversed') — so it overstated collections. Extracted a shared payment_net_amount() helper (amount minus reserved refunds) into payment_service.py and used it in both places, so this can't drift apart again. Also built the missing piece: a /refunds/{id}/pdf printable refund receipt (mirroring the existing invoice PDF), with a "Print Receipt" button wired into both InvoiceDetail.tsx and RefundList.tsx.
+
+BUG-28 — Stock not restored after refund
+Confirmed: process_refund only ever touched money (Invoice.paid_amount, Payment.status) — it never touched MedicineBatch.quantity or logged a StockMovement, because a Refund had no way to reference which line item or how many units were being returned. Added that link (nullable invoice_item_id + restock_quantity on Refund, migration written but not run per your standing rule), let staff pick "Medicine Being Returned" in the Request Refund modal, and on processing, restore the quantity to the exact batch it was dispensed from (traced via medicine + batch number) with a proper StockMovement audit entry.
+
+BUG-30 — FIFO ordering
+Found it in one line: get_pending_prescriptions sorted Prescription.created_at.desc() — newest first, the exact opposite of FIFO — which is why a patient waiting 20+ hours was buried under one waiting 5 minutes. Changed to ascending order on finalized_at (falling back to created_at), matching the same timestamp the on-screen "wait time" column already uses.

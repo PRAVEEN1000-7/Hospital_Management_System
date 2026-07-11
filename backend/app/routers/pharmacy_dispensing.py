@@ -115,9 +115,9 @@ async def get_prescription_for_dispensing(
                         f"Available qty: {item.get('available_quantity', 0)}"
                     )
                 rx_row = db.query(Prescription).filter(Prescription.id == prescription_id).first()
-                rx["consultation_fee_collected"] = svc.check_consultation_fee_collected(
+                rx["consultation_fee_collected"] = svc.get_consultation_fee_status(
                     db, rx_row.appointment_id if rx_row else None
-                )
+                )["collected"]
                 rx["extra_items"] = svc.get_dispensed_extra_items(db, prescription_id)
                 return rx
 
@@ -137,7 +137,7 @@ async def get_prescription_for_dispensing(
 
         # Enrich and return
         enriched = svc._enrich_prescription_for_dispensing(db, rx)
-        enriched["consultation_fee_collected"] = svc.check_consultation_fee_collected(db, rx.appointment_id)
+        enriched["consultation_fee_collected"] = svc.get_consultation_fee_status(db, rx.appointment_id)["collected"]
         enriched["extra_items"] = svc.get_dispensed_extra_items(db, prescription_id)
 
         logger.info(

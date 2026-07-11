@@ -264,12 +264,16 @@ def get_pending_prescriptions(
     total = query.count()
     offset = (page - 1) * limit
     
-    # Order by priority (stat first), then by creation time
+    # FIFO — whoever finalized (entered the pharmacy queue) earliest gets
+    # dispensed first, oldest first (asc), not newest first. This used to
+    # sort created_at DESC, so a patient waiting 20+ hours was buried below
+    # one that had been waiting 5 minutes. Falls back to created_at only for
+    # the rare legacy row where finalized_at is somehow unset — matches the
+    # same timestamp the "wait time" column on this screen is computed from.
     rows = (
         query
         .order_by(
-            # Stat prescriptions first (you can add priority field later)
-            Prescription.created_at.desc()
+            func.coalesce(Prescription.finalized_at, Prescription.created_at).asc()
         )
         .offset(offset)
         .limit(limit)
@@ -934,25 +938,48 @@ def get_dispensed_extra_items(db: Session, prescription_id: str | uuid.UUID) -> 
     return result
 
 
-def check_consultation_fee_collected(db: Session, appointment_id: Optional[uuid.UUID]) -> bool:
+def get_consultation_fee_status(db: Session, appointment_id: Optional[uuid.UUID]) -> dict:
     """
-    Whether the consultation invoice tied to this appointment is fully paid.
-    Informational only (see get_prescription_for_dispensing /
-    get_dispensing_details) — dispensing is never blocked on this, the
-    pharmacist just gets a heads-up that the fee is still outstanding.
+    Whether the consultation fee tied to this appointment is fully paid, plus
+    the amount owed and who to bill it to — lets the pharmacy billing screen
+    fold an outstanding fee into the same payment instead of only warning
+    that the patient still needs to make a separate trip to reception.
     """
+    default = {"collected": True, "amount": 0.0, "appointment_id": None, "doctor_name": None}
     if not appointment_id:
-        return True  # no appointment (walk-in/OTC) — nothing to gate on
+        return default  # no appointment (walk-in/OTC) — nothing to gate on
 
     from ..models.invoice import Invoice as _Inv
+    from ..models.appointment import Appointment as _Appt
+    from .invoice_service import resolve_consultation_fee_amount
+
+    appt = db.query(_Appt).filter(_Appt.id == appointment_id).first()
+    if not appt:
+        return default
+
+    doctor_name = None
+    if appt.doctor and appt.doctor.user:
+        doctor_name = appt.doctor.user.full_name
+
     consult_inv = (
         db.query(_Inv)
         .filter(_Inv.appointment_id == appointment_id, _Inv.is_deleted == False)
+        .order_by(_Inv.created_at.desc())
         .first()
     )
-    if not consult_inv:
-        return False  # no invoice yet — fee not collected (unless it's a free appt)
-    return float(consult_inv.balance_amount or 0) <= 0
+    if consult_inv:
+        collected = float(consult_inv.balance_amount or 0) <= 0
+        amount = float(consult_inv.balance_amount or 0) if not collected else 0.0
+    else:
+        collected = False  # no invoice yet — fee not collected (unless it's a free appt)
+        amount = float(resolve_consultation_fee_amount(db, appt))
+
+    return {
+        "collected": collected,
+        "amount": amount,
+        "appointment_id": str(appointment_id),
+        "doctor_name": doctor_name,
+    }
 
 
 def get_dispensing_details(
@@ -993,11 +1020,11 @@ def get_dispensing_details(
                 prescription_id = rx_item.prescription_id
 
     # Check consultation fee status for prescription-linked dispensings
-    consultation_fee_collected = True  # default: no gate for walk-in/OTC
+    consult_status = {"collected": True, "amount": 0.0, "appointment_id": None, "doctor_name": None}
     if prescription_id:
         from ..models.prescription import Prescription as _Rx
         linked_rx = db.query(_Rx).filter(_Rx.id == prescription_id).first()
-        consultation_fee_collected = check_consultation_fee_collected(
+        consult_status = get_consultation_fee_status(
             db, linked_rx.appointment_id if linked_rx else None
         )
 
@@ -1009,7 +1036,10 @@ def get_dispensing_details(
         "patient_name": patient.full_name if patient else None,
         "patient_reference_number": patient.patient_reference_number if patient else None,
         "prescription_id": str(prescription_id) if prescription_id else None,
-        "consultation_fee_collected": consultation_fee_collected,
+        "consultation_fee_collected": consult_status["collected"],
+        "consultation_fee_amount": consult_status["amount"],
+        "consultation_appointment_id": consult_status["appointment_id"],
+        "consultation_doctor_name": consult_status["doctor_name"],
         "sale_type": dispensing.sale_type,
         "status": dispensing.status,
         # subtotal maps to DB column total_amount in PharmacySale model

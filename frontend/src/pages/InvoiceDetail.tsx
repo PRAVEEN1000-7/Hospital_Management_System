@@ -87,6 +87,9 @@ const InvoiceDetail: React.FC = () => {
   const [refundAmount, setRefundAmount] = useState<number | ''>('');
   const [refundReasonCode, setRefundReasonCode] = useState<string>('billing_error');
   const [refundReasonDetail, setRefundReasonDetail] = useState('');
+  // Set when refunding a specific medicine line item — lets the backend
+  // restore that quantity to stock instead of only adjusting money.
+  const [refundInvoiceItemId, setRefundInvoiceItemId] = useState('');
   const [refundSaving, setRefundSaving] = useState(false);
 
   const role = user?.roles?.[0];
@@ -169,6 +172,7 @@ const InvoiceDetail: React.FC = () => {
         amount: Number(refundAmount),
         reason_code: refundReasonCode as RefundReasonCode,
         reason_detail: refundReasonDetail || undefined,
+        invoice_item_id: refundInvoiceItemId || undefined,
       });
       showToast('success', 'Refund request submitted — awaiting admin approval');
       setShowRefundModal(false);
@@ -176,6 +180,7 @@ const InvoiceDetail: React.FC = () => {
       setRefundAmount('');
       setRefundReasonCode('billing_error');
       setRefundReasonDetail('');
+      setRefundInvoiceItemId('');
       await load();
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
@@ -278,6 +283,20 @@ const InvoiceDetail: React.FC = () => {
       showToast('error', 'Failed to download invoice');
     } finally {
       setDownloading(false);
+    }
+  };
+
+  const handlePrintRefund = async (refundId: string) => {
+    try {
+      const html = await refundService.getPdfHtml(refundId);
+      const win = window.open('', '_blank');
+      if (win) {
+        win.document.write(html);
+        win.document.close();
+        setTimeout(() => win.print(), 500);
+      }
+    } catch {
+      showToast('error', 'Failed to generate refund receipt');
     }
   };
 
@@ -679,7 +698,15 @@ const InvoiceDetail: React.FC = () => {
                             {r.status === 'pending' && !isAdmin && (
                               <span className="text-slate-400 text-xs italic">Awaiting approval</span>
                             )}
-                            {['processed', 'rejected'].includes(r.status) && (
+                            {r.status === 'processed' && (
+                              <button
+                                onClick={() => handlePrintRefund(r.id)}
+                                className="px-2 py-1 bg-slate-50 text-slate-600 border border-slate-200 rounded text-xs font-medium hover:bg-slate-100 flex items-center gap-1"
+                              >
+                                <span className="material-symbols-outlined text-[14px]">print</span> Receipt
+                              </button>
+                            )}
+                            {r.status === 'rejected' && (
                               <span className="text-slate-300 text-xs">—</span>
                             )}
                           </div>
@@ -819,7 +846,7 @@ const InvoiceDetail: React.FC = () => {
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6">
             <div className="flex items-center justify-between mb-5">
               <h3 className="text-lg font-bold text-slate-900">Request Refund</h3>
-              <button onClick={() => setShowRefundModal(false)} className="text-slate-400 hover:text-slate-600">
+              <button onClick={() => { setShowRefundModal(false); setRefundInvoiceItemId(''); }} className="text-slate-400 hover:text-slate-600">
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
@@ -843,6 +870,30 @@ const InvoiceDetail: React.FC = () => {
                   </select>
                 )}
               </div>
+              {invoice.items.some(i => i.item_type === 'medicine') && (
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">
+                    Medicine Being Returned <span className="text-slate-400 font-normal">(optional — restores stock)</span>
+                  </label>
+                  <select
+                    value={refundInvoiceItemId}
+                    onChange={e => {
+                      const itemId = e.target.value;
+                      setRefundInvoiceItemId(itemId);
+                      const item = invoice.items.find(i => i.id === itemId);
+                      if (item) setRefundAmount(Number(item.total_price));
+                    }}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  >
+                    <option value="">Not a medicine return — general refund</option>
+                    {invoice.items.filter(i => i.item_type === 'medicine').map(i => (
+                      <option key={i.id} value={i.id}>
+                        {i.description} — Qty {i.quantity} — ₹{fmt(Number(i.total_price))}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">
                   Refund Amount (₹) *
@@ -894,7 +945,7 @@ const InvoiceDetail: React.FC = () => {
                 {refundSaving ? 'Submitting…' : 'Submit Refund Request'}
               </button>
               <button
-                onClick={() => setShowRefundModal(false)}
+                onClick={() => { setShowRefundModal(false); setRefundInvoiceItemId(''); }}
                 className="flex-1 py-2.5 border border-slate-200 text-slate-600 rounded-lg font-medium text-sm hover:bg-slate-50"
               >
                 Cancel

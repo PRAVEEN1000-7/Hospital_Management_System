@@ -21,6 +21,10 @@ class RefundCreate(BaseModel):
     reason_code: str
     reason_detail: Optional[str] = None
     refund_mode: Optional[str] = None
+    # Set when refunding a specific line item (e.g. a medicine) rather than a
+    # generic amount off the payment — required for stock to be restored.
+    invoice_item_id: Optional[str] = None
+    restock_quantity: Optional[Decimal] = Field(None, gt=0)
 
     @field_validator("reason_code")
     @classmethod
@@ -88,6 +92,9 @@ class RefundResponse(BaseModel):
     status: str
     refund_mode: Optional[str]
     refund_reference: Optional[str]
+    invoice_item_id: Optional[str] = None
+    invoice_item_description: Optional[str] = None
+    restock_quantity: Optional[Decimal] = None
     requested_by_name: Optional[str] = None
     approved_by_name: Optional[str] = None
     processed_at: Optional[datetime]
@@ -120,6 +127,9 @@ class RefundResponse(BaseModel):
                 "status": obj.status,
                 "refund_mode": obj.refund_mode,
                 "refund_reference": obj.refund_reference,
+                "invoice_item_id": str(obj.invoice_item_id) if obj.invoice_item_id else None,
+                "invoice_item_description": obj.invoice_item.description if obj.invoice_item else None,
+                "restock_quantity": obj.restock_quantity,
                 "requested_by_name": obj.requested_by_user.full_name if obj.requested_by_user else None,
                 "approved_by_name": obj.approved_by_user.full_name if obj.approved_by_user else None,
                 "processed_at": obj.processed_at,

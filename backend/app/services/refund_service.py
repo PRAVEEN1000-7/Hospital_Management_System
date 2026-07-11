@@ -85,6 +85,27 @@ def request_refund(
     if payment.patient_id != patient_uuid:
         raise ValueError("Refund patient does not match payment patient")
 
+    invoice_item_uuid = None
+    restock_quantity = None
+    if data.invoice_item_id:
+        try:
+            invoice_item_uuid = uuid.UUID(data.invoice_item_id)
+        except ValueError:
+            raise ValueError("Invalid invoice_item_id")
+        from ..models.invoice import InvoiceItem
+        line_item = db.query(InvoiceItem).filter(InvoiceItem.id == invoice_item_uuid).first()
+        if not line_item or line_item.invoice_id != invoice_uuid:
+            raise ValueError("invoice_item_id does not belong to this invoice")
+        # Default to the item's full quantity when not explicitly given —
+        # the common case is refunding the whole line, not a partial split.
+        restock_quantity = data.restock_quantity or (
+            line_item.quantity if line_item.item_type == "medicine" else None
+        )
+        if restock_quantity is not None and restock_quantity > line_item.quantity:
+            raise ValueError(
+                f"restock_quantity ({restock_quantity}) exceeds the item's own quantity ({line_item.quantity})"
+            )
+
     # Check requested amount doesn't exceed payment
     existing_refunds = (
         db.query(Refund)
@@ -104,6 +125,8 @@ def request_refund(
         invoice_id=invoice_uuid,
         payment_id=payment_uuid,
         patient_id=patient_uuid,
+        invoice_item_id=invoice_item_uuid,
+        restock_quantity=restock_quantity,
         amount=data.amount,
         reason_code=data.reason_code,
         reason_detail=data.reason_detail,
@@ -145,7 +168,7 @@ def reject_refund(
 
 
 def process_refund(
-    db: Session, refund: Refund, data: RefundProcessRequest
+    db: Session, refund: Refund, data: RefundProcessRequest, user_id: Optional[uuid.UUID] = None
 ) -> Refund:
     if refund.status != "approved":
         raise ValueError("Only approved refunds can be processed")
@@ -188,10 +211,71 @@ def process_refund(
                 if total_refunded >= payment.amount:
                     payment.status = "reversed"
 
+    # Restore stock for a refunded medicine line item — this is what a
+    # refund used to leave undone: it adjusted money but never touched
+    # inventory, so a returned medicine silently vanished from stock.
+    if refund.invoice_item_id and refund.restock_quantity and refund.restock_quantity > 0:
+        _restock_refunded_item(db, refund, user_id)
+
     db.commit()
     db.refresh(refund)
     logger.info(f"Refund processed: {refund.refund_number}")
     return refund
+
+
+def _restock_refunded_item(db: Session, refund: Refund, user_id: Optional[uuid.UUID]) -> None:
+    from ..models.invoice import InvoiceItem
+    from ..models.pharmacy import MedicineBatch
+    from ..models.inventory import StockMovement
+
+    item = db.query(InvoiceItem).filter(InvoiceItem.id == refund.invoice_item_id).first()
+    if not item or item.item_type != "medicine" or not item.reference_id:
+        return
+
+    qty = refund.restock_quantity
+
+    # Prefer the exact batch it was dispensed from (traced via medicine +
+    # batch_number, the only batch reference an invoice line item carries);
+    # fall back to any active batch for the medicine so the quantity isn't
+    # silently lost just because that specific batch was since deactivated.
+    batch = None
+    if item.batch_number:
+        batch = (
+            db.query(MedicineBatch)
+            .filter(MedicineBatch.medicine_id == item.reference_id, MedicineBatch.batch_number == item.batch_number)
+            .first()
+        )
+    if not batch:
+        batch = (
+            db.query(MedicineBatch)
+            .filter(MedicineBatch.medicine_id == item.reference_id, MedicineBatch.is_active == True)
+            .order_by(MedicineBatch.expiry_date.desc())
+            .first()
+        )
+    if not batch:
+        logger.warning(
+            f"Refund {refund.refund_number}: no batch found for medicine {item.reference_id} "
+            f"— stock not restored, invoice/payment adjustments still applied"
+        )
+        return
+
+    batch.quantity = (batch.quantity or 0) + int(qty)
+
+    db.add(StockMovement(
+        hospital_id=refund.hospital_id,
+        item_type="medicine",
+        item_id=item.reference_id,
+        batch_id=batch.id,
+        movement_type="return",
+        reference_type="refund",
+        reference_id=refund.id,
+        quantity=int(qty),
+        balance_after=batch.quantity,
+        unit_cost=batch.purchase_price,
+        notes=f"Restocked from refund {refund.refund_number}",
+        performed_by=user_id,
+    ))
+    logger.info(f"Refund {refund.refund_number}: restored {qty} units to batch {batch.batch_number}")
 
 
 def list_refunds(

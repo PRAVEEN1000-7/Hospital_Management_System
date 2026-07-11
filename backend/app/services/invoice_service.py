@@ -594,6 +594,26 @@ def remove_invoice_item(db: Session, invoice: Invoice, item_id: str) -> None:
     _recalculate_invoice(db, invoice)
 
 
+def resolve_consultation_fee_amount(db: Session, appointment: Appointment) -> Decimal:
+    """Consultation fee owed for this appointment: appointment-level override
+    first, then the doctor's own rate, then the hospital's default — same
+    priority order used everywhere else a consultation fee is billed."""
+    consultation_fee = Decimal(appointment.consultation_fee or Decimal("0"))
+    if consultation_fee <= Decimal("0") and appointment.doctor:
+        consultation_fee = Decimal(appointment.doctor.consultation_fee or Decimal("0"))
+    if consultation_fee <= Decimal("0"):
+        from ..models.hospital_settings import HospitalSettings as _HospSettings
+        hs = db.query(_HospSettings).filter(_HospSettings.hospital_id == appointment.hospital_id).first()
+        if hs and hs.consultation_fee_default:
+            try:
+                fallback = Decimal(str(hs.consultation_fee_default))
+                if fallback > Decimal("0"):
+                    consultation_fee = fallback
+            except Exception:
+                pass
+    return consultation_fee
+
+
 def get_or_create_consultation_invoice_for_appointment(
     db: Session,
     *,
@@ -628,20 +648,7 @@ def get_or_create_consultation_invoice_for_appointment(
     if not appointment:
         return None
 
-    consultation_fee = Decimal(appointment.consultation_fee or Decimal("0"))
-    if consultation_fee <= Decimal("0") and appointment.doctor:
-        consultation_fee = Decimal(appointment.doctor.consultation_fee or Decimal("0"))
-    if consultation_fee <= Decimal("0"):
-        # Fallback to hospital default consultation fee from settings
-        from ..models.hospital_settings import HospitalSettings as _HospSettings
-        hs = db.query(_HospSettings).filter(_HospSettings.hospital_id == hospital_id).first()
-        if hs and hs.consultation_fee_default:
-            try:
-                fallback = Decimal(str(hs.consultation_fee_default))
-                if fallback > Decimal("0"):
-                    consultation_fee = fallback
-            except Exception:
-                pass
+    consultation_fee = resolve_consultation_fee_amount(db, appointment)
     # Allow ₹0 invoices (free consultation) — do not block the flow
 
     existing_invoice = (

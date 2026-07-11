@@ -5,9 +5,10 @@ Handles CRUD, double-booking prevention, reschedule/cancel, and stats.
 import uuid
 import logging
 from datetime import date, datetime, timezone, time
+from decimal import Decimal
 from math import ceil
 from typing import Optional
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, func, or_
 
 from ..models.appointment import Appointment, AppointmentQueue, AppointmentStatusLog, Doctor
@@ -833,8 +834,15 @@ def get_doctor_today_summary(db: Session, doctor_id: uuid.UUID, hospital_id: uui
             "fee_collected": fee_collected,
         })
 
-    collected_total = (
-        db.query(func.coalesce(func.sum(Payment.amount), 0))
+    # Sum via payment_net_amount (amount minus reserved refunds), not raw
+    # Payment.amount — a partially refunded payment stays status="completed"
+    # (only a *fully* refunded one flips to "reversed"), so summing amount
+    # alone overstates today's collections by whatever's since been refunded.
+    from .payment_service import payment_net_amount
+
+    todays_payments = (
+        db.query(Payment)
+        .options(joinedload(Payment.refunds))
         .join(Invoice, Payment.invoice_id == Invoice.id)
         .join(Appointment, Invoice.appointment_id == Appointment.id)
         .filter(
@@ -844,8 +852,9 @@ def get_doctor_today_summary(db: Session, doctor_id: uuid.UUID, hospital_id: uui
             Payment.payment_date == today,
             Payment.status == "completed",
         )
-        .scalar()
+        .all()
     )
+    collected_total = sum((payment_net_amount(p) for p in todays_payments), Decimal("0"))
 
     return {
         "doctor_id": str(doctor_id),

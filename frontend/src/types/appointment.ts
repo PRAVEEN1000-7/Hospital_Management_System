@@ -33,6 +33,8 @@ export interface DoctorScheduleCreate {
   break_start_time?: string;
   break_end_time?: string;
   is_active?: boolean;
+  effective_from?: string;
+  effective_to?: string;
 }
 
 // ── Doctor Leave (replaces Blocked Period) ───────────────────────────────

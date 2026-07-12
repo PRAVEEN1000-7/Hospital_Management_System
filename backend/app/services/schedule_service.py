@@ -131,17 +131,38 @@ def delete_doctor_leave(db: Session, leave_id: str | uuid.UUID) -> bool:
     return True
 
 
-def is_doctor_on_leave(db: Session, doctor_id: str | uuid.UUID, target_date: date) -> bool:
-    """Check if doctor is on leave on a specific date."""
+_LEAVE_NOON = time(12, 0)
+
+
+def get_doctor_leave(db: Session, doctor_id: str | uuid.UUID, target_date: date) -> Optional[DoctorLeave]:
+    """Fetch the approved leave record for a doctor on a specific date, if any."""
     if isinstance(doctor_id, str):
         doctor_id = uuid.UUID(doctor_id)
-    
-    leave = db.query(DoctorLeave).filter(
+
+    return db.query(DoctorLeave).filter(
         DoctorLeave.doctor_id == doctor_id,
         DoctorLeave.leave_date == target_date,
         DoctorLeave.status == "approved",
     ).first()
-    return leave is not None
+
+
+def is_doctor_on_leave(db: Session, doctor_id: str | uuid.UUID, target_date: date) -> bool:
+    """Check if doctor is on leave on a specific date (any leave type blocks the whole day)."""
+    return get_doctor_leave(db, doctor_id, target_date) is not None
+
+
+def is_doctor_on_leave_at(db: Session, doctor_id: str | uuid.UUID, target_date: date, at_time: Optional[time]) -> bool:
+    """Time-aware leave check: a 'morning'/'afternoon' leave only blocks the
+    half of the day it covers. 'full_day' leave, or no at_time to check
+    against, blocks the whole day."""
+    leave = get_doctor_leave(db, doctor_id, target_date)
+    if leave is None:
+        return False
+    if leave.leave_type == "morning" and at_time is not None:
+        return at_time < _LEAVE_NOON
+    if leave.leave_type == "afternoon" and at_time is not None:
+        return at_time >= _LEAVE_NOON
+    return True
 
 
 # ── Time-slot generation ──────────────────────────────────────────────────
@@ -159,10 +180,13 @@ def get_available_slots(db: Session, doctor_id: str | uuid.UUID, target_date: da
     if isinstance(doctor_id, str):
         doctor_id = uuid.UUID(doctor_id)
     
-    # Check if doctor is on leave
-    if is_doctor_on_leave(db, doctor_id, target_date):
+    # Check if doctor is on leave — a full-day leave blocks everything up
+    # front; morning/afternoon leaves are applied per-slot further down so
+    # only the covered half of the day is excluded.
+    leave = get_doctor_leave(db, doctor_id, target_date)
+    if leave is not None and leave.leave_type == "full_day":
         return []
-    
+
     # Get doctor's schedules for this weekday
     weekday = target_date.isoweekday() % 7  # 0=Sunday
     schedules = db.query(DoctorSchedule).filter(
@@ -243,10 +267,16 @@ def get_available_slots(db: Session, doctor_id: str | uuid.UUID, target_date: da
             slot_time = _minutes_to_time(cursor)
             key = slot_time.strftime("%H:%M")
             current_bookings = booked_map.get(key, 0)
-            
+            # A morning/afternoon leave only blocks slots that start within its half of the day
+            on_leave = leave is not None and (
+                leave.leave_type != "morning" or slot_time < _LEAVE_NOON
+            ) and (
+                leave.leave_type != "afternoon" or slot_time >= _LEAVE_NOON
+            )
+
             slots.append({
                 "time": slot_time.strftime("%H:%M"),
-                "available": (not all_full) and current_bookings < src["max_patients"],
+                "available": (not on_leave) and (not all_full) and current_bookings < src["max_patients"],
                 "current_bookings": current_bookings,
                 "max_bookings": src["max_patients"],
             })

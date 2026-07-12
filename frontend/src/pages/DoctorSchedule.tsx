@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { addDays } from 'date-fns';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import scheduleService from '../services/scheduleService';
 import doctorService from '../services/doctorService';
+import ScheduleMonthCalendar from '../components/appointments/ScheduleMonthCalendar';
 import type { DoctorSchedule, DoctorScheduleCreate, DoctorLeave, DoctorLeaveCreate, DoctorOption } from '../types/appointment';
-import { formatDateOnly } from '../utils/calendarDate';
+import { formatDateOnly, formatLocalDateISO } from '../utils/calendarDate';
 import { getErrorMessage } from '../utils/errorMessage';
 
 // Backend uses 0=Sunday, 1=Monday ... 6=Saturday
@@ -23,13 +25,52 @@ const DoctorSchedulePage: React.FC = () => {
   const [schedules, setSchedules] = useState<DoctorSchedule[]>([]);
   const [doctorLeaves, setDoctorLeaves] = useState<DoctorLeave[]>([]);
   const [loading, setLoading] = useState(false);
+  const [scheduleView, setScheduleView] = useState<'weekly' | 'calendar'>('weekly');
 
   // Form state
   const [showForm, setShowForm] = useState(false);
-  const [formWeekday, setFormWeekday] = useState(1); // 1=Monday
+  const todayStr = new Date().toISOString().split('T')[0];
+  const [formDate, setFormDate] = useState(todayStr);
   const [formStartTime, setFormStartTime] = useState('09:00');
   const [formEndTime, setFormEndTime] = useState('17:00');
   const [formMaxPatients, setFormMaxPatients] = useState(20);
+  const [formRepeat, setFormRepeat] = useState(false);
+  const [formRepeatDays, setFormRepeatDays] = useState<Set<number>>(new Set());
+  const [formEndDate, setFormEndDate] = useState('');
+
+  const resetAddForm = () => {
+    setFormDate(todayStr);
+    setFormStartTime('09:00');
+    setFormEndTime('17:00');
+    setFormMaxPatients(20);
+    setFormRepeat(false);
+    setFormRepeatDays(new Set());
+    setFormEndDate('');
+  };
+
+  const toggleRepeatDay = (day: number) => {
+    setFormRepeatDays(prev => {
+      const next = new Set(prev);
+      if (next.has(day)) next.delete(day); else next.add(day);
+      return next;
+    });
+  };
+
+  const handleRepeatToggle = (checked: boolean) => {
+    setFormRepeat(checked);
+    if (checked && formRepeatDays.size === 0 && formDate) {
+      setFormRepeatDays(new Set([new Date(formDate + 'T00:00:00').getDay()]));
+    }
+  };
+
+  const formIsValid = !!formDate && (!formRepeat || (formRepeatDays.size > 0 && !!formEndDate && formEndDate >= formDate));
+
+  // Opened from the Calendar view — pre-fill Add Slot for the clicked date (single date, no repeat)
+  const openAddSlotForDate = (iso: string) => {
+    resetAddForm();
+    setFormDate(iso);
+    setShowForm(true);
+  };
 
   // Leave form
   const [showLeaveForm, setShowLeaveForm] = useState(false);
@@ -38,11 +79,24 @@ const DoctorSchedulePage: React.FC = () => {
   const [leaveCategory, setLeaveCategory] = useState('Personal');
   const [leaveReason, setLeaveReason] = useState('');
 
+  // Opened from the Calendar view — pre-fill Add Leave for the clicked date
+  const openAddLeaveForDate = (iso: string) => {
+    setLeaveDate(iso);
+    setLeaveType('full_day');
+    setLeaveCategory('Personal');
+    setLeaveReason('');
+    setShowLeaveForm(true);
+  };
+
   // Edit schedule form
   const [editSlot, setEditSlot] = useState<DoctorSchedule | null>(null);
   const [editStartTime, setEditStartTime] = useState('');
   const [editEndTime, setEditEndTime] = useState('');
   const [editMaxPatients, setEditMaxPatients] = useState(20);
+  // Set when editing was opened from a specific Calendar date (not the Weekly
+  // view) — signals handleUpdateSchedule to split just that one occurrence
+  // out of the series instead of editing the whole recurring row.
+  const [editSlotContextDate, setEditSlotContextDate] = useState<string | null>(null);
 
   useEffect(() => {
     if (canPickAnyDoctor) {
@@ -76,17 +130,33 @@ const DoctorSchedulePage: React.FC = () => {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const handleAddSchedule = async () => {
-    if (!selectedDoctorId) return;
+    if (!selectedDoctorId || !formIsValid) return;
     try {
-      const data: DoctorScheduleCreate = {
-        day_of_week: formWeekday,
-        start_time: formStartTime,
-        end_time: formEndTime,
-        max_patients: formMaxPatients,
-      };
-      await scheduleService.createSchedule(selectedDoctorId, data);
+      if (formRepeat) {
+        const schedules: DoctorScheduleCreate[] = Array.from(formRepeatDays).map(day => ({
+          day_of_week: day,
+          start_time: formStartTime,
+          end_time: formEndTime,
+          max_patients: formMaxPatients,
+          effective_from: formDate,
+          effective_to: formEndDate,
+        }));
+        await scheduleService.bulkCreateSchedules(selectedDoctorId, schedules);
+      } else {
+        const dayOfWeek = new Date(formDate + 'T00:00:00').getDay();
+        const data: DoctorScheduleCreate = {
+          day_of_week: dayOfWeek,
+          start_time: formStartTime,
+          end_time: formEndTime,
+          max_patients: formMaxPatients,
+          effective_from: formDate,
+          effective_to: formDate,
+        };
+        await scheduleService.createSchedule(selectedDoctorId, data);
+      }
       toast.success('Schedule slot added');
       setShowForm(false);
+      resetAddForm();
       fetchData();
     } catch (err) {
       toast.error(getErrorMessage(err, 'Failed to add schedule'));
@@ -103,23 +173,93 @@ const DoctorSchedulePage: React.FC = () => {
     }
   };
 
+  // Removes just one calendar date from a schedule row's effective range,
+  // splitting the row into up to two bracketing rows so every OTHER date the
+  // row used to cover keeps working. If `iso` was the row's only day, the
+  // row is deleted outright instead.
+  const excludeDateFromSchedule = async (doctorId: string, original: DoctorSchedule, iso: string) => {
+    const F = original.effective_from;
+    const T = original.effective_to;
+    const beforeExists = !!F && iso > F;
+    const afterExists = !T || iso < T;
+    const dayBefore = formatLocalDateISO(addDays(new Date(iso + 'T00:00:00'), -1));
+    const dayAfter = formatLocalDateISO(addDays(new Date(iso + 'T00:00:00'), 1));
+
+    if (!beforeExists && !afterExists) {
+      await scheduleService.deleteSchedule(original.id);
+    } else if (beforeExists && afterExists) {
+      await scheduleService.updateSchedule(original.id, { effective_to: dayBefore });
+      await scheduleService.createSchedule(doctorId, {
+        day_of_week: original.day_of_week,
+        start_time: original.start_time.slice(0, 5),
+        end_time: original.end_time.slice(0, 5),
+        max_patients: original.max_patients ?? 20,
+        effective_from: dayAfter,
+        effective_to: T ?? undefined,
+      });
+    } else if (beforeExists) {
+      await scheduleService.updateSchedule(original.id, { effective_to: dayBefore });
+    } else {
+      await scheduleService.updateSchedule(original.id, { effective_from: dayAfter });
+    }
+  };
+
+  // Calendar-only: delete just the clicked date's occurrence, leaving the
+  // rest of the series (if any) untouched.
+  const handleDeleteSlotForDate = async (s: DoctorSchedule, iso: string) => {
+    if (!selectedDoctorId) return;
+    try {
+      await excludeDateFromSchedule(selectedDoctorId, s, iso);
+      toast.success('Schedule slot removed for this date');
+      fetchData();
+    } catch {
+      toast.error('Failed to delete schedule');
+    }
+  };
+
+  // Weekly view: edit the whole recurring row.
   const openEditSlot = (s: DoctorSchedule) => {
     setEditSlot(s);
     setEditStartTime(s.start_time.slice(0, 5));
     setEditEndTime(s.end_time.slice(0, 5));
     setEditMaxPatients(s.max_patients ?? 20);
+    setEditSlotContextDate(null);
+  };
+
+  // Calendar view: edit only the clicked date's occurrence.
+  const openEditSlotForDate = (s: DoctorSchedule, iso: string) => {
+    setEditSlot(s);
+    setEditStartTime(s.start_time.slice(0, 5));
+    setEditEndTime(s.end_time.slice(0, 5));
+    setEditMaxPatients(s.max_patients ?? 20);
+    setEditSlotContextDate(iso);
   };
 
   const handleUpdateSchedule = async () => {
-    if (!editSlot) return;
+    if (!editSlot || !selectedDoctorId) return;
     try {
-      await scheduleService.updateSchedule(editSlot.id, {
-        start_time: editStartTime,
-        end_time: editEndTime,
-        max_patients: editMaxPatients,
-      });
+      const isAlreadySingleDay = !!editSlot.effective_from && editSlot.effective_from === editSlot.effective_to;
+      if (editSlotContextDate && !(isAlreadySingleDay && editSlot.effective_from === editSlotContextDate)) {
+        // Editing one occurrence pulled from a wider series — split it out first
+        await excludeDateFromSchedule(selectedDoctorId, editSlot, editSlotContextDate);
+        await scheduleService.createSchedule(selectedDoctorId, {
+          day_of_week: editSlot.day_of_week,
+          start_time: editStartTime,
+          end_time: editEndTime,
+          max_patients: editMaxPatients,
+          effective_from: editSlotContextDate,
+          effective_to: editSlotContextDate,
+        });
+      } else {
+        await scheduleService.updateSchedule(editSlot.id, {
+          start_time: editStartTime,
+          end_time: editEndTime,
+          max_patients: editMaxPatients,
+        });
+      }
       toast.success('Schedule slot updated');
       setEditSlot(null);
+      setEditSlotContextDate(null);
       fetchData();
     } catch (err) {
       toast.error(getErrorMessage(err, 'Failed to update schedule'));
@@ -171,12 +311,11 @@ const DoctorSchedulePage: React.FC = () => {
     }
   });
 
-  // Helper: get leave info for a weekday if any upcoming leave exists
-  const getLeaveForDay = (dayIndex: number) =>
-    doctorLeaves.find(lv => {
-      const d = new Date(lv.leave_date + 'T00:00:00');
-      return d >= today && d.getDay() === dayIndex;
-    });
+  // Weekdays implicated by the current Add Slot form (single date, or repeat selection)
+  const formActiveWeekdays = formRepeat
+    ? Array.from(formRepeatDays)
+    : (formDate ? [new Date(formDate + 'T00:00:00').getDay()] : []);
+  const formHasLeaveConflict = formActiveWeekdays.some(d => leaveDayIndices.has(d));
 
   return (
     <div className="max-w-7xl mx-auto">
@@ -218,37 +357,71 @@ const DoctorSchedulePage: React.FC = () => {
         </div>
       ) : (
         <>
+        <div className="flex items-center gap-2 mb-4">
+          {(['weekly', 'calendar'] as const).map(v => (
+            <button key={v} type="button" onClick={() => setScheduleView(v)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all capitalize ${
+                scheduleView === v
+                  ? 'bg-primary/5 border-primary text-primary'
+                  : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
+              }`}>
+              {v}
+            </button>
+          ))}
+        </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Weekly Schedule */}
+          {/* Weekly / Calendar Schedule */}
           <div className="lg:col-span-2 space-y-3">
+          {scheduleView === 'calendar' ? (
+            <ScheduleMonthCalendar
+              schedules={schedules}
+              doctorLeaves={doctorLeaves}
+              onEditSlotForDate={openEditSlotForDate}
+              onDeleteSlotForDate={handleDeleteSlotForDate}
+              onDeleteLeave={handleDeleteBlock}
+              onAddSlotForDate={openAddSlotForDate}
+              onAddLeaveForDate={openAddLeaveForDate}
+            />
+          ) : (
+            <>
             <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">Weekly Schedule</h2>
             {grouped.map(({ day, items }, idx) => {
-              const dayLeave = getLeaveForDay(idx);
-              const isBlocked = !!dayLeave;
+              // Informational only — a leave blocks its own specific date (see Calendar
+              // view for exact dates), it does NOT disable every occurrence of this
+              // weekday, so slots below stay fully editable regardless of this count.
+              // Includes leaves on ANY future date matching this weekday — not just
+              // ones in the current week — so a leave marked weeks ahead still shows here.
+              const dayLeaves = doctorLeaves
+                .filter(lv => {
+                  const d = new Date(lv.leave_date + 'T00:00:00');
+                  return d >= today && d.getDay() === idx;
+                })
+                .sort((a, b) => a.leave_date.localeCompare(b.leave_date));
+              const hasLeave = dayLeaves.length > 0;
               return (
-              <div key={day} className={`bg-white rounded-xl border p-4 relative overflow-hidden ${isBlocked ? 'border-red-200 bg-red-50/30' : 'border-slate-200'}`}>
-                {/* Leave overlay badge */}
-                {isBlocked && (
-                  <div className="absolute top-0 right-0 bg-red-500 text-white text-[9px] font-bold uppercase px-2.5 py-1 rounded-bl-lg flex items-center gap-1">
-                    <span className="material-symbols-outlined text-xs">event_busy</span>
-                    On Leave — {dayLeave!.leave_date}
-                  </div>
-                )}
+              <div key={day} className={`rounded-xl border p-4 relative overflow-hidden ${hasLeave ? 'bg-amber-50/40 border-amber-200' : 'bg-white border-slate-200'}`}>
                 <div className="flex items-center justify-between mb-2">
-                  <span className={`text-sm font-bold ${isBlocked ? 'text-red-400' : 'text-slate-900'}`}>{day}</span>
-                  {!isBlocked && <span className="text-xs text-slate-400">{items.length} slot{items.length !== 1 ? 's' : ''}</span>}
-                  {isBlocked && <span className="text-[10px] text-red-400 font-medium mr-20">Slots inaccessible</span>}
+                  <span className="text-sm font-bold text-slate-900">{day}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-400">{items.length} slot{items.length !== 1 ? 's' : ''}</span>
+                    {dayLeaves.length > 0 && (
+                      <span className="inline-flex items-center gap-1 text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full font-semibold"
+                        title={dayLeaves.map(lv => formatDateOnly(lv.leave_date)).join(', ') + ' — see Calendar view for details'}>
+                        <span className="material-symbols-outlined text-xs">event_busy</span>
+                        Leave: {formatDateOnly(dayLeaves[0].leave_date, 'd MMM')}
+                        {dayLeaves.length > 1 ? ` +${dayLeaves.length - 1} more` : ''}
+                      </span>
+                    )}
+                  </div>
                 </div>
-                {items.length === 0 && !isBlocked ? (
+                {items.length === 0 ? (
                   <p className="text-xs text-slate-400 italic">No schedule set</p>
-                ) : items.length === 0 && isBlocked ? (
-                  <p className="text-xs text-red-300 italic">No slots — day is on leave</p>
                 ) : (
-                  <div className={`space-y-2 ${isBlocked ? 'opacity-40 pointer-events-none' : ''}`}>
+                  <div className="space-y-2">
                     {items.map(s => (
                       <div key={s.id} className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2">
                         <div className="flex items-center gap-3">
-                          <span className={`material-symbols-outlined text-lg ${isBlocked ? 'text-red-300' : 'text-primary'}`}>schedule</span>
+                          <span className="material-symbols-outlined text-lg text-primary">schedule</span>
                           <div>
                             <span className="text-sm font-semibold text-slate-700">{formatTimeStr(s.start_time)} – {formatTimeStr(s.end_time)}</span>
                             <div className="flex gap-2 mt-0.5">
@@ -256,7 +429,6 @@ const DoctorSchedulePage: React.FC = () => {
                             </div>
                           </div>
                         </div>
-                        {!isBlocked && (
                         <div className="flex items-center gap-1">
                           <button onClick={() => openEditSlot(s)}
                             className="text-slate-400 hover:text-primary transition-colors p-1" title="Edit slot">
@@ -267,7 +439,6 @@ const DoctorSchedulePage: React.FC = () => {
                             <span className="material-symbols-outlined text-lg">delete</span>
                           </button>
                         </div>
-                        )}
                       </div>
                     ))}
                   </div>
@@ -275,6 +446,8 @@ const DoctorSchedulePage: React.FC = () => {
               </div>
               );
             })}
+            </>
+          )}
           </div>
 
           {/* Blocked Periods */}
@@ -315,7 +488,7 @@ const DoctorSchedulePage: React.FC = () => {
 
       {/* Add Schedule Modal */}
       {showForm && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowForm(false)}>
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => { setShowForm(false); resetAddForm(); }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
             {/* Header */}
             <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100">
@@ -323,48 +496,84 @@ const DoctorSchedulePage: React.FC = () => {
                 <span className="material-symbols-outlined text-primary text-xl">add_circle</span>
               </div>
               <div>
-                <h3 className="text-base font-bold text-slate-900">Add Schedule Slot</h3>
-                <p className="text-[11px] text-slate-400">Set a recurring weekly time slot</p>
+                <h3 className="text-base font-bold text-slate-900">Add Slot</h3>
+                <p className="text-[11px] text-slate-400">Set availability for a date, optionally repeating</p>
               </div>
             </div>
             <div className="px-6 py-5 space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1">Weekday</label>
-                <select value={formWeekday} onChange={(e) => setFormWeekday(Number(e.target.value))}
-                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none bg-white">
-                  {WEEKDAYS.map((d, i) => <option key={i} value={i}>{d}</option>)}
-                </select>
-                {/* Warning if selected weekday has a leave */}
-                {leaveDayIndices.has(formWeekday) && (
-                  <div className="mt-2 flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                    <span className="material-symbols-outlined text-amber-500 text-base">warning</span>
-                    <p className="text-[11px] text-amber-700 font-medium">This day has an upcoming leave. The slot will be inaccessible until the leave is removed.</p>
-                  </div>
-                )}
+                <label className="block text-xs font-bold text-slate-500 mb-1">Availability Date</label>
+                <input type="date" value={formDate} min={todayStr}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setFormDate(v);
+                    if (formRepeat && v) setFormRepeatDays(new Set([new Date(v + 'T00:00:00').getDay()]));
+                  }}
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-500 mb-1">Start Time</label>
                   <input type="time" value={formStartTime} onChange={(e) => setFormStartTime(e.target.value)}
+                    onClick={(e) => e.currentTarget.showPicker?.()}
                     className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-500 mb-1">End Time</label>
                   <input type="time" value={formEndTime} onChange={(e) => setFormEndTime(e.target.value)}
+                    onClick={(e) => e.currentTarget.showPicker?.()}
                     className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1">Max Patients</label>
+                <label className="block text-xs font-bold text-slate-500 mb-1">Max no. of Interviews</label>
                 <input type="number" min={1} max={100} value={formMaxPatients} onChange={(e) => setFormMaxPatients(Number(e.target.value))}
                   className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
               </div>
+              <div>
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input type="checkbox" checked={formRepeat} onChange={(e) => handleRepeatToggle(e.target.checked)}
+                    className="w-4 h-4 rounded border-slate-300 text-primary focus:ring-primary/20" />
+                  <span className="text-xs font-bold text-slate-500">Repeat</span>
+                </label>
+              </div>
+              {formRepeat && (
+                <>
+                  <div>
+                    <div className="flex flex-wrap gap-2">
+                      {WEEKDAYS.map((d, i) => (
+                        <button key={i} type="button" onClick={() => toggleRepeatDay(i)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                            formRepeatDays.has(i)
+                              ? 'bg-primary/5 border-primary text-primary'
+                              : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
+                          }`}>
+                          {d.slice(0, 3)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-1">End Date</label>
+                    <input type="date" value={formEndDate} min={formDate || todayStr}
+                      onChange={(e) => setFormEndDate(e.target.value)}
+                      className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
+                  </div>
+                </>
+              )}
+              {/* Warning if any implicated weekday has a leave */}
+              {formHasLeaveConflict && (
+                <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  <span className="material-symbols-outlined text-amber-500 text-base">warning</span>
+                  <p className="text-[11px] text-amber-700 font-medium">One or more selected days has an upcoming leave. Those slots will be inaccessible until the leave is removed.</p>
+                </div>
+              )}
             </div>
             <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-100">
-              <button onClick={() => setShowForm(false)}
+              <button onClick={() => { setShowForm(false); resetAddForm(); }}
                 className="px-4 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-100 rounded-lg transition-colors">Cancel</button>
-              <button onClick={handleAddSchedule}
-                className="px-5 py-2 text-sm font-bold text-white bg-primary rounded-xl hover:bg-primary/90 transition-colors shadow-sm">Add Slot</button>
+              <button onClick={handleAddSchedule} disabled={!formIsValid}
+                className="px-5 py-2 text-sm font-bold text-white bg-primary rounded-xl hover:bg-primary/90 transition-colors shadow-sm disabled:opacity-40">Add Slot</button>
             </div>
           </div>
         </div>
@@ -456,7 +665,7 @@ const DoctorSchedulePage: React.FC = () => {
       )}
       {/* Edit Schedule Modal */}
       {editSlot && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setEditSlot(null)}>
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => { setEditSlot(null); setEditSlotContextDate(null); }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100">
               <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center">
@@ -464,7 +673,11 @@ const DoctorSchedulePage: React.FC = () => {
               </div>
               <div>
                 <h3 className="text-base font-bold text-slate-900">Edit Schedule Slot</h3>
-                <p className="text-[11px] text-slate-400">{WEEKDAYS[editSlot.day_of_week]}</p>
+                <p className="text-[11px] text-slate-400">
+                  {editSlotContextDate
+                    ? `Only ${formatDateOnly(editSlotContextDate)} — rest of the series is unaffected`
+                    : `${WEEKDAYS[editSlot.day_of_week]} — applies to the whole series`}
+                </p>
               </div>
             </div>
             <div className="px-6 py-5 space-y-4">
@@ -472,11 +685,13 @@ const DoctorSchedulePage: React.FC = () => {
                 <div>
                   <label className="block text-xs font-bold text-slate-500 mb-1">Start Time</label>
                   <input type="time" value={editStartTime} onChange={(e) => setEditStartTime(e.target.value)}
+                    onClick={(e) => e.currentTarget.showPicker?.()}
                     className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-500 mb-1">End Time</label>
                   <input type="time" value={editEndTime} onChange={(e) => setEditEndTime(e.target.value)}
+                    onClick={(e) => e.currentTarget.showPicker?.()}
                     className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
                 </div>
               </div>
@@ -487,7 +702,7 @@ const DoctorSchedulePage: React.FC = () => {
               </div>
             </div>
             <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-100">
-              <button onClick={() => setEditSlot(null)}
+              <button onClick={() => { setEditSlot(null); setEditSlotContextDate(null); }}
                 className="px-4 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-100 rounded-lg transition-colors">Cancel</button>
               <button onClick={handleUpdateSchedule}
                 className="px-5 py-2 text-sm font-bold text-white bg-primary rounded-xl hover:bg-primary/90 transition-colors shadow-sm">Save Changes</button>
@@ -499,7 +714,7 @@ const DoctorSchedulePage: React.FC = () => {
   );
 };
 
-function formatTimeStr(t: string): string {
+export function formatTimeStr(t: string): string {
   const parts = t.split(':');
   let h = parseInt(parts[0], 10);
   const m = parts[1];

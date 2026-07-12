@@ -2044,6 +2044,7 @@ const WalkInQueue: React.FC = () => {
                   type="time"
                   value={bookNextTime}
                   onChange={(e) => setBookNextTime(e.target.value)}
+                  onClick={(e) => e.currentTarget.showPicker?.()}
                   className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
                 />
               </div>

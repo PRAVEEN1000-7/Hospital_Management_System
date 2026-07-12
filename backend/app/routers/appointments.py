@@ -33,7 +33,7 @@ from ..services.appointment_service import (
     enrich_appointments,
     get_doctor_today_summary,
 )
-from ..services.schedule_service import is_doctor_on_leave, get_available_slots
+from ..services.schedule_service import is_doctor_on_leave_at, get_available_slots
 from ..services.notification_service import notify_hospital_users
 from ..core.hospital_time import hospital_today
 
@@ -49,8 +49,16 @@ async def book_appointment(
 ):
     """Book a new scheduled appointment."""
     try:
-        # Validate: date not blocked
-        if data.doctor_id and is_doctor_on_leave(db, data.doctor_id, data.appointment_date):
+        # Validate: not a past date
+        today = hospital_today(current_user.hospital.timezone if current_user.hospital else None)
+        if data.appointment_date < today:
+            raise HTTPException(status_code=400, detail="Cannot book an appointment for a past date")
+
+        # Validate: date/time not blocked by leave. A morning/afternoon leave
+        # only blocks bookings whose start_time falls in that half of the day;
+        # a booking with no start_time (or a full-day leave) keeps the
+        # conservative whole-day block.
+        if data.doctor_id and is_doctor_on_leave_at(db, data.doctor_id, data.appointment_date, data.start_time):
             raise HTTPException(status_code=400, detail="Doctor is not available on this date")
 
         # Validate: slot available (for scheduled appointments)
@@ -370,6 +378,11 @@ async def reschedule_appt(
     existing = get_appointment(db, appointment_id, hospital_id=current_user.hospital_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Appointment not found")
+
+    today = hospital_today(current_user.hospital.timezone if current_user.hospital else None)
+    if data.new_date < today:
+        raise HTTPException(status_code=400, detail="Cannot reschedule an appointment to a past date")
+
     appt = reschedule_appointment(
         db, appointment_id, data.new_date, data.new_time, current_user.id, data.reason,
     )

@@ -882,6 +882,7 @@ const HospitalSetup: React.FC = () => {
                           name="working_hours_start"
                           value={formData.working_hours_start}
                           onChange={handleChange}
+                          onClick={(e) => e.currentTarget.showPicker?.()}
                           className="flex-1 px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                         />
                         <span className="text-slate-400 text-sm font-medium">to</span>
@@ -890,6 +891,7 @@ const HospitalSetup: React.FC = () => {
                           name="working_hours_end"
                           value={formData.working_hours_end}
                           onChange={handleChange}
+                          onClick={(e) => e.currentTarget.showPicker?.()}
                           className="flex-1 px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                         />
                       </div>

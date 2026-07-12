@@ -90,10 +90,17 @@ async def list_medicines(
 ):
     result = svc.list_medicines(db, current_user.hospital_id, page, limit, search, category, active_only)
     stock_map = result.pop("stock_map", {})
+    batch_map = result.pop("batch_map", {})
     data = []
     for med in result["data"]:
         resp = MedicineResponse.model_validate(med)
         resp.total_stock = stock_map.get(med.id, 0)
+        earliest = batch_map.get(med.id)
+        if earliest:
+            resp.earliest_batch_number = earliest["batch_number"]
+            resp.earliest_mfg_date = earliest["mfg_date"]
+            resp.earliest_expiry_date = earliest["expiry_date"]
+            resp.earliest_mrp = earliest["mrp"]
         data.append(resp)
     result["data"] = data
     return result

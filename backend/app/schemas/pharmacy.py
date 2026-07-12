@@ -123,6 +123,12 @@ class MedicineResponse(BaseModel):
     updated_at: datetime
     # Enriched: total stock across batches (set by service)
     total_stock: Optional[int] = None
+    # Enriched: earliest-expiring in-stock batch (FEFO — what dispenses next),
+    # for the inventory list's Batch/MFG/EXP/MRP columns (BUG-32).
+    earliest_batch_number: Optional[str] = None
+    earliest_mfg_date: Optional[str] = None
+    earliest_expiry_date: Optional[str] = None
+    earliest_mrp: Optional[float] = None
 
     @model_validator(mode="before")
     @classmethod

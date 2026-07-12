@@ -63,6 +63,7 @@ class DoctorResponse(BaseModel):
     follow_up_fee: Optional[Decimal] = None
     is_available: bool = True
     is_active: bool = True
+    analytics_enabled: Optional[bool] = True
     is_deleted: bool = False
     created_at: datetime
     updated_at: datetime

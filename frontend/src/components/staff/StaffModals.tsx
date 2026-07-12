@@ -49,6 +49,7 @@ const staffCreateSchema = z.object({
   follow_up_fee: z.union([z.string(), z.number()]).optional(),
   bio: z.string().optional(),
   department_id: z.string().optional(),
+  analytics_enabled: z.boolean().optional(),
 }).superRefine((data, ctx) => {
   // Password validation — only when not auto-generating
   if (!data.auto_generate_password) {
@@ -88,6 +89,7 @@ const staffEditSchema = z.object({
   registration_number: z.string().optional(),
   consultation_fee: z.union([z.string(), z.number()]).optional(),
   follow_up_fee: z.union([z.string(), z.number()]).optional(),
+  analytics_enabled: z.boolean().optional(),
 }).superRefine((data, ctx) => {
   if (data.role === 'doctor') {
     if (!data.specialization) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Specialization is required for doctors', path: ['specialization'] });
@@ -119,10 +121,13 @@ type ResetFormData = z.infer<typeof resetPasswordSchema>;
 // from one screen but not the other, like Staff Directory vs User Management
 // used to disagree on.
 // ────────────────────────────────────────
+// 'staff' deliberately excluded (BUG-11): the generic role granted nothing
+// beyond Dashboard and confused admins about what it was for. Existing users
+// holding it keep working — it just can't be assigned to anyone new.
 const ALL_ROLES = [
   'super_admin', 'admin', 'doctor', 'nurse', 'receptionist',
   'pharmacist', 'optical_staff', 'cashier', 'inventory_manager',
-  'report_viewer', 'staff',
+  'report_viewer',
 ] as const;
 
 const ROLE_MODULE_REQUIREMENTS: Partial<Record<string, string[]>> = {
@@ -131,7 +136,7 @@ const ROLE_MODULE_REQUIREMENTS: Partial<Record<string, string[]>> = {
   inventory_manager: ['inventory'],
   optical_staff:     ['optical'],
   report_viewer:     ['analytics'],
-  // doctor, nurse, receptionist, admin, staff — rely on CORE modules only, always available
+  // doctor, nurse, receptionist, admin — rely on CORE modules only, always available
 };
 
 /** Roles assignable by the current user: module-gated, and super_admin reserved for super_admins. */
@@ -159,6 +164,14 @@ const blockNonAlpha = (e: React.KeyboardEvent<HTMLInputElement>) => {
 // fee fields can't end up with a fraction, whether typed or arrowed in.
 const blockDecimal = (e: React.KeyboardEvent<HTMLInputElement>) => {
   if (['.', ',', 'e', 'E', '+', '-'].includes(e.key)) {
+    e.preventDefault();
+  }
+};
+
+// Digits only for the phone field — letters/symbols can't even be typed,
+// and maxLength on the input caps it at exactly 10.
+const blockNonDigit = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  if (!/^[0-9]$/.test(e.key) && !['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Home', 'End'].includes(e.key)) {
     e.preventDefault();
   }
 };
@@ -313,6 +326,14 @@ const DoctorFields: React.FC<{
         <input {...register('follow_up_fee')} type="number" min="0" step="1" className="input-field" placeholder="e.g. 200" onKeyDown={blockDecimal} />
       </Field>
     )}
+    {/* In-house vs guest doctor — gates the Analytics module (BUG-16). */}
+    <label className="flex items-start gap-2.5 p-3 bg-white border border-slate-200 rounded-lg cursor-pointer">
+      <input {...register('analytics_enabled')} type="checkbox" className="mt-0.5 w-4 h-4 rounded border-slate-300 text-primary focus:ring-2 focus:ring-primary/30" />
+      <span>
+        <span className="block text-sm font-medium text-slate-800">In-house doctor — allow Analytics access</span>
+        <span className="block text-xs text-slate-500 mt-0.5">Untick for guest/visiting doctors; they won't see the Analytics dashboard.</span>
+      </span>
+    </label>
   </div>
 );
 
@@ -339,7 +360,7 @@ export const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => 
   const { register, handleSubmit, watch, setValue, trigger, formState: { errors, isValid, isSubmitting } } = useForm<CreateFormData>({
     resolver: zodResolverV4(staffCreateSchema),
     mode: 'onTouched',
-    defaultValues: { first_name: '', last_name: '', email: '', username: '', phone_number: '', country_code: '+91', role: '', password: '', confirm_password: '', auto_generate_password: false, specialization: '', qualification: '', registration_number: '', registration_authority: '', experience_years: '', consultation_fee: '', follow_up_fee: '', bio: '', department_id: '' },
+    defaultValues: { first_name: '', last_name: '', email: '', username: '', phone_number: '', country_code: '+91', role: '', password: '', confirm_password: '', auto_generate_password: false, specialization: '', qualification: '', registration_number: '', registration_authority: '', experience_years: '', consultation_fee: '', follow_up_fee: '', bio: '', department_id: '', analytics_enabled: true },
   });
 
   const email = watch('email', '');
@@ -377,13 +398,26 @@ export const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => 
     }
   }, [isDoctorRole]);
 
-  // Auto-generate username from email
+  // Auto-generate username in the hospital's standard template (BUG-04):
+  // HospitalCode + First2(first name) + First2(last name) + _ + 3-digit
+  // per-hospital sequence — the backend owns the sequence so two admins
+  // creating staff at the same time can't mint the same number. Debounced,
+  // and it always overwrites while typing names since the field is meant to
+  // be template-driven (the admin can still hand-edit it afterwards).
   useEffect(() => {
-    if (email && email.includes('@')) {
-      const suggested = email.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '_');
-      setValue('username', suggested, { shouldValidate: true });
-    }
-  }, [email, setValue]);
+    const fn = firstName.trim();
+    const ln = lastName.trim();
+    if (fn.length < 2 || ln.length < 2) return;
+    const timeout = setTimeout(async () => {
+      try {
+        const { username: suggested } = await userService.suggestUsername(fn, ln);
+        setValue('username', suggested, { shouldValidate: true });
+      } catch {
+        // Fall back silently — the admin can type a username manually.
+      }
+    }, 500);
+    return () => clearTimeout(timeout);
+  }, [firstName, lastName, setValue]);
 
   // Debounced username uniqueness check against backend
   useEffect(() => {
@@ -487,6 +521,7 @@ export const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => 
         payload.follow_up_fee = data.follow_up_fee ? Math.round(Number(data.follow_up_fee)) : undefined;
         payload.bio = data.bio || undefined;
         payload.department_id = data.department_id || undefined;
+        payload.analytics_enabled = data.analytics_enabled ?? true;
       }
 
       const createdUser = await userService.createUser(payload, false);
@@ -545,7 +580,7 @@ export const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => 
             {!emailChecking && !errors.email && !emailError && email.includes('@') && <p className="text-xs text-green-600 mt-1 flex items-center gap-1"><span className="material-icons text-xs">check_circle</span>Email available</p>}
           </Field>
           <Field label="Username (for login) *" error={errors.username?.message || usernameError}>
-            <input {...register('username')} className={`input-field ${inputErr(errors.username || usernameError)}`} placeholder="Auto-filled from email" />
+            <input {...register('username')} className={`input-field ${inputErr(errors.username || usernameError)}`} placeholder="Auto-generated from name (e.g. besasa_001)" />
             {usernameChecking && <p className="text-xs text-blue-500 mt-1 flex items-center gap-1"><span className="material-icons text-xs animate-spin">sync</span>Checking availability...</p>}
             {!usernameChecking && !errors.username && !usernameError && username.length >= 3 && <p className="text-xs text-green-600 mt-1 flex items-center gap-1"><span className="material-icons text-xs">check_circle</span>Username available</p>}
           </Field>
@@ -554,7 +589,7 @@ export const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => 
               <select {...register('country_code')} className="input-field w-28">
                 {COUNTRIES.map(c => <option key={c.code} value={c.phoneCode}>{c.phoneCode}</option>)}
               </select>
-              <input {...register('phone_number')} className={`input-field flex-1 ${inputErr(errors.phone_number)}`} placeholder="1234567890" />
+              <input {...register('phone_number')} type="tel" inputMode="numeric" maxLength={10} onKeyDown={blockNonDigit} className={`input-field flex-1 ${inputErr(errors.phone_number)}`} placeholder="1234567890" />
             </div>
           </Field>
         </section>
@@ -662,6 +697,7 @@ export const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onS
       registration_number: user.registration_number || '',
       consultation_fee: user.consultation_fee ?? '',
       follow_up_fee: user.follow_up_fee ?? '',
+      analytics_enabled: user.analytics_enabled ?? true,
     },
   });
 
@@ -692,6 +728,7 @@ export const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onS
         payload.registration_number = data.registration_number;
         payload.consultation_fee = data.consultation_fee !== '' && data.consultation_fee != null ? Math.round(Number(data.consultation_fee)) : undefined;
         payload.follow_up_fee = data.follow_up_fee !== '' && data.follow_up_fee != null ? Math.round(Number(data.follow_up_fee)) : undefined;
+        payload.analytics_enabled = data.analytics_enabled ?? true;
       }
       feLogger.info('staff_edit', `Updating staff member: ${user.username}`);
       await userService.updateUser(user.id, payload);
@@ -735,7 +772,7 @@ export const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onS
               <select {...register('country_code')} className="input-field w-28">
                 {COUNTRIES.map(c => <option key={c.code} value={c.phoneCode}>{c.phoneCode}</option>)}
               </select>
-              <input {...register('phone_number')} className={`input-field flex-1 ${inputErr(errors.phone_number)}`} placeholder="1234567890" />
+              <input {...register('phone_number')} type="tel" inputMode="numeric" maxLength={10} onKeyDown={blockNonDigit} className={`input-field flex-1 ${inputErr(errors.phone_number)}`} placeholder="1234567890" />
             </div>
           </Field>
         </section>

@@ -91,7 +91,11 @@ import PurchaseOrdersPage from './pages/inventory/PurchaseOrdersPage';
 import NewPurchaseOrderPage from './pages/inventory/NewPurchaseOrderPage';
 import GRNsPage from './pages/inventory/GRNsPage';
 import AdjustmentsPage from './pages/inventory/AdjustmentsPage';
-import CycleCountsPage from './pages/inventory/CycleCountsPage';
+// Cycle Counts is disabled application-wide — code kept intact, routes below
+// are commented out. To re-enable: uncomment this import, the two imports
+// below, the three <Route> blocks, the Layout.tsx nav item, and the
+// InventoryDashboard.tsx quick-action, plus main.py's router include.
+// import CycleCountsPage from './pages/inventory/CycleCountsPage';
 
 // Billing pages
 import InvoiceList from './pages/InvoiceList';
@@ -108,7 +112,7 @@ import InsuranceProviders from './pages/InsuranceProviders';
 import LowStockAlertsPage from './pages/inventory/LowStockAlertsPage';
 import GRNReceiptForm from './pages/inventory/GRNReceiptForm';
 import StockMovementsReportPage from './pages/inventory/StockMovementsReportPage';
-import CycleCountDetailPage from './pages/inventory/CycleCountDetailPage';
+// import CycleCountDetailPage from './pages/inventory/CycleCountDetailPage'; // Cycle Counts disabled — see note above
 
 // Analytics
 import AnalyticsDashboard from './pages/analytics/AnalyticsDashboard';
@@ -670,7 +674,9 @@ const App: React.FC = () => {
                   <AdjustmentsPage />
                 </ProtectedRoute>
               } />
-              <Route path="/inventory/cycle-counts" element={
+              {/* Cycle Counts disabled application-wide — routes intentionally
+                  unmounted, page code untouched. Uncomment to re-enable. */}
+              {/* <Route path="/inventory/cycle-counts" element={
                 <ProtectedRoute
                   allowedRoles={['super_admin', 'admin', 'inventory_manager']}
                   requiredModule="inventory"
@@ -693,7 +699,7 @@ const App: React.FC = () => {
                 >
                   <CycleCountDetailPage />
                 </ProtectedRoute>
-              } />
+              } /> */}
 
               {/* ── Billing module ── */}
               <Route path="/billing/invoices" element={

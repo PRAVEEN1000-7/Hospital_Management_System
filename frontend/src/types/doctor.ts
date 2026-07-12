@@ -14,6 +14,7 @@ export interface DoctorProfile {
   follow_up_fee: number | null;
   is_available: boolean;
   is_active: boolean;
+  analytics_enabled?: boolean | null;
   created_at: string;
   updated_at: string;
   // Enriched

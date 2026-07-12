@@ -36,6 +36,11 @@ export interface Medicine {
   created_at: string;
   updated_at: string;
   total_stock?: number | null;  // Computed via stock_map in API response
+  // Earliest-expiring in-stock batch (FEFO) — inventory list columns (BUG-32)
+  earliest_batch_number?: string | null;
+  earliest_mfg_date?: string | null;
+  earliest_expiry_date?: string | null;
+  earliest_mrp?: number | null;
   // Legacy/optional fields for backward compatibility (may be undefined)
   brand?: string | null;
   dosage_form?: string | null;

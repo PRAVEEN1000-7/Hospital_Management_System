@@ -571,7 +571,14 @@ def list_purchase_orders(
         .filter(PurchaseOrder.hospital_id == hospital_id)
     )
     if status:
-        q = q.filter(PurchaseOrder.status == status)
+        # Comma-separated statuses supported so the GRN form can list POs that
+        # are 'approved' OR 'partially_received' — a partially received PO must
+        # stay selectable for its balance GRN (BUG-31).
+        statuses = [s.strip() for s in status.split(",") if s.strip()]
+        if len(statuses) == 1:
+            q = q.filter(PurchaseOrder.status == statuses[0])
+        elif statuses:
+            q = q.filter(PurchaseOrder.status.in_(statuses))
     if supplier_id:
         q = q.filter(PurchaseOrder.supplier_id == uuid.UUID(supplier_id))
     if search:

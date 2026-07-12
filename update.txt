@@ -138,3 +138,23 @@ Confirmed: process_refund only ever touched money (Invoice.paid_amount, Payment.
 
 BUG-30 — FIFO ordering
 Found it in one line: get_pending_prescriptions sorted Prescription.created_at.desc() — newest first, the exact opposite of FIFO — which is why a patient waiting 20+ hours was buried under one waiting 5 minutes. Changed to ascending order on finalized_at (falling back to created_at), matching the same timestamp the on-screen "wait time" column already uses.
+
+-- Medium 
+
+BUG-04 — Username template. New backend endpoint GET /users/suggest-username builds HospitalCode + First2(FirstName) + First2(LastName) + _ + 3-digit sequence (e.g. besasa_001). The 3-digit suffix is a per-hospital running counter, matching your example where the second user gets _002 regardless of name. The create-staff form now auto-fills the username from the names (debounced, backend-owned sequence so two admins can't mint the same number), replacing the old email-prefix logic.
+
+BUG-06 — Duplicate patient detection. First/last name now require minimum 2 letters. When a full 10-digit mobile is typed in registration, a debounced lookup runs — if a patient already has that number, an amber warning shows their name + registration number, and clicking the PRN opens their record. Warning only, never blocks (families share phones).
+
+BUG-11 — Staff role. Removed from the assignable-roles dropdown (your decision). Existing "staff" users keep working; no new ones can be created.
+
+BUG-16 — Analytics gating. New "In-house doctor — allow Analytics access" checkbox in the doctor section of Add/Edit staff (defaults on). Backing it: analytics_enabled column on doctors (migration 08 — written, not run), carried through create/update APIs and /doctors/me. The sidebar hides Analytics for doctors with the flag off. Receptionist access kept unchanged per your decision.
+
+BUG-19 — Queue display. "Next in Line" now shows exactly one token (the actual next patient); everyone behind them moved to a new muted "Waiting" section. Receptionists get the Queue Display sidebar link (admins already had it). On the security note: I verified the public endpoint returns only {token, status} — no patient names/details — and the link lives inside an authenticated receptionist session.
+
+BUG-22 — Pharmacist tools. One line was the whole bug: {!isPharmacist && ...} deliberately hid Add Medicine / Bulk Upload / Download Template from pharmacists while the routes already allowed them. Gate removed.
+
+BUG-24 — Open stock in edit. The medicine edit form now shows an "Open Stock" section listing every batch with an editable quantity; changes save together with the medicine. (Stock lives on batches, so that's where it's edited.)
+
+BUG-31 — Multi-GRN. The backend already tracked cumulative received quantities and partially_received status — the GRN form just never showed those POs (it filtered status=approved only) and pre-filled the full ordered quantity. Now: partially-received POs stay selectable (marked "balance pending"), items pre-fill with the remaining balance only, fully-received lines are dropped, and a note explains the pre-fill.
+
+BUG-32 — Inventory list. Rebuilt to the reference layout: Code (SKU) | Product Name | Batch No | MFG Date | EXP Date | HSN | Current Qty | MRP | Safety Stock | Status — with expiry highlighted when <90 days and a proper In/Low/Out status badge. Generic/category/strength removed from the list (still on the View detail screen). Added a stock-status filter alongside search/category. Backend now enriches each row with its earliest-expiring in-stock batch (FEFO — the batch that dispenses next).

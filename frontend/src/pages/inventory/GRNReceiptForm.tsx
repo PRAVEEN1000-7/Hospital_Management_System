@@ -129,7 +129,10 @@ const GRNReceiptForm: React.FC = () => {
     const loadData = async () => {
       try {
         const [pos, sups] = await Promise.all([
-          inventoryService.getPurchaseOrders(1, 100, { status: 'approved' }),
+          // Include partially_received POs (BUG-31): a PO that got only part
+          // of its order must stay selectable so a second GRN can receive
+          // the balance quantity.
+          inventoryService.getPurchaseOrders(1, 100, { status: 'approved,partially_received' }),
           inventoryService.getSuppliers(1, 100, '', true),
         ]);
         setPurchaseOrders(pos.data);
@@ -148,21 +151,31 @@ const GRNReceiptForm: React.FC = () => {
     const selectedPO = purchaseOrders.find(p => p.id === selectedPOId);
     if (selectedPO) {
       setSupplier(selectedPO.supplier_id);
-      // Pre-fill GRN items from PO
-      const newItems = selectedPO.items.map(poi => ({
-        item_type: poi.item_type || 'medicine',
-        item_id: poi.item_id,
-        item_name: poi.item_name,
-        batch_number: '',
-        manufactured_date: '',
-        expiry_date: '',
-        quantity_received: poi.quantity_ordered,
-        quantity_accepted: poi.quantity_ordered,
-        quantity_rejected: 0,
-        unit_price: poi.unit_price,
-        total_price: poi.total_price,
-      } as GRNItemCreate));
-      setItems(newItems);
+      // Pre-fill with the BALANCE still to receive, not the full ordered
+      // quantity (BUG-31) — earlier GRNs against this PO have already
+      // received part of it. Fully-received lines are dropped entirely.
+      const newItems = selectedPO.items
+        .filter(poi => poi.quantity_ordered - (poi.quantity_received || 0) > 0)
+        .map(poi => {
+          const balance = poi.quantity_ordered - (poi.quantity_received || 0);
+          return {
+            item_type: poi.item_type || 'medicine',
+            item_id: poi.item_id,
+            item_name: poi.item_name,
+            batch_number: '',
+            manufactured_date: '',
+            expiry_date: '',
+            quantity_received: balance,
+            quantity_accepted: balance,
+            quantity_rejected: 0,
+            unit_price: poi.unit_price,
+            total_price: balance * poi.unit_price,
+          } as GRNItemCreate;
+        });
+      if (newItems.length === 0) {
+        toast.error('All items on this PO have already been fully received');
+      }
+      setItems(newItems.length > 0 ? newItems : items);
     }
   };
 
@@ -361,9 +374,16 @@ const GRNReceiptForm: React.FC = () => {
               >
                 <option value="">-- Select PO (auto-fill items) --</option>
                 {purchaseOrders.map(po => (
-                  <option key={po.id} value={po.id}>{po.po_number} - {po.supplier_name}</option>
+                  <option key={po.id} value={po.id}>
+                    {po.po_number} - {po.supplier_name}{po.status === 'partially_received' ? ' (balance pending)' : ''}
+                  </option>
                 ))}
               </select>
+              {poId && purchaseOrders.find(p => p.id === poId)?.status === 'partially_received' && (
+                <p className="mt-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+                  This PO was partially received earlier — items below are pre-filled with the remaining balance only.
+                </p>
+              )}
             </div>
 
             {/* Supplier */}

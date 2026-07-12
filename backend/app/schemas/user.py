@@ -33,6 +33,8 @@ class UserCreate(BaseModel):
     follow_up_fee: Optional[float] = Field(None, ge=0)
     bio: Optional[str] = None
     department_id: Optional[str] = None
+    # In-house doctors see Analytics; guest doctors don't (BUG-16).
+    analytics_enabled: Optional[bool] = True
 
     @field_validator("username")
     @classmethod
@@ -107,6 +109,7 @@ class UserUpdate(BaseModel):
     registration_number: Optional[str] = Field(None, max_length=50)
     consultation_fee: Optional[float] = Field(None, ge=0)
     follow_up_fee: Optional[float] = Field(None, ge=0)
+    analytics_enabled: Optional[bool] = None
 
     @field_validator("role")
     @classmethod
@@ -155,6 +158,7 @@ class UserResponse(BaseModel):
     registration_number: Optional[str] = None
     consultation_fee: Optional[float] = None
     follow_up_fee: Optional[float] = None
+    analytics_enabled: Optional[bool] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -169,6 +173,7 @@ class UserResponse(BaseModel):
             registration_number = None
             consultation_fee = None
             follow_up_fee = None
+            analytics_enabled = None
             if hasattr(data, 'doctor_profile') and data.doctor_profile:
                 doc = data.doctor_profile[0] if isinstance(data.doctor_profile, list) else data.doctor_profile
                 specialization = getattr(doc, 'specialization', None)
@@ -176,6 +181,7 @@ class UserResponse(BaseModel):
                 registration_number = getattr(doc, 'registration_number', None)
                 consultation_fee = getattr(doc, 'consultation_fee', None)
                 follow_up_fee = getattr(doc, 'follow_up_fee', None)
+                analytics_enabled = getattr(doc, 'analytics_enabled', None)
             return {
                 "id": str(data.id),
                 "username": data.username,
@@ -198,6 +204,7 @@ class UserResponse(BaseModel):
                 "registration_number": registration_number,
                 "consultation_fee": float(consultation_fee) if consultation_fee is not None else None,
                 "follow_up_fee": float(follow_up_fee) if follow_up_fee is not None else None,
+                "analytics_enabled": analytics_enabled,
             }
         if isinstance(data, dict):
             if "id" in data and not isinstance(data["id"], str):

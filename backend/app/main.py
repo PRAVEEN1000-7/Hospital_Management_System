@@ -268,7 +268,10 @@ app.include_router(inventory.po_router, prefix="/api/v1", dependencies=_require_
 app.include_router(inventory.grn_router, prefix="/api/v1", dependencies=_require_inventory)
 app.include_router(inventory.movements_router, prefix="/api/v1", dependencies=_require_inventory)
 app.include_router(inventory.adjustments_router, prefix="/api/v1", dependencies=_require_inventory)
-app.include_router(inventory.cycle_counts_router, prefix="/api/v1", dependencies=_require_inventory)
+# Cycle Counts disabled application-wide — router intentionally not mounted,
+# so every endpoint 404s. All code (router, service, schemas, models) is
+# untouched; uncomment this line to re-enable.
+# app.include_router(inventory.cycle_counts_router, prefix="/api/v1", dependencies=_require_inventory)
 
 # Optical Store module
 app.include_router(optical.router, prefix="/api/v1", dependencies=_require_optical)

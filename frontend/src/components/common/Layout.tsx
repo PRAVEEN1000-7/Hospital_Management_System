@@ -61,6 +61,10 @@ const Layout: React.FC = () => {
   const [billingOpen, setBillingOpen] = useState(
     () => location.pathname.startsWith('/billing')
   );
+  // Guest doctors have analytics_enabled=false on their doctor profile and
+  // must not see the Analytics entry (BUG-16). Default true so non-doctors
+  // and doctors whose profile hasn't loaded yet are unaffected.
+  const [doctorAnalyticsEnabled, setDoctorAnalyticsEnabled] = useState(true);
   const normalizedRoles = (user?.roles || []).map(r => String(r).trim().toLowerCase());
   const roleAliases: Record<string, string> = {
     administrator: 'admin',
@@ -86,7 +90,11 @@ const Layout: React.FC = () => {
   // AnalyticsDashboard.tsx scopes its own panels per role (doctor→OPD only,
   // cashier→revenue/financial only, etc.) — these are exactly the roles it
   // already has panel logic for; report_viewer's sole job is reports/analytics.
-  const canAccessAnalytics     = hasRole('super_admin', 'admin', 'doctor', 'receptionist', 'pharmacist', 'cashier', 'inventory_manager', 'report_viewer') && isModuleEnabled('analytics');
+  // For doctors, additionally require their per-doctor analytics_enabled flag
+  // (in-house vs guest doctor, BUG-16) — other roles are unaffected.
+  const canAccessAnalytics     = hasRole('super_admin', 'admin', 'doctor', 'receptionist', 'pharmacist', 'cashier', 'inventory_manager', 'report_viewer')
+    && isModuleEnabled('analytics')
+    && (!hasRole('doctor') || hasRole('super_admin', 'admin') || doctorAnalyticsEnabled);
   // Optical Store is a back-of-store retail/dispensing operation, not part of a doctor's
   // clinical workflow — only admin/super_admin (oversight) and optical_staff (the job) get it.
   const canAccessOptical       = hasRole('super_admin', 'admin', 'optical_staff') && isModuleEnabled('optical') && isEyeHospitalFeatureEnabled;
@@ -125,6 +133,19 @@ const Layout: React.FC = () => {
     window.addEventListener('hospital:updated', handler);
     return () => window.removeEventListener('hospital:updated', handler);
   }, [loadBranding]);
+
+  // Doctors only: load their profile's analytics_enabled flag (BUG-16).
+  // Silently keeps the default (enabled) if the profile can't be fetched, so
+  // a transient error never locks an in-house doctor out of Analytics.
+  useEffect(() => {
+    if (!normalizedRoles.includes('doctor')) return;
+    import('../../services/doctorService').then(({ default: doctorService }) =>
+      doctorService.getMyProfile()
+        .then(profile => setDoctorAnalyticsEnabled(profile.analytics_enabled !== false))
+        .catch(() => {})
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   // Fetch pending prescription count for pharmacy badge
   useEffect(() => {
@@ -419,6 +440,16 @@ const Layout: React.FC = () => {
       appointmentItems.push(
         { to: '/appointments/walk-in', label: 'Walk-in Registration', icon: 'directions_walk' },
         { to: '/appointments/queue', label: 'Walk-in Queue', icon: 'queue' },
+      );
+      // Queue Display for the front desk too (BUG-19) — the receptionist is the
+      // person who actually runs the waiting-room TV. Link only appears inside
+      // an authenticated receptionist session (that session IS the security
+      // gate); the kiosk page itself stays read-only token numbers, no patient
+      // details.
+      if (isEyeHospitalFeatureEnabled && user?.hospital_code) {
+        appointmentItems.push({ to: `/public/queue/${user.hospital_code}`, label: 'Queue Display', icon: 'tv', external: true });
+      }
+      appointmentItems.push(
         { to: '/appointments/manage', label: 'Manage Appointments', icon: 'event_note' },
         { to: '/appointments/waitlist', label: 'Waitlist', icon: 'playlist_add' },
       );
@@ -515,7 +546,9 @@ const Layout: React.FC = () => {
         { to: '/inventory/grns', label: 'Goods Receipt', icon: 'inventory' },
         { to: '/inventory/stock-movements', label: 'Stock Movements', icon: 'swap_vert' },
         { to: '/inventory/adjustments', label: 'Adjustments', icon: 'tune' },
-        { to: '/inventory/cycle-counts', label: 'Cycle Counts', icon: 'inventory_2' },
+        // Cycle Counts disabled application-wide — nav entry intentionally
+        // removed, route unmounted in App.tsx, page code untouched.
+        // { to: '/inventory/cycle-counts', label: 'Cycle Counts', icon: 'inventory_2' },
       );
     } else if (hasRole('pharmacist')) {
       inventoryItems.push(

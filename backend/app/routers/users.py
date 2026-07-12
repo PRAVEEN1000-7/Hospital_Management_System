@@ -27,6 +27,7 @@ from ..services.user_service import (
     list_users,
     save_user_photo,
     get_user_by_id,
+    suggest_username,
 )
 
 logger = logging.getLogger(__name__)
@@ -133,6 +134,7 @@ async def create_new_user(
                 follow_up_fee=user_data.follow_up_fee,
                 bio=user_data.bio,
                 department_id=user_data.department_id,
+                analytics_enabled=user_data.analytics_enabled,
                 created_by_id=current_user.id,
             )
         except IntegrityError:
@@ -197,6 +199,19 @@ async def get_users(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve users.",
         )
+
+
+@router.get("/suggest-username")
+async def suggest_username_endpoint(
+    first_name: str = Query(..., min_length=1),
+    last_name: str = Query(..., min_length=1),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_or_super_admin),
+):
+    """Suggest the next username in the hospital's standard template:
+    HospitalCode + First2(first name) + First2(last name) + _ + 3-digit sequence."""
+    username = suggest_username(db, current_user.hospital_id, first_name, last_name)
+    return {"username": username}
 
 
 @router.get("/check-username/{username}")
@@ -336,7 +351,7 @@ async def update_existing_user(
 
         # Handle doctor-specific fields
         doctor_fields = {}
-        for field in ("specialization", "qualification", "registration_number", "consultation_fee", "follow_up_fee"):
+        for field in ("specialization", "qualification", "registration_number", "consultation_fee", "follow_up_fee", "analytics_enabled"):
             if field in update_fields:
                 doctor_fields[field] = update_fields.pop(field)
 

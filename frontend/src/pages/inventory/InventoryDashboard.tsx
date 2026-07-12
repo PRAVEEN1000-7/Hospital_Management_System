@@ -162,7 +162,7 @@ const InventoryDashboard: React.FC = () => {
           {/* Quick Actions */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
             <h2 className="text-base font-bold text-slate-900 mb-4">Quick Actions</h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               {[
                 { label: 'Low Stock', icon: 'warning', path: '/inventory/low-stock', badge: data.low_stock_count },
                 { label: 'Suppliers', icon: 'local_shipping', path: '/inventory/suppliers' },
@@ -171,7 +171,9 @@ const InventoryDashboard: React.FC = () => {
                 { label: 'Stock Report', icon: 'swap_vert', path: '/inventory/stock-movements' },
                 ...(canAdjustInventory ? [
                   { label: 'Adjustments', icon: 'tune', path: '/inventory/adjustments' },
-                  { label: 'Cycle Counts', icon: 'fact_check', path: '/inventory/cycle-counts' },
+                  // Cycle Counts disabled application-wide — quick-action tile
+                  // intentionally removed, route unmounted, page code untouched.
+                  // { label: 'Cycle Counts', icon: 'fact_check', path: '/inventory/cycle-counts' },
                 ] : []),
               ].map((action) => (
                 <button

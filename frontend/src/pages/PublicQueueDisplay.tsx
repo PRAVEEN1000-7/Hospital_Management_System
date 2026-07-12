@@ -57,10 +57,14 @@ const QueueColumn: React.FC<{ column: PublicQueueColumn; animKey: number }> = ({
 
   const activeTokens = column.tokens.filter(t => !['completed', 'collected', 'skipped'].includes(t.status));
   const nowServing = activeTokens.find(t => ACTIVE_STATUSES.has(t.status)) ?? activeTokens[0] ?? null;
-  // Only show "next" tokens after the one currently in nowServing position
-  const nextTokens = nowServing
+  // "Next in line" is exactly ONE patient — the one who'll be called after
+  // nowServing. Everyone behind them is just "Waiting"; token 6 of 6 must
+  // not share the "Next in line" label with token 2 (BUG-19).
+  const upcomingTokens = nowServing
     ? activeTokens.filter(t => t !== nowServing).slice(0, 5)
     : [];
+  const nextToken = upcomingTokens[0] ?? null;
+  const waitingTokens = upcomingTokens.slice(1);
   const totalWaiting = activeTokens.length;
 
   return (
@@ -122,15 +126,27 @@ const QueueColumn: React.FC<{ column: PublicQueueColumn; animKey: number }> = ({
               })()}
             </div>
 
-            {/* ── Next in Line ──────────────────────────────── */}
-            {nextTokens.length > 0 && (
+            {/* ── Next in Line — the single next patient only ── */}
+            {nextToken && (
               <div className="w-full flex flex-col items-center gap-2.5 border-t border-slate-800/60 pt-4">
                 <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-slate-500">Next in Line</p>
+                <div
+                  className={`w-14 h-14 rounded-full border-2 flex items-center justify-center text-lg font-bold select-none transition-all ${theme.badge}`}
+                >
+                  {nextToken.token ?? '—'}
+                </div>
+              </div>
+            )}
+
+            {/* ── Waiting — everyone behind the next patient ── */}
+            {waitingTokens.length > 0 && (
+              <div className="w-full flex flex-col items-center gap-2.5 border-t border-slate-800/60 pt-4">
+                <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-slate-500">Waiting</p>
                 <div className="flex flex-wrap justify-center gap-2">
-                  {nextTokens.map((entry, idx) => (
+                  {waitingTokens.map((entry, idx) => (
                     <div
                       key={idx}
-                      className={`w-12 h-12 rounded-full border-2 flex items-center justify-center text-base font-bold select-none transition-all ${theme.badge}`}
+                      className="w-11 h-11 rounded-full border-2 border-slate-700 bg-slate-800/40 text-slate-400 flex items-center justify-center text-sm font-bold select-none"
                     >
                       {entry.token ?? '—'}
                     </div>

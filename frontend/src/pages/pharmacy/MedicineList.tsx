@@ -5,6 +5,7 @@ import pharmacyService from '../../services/pharmacyService';
 import type { Medicine, MedicineCreateData, BatchCreateData } from '../../types/pharmacy';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { formatDateOnly } from '../../utils/calendarDate';
 
 const CATEGORY_OPTIONS = [
   { value: '', label: 'All Categories' },
@@ -28,30 +29,33 @@ const TEMPLATE_UNITS = ['Nos', 'Strip', 'Bottle', 'Box', 'Tube', 'Vial', 'Ampoul
 const TEMPLATE_SCHEDULES = ['OTC', 'H', 'H1', 'X'];
 const VALID_CATEGORIES = CATEGORY_OPTIONS.filter((opt) => opt.value).map((opt) => opt.value);
 
-const formatCategory = (value?: string | null) => {
-  if (!value) return '—';
-  return value
-    .split(/[_\s-]+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-    .join(' ');
-};
-
 const MedicineList: React.FC = () => {
   const navigate = useNavigate();
   const toast = useToast();
-  const { user, isEyeHospitalFeatureEnabled } = useAuth();
+  const { isEyeHospitalFeatureEnabled } = useAuth();
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [loading, setLoading] = useState(true);
   const [bulkUploading, setBulkUploading] = useState(false);
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [category, setCategory] = useState('');
+  const [stockFilter, setStockFilter] = useState<'' | 'ok' | 'low' | 'out'>('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const deferredSearch = useDeferredValue(search);
-  const isPharmacist = user?.roles?.includes('pharmacist') ?? false;
+
+  // Stock-status filter applies to the loaded page (stock is computed server-
+  // side per page, so a cross-page stock filter would need a backend param —
+  // fine for the typical single-hospital catalog size).
+  const filteredMedicines = stockFilter
+    ? medicines.filter((med) => {
+        const qty = med.total_stock ?? 0;
+        const safety = med.reorder_level ?? 10;
+        const status = qty === 0 ? 'out' : qty <= safety ? 'low' : 'ok';
+        return status === stockFilter;
+      })
+    : medicines;
 
   const fetchMedicines = useCallback(async () => {
     setLoading(true);
@@ -93,10 +97,11 @@ const MedicineList: React.FC = () => {
     setSearchInput('');
     setSearch('');
     setCategory('');
+    setStockFilter('');
     setPage(1);
   };
 
-  const hasActiveFilters = Boolean(search || category);
+  const hasActiveFilters = Boolean(search || category || stockFilter);
 
   const handleDownloadMedicineTemplate = () => {
     const medicineHeaders = [
@@ -401,8 +406,9 @@ const MedicineList: React.FC = () => {
           <h1 className="text-2xl font-bold text-slate-900">Medicine Inventory</h1>
           <p className="mt-1 text-sm text-slate-500">Browse, search, and narrow your inventory with live filters.</p>
         </div>
-        {!isPharmacist && (
-          <div className="flex items-center gap-2 flex-wrap justify-end">
+        {/* Pharmacists manage the medicine catalog day-to-day — they get the
+            same Add/Bulk Upload/Template tools as admins (BUG-22). */}
+        <div className="flex items-center gap-2 flex-wrap justify-end">
             <button
               type="button"
               onClick={handleDownloadMedicineTemplate}
@@ -430,7 +436,6 @@ const MedicineList: React.FC = () => {
               Add Medicine
             </button>
           </div>
-        )}
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -466,6 +471,17 @@ const MedicineList: React.FC = () => {
               ))}
             </select>
 
+            <select
+              value={stockFilter}
+              onChange={(e) => setStockFilter(e.target.value as '' | 'ok' | 'low' | 'out')}
+              className="min-w-[160px] rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-primary focus:outline-none"
+            >
+              <option value="">All Stock Status</option>
+              <option value="ok">In Stock</option>
+              <option value="low">Low Stock</option>
+              <option value="out">Out of Stock</option>
+            </select>
+
             {hasActiveFilters && (
               <button
                 type="button"
@@ -487,59 +503,86 @@ const MedicineList: React.FC = () => {
         </div>
       </div>
 
+      {/* Mecandria ERP reference layout (BUG-33): Code | Product Name | Batch No |
+          MFG Date | EXP Date | HSN | Current Qty | MRP Value | Safety Stock |
+          Min Stock | Status. Generic/category/strength moved to the View
+          detail screen — they cluttered the operational list (BUG-32). Safety
+          Stock and Min Stock both read from reorder_level — the schema has
+          one reorder threshold today, not two independent floors. */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-50 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                <th className="px-4 py-3">Name</th>
-                <th className="px-4 py-3">Generic</th>
-                <th className="px-4 py-3">Category</th>
-                <th className="px-4 py-3">Strength</th>
-                <th className="px-4 py-3">Unit</th>
-                <th className="px-4 py-3 text-right">Stock</th>
-                <th className="px-4 py-3 text-center">Actions</th>
+                <th className="px-3 py-3">Code</th>
+                <th className="px-3 py-3">Product Name</th>
+                <th className="px-3 py-3">Batch No</th>
+                <th className="px-3 py-3">MFG Date</th>
+                <th className="px-3 py-3">EXP Date</th>
+                <th className="px-3 py-3">HSN</th>
+                <th className="px-3 py-3 text-right">Current Qty</th>
+                <th className="px-3 py-3 text-right bg-amber-50">MRP Value</th>
+                <th className="px-3 py-3 text-right">Safety Stock</th>
+                <th className="px-3 py-3 text-right">Min Stock</th>
+                <th className="px-3 py-3 text-center">Status</th>
+                <th className="px-3 py-3 text-center">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-slate-400">
+                  <td colSpan={12} className="px-4 py-12 text-center text-slate-400">
                     <span className="material-symbols-outlined animate-spin text-3xl">progress_activity</span>
                   </td>
                 </tr>
-              ) : medicines.length === 0 ? (
+              ) : filteredMedicines.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-slate-400">No medicines found</td>
+                  <td colSpan={12} className="px-4 py-12 text-center text-slate-400">No medicines found</td>
                 </tr>
-              ) : medicines.map((med) => (
+              ) : filteredMedicines.map((med) => {
+                const qty = med.total_stock ?? 0;
+                const safety = med.reorder_level ?? 10;
+                const status = qty === 0 ? 'out' : qty <= safety ? 'low' : 'ok';
+                return (
                 <tr key={med.id} className="hover:bg-slate-50 cursor-pointer" onClick={() => navigate(`/pharmacy/medicines/${med.id}`)}>
-                  <td className="px-4 py-3 font-medium text-slate-900">{med.name}</td>
-                  <td className="px-4 py-3 text-slate-600">{med.generic_name || '—'}</td>
-                  <td className="px-4 py-3">
-                    {med.category ? (
-                      <span className="inline-flex rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
-                        {formatCategory(med.category)}
+                  <td className="px-3 py-3 font-mono text-xs text-slate-500">{med.sku || '—'}</td>
+                  <td className="px-3 py-3 font-medium text-slate-900">{med.name}</td>
+                  <td className="px-3 py-3 text-slate-600">{med.earliest_batch_number || '—'}</td>
+                  <td className="px-3 py-3 text-slate-600 whitespace-nowrap">{med.earliest_mfg_date ? formatDateOnly(med.earliest_mfg_date) : '—'}</td>
+                  <td className="px-3 py-3 whitespace-nowrap">
+                    {med.earliest_expiry_date ? (
+                      <span className={new Date(med.earliest_expiry_date) < new Date(Date.now() + 90 * 24 * 60 * 60 * 1000) ? 'text-amber-700 font-semibold' : 'text-slate-600'}>
+                        {formatDateOnly(med.earliest_expiry_date)}
                       </span>
-                    ) : (
-                      <span className="text-slate-400">—</span>
-                    )}
+                    ) : '—'}
                   </td>
-                  <td className="px-4 py-3 text-slate-600">{med.strength || '—'}</td>
-                  <td className="px-4 py-3 text-slate-600">{med.unit || med.unit_of_measure || '—'}</td>
-                  <td className="px-4 py-3 text-right">
-                    <span className={`font-semibold ${(med.total_stock ?? 0) <= (med.reorder_level ?? 10) ? 'text-red-500' : 'text-emerald-600'}`}>
-                      {med.total_stock ?? 0}
+                  <td className="px-3 py-3 text-slate-600">{med.hsn_code || '—'}</td>
+                  <td className="px-3 py-3 text-right">
+                    <span className={`font-semibold ${status === 'out' ? 'text-red-500' : status === 'low' ? 'text-amber-600' : 'text-emerald-600'}`}>
+                      {qty}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
+                  <td className="px-3 py-3 text-right font-semibold text-amber-800 bg-amber-50/60">
+                    {med.earliest_mrp != null ? `₹${Number(med.earliest_mrp).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
+                  </td>
+                  <td className="px-3 py-3 text-right text-slate-600">{safety}</td>
+                  <td className="px-3 py-3 text-right text-slate-600">{safety}</td>
+                  <td className="px-3 py-3 text-center">
+                    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
+                      status === 'out' ? 'bg-red-100 text-red-700' : status === 'low' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'
+                    }`}>
+                      {status === 'out' ? 'Out of Stock' : status === 'low' ? 'Low Stock' : 'In Stock'}
+                    </span>
+                  </td>
+                  <td className="px-3 py-3 text-center" onClick={(e) => e.stopPropagation()}>
                     <button onClick={() => navigate(`/pharmacy/medicines/${med.id}/edit`)}
                       className="text-slate-400 hover:text-primary transition-colors">
                       <span className="material-symbols-outlined text-lg">edit</span>
                     </button>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

@@ -117,6 +117,7 @@ def list_medicines(
     # Enrich with total stock
     med_ids = [m.id for m in items]
     stock_map: dict[uuid.UUID, int] = {}
+    batch_map: dict[uuid.UUID, dict] = {}
     if med_ids:
         stock_rows = (
             db.query(MedicineBatch.medicine_id, func.coalesce(func.sum(MedicineBatch.quantity), 0))
@@ -126,6 +127,28 @@ def list_medicines(
         )
         stock_map = {row[0]: int(row[1]) for row in stock_rows}
 
+        # Earliest-expiring in-stock batch per medicine — the batch the
+        # pharmacy will actually dispense from next (FEFO), so its batch
+        # number / MFG / EXP / MRP are what the inventory list shows (BUG-32).
+        batch_rows = (
+            db.query(MedicineBatch)
+            .filter(
+                MedicineBatch.medicine_id.in_(med_ids),
+                MedicineBatch.is_active == True,
+                MedicineBatch.quantity > 0,
+            )
+            .order_by(MedicineBatch.medicine_id, MedicineBatch.expiry_date.asc())
+            .all()
+        )
+        for b in batch_rows:
+            if b.medicine_id not in batch_map:
+                batch_map[b.medicine_id] = {
+                    "batch_number": b.batch_number,
+                    "mfg_date": str(b.mfg_date) if b.mfg_date else None,
+                    "expiry_date": str(b.expiry_date) if b.expiry_date else None,
+                    "mrp": float(b.mrp) if b.mrp is not None else (float(b.selling_price) if b.selling_price is not None else None),
+                }
+
     return {
         "total": total,
         "page": page,
@@ -133,6 +156,7 @@ def list_medicines(
         "total_pages": ceil(total / limit) if limit else 1,
         "data": items,
         "stock_map": stock_map,
+        "batch_map": batch_map,
     }
 
 

@@ -152,6 +152,34 @@ const Register: React.FC = () => {
   const watchDob = watch('date_of_birth');
   const watchTitle = watch('title');
   const watchGender = watch('gender');
+  const watchPhone = watch('phone_number');
+
+  // Duplicate-patient guard (BUG-06): once a full 10-digit mobile number is
+  // entered, look it up. If someone is already registered with it, warn with
+  // their registration number and link to the record so front-desk can
+  // cross-verify before creating a duplicate. Warning only — never blocks
+  // (families legitimately share one phone).
+  const [duplicatePatient, setDuplicatePatient] = useState<{ id: string; prn: string; name: string } | null>(null);
+  useEffect(() => {
+    if (isEditMode || !/^\d{10}$/.test(watchPhone || '')) {
+      setDuplicatePatient(null);
+      return;
+    }
+    const timeout = setTimeout(async () => {
+      try {
+        const res = await patientService.getPatients(1, 5, watchPhone);
+        const match = res.data.find(p => p.phone_number === watchPhone);
+        setDuplicatePatient(match ? {
+          id: match.id,
+          prn: match.patient_reference_number,
+          name: `${match.first_name} ${match.last_name}`.trim(),
+        } : null);
+      } catch {
+        setDuplicatePatient(null);
+      }
+    }, 500);
+    return () => clearTimeout(timeout);
+  }, [watchPhone, isEditMode]);
 
   // Native <input type="date"> can report intermediate/partial values while
   // the year is still being typed digit-by-digit (e.g. "0002" before "2026"
@@ -545,6 +573,28 @@ const Register: React.FC = () => {
                 : <p className={hintClass}>Enter exactly 10 digits — no spaces or dashes</p>}
             </div>
           </div>
+
+          {/* Duplicate-patient warning (BUG-06) — informational, never blocks */}
+          {duplicatePatient && (
+            <div className="mt-4 flex items-start gap-3 p-4 bg-amber-50 border border-amber-300 rounded-xl">
+              <span className="material-symbols-outlined text-amber-600 mt-0.5 flex-shrink-0">warning</span>
+              <div className="text-sm">
+                <p className="font-semibold text-amber-800">A patient is already registered with this mobile number</p>
+                <p className="text-amber-700 mt-0.5">
+                  {duplicatePatient.name} —{' '}
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/patients/${duplicatePatient.id}`)}
+                    className="font-mono font-bold underline hover:text-amber-900"
+                    title="Open this patient's record to cross-verify"
+                  >
+                    {duplicatePatient.prn}
+                  </button>
+                </p>
+                <p className="text-amber-600 text-xs mt-1">Open the record to cross-verify before creating a duplicate. You can still register a new patient if this is a family member sharing the same number.</p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Patient History block (BRD v1.1 §2) — eye-hospital feature pack only */}

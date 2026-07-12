@@ -25,6 +25,13 @@ export const userService = {
     return response.data;
   },
 
+  async suggestUsername(firstName: string, lastName: string): Promise<{ username: string }> {
+    const response = await api.get<{ username: string }>('/users/suggest-username', {
+      params: { first_name: firstName, last_name: lastName },
+    });
+    return response.data;
+  },
+
   async checkUsername(username: string): Promise<{ exists: boolean }> {
     const response = await api.get<{ exists: boolean }>(`/users/check-username/${encodeURIComponent(username)}`);
     return response.data;

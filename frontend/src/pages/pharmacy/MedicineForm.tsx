@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import pharmacyService from '../../services/pharmacyService';
 import { useToast } from '../../contexts/ToastContext';
-import type { MedicineCreateData } from '../../types/pharmacy';
+import type { MedicineCreateData, MedicineBatch } from '../../types/pharmacy';
 
 interface OpeningBatchForm {
   batch_number: string;
@@ -63,6 +63,10 @@ const MedicineForm: React.FC = () => {
     purchase_price: 0,
     selling_price: 0,
   });
+  // Edit mode: existing batches with editable quantities (BUG-24 — "open
+  // stock" lives on batches, so editing stock means editing batch quantities).
+  const [editBatches, setEditBatches] = useState<MedicineBatch[]>([]);
+  const [editedQty, setEditedQty] = useState<Record<string, number>>({});
 
   useEffect(() => {
     if (id) {
@@ -91,6 +95,7 @@ const MedicineForm: React.FC = () => {
         });
       }).catch(() => navigate('/pharmacy/medicines'))
         .finally(() => setLoading(false));
+      pharmacyService.getBatches(id).then(setEditBatches).catch(() => {});
     }
   }, [id, navigate]);
 
@@ -142,7 +147,19 @@ const MedicineForm: React.FC = () => {
 
       if (isEdit && id) {
         await pharmacyService.updateMedicine(id, payload);
-        toast.success('Medicine updated');
+        // Persist edited batch stock quantities (BUG-24)
+        const changed = Object.entries(editedQty).filter(([batchId, qty]) => {
+          const original = editBatches.find(b => b.id === batchId);
+          return original && qty !== original.quantity && qty >= 0;
+        });
+        for (const [batchId, qty] of changed) {
+          try {
+            await pharmacyService.updateBatch(batchId, { quantity: qty });
+          } catch {
+            toast.error(`Failed to update stock for batch ${editBatches.find(b => b.id === batchId)?.batch_number || ''}`);
+          }
+        }
+        toast.success(changed.length > 0 ? 'Medicine and stock updated' : 'Medicine updated');
         navigate('/pharmacy/medicines');
       } else {
         const created = await pharmacyService.createMedicine(payload);
@@ -335,6 +352,40 @@ const MedicineForm: React.FC = () => {
                 </div>
               </div>
             </section>
+
+            {/* Edit mode — current batch stock, editable (BUG-24). Stock lives on
+                batches, so this is where "open stock" gets corrected. */}
+            {isEdit && editBatches.length > 0 && (
+              <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="mb-5">
+                  <h2 className={sectionTitleClass}>Open Stock</h2>
+                  <p className={sectionHintClass}>Adjust the on-hand quantity per batch. Changes are saved together with the medicine.</p>
+                </div>
+                <div className="space-y-2">
+                  {editBatches.map(b => (
+                    <div key={b.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5">
+                      <div className="flex-1 min-w-[140px]">
+                        <p className="text-sm font-semibold text-slate-800">{b.batch_number}</p>
+                        <p className="text-xs text-slate-500">Exp: {b.expiry_date || '—'}{b.is_active === false ? ' · inactive' : ''}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Qty</label>
+                        <input
+                          type="number"
+                          min={0}
+                          value={editedQty[b.id] ?? b.quantity}
+                          onChange={(e) => setEditedQty(prev => ({ ...prev, [b.id]: Math.max(0, parseInt(e.target.value) || 0) }))}
+                          className="w-28 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-right shadow-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/10"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-3 text-xs text-slate-400">
+                  Total: {editBatches.reduce((s, b) => s + (editedQty[b.id] ?? b.quantity), 0)} units across {editBatches.length} batch(es)
+                </p>
+              </section>
+            )}
 
             {!isEdit && (
               <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">

@@ -33,6 +33,8 @@ class Doctor(Base):
     follow_up_fee = Column(Numeric(12, 2), default=0)
     is_available = Column(Boolean, default=True)
     is_active = Column(Boolean, default=True)
+    # In-house doctors see Analytics; guest doctors don't (BUG-16).
+    analytics_enabled = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))

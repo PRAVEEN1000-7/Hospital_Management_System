@@ -19,6 +19,7 @@ export interface UserData {
   registration_number?: string | null;
   consultation_fee?: number | null;
   follow_up_fee?: number | null;
+  analytics_enabled?: boolean | null;
 }
 
 export interface UserCreateData {
@@ -40,6 +41,7 @@ export interface UserCreateData {
   follow_up_fee?: number;
   bio?: string;
   department_id?: string;
+  analytics_enabled?: boolean;
 }
 
 export interface UserUpdateData {
@@ -55,6 +57,7 @@ export interface UserUpdateData {
   registration_number?: string;
   consultation_fee?: number;
   follow_up_fee?: number;
+  analytics_enabled?: boolean;
 }
 
 export interface PasswordResetData {

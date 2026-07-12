@@ -138,6 +138,51 @@ def get_user_by_id(
     return q.first()
 
 
+def suggest_username(
+    db: Session, hospital_id: uuid.UUID, first_name: str, last_name: str
+) -> str:
+    """
+    Standard username template (BUG-04):
+        HospitalCode + First2OfFirstName + First2OfLastName + "_" + 3-digit number
+    e.g. hospital code "BE", Dr. Sanjay Saravanakumar → "besasa_001".
+    The numeric suffix is a per-hospital running sequence (next new user gets
+    _002 regardless of their name), matching the spec's example. Stored
+    lowercase because create_user lowercases every username anyway.
+    """
+    hospital = db.query(Hospital).filter(Hospital.id == hospital_id).first()
+    code = (hospital.code if hospital and hospital.code else "").strip().lower()
+
+    def first2(name: str) -> str:
+        letters = "".join(ch for ch in (name or "") if ch.isalpha())
+        return (letters[:2] or "xx").lower()
+
+    prefix = f"{code}{first2(first_name)}{first2(last_name)}"
+
+    # Per-hospital sequence: highest _NNN suffix among this hospital's
+    # template-formatted usernames, +1.
+    rows = (
+        db.query(User.username)
+        .filter(User.hospital_id == hospital_id, User.username.like(f"{code}%\\_%", escape="\\"))
+        .all()
+    )
+    max_seq = 0
+    for (uname,) in rows:
+        tail = uname.rsplit("_", 1)[-1]
+        if tail.isdigit() and len(tail) == 3:
+            max_seq = max(max_seq, int(tail))
+
+    # The sequence is hospital-wide, but usernames are globally unique — walk
+    # forward past any collision (e.g. same number claimed by another hospital
+    # with an identical code prefix).
+    seq = max_seq + 1
+    while True:
+        candidate = f"{prefix}_{seq:03d}"
+        exists = db.query(User.id).filter(User.username == candidate).first()
+        if not exists:
+            return candidate
+        seq += 1
+
+
 def create_user(
     db: Session,
     username: str,
@@ -158,6 +203,7 @@ def create_user(
     follow_up_fee: Optional[float] = None,
     bio: Optional[str] = None,
     department_id: Optional[str] = None,
+    analytics_enabled: Optional[bool] = True,
     created_by_id: Optional[uuid.UUID] = None,
 ) -> User:
     """Create a new user with role assignment. Auto-creates Doctor record for doctor role."""
@@ -210,6 +256,7 @@ def create_user(
             bio=bio,
             is_available=True,
             is_active=True,
+            analytics_enabled=analytics_enabled if analytics_enabled is not None else True,
             created_by=created_by_id or user.id,
         )
         db.add(doctor)

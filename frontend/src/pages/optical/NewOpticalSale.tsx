@@ -6,6 +6,7 @@ import type { OpticalProduct, OpticalBatch, OpticalSaleItemCreate, OpticalPrescr
 import type { Patient } from '../../types/patient';
 import { useToast } from '../../contexts/ToastContext';
 import { format } from 'date-fns';
+import { useListKeyboardNav } from '../../hooks/useListKeyboardNav';
 
 const RX_REQUIRED_CATEGORIES = ['lens', 'contact_lens'];
 
@@ -31,6 +32,8 @@ const NewOpticalSale: React.FC = () => {
   const [patientSearch, setPatientSearch] = useState('');
   const [patientId, setPatientId] = useState('');
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const selectPatient = (p: Patient) => { setPatientId(p.id); setSelectedPatient(p); setPatientSearch(''); };
+  const patientNav = useListKeyboardNav(patients, selectPatient);
 
   const [prescriptions, setPrescriptions] = useState<OpticalPrescription[]>([]);
   const [prescriptionId, setPrescriptionId] = useState('');
@@ -240,15 +243,17 @@ const NewOpticalSale: React.FC = () => {
               <input
                 value={selectedPatient ? `${selectedPatient.first_name} ${selectedPatient.last_name}` : patientSearch}
                 onChange={(e) => { setPatientSearch(e.target.value); setPatientId(''); setSelectedPatient(null); }}
+                onKeyDown={patientNav.onKeyDown}
                 placeholder="Search patient by name"
                 className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary"
               />
               {patientSearch && !patientId && patients.length > 0 && (
                 <div className="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                  {patients.map(p => (
+                  {patients.map((p, idx) => (
                     <button key={p.id} type="button"
-                      onClick={() => { setPatientId(p.id); setSelectedPatient(p); setPatientSearch(''); }}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50">
+                      onClick={() => selectPatient(p)}
+                      onMouseEnter={() => patientNav.setActiveIndex(idx)}
+                      className={`w-full text-left px-3 py-2 text-sm ${idx === patientNav.activeIndex ? 'bg-primary/10' : 'hover:bg-slate-50'}`}>
                       {p.first_name} {p.last_name} <span className="text-slate-400 text-xs">({p.patient_reference_number})</span>
                     </button>
                   ))}

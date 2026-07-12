@@ -11,6 +11,7 @@ import {
 } from '../utils/constants';
 import type { DoctorOption, TimeSlot, AvailableSlots } from '../types/appointment';
 import type { Patient } from '../types/patient';
+import { useListKeyboardNav } from '../hooks/useListKeyboardNav';
 
 // ── Quick-register form state ────────────────────────────────────────────
 interface RegForm {
@@ -57,6 +58,8 @@ const AppointmentBooking: React.FC = () => {
   const [patientSearch, setPatientSearch] = useState('');
   const [patients, setPatients] = useState<Patient[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const selectPatient = (p: Patient) => { setSelectedPatient(p); setPatientSearch(`${p.first_name} ${p.last_name}`); setPatients([]); };
+  const patientNav = useListKeyboardNav(patients, selectPatient);
   const [patientLoading, setPatientLoading] = useState(false);
 
   // Doctor search/filter
@@ -280,6 +283,7 @@ const AppointmentBooking: React.FC = () => {
                 type="text"
                 value={patientSearch}
                 onChange={(e) => { setPatientSearch(e.target.value); setSelectedPatient(null); }}
+                onKeyDown={patientNav.onKeyDown}
                 placeholder="Search existing patient by name, PRN, or phone..."
                 className="w-full pl-10 pr-9 py-3 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
               />
@@ -300,9 +304,12 @@ const AppointmentBooking: React.FC = () => {
             )}
             {patients.length > 0 && !selectedPatient && (
               <div className="mt-2 border border-slate-200 rounded-lg max-h-60 overflow-y-auto">
-                {patients.map(p => (
-                  <button key={p.id} onClick={() => { setSelectedPatient(p); setPatientSearch(`${p.first_name} ${p.last_name}`); setPatients([]); }}
-                    className="w-full text-left px-4 py-3 hover:bg-slate-50 flex items-center gap-3 border-b border-slate-100 last:border-0">
+                {patients.map((p, idx) => (
+                  <button key={p.id} onClick={() => selectPatient(p)}
+                    onMouseEnter={() => patientNav.setActiveIndex(idx)}
+                    className={`w-full text-left px-4 py-3 flex items-center gap-3 border-b border-slate-100 last:border-0 ${
+                      idx === patientNav.activeIndex ? 'bg-primary/10' : 'hover:bg-slate-50'
+                    }`}>
                     <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold">
                       {p.first_name[0]}{p.last_name[0]}
                     </div>

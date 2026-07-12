@@ -9,6 +9,7 @@ import pharmacyService, {
 } from '../../services/pharmacyService';
 import type { Medicine, MedicineBatch } from '../../types/pharmacy';
 import { formatDateOnly, formatDateTime } from '../../utils/calendarDate';
+import { useListKeyboardNav } from '../../hooks/useListKeyboardNav';
 
 type DispensingPrescriptionItem = PrescriptionItemWithStock;
 
@@ -327,6 +328,8 @@ const DispensingScreen: React.FC = () => {
     setExtraItemResults([]);
     setShowExtraItemSearch(false);
   };
+
+  const extraItemNav = useListKeyboardNav(extraItemResults, handleAddExtraItem);
 
   const handleExtraItemBatchChange = (clientId: string, batchId: string) => {
     setExtraItems((prev) => prev.map((item) => item.clientId === clientId ? { ...item, selectedBatchId: batchId } : item));
@@ -1266,6 +1269,7 @@ const DispensingScreen: React.FC = () => {
                         autoFocus
                         value={extraItemSearch}
                         onChange={(e) => setExtraItemSearch(e.target.value)}
+                        onKeyDown={extraItemNav.onKeyDown}
                         placeholder="Search medicine or pharmacy item by name..."
                         className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200"
                       />
@@ -1278,12 +1282,15 @@ const DispensingScreen: React.FC = () => {
                       </button>
                       {extraItemResults.length > 0 && (
                         <div className="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
-                          {extraItemResults.map((med) => (
+                          {extraItemResults.map((med, idx) => (
                             <button
                               key={med.id}
                               type="button"
                               onClick={() => handleAddExtraItem(med)}
-                              className="w-full text-left px-3 py-2 text-sm hover:bg-emerald-50 flex items-center justify-between gap-2"
+                              onMouseEnter={() => extraItemNav.setActiveIndex(idx)}
+                              className={`w-full text-left px-3 py-2 text-sm flex items-center justify-between gap-2 ${
+                                idx === extraItemNav.activeIndex ? 'bg-emerald-50' : 'hover:bg-emerald-50'
+                              }`}
                             >
                               <span>
                                 <span className="font-medium text-slate-900">{med.name}</span>

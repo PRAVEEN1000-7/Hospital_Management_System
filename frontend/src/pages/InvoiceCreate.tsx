@@ -12,6 +12,7 @@ import type { Patient } from '../types/patient';
 import type { Medicine } from '../types/pharmacy';
 import type { TaxConfig, InvoiceType, InvoiceItemCreateData, InvoiceItemType, PaymentMode } from '../types/billing';
 import { genId } from '../utils/id';
+import { useListKeyboardNav } from '../hooks/useListKeyboardNav';
 
 interface MedicineLookupResult {
   id: string;
@@ -131,6 +132,9 @@ const InvoiceCreate: React.FC = () => {
   const [medicineLoadingIdx, setMedicineLoadingIdx] = useState<number | null>(null);
   const [medicineSuggestions, setMedicineSuggestions] = useState<Record<string, Medicine[]>>({});
   const [medicineSuggestOpen, setMedicineSuggestOpen] = useState<Record<string, boolean>>({});
+  // Keyboard-highlighted row per line (each medicine line has its own
+  // independent suggestion dropdown, keyed by line.key).
+  const [medicineActiveIdx, setMedicineActiveIdx] = useState<Record<string, number>>({});
   const medicineSearchTimers = useRef<Record<string, number>>({});
 
   // Hospital info (display only)
@@ -196,6 +200,7 @@ const InvoiceCreate: React.FC = () => {
     setPatientResults([]);
     setShowPatientDrop(false);
   };
+  const patientNav = useListKeyboardNav(patientResults, selectPatient);
 
   // Get allowed item types for current invoice type
   const getAllowedItemTypes = (): { value: InvoiceItemType; label: string }[] => {
@@ -282,6 +287,7 @@ const InvoiceCreate: React.FC = () => {
     });
 
     const term = value.trim();
+    setMedicineActiveIdx(prev => ({ ...prev, [lineKey]: -1 }));
     if (term.length < 2) {
       setMedicineSuggestions(prev => ({ ...prev, [lineKey]: [] }));
       setMedicineSuggestOpen(prev => ({ ...prev, [lineKey]: false }));
@@ -306,6 +312,7 @@ const InvoiceCreate: React.FC = () => {
 
         setMedicineSuggestions(prev => ({ ...prev, [lineKey]: startsWithMatches }));
         setMedicineSuggestOpen(prev => ({ ...prev, [lineKey]: startsWithMatches.length > 0 }));
+        setMedicineActiveIdx(prev => ({ ...prev, [lineKey]: -1 }));
       } catch {
         setMedicineSuggestions(prev => ({ ...prev, [lineKey]: [] }));
         setMedicineSuggestOpen(prev => ({ ...prev, [lineKey]: false }));
@@ -325,6 +332,27 @@ const InvoiceCreate: React.FC = () => {
     });
 
     await handleMedicineLookup(idx, med.id);
+  };
+
+  const handleMedicineSuggestKeyDown = (e: React.KeyboardEvent, idx: number, lineKey: string) => {
+    const results = medicineSuggestions[lineKey] || [];
+    if (results.length === 0) return;
+    const current = medicineActiveIdx[lineKey] ?? -1;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setMedicineActiveIdx(prev => ({ ...prev, [lineKey]: (current + 1) % results.length }));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setMedicineActiveIdx(prev => ({ ...prev, [lineKey]: (current - 1 + results.length) % results.length }));
+    } else if (e.key === 'Enter') {
+      if (current >= 0 && current < results.length) {
+        e.preventDefault();
+        handleSelectMedicineSuggestion(idx, lineKey, results[current]);
+        setMedicineActiveIdx(prev => ({ ...prev, [lineKey]: -1 }));
+      }
+    } else if (e.key === 'Escape') {
+      setMedicineSuggestOpen(prev => ({ ...prev, [lineKey]: false }));
+    }
   };
 
   // When invoice type changes, validate/fix line items
@@ -580,16 +608,18 @@ const InvoiceCreate: React.FC = () => {
                   value={patientSearch}
                   onChange={e => { setPatientSearch(e.target.value); setShowPatientDrop(true); }}
                   onFocus={() => setShowPatientDrop(true)}
+                  onKeyDown={patientNav.onKeyDown}
                   className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
                 />
                 {showPatientDrop && patientResults.length > 0 && (
                   <div className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                    {patientResults.map(p => (
+                    {patientResults.map((p, idx) => (
                       <button
                         key={p.id}
                         type="button"
                         onClick={() => selectPatient(p)}
-                        className="w-full text-left px-4 py-2.5 hover:bg-slate-50 text-sm"
+                        onMouseEnter={() => patientNav.setActiveIndex(idx)}
+                        className={`w-full text-left px-4 py-2.5 text-sm ${idx === patientNav.activeIndex ? 'bg-primary/10' : 'hover:bg-slate-50'}`}
                       >
                         <span className="font-medium">{p.first_name} {p.last_name}</span>
                         <span className="ml-2 text-slate-400 text-xs">{p.patient_reference_number} · {p.phone_number}</span>
@@ -692,17 +722,23 @@ const InvoiceCreate: React.FC = () => {
                             }, 150);
                           }
                         }}
+                        onKeyDown={e => {
+                          if (line.item_type === 'medicine') handleMedicineSuggestKeyDown(e, idx, line.key);
+                        }}
                         className="flex-1 px-2 py-1.5 border border-slate-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-primary/30 bg-white"
                       />
                       {line.item_type === 'medicine' && medicineSuggestOpen[line.key] && (medicineSuggestions[line.key]?.length || 0) > 0 && (
                         <div className="absolute z-20 left-0 right-16 top-full mt-1 bg-white border border-slate-200 rounded shadow-lg max-h-44 overflow-y-auto">
-                          {(medicineSuggestions[line.key] || []).map((m) => (
+                          {(medicineSuggestions[line.key] || []).map((m, mIdx) => (
                             <button
                               key={m.id}
                               type="button"
                               onMouseDown={(e) => e.preventDefault()}
                               onClick={() => handleSelectMedicineSuggestion(idx, line.key, m)}
-                              className="w-full text-left px-2 py-1.5 hover:bg-slate-50 text-xs"
+                              onMouseEnter={() => setMedicineActiveIdx(prev => ({ ...prev, [line.key]: mIdx }))}
+                              className={`w-full text-left px-2 py-1.5 text-xs ${
+                                mIdx === (medicineActiveIdx[line.key] ?? -1) ? 'bg-primary/10' : 'hover:bg-slate-50'
+                              }`}
                             >
                               <span className="font-medium text-slate-900">{m.name}</span>
                               <span className="ml-1 text-slate-500">({m.id.slice(0, 8)})</span>

@@ -5,6 +5,7 @@ import { useDashboardRefresh } from '../contexts/DashboardRefreshContext';
 import walkInService from '../services/walkInService';
 import scheduleService from '../services/scheduleService';
 import patientService from '../services/patientService';
+import { useListKeyboardNav } from '../hooks/useListKeyboardNav';
 import {
   TITLE_OPTIONS, GENDER_OPTIONS, BLOOD_GROUP_OPTIONS,
   COUNTRIES, getStatesForCountry, getPostalLabel, getPhoneCode,
@@ -52,6 +53,8 @@ const WalkInRegistration: React.FC = () => {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [patientLoading, setPatientLoading] = useState(false);
+  const selectPatient = (p: Patient) => { setSelectedPatient(p); setPatientSearch(`${p.first_name} ${p.last_name}`); setPatients([]); };
+  const patientNav = useListKeyboardNav(patients, selectPatient);
 
   // ── Register new patient modal ────────────────────────────────────────
   const [showRegModal, setShowRegModal] = useState(false);
@@ -377,6 +380,7 @@ const WalkInRegistration: React.FC = () => {
             </span>
             <input type="text" value={patientSearch}
               onChange={(e) => { setPatientSearch(e.target.value); setSelectedPatient(null); }}
+              onKeyDown={patientNav.onKeyDown}
               placeholder="Search by name, PRN, or phone..."
               className="w-full pl-10 pr-9 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
             {patientSearch && (
@@ -388,9 +392,12 @@ const WalkInRegistration: React.FC = () => {
           {patientLoading && <p className="text-xs text-slate-400 mt-1.5 flex items-center gap-1"><span className="material-symbols-outlined text-sm animate-spin">progress_activity</span>Searching...</p>}
           {patients.length > 0 && !selectedPatient && (
             <div className="mt-1.5 border border-slate-200 rounded-lg max-h-52 overflow-y-auto">
-              {patients.map(p => (
-                <button key={p.id} onClick={() => { setSelectedPatient(p); setPatientSearch(`${p.first_name} ${p.last_name}`); setPatients([]); }}
-                  className="w-full text-left px-4 py-2.5 hover:bg-slate-50 flex items-center gap-3 border-b border-slate-100 last:border-0">
+              {patients.map((p, idx) => (
+                <button key={p.id} onClick={() => selectPatient(p)}
+                  onMouseEnter={() => patientNav.setActiveIndex(idx)}
+                  className={`w-full text-left px-4 py-2.5 flex items-center gap-3 border-b border-slate-100 last:border-0 ${
+                    idx === patientNav.activeIndex ? 'bg-primary/10' : 'hover:bg-slate-50'
+                  }`}>
                   <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">{p.first_name[0]}{p.last_name[0]}</div>
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-slate-900 truncate">{p.first_name} {p.last_name}</p>

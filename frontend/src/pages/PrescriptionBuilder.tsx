@@ -16,6 +16,7 @@ import type { DoctorOption } from '../types/appointment';
 import { genId } from '../utils/id';
 import AvailabilityCalendar from '../components/common/AvailabilityCalendar';
 import { useDoctorMonthAvailability } from '../hooks/useDoctorMonthAvailability';
+import { useListKeyboardNav } from '../hooks/useListKeyboardNav';
 import { formatLocalDateISO, formatMonthKey, formatDateTime } from '../utils/calendarDate';
 
 const FREQUENCY_OPTIONS = ['1-0-0', '0-1-0', '0-0-1', '1-0-1', '1-1-0', '0-1-1', '1-1-1', '1-1-1-1'];
@@ -443,6 +444,8 @@ const PrescriptionBuilder: React.FC = () => {
     setPatientSearch('');
     setPatientResults([]);
   };
+
+  const patientNav = useListKeyboardNav(patientResults, selectPatient);
 
   const selectMedicine = (med: Medicine, blockIdx: number, itemIdx: number) => {
     const newBlocks = [...blocks];
@@ -875,6 +878,7 @@ const PrescriptionBuilder: React.FC = () => {
                     type="text"
                     value={patientSearch}
                     onChange={e => setPatientSearch(e.target.value)}
+                    onKeyDown={patientNav.onKeyDown}
                     placeholder="Search patient by name, phone, or PRN..."
                     className="input-field pl-10 pr-9"
                     autoFocus
@@ -887,11 +891,14 @@ const PrescriptionBuilder: React.FC = () => {
                 </div>
                 {patientResults.length > 0 && (
                   <div className="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                    {patientResults.map(p => (
+                    {patientResults.map((p, idx) => (
                       <button
                         key={p.id}
                         onClick={() => selectPatient(p)}
-                        className="w-full text-left px-4 py-3 hover:bg-slate-50 border-b border-slate-100 last:border-0"
+                        onMouseEnter={() => patientNav.setActiveIndex(idx)}
+                        className={`w-full text-left px-4 py-3 border-b border-slate-100 last:border-0 ${
+                          idx === patientNav.activeIndex ? 'bg-primary/10' : 'hover:bg-slate-50'
+                        }`}
                       >
                         <p className="text-sm font-medium">{p.first_name} {p.last_name}</p>
                         <p className="text-xs text-slate-500">

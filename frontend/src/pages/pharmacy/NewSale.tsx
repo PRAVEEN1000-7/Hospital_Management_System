@@ -8,6 +8,7 @@ import type { Patient } from '../../types/patient';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { format } from 'date-fns';
+import { useListKeyboardNav } from '../../hooks/useListKeyboardNav';
 
 interface CartItem extends SaleItemCreate {
   medicine_name: string;
@@ -97,6 +98,7 @@ const NewSale: React.FC = () => {
     setPatientResults([]);
     setShowPatientDrop(false);
   };
+  const patientNav = useListKeyboardNav(patientResults, selectPatient);
 
   const clearSelectedPatient = () => {
     setSelectedPatient(null);
@@ -345,13 +347,15 @@ const NewSale: React.FC = () => {
                     onChange={e => { setPatientName(e.target.value); setShowPatientDrop(true); }}
                     onFocus={() => setShowPatientDrop(true)}
                     onBlur={() => setTimeout(() => setShowPatientDrop(false), 150)}
+                    onKeyDown={patientNav.onKeyDown}
                     placeholder="Search existing patient or type walk-in name"
                     className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
                   {showPatientDrop && patientResults.length > 0 && (
                     <div className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                      {patientResults.map(p => (
+                      {patientResults.map((p, idx) => (
                         <button key={p.id} type="button" onMouseDown={() => selectPatient(p)}
-                          className="w-full text-left px-3 py-2 hover:bg-slate-50 text-sm">
+                          onMouseEnter={() => patientNav.setActiveIndex(idx)}
+                          className={`w-full text-left px-3 py-2 text-sm ${idx === patientNav.activeIndex ? 'bg-primary/10' : 'hover:bg-slate-50'}`}>
                           <span className="font-medium">{p.first_name} {p.last_name}</span>
                           <span className="ml-2 text-slate-400 text-xs">{p.patient_reference_number} · {p.phone_number}</span>
                         </button>

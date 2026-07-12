@@ -288,7 +288,7 @@ const App: React.FC = () => {
               } />
               <Route path="/appointments/doctor-schedule" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'doctor']}
+                  allowedRoles={['super_admin', 'admin', 'doctor', 'receptionist']}
                   requiredModule="appointments"
                 >
                   <DoctorSchedule />
@@ -778,7 +778,7 @@ const App: React.FC = () => {
               {/* ── Analytics module ── */}
               <Route path="/analytics" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'doctor', 'receptionist', 'pharmacist', 'cashier', 'inventory_manager', 'report_viewer']}
+                  allowedRoles={['super_admin', 'admin', 'doctor', 'pharmacist', 'cashier', 'inventory_manager', 'report_viewer']}
                   requiredModule="analytics"
                 >
                   <AnalyticsDashboard />

@@ -38,7 +38,12 @@ const getDepartment = (role: string, specialization?: string | null): string => 
 const StaffDirectory: React.FC = () => {
   const toast = useToast();
   const confirm = useConfirm();
-  const availableRoles = useAssignableRoles();
+  // Staff Directory's own role FILTER list excludes super_admin (BUG-10) —
+  // this page is for day-to-day staff management, not platform-admin
+  // accounts. Scoped to this filter only: the Add/Edit Staff modal still
+  // calls useAssignableRoles() independently and is unaffected, so super_admin
+  // account creation (still gated to real super admins there) keeps working.
+  const availableRoles = useAssignableRoles().filter(r => r !== 'super_admin');
   const [searchParams, setSearchParams] = useSearchParams();
   const [users, setUsers] = useState<UserData[]>([]);
   const [loading, setLoading] = useState(true);

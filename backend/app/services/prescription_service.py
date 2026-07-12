@@ -943,17 +943,25 @@ def list_medicines(
 
     if search:
         term = f"%{search}%"
+        # Formulation Search (BUG-13): also match strength, dosage form
+        # (category) and composition — previously a doctor typing "500mg" or
+        # "syrup" or an ingredient name found nothing, only brand/generic/
+        # manufacturer name matched, even though a drug can exist in the
+        # formulary in several different formulations.
         q = q.filter(
             or_(
                 Medicine.name.ilike(term),
                 Medicine.generic_name.ilike(term),
                 Medicine.manufacturer.ilike(term),
+                Medicine.strength.ilike(term),
+                Medicine.category.ilike(term),
+                Medicine.composition.ilike(term),
             )
         )
 
     total = q.count()
     offset = (page - 1) * limit
-    
+
     # Smart sorting: prioritize tablets and exact matches when searching
     if search:
         search_lower = search.lower()
@@ -1076,11 +1084,15 @@ def list_global_medicines(
         q = q.filter(Medicine.category == category)
     if search:
         term = f"%{search}%"
+        # Formulation Search (BUG-13) — same expanded matching as list_medicines.
         q = q.filter(
             or_(
                 Medicine.name.ilike(term),
                 Medicine.generic_name.ilike(term),
                 Medicine.manufacturer.ilike(term),
+                Medicine.strength.ilike(term),
+                Medicine.category.ilike(term),
+                Medicine.composition.ilike(term),
             )
         )
 

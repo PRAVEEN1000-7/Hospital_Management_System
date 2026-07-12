@@ -158,3 +158,27 @@ BUG-24 — Open stock in edit. The medicine edit form now shows an "Open Stock" 
 BUG-31 — Multi-GRN. The backend already tracked cumulative received quantities and partially_received status — the GRN form just never showed those POs (it filtered status=approved only) and pre-filled the full ordered quantity. Now: partially-received POs stay selectable (marked "balance pending"), items pre-fill with the remaining balance only, fully-received lines are dropped, and a note explains the pre-fill.
 
 BUG-32 — Inventory list. Rebuilt to the reference layout: Code (SKU) | Product Name | Batch No | MFG Date | EXP Date | HSN | Current Qty | MRP | Safety Stock | Status — with expiry highlighted when <90 days and a proper In/Low/Out status badge. Generic/category/strength removed from the list (still on the View detail screen). Added a stock-status filter alongside search/category. Backend now enriches each row with its earliest-expiring in-stock batch (FEFO — the batch that dispenses next).
+
+Cycle Counts disabled application-wide, code kept intact:
+
+Backend: main.py's app.include_router(inventory.cycle_counts_router, ...) commented out — every cycle-count endpoint now 404s. The router, service functions, schemas, and models are untouched.
+Frontend: the three /inventory/cycle-counts* routes in App.tsx are commented out (a stray link now just redirects to the dashboard via the catch-all route), the "Cycle Counts" nav item removed from Layout.tsx, and the quick-action tile removed from InventoryDashboard.tsx (grid resized from 7 to 6 columns to match). CycleCountsPage.tsx and CycleCountDetailPage.tsx are untouched — re-enabling is just uncommenting the lines I marked.
+BUG-33 — inventory list now matches the Mecandria reference more precisely:
+
+Added the missing Min Stock column (reads from the same reorder_level as Safety Stock — the schema only has one reorder threshold today, not two independent floors, so both columns intentionally mirror each other exactly like every row in your reference image does)
+MRP Value column now has the light amber highlight from the reference, header renamed from "MRP" to "MRP Value"
+Currency formatting now adds thousand separators (₹30,000.00 instead of ₹30000.00), matching the reference's grouped format
+
+-- Low
+
+BUG-05 — Salutation vs. gender. The gap: child titles (Baby/Master) already auto-corrected against gender, but adult titles (Mr./Mrs./Ms.) had zero cross-check — so picking "Mr." then switching gender to Female (or vice versa) just silently stuck. Fixed both directions: mismatched options are now disabled in the dropdown, and a new effect auto-corrects + toasts if gender changes after a title was already picked. Dr./Prof. stay untouched (gender-neutral).
+
+BUG-07 — Analytics off for receptionist. Removed from both the sidebar gate (Layout.tsx) and the actual route guard (App.tsx's /analytics route) — the nav link alone wasn't the real gate, so both needed the change to actually block direct navigation.
+
+BUG-08 — "Walk-in Registration" → "OPD Assignment". Pure label swap, 7 spots (sidebar nav ×2, dashboard quick-actions ×2, page heading ×3). Route path (/appointments/walk-in) and all logic untouched.
+
+BUG-10 — Superadmin off Staff Directory's role list. Scoped narrowly: only Staff Directory's own "All Roles" filter dropdown excludes it. The shared Add/Edit Staff modal (used by both Staff Directory and User Management) is untouched, so creating a super_admin account — which only works through that one gated form — still works exactly as before.
+
+BUG-13 — Formulation Search. Root cause: the medicine search doctors use when prescribing only matched name/generic name/manufacturer — typing "500mg" or "syrup" or an ingredient found nothing. Extended the search (both the hospital-scoped and the global-formulary search functions) to also match strength, dosage form, and composition. The Formulary Search panel in Prescription Builder now shows a category/dosage-form badge next to each result so doctors can tell formulations apart at a glance.
+
+BUG-17 — Doctor Schedule for receptionist. The route guard alone wouldn't have been enough — the page's doctor-picker was hard-gated to isAdmin, so a receptionist landing there would've seen a blank "select a doctor" screen with no doctors to select. Broadened that gate to include receptionist, added the route to allowedRoles, and added the nav link.

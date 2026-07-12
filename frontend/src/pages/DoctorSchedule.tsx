@@ -14,6 +14,9 @@ const DoctorSchedulePage: React.FC = () => {
   const { user } = useAuth();
   const toast = useToast();
   const isAdmin = user?.roles?.includes('admin') || user?.roles?.includes('super_admin');
+  // Receptionist manages doctor schedules from the front desk too (BUG-17) —
+  // like admin, they pick from any doctor rather than only seeing their own.
+  const canPickAnyDoctor = isAdmin || Boolean(user?.roles?.includes('receptionist'));
 
   const [doctors, setDoctors] = useState<DoctorOption[]>([]);
   const [selectedDoctorId, setSelectedDoctorId] = useState<string | null>(null);
@@ -42,7 +45,7 @@ const DoctorSchedulePage: React.FC = () => {
   const [editMaxPatients, setEditMaxPatients] = useState(20);
 
   useEffect(() => {
-    if (isAdmin) {
+    if (canPickAnyDoctor) {
       scheduleService.getDoctors().then(setDoctors).catch(() => {});
     } else if (user?.roles?.includes('doctor')) {
       // Fetch doctor profile to get the Doctor.id (not User.id)
@@ -52,7 +55,7 @@ const DoctorSchedulePage: React.FC = () => {
         toast.error('Could not load doctor profile');
       });
     }
-  }, [isAdmin, user]);
+  }, [canPickAnyDoctor, user]);
 
   const fetchData = useCallback(async () => {
     if (!selectedDoctorId) return;
@@ -195,8 +198,8 @@ const DoctorSchedulePage: React.FC = () => {
         </div>
       </div>
 
-      {/* Doctor Selector (admin) */}
-      {isAdmin && (
+      {/* Doctor Selector (admin / receptionist) */}
+      {canPickAnyDoctor && (
         <div className="mb-6">
           <select value={selectedDoctorId || ''} onChange={(e) => setSelectedDoctorId(e.target.value || null)}
             className="w-full sm:w-80 px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none bg-white">

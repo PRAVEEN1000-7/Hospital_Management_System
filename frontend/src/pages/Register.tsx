@@ -249,6 +249,20 @@ const Register: React.FC = () => {
     }
   }, [watchGender, isChild, watchDob, watchTitle, dobBlurred, setValue]);
 
+  // Correct Mr./Mrs./Ms. against gender the same way (BUG-05) — covers the
+  // case where title was picked before gender, or gender is changed after.
+  // Dr./Prof. are gender-neutral and left alone.
+  useEffect(() => {
+    if (!watchGender || isChild) return;
+    if (watchTitle === 'Mr.' && watchGender !== 'Male') {
+      setValue('title', 'Ms.');
+      toast.info('Title auto-corrected to "Ms." to match the selected gender');
+    } else if ((watchTitle === 'Mrs.' || watchTitle === 'Ms.') && watchGender === 'Male') {
+      setValue('title', 'Mr.');
+      toast.info('Title auto-corrected to "Mr." to match the selected gender');
+    }
+  }, [watchGender, watchTitle, isChild, setValue]);
+
   useEffect(() => {
     if (watchState && STATE_COUNTRY_MAP[watchState]) {
       const mappedCountry = STATE_COUNTRY_MAP[watchState];
@@ -454,9 +468,17 @@ const Register: React.FC = () => {
                 {TITLE_OPTIONS.map(t => {
                   const disableAdult = isChild && ADULT_ONLY_TITLES.includes(t);
                   const disableChild = !!(watchDob && !isChild && CHILD_TITLES.includes(t));
+                  // Mr. is male-only, Mrs./Ms. are female-only — Dr./Prof. stay
+                  // gender-neutral (BUG-05: "Mr." was selectable/left in place
+                  // for a female patient with nothing to catch the mismatch).
+                  const disableGenderMismatch = !!watchGender && (
+                    (t === 'Mr.' && watchGender !== 'Male') ||
+                    ((t === 'Mrs.' || t === 'Ms.') && watchGender !== 'Female')
+                  );
+                  const disabled = disableAdult || disableChild || disableGenderMismatch;
                   return (
-                    <option key={t} value={t} disabled={disableAdult || disableChild}>
-                      {t}{disableAdult ? ' (not for children)' : ''}{disableChild ? ' (children only)' : ''}
+                    <option key={t} value={t} disabled={disabled}>
+                      {t}{disableAdult ? ' (not for children)' : ''}{disableChild ? ' (children only)' : ''}{disableGenderMismatch ? ' (gender mismatch)' : ''}
                     </option>
                   );
                 })}

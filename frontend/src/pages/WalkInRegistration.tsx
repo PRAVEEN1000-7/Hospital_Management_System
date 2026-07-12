@@ -271,7 +271,7 @@ const WalkInRegistration: React.FC = () => {
           <div>
             <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
               <span className="material-symbols-outlined text-primary">directions_walk</span>
-              Walk-in Registration
+              OPD Assignment
             </h1>
             <p className="text-slate-400 text-xs mt-0.5">Register a walk-in patient and add to the queue</p>
           </div>
@@ -321,7 +321,7 @@ const WalkInRegistration: React.FC = () => {
           <div>
             <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
               <span className="material-symbols-outlined text-primary">directions_walk</span>
-              Walk-in Registration
+              OPD Assignment
             </h1>
             <p className="text-slate-400 text-xs mt-0.5">Register a walk-in patient and add to the queue</p>
           </div>
@@ -354,7 +354,7 @@ const WalkInRegistration: React.FC = () => {
         <div>
           <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
             <span className="material-symbols-outlined text-primary">directions_walk</span>
-            Walk-in Registration
+            OPD Assignment
           </h1>
           <p className="text-slate-400 text-xs mt-0.5">Register a walk-in patient and add to the queue</p>
         </div>

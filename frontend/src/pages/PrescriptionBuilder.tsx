@@ -1747,14 +1747,21 @@ const PrescriptionBuilder: React.FC = () => {
               <div className="mt-2 space-y-1 max-h-48 overflow-y-auto">
                 {medicineResults.map(med => (
                   <div key={med.id} className="p-2 bg-slate-50 rounded text-xs">
-                    <span className="font-medium">{med.name}</span>
-                    {med.strength && <span className="text-slate-500"> {med.strength}</span>}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-medium">{med.name}</span>
+                      {med.strength && <span className="text-slate-500">{med.strength}</span>}
+                      {med.category && (
+                        <span className="px-1.5 py-0.5 bg-primary/10 text-primary rounded-full text-[10px] font-semibold capitalize">
+                          {med.category}
+                        </span>
+                      )}
+                    </div>
                     <span className="text-slate-400 block">{med.generic_name}</span>
                   </div>
                 ))}
               </div>
             )}
-            <p className="text-xs text-slate-400 mt-2">Search generic/brand names.</p>
+            <p className="text-xs text-slate-400 mt-2">Search by name, generic name, strength (e.g. "500mg"), dosage form (e.g. "syrup"), or composition.</p>
           </div>
 
           {/* Patient History (if patient selected) */}

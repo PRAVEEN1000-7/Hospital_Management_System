@@ -78,7 +78,7 @@ function getQuickActions(role: string, isSuperAdmin: boolean): QuickAction[] {
     case 'receptionist':
       return [
         { icon: 'person_add', iconColor: 'text-primary', label: 'Patient Registration', desc: 'Add a new patient record', to: '/register' },
-        { icon: 'directions_walk', iconColor: 'text-amber-500', label: 'Walk-in Registration', desc: 'Register a walk-in patient', to: '/appointments/walk-in' },
+        { icon: 'directions_walk', iconColor: 'text-amber-500', label: 'OPD Assignment', desc: 'Register a walk-in patient', to: '/appointments/walk-in' },
         { icon: 'queue', iconColor: 'text-blue-500', label: 'Walk-in Queue', desc: 'View current queue status', to: '/appointments/queue' },
         { icon: 'event_note', iconColor: 'text-emerald-500', label: 'Manage Appointments', desc: 'View & manage all appointments', to: '/appointments/manage' },
       ];
@@ -124,7 +124,7 @@ function getQuickLinks(role: string): QuickLink[] {
     case 'super_admin':
     case 'admin':
       return [
-        { icon: 'directions_walk', iconColor: 'text-amber-400', label: 'Walk-in Registration', to: '/appointments/walk-in' },
+        { icon: 'directions_walk', iconColor: 'text-amber-400', label: 'OPD Assignment', to: '/appointments/walk-in' },
         { icon: 'queue', iconColor: 'text-blue-400', label: 'Walk-in Queue', to: '/appointments/queue' },
         { icon: 'analytics', iconColor: 'text-emerald-400', label: 'Reports', to: '/appointments/reports' },
       ];

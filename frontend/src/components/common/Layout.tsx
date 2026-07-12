@@ -90,9 +90,12 @@ const Layout: React.FC = () => {
   // AnalyticsDashboard.tsx scopes its own panels per role (doctor→OPD only,
   // cashier→revenue/financial only, etc.) — these are exactly the roles it
   // already has panel logic for; report_viewer's sole job is reports/analytics.
+  // receptionist deliberately excluded (BUG-07) — front desk doesn't need
+  // hospital-wide revenue/OPD analytics, just the billing/queue screens it
+  // already has.
   // For doctors, additionally require their per-doctor analytics_enabled flag
   // (in-house vs guest doctor, BUG-16) — other roles are unaffected.
-  const canAccessAnalytics     = hasRole('super_admin', 'admin', 'doctor', 'receptionist', 'pharmacist', 'cashier', 'inventory_manager', 'report_viewer')
+  const canAccessAnalytics     = hasRole('super_admin', 'admin', 'doctor', 'pharmacist', 'cashier', 'inventory_manager', 'report_viewer')
     && isModuleEnabled('analytics')
     && (!hasRole('doctor') || hasRole('super_admin', 'admin') || doctorAnalyticsEnabled);
   // Optical Store is a back-of-store retail/dispensing operation, not part of a doctor's
@@ -407,7 +410,7 @@ const Layout: React.FC = () => {
   if (canAccessAppointments) {
     if (hasRole('super_admin', 'admin')) {
       appointmentItems.push(
-        { to: '/appointments/walk-in', label: 'Walk-in Registration', icon: 'directions_walk' },
+        { to: '/appointments/walk-in', label: 'OPD Assignment', icon: 'directions_walk' },
         { to: '/appointments/queue', label: 'Walk-in Queue', icon: 'queue' },
       );
       // Queue Display (BRD v1.1 §3) — positioned below Walk-in Queue, above Doctor
@@ -438,7 +441,7 @@ const Layout: React.FC = () => {
       );
     } else if (isFlatNav && hasRole('receptionist')) {
       appointmentItems.push(
-        { to: '/appointments/walk-in', label: 'Walk-in Registration', icon: 'directions_walk' },
+        { to: '/appointments/walk-in', label: 'OPD Assignment', icon: 'directions_walk' },
         { to: '/appointments/queue', label: 'Walk-in Queue', icon: 'queue' },
       );
       // Queue Display for the front desk too (BUG-19) — the receptionist is the
@@ -451,6 +454,8 @@ const Layout: React.FC = () => {
       }
       appointmentItems.push(
         { to: '/appointments/manage', label: 'Manage Appointments', icon: 'event_note' },
+        // Manage Doctor Schedule now reachable from the front desk (BUG-17).
+        { to: '/appointments/doctor-schedule', label: 'Manage Doctor Schedule', icon: 'calendar_month' },
         { to: '/appointments/waitlist', label: 'Waitlist', icon: 'playlist_add' },
       );
     }

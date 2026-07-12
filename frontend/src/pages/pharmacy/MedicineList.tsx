@@ -513,17 +513,17 @@ const MedicineList: React.FC = () => {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-slate-50 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                <th className="px-3 py-3">Code</th>
-                <th className="px-3 py-3">Product Name</th>
-                <th className="px-3 py-3">Batch No</th>
-                <th className="px-3 py-3">MFG Date</th>
-                <th className="px-3 py-3">EXP Date</th>
-                <th className="px-3 py-3">HSN</th>
-                <th className="px-3 py-3 text-right">Current Qty</th>
-                <th className="px-3 py-3 text-right bg-amber-50">MRP Value</th>
-                <th className="px-3 py-3 text-right">Safety Stock</th>
-                <th className="px-3 py-3 text-right">Min Stock</th>
+              <tr className="bg-slate-50 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                <th className="px-3 py-3 text-center">Code</th>
+                <th className="px-3 py-3 text-center">Product Name</th>
+                <th className="px-3 py-3 text-center">Batch No</th>
+                <th className="px-3 py-3 text-center">MFG Date</th>
+                <th className="px-3 py-3 text-center">EXP Date</th>
+                <th className="px-3 py-3 text-center">HSN</th>
+                <th className="px-3 py-3 text-center">Current Qty</th>
+                <th className="px-3 py-3 text-center bg-amber-50">MRP Value</th>
+                <th className="px-3 py-3 text-center">Safety Stock</th>
+                <th className="px-3 py-3 text-center">Min Stock</th>
                 <th className="px-3 py-3 text-center">Status</th>
                 <th className="px-3 py-3 text-center">Actions</th>
               </tr>
@@ -557,7 +557,7 @@ const MedicineList: React.FC = () => {
                     ) : '—'}
                   </td>
                   <td className="px-3 py-3 text-slate-600">{med.hsn_code || '—'}</td>
-                  <td className="px-3 py-3 text-right">
+                  <td className="px-3 py-3 text-center">
                     <span className={`font-semibold ${status === 'out' ? 'text-red-500' : status === 'low' ? 'text-amber-600' : 'text-emerald-600'}`}>
                       {qty}
                     </span>
@@ -565,8 +565,8 @@ const MedicineList: React.FC = () => {
                   <td className="px-3 py-3 text-right font-semibold text-amber-800 bg-amber-50/60">
                     {med.earliest_mrp != null ? `₹${Number(med.earliest_mrp).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
                   </td>
-                  <td className="px-3 py-3 text-right text-slate-600">{safety}</td>
-                  <td className="px-3 py-3 text-right text-slate-600">{safety}</td>
+                  <td className="px-3 py-3 text-center text-slate-600">{safety}</td>
+                  <td className="px-3 py-3 text-center text-slate-600">{safety}</td>
                   <td className="px-3 py-3 text-center">
                     <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
                       status === 'out' ? 'bg-red-100 text-red-700' : status === 'low' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'

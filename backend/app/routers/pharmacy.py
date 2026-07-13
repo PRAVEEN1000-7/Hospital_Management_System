@@ -443,7 +443,24 @@ async def create_stock_adjustment(
 ):
     try:
         adj = svc.create_stock_adjustment(db, current_user.hospital_id, data.model_dump(), current_user.id)
-        return StockAdjustmentResponse.model_validate(adj)
+        # adj's UUID columns (id/hospital_id/item_id/batch_id/approved_by/created_by) are
+        # uuid.UUID instances, but the response schema types them as str — Pydantic v2
+        # rejects a UUID for a str field outright, so model_validate(adj) raised a
+        # ValidationError here on every call (caught below as if creation had failed,
+        # even though the adjustment + stock change had already committed).
+        return StockAdjustmentResponse.model_validate({
+            "id": str(adj.id),
+            "hospital_id": str(adj.hospital_id),
+            "item_id": str(adj.item_id),
+            "batch_id": str(adj.batch_id) if adj.batch_id else None,
+            "adjustment_type": adj.adjustment_type,
+            "quantity": adj.quantity,
+            "reason": adj.reason,
+            "status": adj.status,
+            "approved_by": str(adj.approved_by) if adj.approved_by else None,
+            "created_by": str(adj.created_by) if adj.created_by else None,
+            "created_at": adj.created_at,
+        })
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

@@ -1095,7 +1095,7 @@ def get_pharmacy_dashboard(db: Session, hospital_id: uuid.UUID) -> dict:
     # Today's sales
     today_sales = db.query(
         func.count(PharmacySale.id),
-        func.coalesce(func.sum(PharmacySale.total_amount), 0),
+        func.coalesce(func.sum(PharmacySale.paid_amount), 0),
     ).filter(
         PharmacySale.hospital_id == hospital_id,
         func.date(PharmacySale.created_at) == today,
@@ -1129,7 +1129,7 @@ def get_pharmacy_sales_trend(
     # Query daily sales
     results = db.query(
         func.date(PharmacySale.created_at).label("sale_date"),
-        func.coalesce(func.sum(PharmacySale.total_amount), 0).label("total_sales"),
+        func.coalesce(func.sum(PharmacySale.paid_amount), 0).label("total_sales"),
         func.count(PharmacySale.id).label("prescriptions_count"),
     ).filter(
         PharmacySale.hospital_id == hospital_id,

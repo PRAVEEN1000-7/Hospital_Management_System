@@ -260,6 +260,12 @@ def _restock_refunded_item(db: Session, refund: Refund, user_id: Optional[uuid.U
         return
 
     batch.quantity = (batch.quantity or 0) + int(qty)
+    # Stock totals everywhere else (_get_medicine_batch_stock etc.) only sum
+    # active batches — if the exact-match batch above was deactivated since
+    # it was dispensed, restocking it here would silently be invisible to
+    # every stock display unless it's reactivated now that it holds stock again.
+    if not batch.is_active:
+        batch.is_active = True
 
     db.add(StockMovement(
         hospital_id=refund.hospital_id,

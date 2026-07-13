@@ -533,6 +533,7 @@ const GRNReceiptForm: React.FC = () => {
                         value={item.manufactured_date}
                         onChange={(e) => updateItem(idx, 'manufactured_date', e.target.value)}
                         disabled={isEditMode && !canEditBatchDetails}
+                        max={new Date().toISOString().split('T')[0]}
                         title={isEditMode && !canEditBatchDetails ? 'Locked — batch details can only be corrected while the GRN is still Pending' : undefined}
                         className="w-full px-2 py-1 border border-slate-200 rounded text-xs focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:bg-slate-50"
                       />
@@ -543,6 +544,7 @@ const GRNReceiptForm: React.FC = () => {
                         value={item.expiry_date}
                         onChange={(e) => updateItem(idx, 'expiry_date', e.target.value)}
                         disabled={isEditMode && !canEditBatchDetails}
+                        min={new Date().toISOString().split('T')[0]}
                         title={isEditMode && !canEditBatchDetails ? 'Locked — batch details can only be corrected while the GRN is still Pending' : undefined}
                         className="w-full px-2 py-1 border border-slate-200 rounded text-xs focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:bg-slate-50"
                       />

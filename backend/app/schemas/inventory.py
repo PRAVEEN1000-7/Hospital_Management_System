@@ -5,6 +5,18 @@ from datetime import date, datetime
 import uuid
 
 
+def _reject_future_mfg_date(v: Optional[date]) -> Optional[date]:
+    if v and v > date.today():
+        raise ValueError("Manufacturing date cannot be in the future")
+    return v
+
+
+def _reject_past_expiry_date(v: Optional[date]) -> Optional[date]:
+    if v and v < date.today():
+        raise ValueError("Expiry date cannot be in the past")
+    return v
+
+
 # ─── Supplier ───────────────────────────────────────────────────────────────
 
 # Valid product categories for suppliers
@@ -181,6 +193,9 @@ class GRNItemCreate(BaseModel):
     total_price: float = Field(..., ge=0)
     rejection_reason: Optional[str] = Field(None, max_length=255)
 
+    _validate_manufactured_date = field_validator("manufactured_date")(_reject_future_mfg_date)
+    _validate_expiry_date = field_validator("expiry_date")(_reject_past_expiry_date)
+
 class GRNItemResponse(BaseModel):
     id: str
     item_type: str
@@ -210,6 +225,9 @@ class GRNItemBatchUpdate(BaseModel):
     batch_number: Optional[str] = Field(None, max_length=50)
     manufactured_date: Optional[date] = None
     expiry_date: Optional[date] = None
+
+    _validate_manufactured_date = field_validator("manufactured_date")(_reject_future_mfg_date)
+    _validate_expiry_date = field_validator("expiry_date")(_reject_past_expiry_date)
 
 
 class GRNCreate(BaseModel):

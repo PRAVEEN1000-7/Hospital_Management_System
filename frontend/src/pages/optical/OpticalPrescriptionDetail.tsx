@@ -135,17 +135,29 @@ const OpticalPrescriptionDetail: React.FC = () => {
             <span className="material-symbols-outlined text-base">download</span> {downloading ? 'Preparing…' : 'Download PDF'}
           </button>
           {canDispense && (
-            <button onClick={() => navigate(`/optical/sales/new?prescription_id=${rx.id}`)}
-              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90"
-              title="Sell spectacles/lenses against this prescription">
-              <span className="material-symbols-outlined text-base">point_of_sale</span> Dispense
-            </button>
+            rx.has_sale ? (
+              <span className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg"
+                title="This prescription has already been dispensed">
+                <span className="material-symbols-outlined text-base">check_circle</span> Already Dispensed
+              </span>
+            ) : (
+              <button onClick={() => navigate(`/optical/sales/new?prescription_id=${rx.id}`)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90"
+                title="Sell spectacles/lenses against this prescription">
+                <span className="material-symbols-outlined text-base">point_of_sale</span> Dispense
+              </button>
+            )
           )}
         </div>
       </div>
 
       {/* Contextual action hint banner */}
-      {hasOpticalModule && (
+      {hasOpticalModule && rx.has_sale ? (
+        <div className="flex items-start gap-3 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-sm text-emerald-800">
+          <span className="material-symbols-outlined text-emerald-500 text-base mt-0.5">check_circle</span>
+          <span>This prescription has already been dispensed at the Optical Store.</span>
+        </div>
+      ) : hasOpticalModule && (
         canDispense ? (
           <div className="flex items-start gap-3 bg-sky-50 border border-sky-200 rounded-xl px-4 py-3 text-sm text-sky-800">
             <span className="material-symbols-outlined text-sky-500 text-base mt-0.5">storefront</span>

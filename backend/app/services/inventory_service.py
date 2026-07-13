@@ -877,6 +877,8 @@ def _process_grn_acceptance(db: Session, grn: GoodsReceiptNote):
             batch = db.query(MedicineBatch).filter(
                 MedicineBatch.medicine_id == item.item_id,
                 MedicineBatch.batch_number == item.batch_number,
+                MedicineBatch.mfg_date == item.manufactured_date,
+                MedicineBatch.expiry_date == item.expiry_date,
             ).first()
 
             if batch:
@@ -903,6 +905,8 @@ def _process_grn_acceptance(db: Session, grn: GoodsReceiptNote):
             batch = db.query(OpticalBatch).filter(
                 OpticalBatch.product_id == item.item_id,
                 OpticalBatch.batch_number == item.batch_number,
+                OpticalBatch.mfg_date == item.manufactured_date,
+                OpticalBatch.expiry_date == item.expiry_date,
             ).first()
 
             if batch:

@@ -205,6 +205,7 @@ const NewGRNPage: React.FC = () => {
                   <div>
                     <label className="text-xs text-slate-400">Expiry Date</label>
                     <input type="date" value={item.expiry_date} onChange={e => updateItem(idx, 'expiry_date', e.target.value)}
+                      min={new Date().toISOString().split('T')[0]}
                       className="w-full px-2 py-2 border border-slate-200 rounded-lg text-sm mt-1" />
                   </div>
                   <div>

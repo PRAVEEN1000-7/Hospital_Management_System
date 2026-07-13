@@ -182,3 +182,293 @@ BUG-10 — Superadmin off Staff Directory's role list. Scoped narrowly: only Sta
 BUG-13 — Formulation Search. Root cause: the medicine search doctors use when prescribing only matched name/generic name/manufacturer — typing "500mg" or "syrup" or an ingredient found nothing. Extended the search (both the hospital-scoped and the global-formulary search functions) to also match strength, dosage form, and composition. The Formulary Search panel in Prescription Builder now shows a category/dosage-form badge next to each result so doctors can tell formulations apart at a glance.
 
 BUG-17 — Doctor Schedule for receptionist. The route guard alone wouldn't have been enough — the page's doctor-picker was hard-gated to isAdmin, so a receptionist landing there would've seen a blank "select a doctor" screen with no doctors to select. Broadened that gate to include receptionist, added the route to allowedRoles, and added the nav link.
+
+
+
+
+
+
+1. Description (57)
+Full amount showing in today's revenue even if payment not fully collected.
+
+Issue
+Full amount shown in revenue before payment
+Revenue calculation incorrect
+Expected
+Only collected amount should show in revenue
+Revenue updates only after payment
+Acceptance Criteria
+Revenue shows only collected amount
+Pending amount excluded from revenue
+Revenue updates after payment
+
+2.Description (56)
+Multiple issues with optical billing and payment tracking.
+
+Issues
+"Collected" amount meaning unclear in optical
+No view option to see payment details
+No advance paid amount field
+Payment status shows "partial paid, pending" but no payment option in billing
+Advance payment not increasing in amount collected
+Expected
+View option for payment details
+Advance paid amount field available
+Payment option in billing module
+Advance payment increases amount collected
+Clear status tracking for payments
+Acceptance Criteria
+View details option enabled for optical payments
+Advance paid amount field added
+Payment entry option in billing
+Advance payment reflects in collected amount
+Payment status properly tracked
+
+3.Description (55)
+After dispensing a product in optical store, user can dispense it again.
+
+Issue
+Same product can be dispensed multiple times
+No prevention of duplicate dispensing
+Expected
+Once dispensed, product should not be available again
+Duplicate dispensing should be prevented
+Acceptance Criteria
+Duplicate dispensing is prevented
+Error message shown on duplicate attempt
+
+4.Description (51)
+Stock adjustments are failing to be created in the pharmacy module.
+
+Issue
+Failed to create stock adjustments
+Pharmacy module stock adjustment functionality not working
+Expected Behavior
+Stock adjustments should be created successfully
+Changes should be reflected in inventory
+Actual Behavior
+Stock adjustment creation is failing
+Error prevents inventory updates
+Acceptance Criteria
+Stock adjustments can be created successfully
+Adjustments are recorded in pharmacy module
+Inventory is updated correctly
+
+5.Description (50)
+GRN created for Batch 002, but second batch entry with same number not increasing inventory.
+
+Issue
+Same medicine, same batch number but different exp/mfg dates
+First batch: GRN created successfully
+Second batch: inventory not increasing
+Expected
+All batch entries should increase inventory
+Batch tracking should handle duplicate batch numbers
+Acceptance Criteria
+Inventory increases for all batch entries
+Second batch inventory updates correctly
+
+6.Description (48)
+Date validation needed for manufacturing and expiry dates in issue
+
+Issues
+Manufacturing date allows future dates (should not)
+Expiry date allows past dates (should not)
+Expected Behavior
+Manufacturing date: should not allow future dates
+Expiry date: should not allow past dates
+Acceptance Criteria
+Manufacturing date validation prevents future dates
+Expiry date validation prevents past dates
+Appropriate error messages displayed
+
+7.Description (46)
+After processing a refund, the quantity is not increasing back to inventory.
+
+Issue
+Quantity not increasing after refund
+Expected
+Quantity should increase when refund is processed
+Acceptance Criteria
+Quantity increases after refund
+Inventory correctly updated
+
+------------------------------------
+Fixed details
+
+Issue #57 — Revenue shows full amount before payment
+Root cause: the "Today's Revenue" figure on both the Pharmacy and Optical dashboards was summing the full billed amount of every sale (total_amount), not what was actually collected (paid_amount). A sale with an advance/partial payment was counted as full revenue immediately.
+Fix: both dashboards (and their 30-day trend charts) now sum paid_amount instead of total_amount. Revenue now only reflects money actually collected, and updates correctly as more of the balance gets paid.
+
+Issue #56 — Optical billing/payment tracking issues
+Root cause: optical sales already stored payment status, advance amount, and balance — but there was no way to view that breakdown or collect a remaining balance after the sale was created.
+Fix: added a "Receive Payment" action (adds to the amount already collected, so an existing advance is preserved) and a "View" action showing the full breakdown (items, subtotal, tax, advance, collected, balance, status) on the Optical Sales list. Also added Payment/Status columns to the list so it's clear at a glance.
+
+Issue #55 — Product can be dispensed twice in optical
+Root cause: nothing checked whether a prescription had already been sold against before creating a new sale — a second tab, a stale link, or revisiting the prescription page could dispense it again and double-deduct stock.
+Fix: the system now rejects creating a second sale for a prescription that's already been dispensed, with a clear "already dispensed" message and badge on the prescription page. A database-level safeguard was also written (not yet applied — see below) to block this even under simultaneous requests.
+
+Issue #51 — Stock adjustments fail to be created (pharmacy)
+Root cause: the adjustment was actually being saved successfully, but the server crashed while building its response (an internal ID formatting bug), so the app displayed "Failed" even though the change had gone through — meaning retrying could apply it a second time.
+Fix: corrected the response formatting. Adjustments now save and return successfully in one attempt, with no silent double-apply risk.
+
+Issue #50 — Second batch with same batch number doesn't increase inventory
+Root cause: the system treated any batch with the same batch number as identical, even if the manufacturing/expiry dates were different — so a second shipment reusing a batch number either silently merged into the wrong batch (losing its real expiry date) or got rejected outright as a duplicate.
+Fix: batches are now identified by batch number and manufacturing/expiry date together, so two shipments with the same batch number but different dates are correctly tracked as separate batches and both add to stock.
+
+Issue #48 — No validation on manufacturing/expiry dates
+Root cause: there was no check anywhere preventing a future manufacturing date or a past expiry date.
+Fix: added validation everywhere these dates are entered (GRN receiving, batch add/edit, opening stock for new medicines/products) — manufacturing date can no longer be in the future, and expiry date can no longer be in the past, both in the form itself and on the server.
+
+Issue #46 — Refund doesn't restore inventory
+Root cause: the restock logic did work, but if the original batch had since been marked inactive (e.g. after running out), the refund still added stock back to it — invisibly, since inactive batches are excluded from stock totals shown everywhere else.
+Fix: when a refund restocks a batch that had been deactivated, it's now reactivated at the same time, so the returned quantity is immediately visible in stock again.
+
+
+
+----------------------------------
+
+
+
+
+8.Description (43)
+Username is not autogenerating and system is allowing names without hospital code.
+
+Issues
+Username not autogenerating
+Missing validation for hospital code in username
+Expected
+Username should autogenerate with hospital code
+Validate that username includes hospital code
+Acceptance Criteria
+Username autogeneration working
+Hospital code included in generated username
+Validation prevents usernames without hospital code
+
+9.Description (42)
+After OPD assignment, the waiting count is showing incorrectly. System shows "3 waiting" but there are 0 waiting patients. Dr. Saravanakumar has only 2 follow-up cases (not today), but they are being counted as current waiting.
+
+Issue
+Waiting count logic is incorrect
+Including follow-up cases scheduled for future dates in today's count
+Expected
+Only today's patients should be counted as waiting
+Future follow-ups excluded from waiting count
+Acceptance Criteria
+Accurate waiting patient count for today only
+Logic correctly filters by appointment date
+
+10. Description (41)
+Notification is not working perfectly. When a doctor logs in, it is not showing upcoming/assigned patient details.
+
+Expected Behavior
+When a doctor logs in, they should see notifications and details for:
+
+Upcoming appointments with patients
+Assigned patient cases
+Actual Behavior
+Upcoming/assigned patient details are not showing in the notification or dashboard when doctor logs in.
+
+Steps to Reproduce
+Log in as a doctor
+Check the notifications/dashboard
+Observe that upcoming or assigned patient details are missing
+Acceptance Criteria
+Doctor can see upcoming appointments after login
+Doctor can see assigned patient details
+Notifications display correctly with patient information
+
+11. Description (40)
+The consultation fee is not changing when it should be updated.
+
+Expected Behavior
+Consultation fee should be updated when changes are made.
+
+Actual Behavior
+Consultation fee remains static and does not reflect changes.
+
+Steps to Reproduce
+Navigate to consultation fee settings
+Attempt to modify the consultation fee
+Observe that the fee does not change
+Acceptance Criteria
+Consultation fee can be successfully updated
+Changes to consultation fee are persisted
+Updated fee is reflected throughout the system
+
+12. Description (39)
+Add validation to the last name field to ensure it contains more than 2 letters.
+
+Requirements
+Last name field should validate that input is more than 2 letters
+Should display appropriate error message if validation fails
+Apply this validation consistently across all forms where last name is entered
+Acceptance Criteria
+Last name validation is implemented
+Error message is displayed when last name has 2 or fewer letters
+Validation works on all relevant forms in the system
+
+13. Description (45)
+Please enable the "add batches" feature in issue #38 (HMS - Referral issue).
+
+Request
+Enable "add batches" functionality
+Allow users to add batches in the referral workflow
+Expected Behavior
+"Add batches" option should be available and functional
+Users can add multiple batches as needed
+Acceptance Criteria
+"Add batches" feature is enabled
+Functionality works correctly in referral workflow
+
+14.Description (47)
+Add batch number field in issue
+
+Request
+Add batch number field
+Allow users to enter/track batch numbers
+Expected Behavior
+Batch number field should be available and functional
+Users can enter and track batch numbers
+Acceptance Criteria
+Batch number field is added
+Batch number can be entered and stored
+
+15.Description (52)
+Add batch number field in stock movements.
+
+Request
+Add batch number field to stock movements
+Track batch numbers for all movements
+Expected
+Batch number field available in stock movements
+Better traceability for batch-specific changes
+Acceptance Criteria
+Batch number field added to stock movements
+Batch numbers recorded for all movements
+
+16. Description (53)
+Add batch number field in adjustments section of the inventory module.
+
+Request
+Add batch number field to inventory adjustments
+Track batch numbers for adjustment transactions
+Expected
+Batch number field available in adjustments
+Better traceability for batch-specific adjustments
+Acceptance Criteria
+Batch number field added to inventory adjustments
+Batch numbers recorded for all adjustments
+
+17. Description (54)
+Enable batch selection field in new stock adjustment form.
+
+Request
+Add batch selection field to new stock adjustment
+Allow users to select batch when creating adjustments
+Expected
+Batch selection field available in new stock adjustment
+Users can select specific batch for adjustment
+Acceptance Criteria
+Batch selection field enabled in new stock adjustment
+Users can select batch when creating adjustments

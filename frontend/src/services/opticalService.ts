@@ -176,6 +176,13 @@ export const opticalService = {
     return res.data;
   },
 
+  async recordSalePayment(saleId: string, amount: number, paymentMethod?: string): Promise<OpticalSale> {
+    const res = await api.put<OpticalSale>(`/optical/sales/${saleId}/payment`, {
+      amount, payment_method: paymentMethod,
+    });
+    return res.data;
+  },
+
   // ═══ Dispensing Queue ═══
   async getQueue(): Promise<OpticalQueueEntry[]> {
     const res = await api.get<OpticalQueueEntry[]>('/optical/queue');

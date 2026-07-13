@@ -69,7 +69,10 @@ class OpticalBatch(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     __table_args__ = (
-        UniqueConstraint("optical_product_id", "batch_number", name="uq_optical_batch"),
+        # A batch number can legitimately repeat across shipments with different
+        # mfg/expiry dates (see database_hole/10_fix_batch_uniqueness.sql) — those
+        # are physically distinct batches and must be tracked as separate rows.
+        UniqueConstraint("optical_product_id", "batch_number", "manufactured_date", "expiry_date", name="uq_optical_batch"),
     )
 
     mrp = synonym("selling_price")

@@ -336,6 +336,7 @@ const OpticalProductForm: React.FC = () => {
                         type="date"
                         value={openingBatch.expiry_date}
                         onChange={(e) => setOpeningBatch((prev) => ({ ...prev, expiry_date: e.target.value }))}
+                        min={new Date().toISOString().split('T')[0]}
                         className={fieldClass}
                       />
                       {!expiryRequired && (
@@ -348,6 +349,7 @@ const OpticalProductForm: React.FC = () => {
                         type="date"
                         value={openingBatch.mfg_date}
                         onChange={(e) => setOpeningBatch((prev) => ({ ...prev, mfg_date: e.target.value }))}
+                        max={new Date().toISOString().split('T')[0]}
                         className={fieldClass}
                       />
                     </div>

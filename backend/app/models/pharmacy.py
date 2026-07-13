@@ -41,7 +41,10 @@ class MedicineBatch(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     __table_args__ = (
-        UniqueConstraint("medicine_id", "batch_number", name="uq_medicine_batch"),
+        # A batch number can legitimately repeat across shipments with different
+        # mfg/expiry dates (see database_hole/10_fix_batch_uniqueness.sql) — those
+        # are physically distinct batches and must be tracked as separate rows.
+        UniqueConstraint("medicine_id", "batch_number", "manufactured_date", "expiry_date", name="uq_medicine_batch"),
     )
 
     # Compatibility aliases for response payloads.

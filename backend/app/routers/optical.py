@@ -4,8 +4,10 @@ Optical Store router — products, batches, eye prescriptions, sales, stock adju
 import logging
 import uuid as uuid_mod
 from datetime import date
+from decimal import Decimal
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -324,7 +326,9 @@ async def get_optical_prescription(
     rx = svc.get_optical_prescription_by_id(db, prescription_id, hospital_id=current_user.hospital_id)
     if not rx:
         raise HTTPException(status_code=404, detail="Prescription not found")
-    return _enrich_prescription_response(rx)
+    from ..models.optical import OpticalSale as _OptSale
+    has_sale = db.query(_OptSale.id).filter(_OptSale.prescription_id == rx.id).first() is not None
+    return _enrich_prescription_response(rx, has_sale=has_sale)
 
 
 @router.post("/prescriptions", response_model=OpticalPrescriptionResponse, status_code=status.HTTP_201_CREATED)
@@ -693,6 +697,38 @@ async def create_optical_sale(
         logger.error(f"Error creating optical sale: {e}", exc_info=True)
         db.rollback()
         raise HTTPException(status_code=500, detail="Failed to create sale")
+
+
+class RecordOpticalPaymentRequest(BaseModel):
+    amount: Decimal = Field(..., gt=0)
+    payment_method: Optional[str] = None
+
+
+@sales_router.put("/{sale_id}/payment", response_model=OpticalSaleResponse)
+async def record_optical_sale_payment_route(
+    sale_id: str,
+    data: RecordOpticalPaymentRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Collect an additional payment against an existing optical sale — e.g.
+    settling a partially-paid balance. See record_optical_sale_payment()."""
+    try:
+        sale = svc.record_optical_sale_payment(
+            db, sale_id, current_user.hospital_id, data.amount, data.payment_method,
+        )
+        if not sale:
+            raise HTTPException(status_code=404, detail="Sale not found")
+        resp = OpticalSaleResponse.model_validate(sale)
+        items = svc.get_sale_items(db, sale.id)
+        resp.items = [OpticalSaleItemResponse.model_validate(i) for i in items]
+        return resp
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error recording optical sale payment: {e}", exc_info=True)
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to record payment")
 
 
 # ──────────────────────────────────────────────────

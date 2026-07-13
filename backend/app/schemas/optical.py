@@ -1,10 +1,22 @@
 """
 Optical Store Pydantic schemas — products, batches, eye prescriptions, sales, stock adjustments.
 """
-from pydantic import BaseModel, Field, ConfigDict, model_validator
+from pydantic import BaseModel, Field, ConfigDict, model_validator, field_validator
 from typing import Optional, Any
 from datetime import date, datetime
 from decimal import Decimal
+
+
+def _reject_future_mfg_date(v: Optional[date]) -> Optional[date]:
+    if v and v > date.today():
+        raise ValueError("Manufacturing date cannot be in the future")
+    return v
+
+
+def _reject_past_expiry_date(v: Optional[date]) -> Optional[date]:
+    if v and v < date.today():
+        raise ValueError("Expiry date cannot be in the past")
+    return v
 
 
 def _orm_to_dict(data: Any) -> Any:
@@ -128,6 +140,9 @@ class OpticalBatchCreate(BaseModel):
     selling_price: Decimal = Field(default=Decimal("0"), ge=0)
     mrp: Optional[Decimal] = Field(None, ge=0)
 
+    _validate_mfg_date = field_validator("mfg_date")(_reject_future_mfg_date)
+    _validate_expiry_date = field_validator("expiry_date")(_reject_past_expiry_date)
+
 
 class OpticalBatchUpdate(BaseModel):
     batch_number: Optional[str] = Field(None, max_length=50)
@@ -138,6 +153,9 @@ class OpticalBatchUpdate(BaseModel):
     selling_price: Optional[Decimal] = Field(None, ge=0)
     mrp: Optional[Decimal] = Field(None, ge=0)
     is_active: Optional[bool] = None
+
+    _validate_mfg_date = field_validator("mfg_date")(_reject_future_mfg_date)
+    _validate_expiry_date = field_validator("expiry_date")(_reject_past_expiry_date)
 
 
 class OpticalBatchResponse(BaseModel):

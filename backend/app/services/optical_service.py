@@ -477,6 +477,18 @@ def create_sale(db: Session, hospital_id: uuid.UUID, data: dict, user_id: uuid.U
                     f"An eye prescription is required to sell {product.name} ({product.category})"
                 )
 
+    # A prescription should only ever be dispensed once — nothing previously
+    # checked this, so re-opening the same prescription (a second tab, a
+    # stale "Dispense" link, revisiting the detail page) created a second
+    # sale and decremented stock a second time.
+    if prescription_id:
+        existing_sale = db.query(OpticalSale).filter(
+            OpticalSale.hospital_id == hospital_id,
+            OpticalSale.prescription_id == uuid.UUID(prescription_id),
+        ).first()
+        if existing_sale:
+            raise ValueError("This prescription has already been dispensed")
+
     from .billing_queue_service import get_or_assign_visit_token
 
     # A prescription-linked sale inherits that visit's shared token instead
@@ -616,6 +628,43 @@ def create_sale(db: Session, hospital_id: uuid.UUID, data: dict, user_id: uuid.U
     sale.paid_amount = breakdown["paid_amount"]
     sale.balance_amount = breakdown["balance_amount"]
     sale.payment_status = breakdown["payment_status"]
+
+    db.commit()
+    db.refresh(sale)
+    return sale
+
+
+def record_optical_sale_payment(
+    db: Session,
+    sale_id: str | uuid.UUID,
+    hospital_id: uuid.UUID,
+    amount: Decimal,
+    payment_method: Optional[str] = None,
+) -> Optional[OpticalSale]:
+    """Record an additional payment collected against an existing optical
+    sale (e.g. settling a partially-paid balance at the billing counter).
+
+    Unlike pharmacy's mark_dispensing_paid (which *sets* paid_amount to sync
+    from an external invoice payment), this *adds* to whatever paid_amount
+    already exists — an optical sale can already carry a non-zero paid_amount
+    from an advance collected at creation, and simply overwriting it would
+    lose that advance instead of building on it."""
+    if isinstance(sale_id, str):
+        sale_id = uuid.UUID(sale_id)
+
+    sale = db.query(OpticalSale).filter(
+        OpticalSale.id == sale_id, OpticalSale.hospital_id == hospital_id,
+    ).first()
+    if not sale:
+        return None
+
+    total = sale.total_amount or Decimal("0")
+    new_paid = min(total, (sale.paid_amount or Decimal("0")) + amount)
+    sale.paid_amount = new_paid
+    sale.balance_amount = max(Decimal("0"), total - new_paid)
+    sale.payment_status = "paid" if new_paid >= total else ("partially_paid" if new_paid > 0 else "pending")
+    if payment_method:
+        sale.payment_method = payment_method
 
     db.commit()
     db.refresh(sale)
@@ -976,7 +1025,7 @@ def get_optical_dashboard(db: Session, hospital_id: uuid.UUID) -> dict:
 
     today_sales = db.query(
         func.count(OpticalSale.id),
-        func.coalesce(func.sum(OpticalSale.total_amount), 0),
+        func.coalesce(func.sum(OpticalSale.paid_amount), 0),
     ).filter(
         OpticalSale.hospital_id == hospital_id,
         func.date(OpticalSale.created_at) == today,
@@ -1010,7 +1059,7 @@ def get_optical_sales_trend(db: Session, hospital_id: uuid.UUID, days: int = 30)
 
     results = db.query(
         func.date(OpticalSale.created_at).label("sale_date"),
-        func.coalesce(func.sum(OpticalSale.total_amount), 0).label("total_sales"),
+        func.coalesce(func.sum(OpticalSale.paid_amount), 0).label("total_sales"),
         func.count(OpticalSale.id).label("orders_count"),
     ).filter(
         OpticalSale.hospital_id == hospital_id,

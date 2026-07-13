@@ -97,6 +97,7 @@ const OpticalBatchForm: React.FC = () => {
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Mfg Date</label>
             <input type="date" name="mfg_date" value={form.mfg_date || ''} onChange={handleChange}
+              max={new Date().toISOString().split('T')[0]}
               className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
           </div>
           <div>
@@ -104,6 +105,7 @@ const OpticalBatchForm: React.FC = () => {
               Expiry Date{expiryRequired ? ' *' : ' (optional)'}
             </label>
             <input type="date" name="expiry_date" value={form.expiry_date || ''} onChange={handleChange} required={expiryRequired}
+              min={new Date().toISOString().split('T')[0]}
               className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
             {!expiryRequired && (
               <p className="mt-1 text-xs text-slate-400">Leave blank — this product category doesn't expire.</p>

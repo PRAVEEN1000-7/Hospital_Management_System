@@ -1,10 +1,22 @@
 """
 Pharmacy Pydantic schemas — medicines, inventory, sales, suppliers, purchase orders.
 """
-from pydantic import AliasChoices, BaseModel, Field, ConfigDict, model_validator
+from pydantic import AliasChoices, BaseModel, Field, ConfigDict, model_validator, field_validator
 from typing import Optional, Any
 from datetime import date, datetime
 from decimal import Decimal
+
+
+def _reject_future_mfg_date(v: Optional[date]) -> Optional[date]:
+    if v and v > date.today():
+        raise ValueError("Manufacturing date cannot be in the future")
+    return v
+
+
+def _reject_past_expiry_date(v: Optional[date]) -> Optional[date]:
+    if v and v < date.today():
+        raise ValueError("Expiry date cannot be in the past")
+    return v
 
 
 _FIELD_ALIASES: dict[str, str] = {
@@ -164,6 +176,9 @@ class BatchCreate(BaseModel):
     supplier_id: Optional[str] = None
     purchase_order_id: Optional[str] = None
 
+    _validate_mfg_date = field_validator("mfg_date")(_reject_future_mfg_date)
+    _validate_expiry_date = field_validator("expiry_date")(_reject_past_expiry_date)
+
 
 class BatchUpdate(BaseModel):
     batch_number: Optional[str] = Field(None, max_length=50)
@@ -175,6 +190,9 @@ class BatchUpdate(BaseModel):
     mrp: Optional[Decimal] = Field(None, ge=0)
     tax_percent: Optional[Decimal] = Field(None, ge=0, le=100)
     discount_percent: Optional[Decimal] = Field(None, ge=0, le=100)
+
+    _validate_mfg_date = field_validator("mfg_date")(_reject_future_mfg_date)
+    _validate_expiry_date = field_validator("expiry_date")(_reject_past_expiry_date)
     location: Optional[str] = Field(None, max_length=100)
     is_active: Optional[bool] = None
 

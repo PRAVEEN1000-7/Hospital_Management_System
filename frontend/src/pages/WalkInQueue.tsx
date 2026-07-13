@@ -1413,8 +1413,8 @@ const WalkInQueue: React.FC = () => {
                           <span className="font-mono text-slate-500 bg-slate-50 px-2 py-0.5 rounded">PRN: {appt.patient_reference_number}</span>
                         )}
                         <span className="text-slate-400 font-medium">{appt.appointment_number}</span>
-                        {appt.consultation_fee != null && appt.consultation_fee > 0 && (
-                          <span className="text-emerald-600 font-semibold">₹{appt.consultation_fee}</span>
+                        {appt.consultation_fee != null && (
+                          <span className="text-emerald-600 font-semibold">₹{Number(appt.consultation_fee).toLocaleString()}</span>
                         )}
                       </div>
                       {appt.chief_complaint && (

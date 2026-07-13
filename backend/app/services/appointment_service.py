@@ -22,6 +22,17 @@ from ..core.hospital_time import hospital_today_by_id
 logger = logging.getLogger(__name__)
 
 
+def resolve_new_appointment_fee(doctor: Optional[Doctor], provided: Optional[Decimal]) -> Optional[Decimal]:
+    """Fee to store on a newly-created appointment: an explicit value wins;
+    otherwise fall back to the doctor's configured rate. `None` only when
+    neither exists — invoice generation will cascade to the hospital default."""
+    if provided is not None:
+        return provided
+    if doctor is not None and doctor.consultation_fee is not None:
+        return doctor.consultation_fee
+    return None
+
+
 def _next_queue_position(db: Session, doctor_id: uuid.UUID, queue_date: date) -> int:
     """Return next queue position for active queue items on a date."""
     active = (
@@ -114,7 +125,9 @@ def create_appointment(
         doctor_id = uuid.UUID(doctor_id)
     if not doctor_id:
         raise ValueError("Doctor selection is required")
-    
+
+    doctor = db.query(Doctor).filter(Doctor.id == doctor_id).first()
+
     department_id = data.get("department_id")
     if isinstance(department_id, str):
         department_id = uuid.UUID(department_id)
@@ -147,7 +160,7 @@ def create_appointment(
         priority=data.get("priority", "normal"),
         status=data.get("status", "scheduled"),
         chief_complaint=data.get("chief_complaint"),
-        consultation_fee=data.get("consultation_fee"),
+        consultation_fee=resolve_new_appointment_fee(doctor, data.get("consultation_fee")),
         notes=data.get("notes"),
         created_by=created_by,
     )
@@ -805,7 +818,7 @@ def get_doctor_today_summary(db: Session, doctor_id: uuid.UUID, hospital_id: uui
         .all()
     )
 
-    doctor_rate = float(doctor.consultation_fee) if doctor and doctor.consultation_fee else 0.0
+    doctor_rate = float(doctor.consultation_fee) if doctor and doctor.consultation_fee is not None else 0.0
 
     patients = []
     seen_patient_ids = set()
@@ -818,7 +831,7 @@ def get_doctor_today_summary(db: Session, doctor_id: uuid.UUID, hospital_id: uui
             .order_by(Invoice.created_at.desc())
             .first()
         )
-        fee_amount = float(invoice.total_amount) if invoice and invoice.total_amount else doctor_rate
+        fee_amount = float(invoice.total_amount) if invoice and invoice.total_amount is not None else doctor_rate
         paid_amount = float(invoice.paid_amount) if invoice and invoice.paid_amount else 0.0
         fee_collected = bool(invoice and float(invoice.balance_amount or 0) <= 0)
 

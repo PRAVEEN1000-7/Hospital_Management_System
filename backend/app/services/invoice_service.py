@@ -597,10 +597,20 @@ def remove_invoice_item(db: Session, invoice: Invoice, item_id: str) -> None:
 def resolve_consultation_fee_amount(db: Session, appointment: Appointment) -> Decimal:
     """Consultation fee owed for this appointment: appointment-level override
     first, then the doctor's own rate, then the hospital's default — same
-    priority order used everywhere else a consultation fee is billed."""
-    consultation_fee = Decimal(appointment.consultation_fee or Decimal("0"))
-    if consultation_fee <= Decimal("0") and appointment.doctor:
-        consultation_fee = Decimal(appointment.doctor.consultation_fee or Decimal("0"))
+    priority order used everywhere else a consultation fee is billed.
+
+    An explicit appointment-level fee of exactly 0 (a deliberate free
+    consultation) is honored as-is, not treated as "unset" — `None` is the
+    only signal to fall through to the doctor's rate. The doctor-rate ->
+    hospital-default cascade below intentionally still treats 0 as "not
+    configured", since `Doctor.consultation_fee` defaults to 0 at creation
+    rather than staying null."""
+    if appointment.consultation_fee is not None:
+        return Decimal(appointment.consultation_fee)
+
+    consultation_fee = Decimal("0")
+    if appointment.doctor and appointment.doctor.consultation_fee is not None:
+        consultation_fee = Decimal(appointment.doctor.consultation_fee)
     if consultation_fee <= Decimal("0"):
         from ..models.hospital_settings import HospitalSettings as _HospSettings
         hs = db.query(_HospSettings).filter(_HospSettings.hospital_id == appointment.hospital_id).first()

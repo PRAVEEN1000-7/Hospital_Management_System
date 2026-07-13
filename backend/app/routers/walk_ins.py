@@ -19,6 +19,7 @@ from pydantic import BaseModel
 from ..services.appointment_service import (
     generate_appointment_number,
     enrich_appointment,
+    resolve_new_appointment_fee,
 )
 from ..services.schedule_service import get_available_slots, is_doctor_on_leave
 from ..services.waitlist_service import (
@@ -238,7 +239,7 @@ async def register_walk_in(
             priority=data.priority or "normal",
             status="scheduled",
             chief_complaint=data.chief_complaint,
-            consultation_fee=data.consultation_fee,
+            consultation_fee=resolve_new_appointment_fee(doctor, data.consultation_fee),
             check_in_at=now,
             created_by=current_user.id,
         )
@@ -1130,6 +1131,7 @@ async def refer_patient_to_doctor(
             priority=original_appt.priority or "normal",
             status="scheduled",
             chief_complaint=original_appt.chief_complaint,
+            consultation_fee=to_doctor.consultation_fee,
             parent_appointment_id=original_appt.id,
             notes=f"Referral from Dr. queue. Reason: {data.referral_reason or 'Specialist consultation'}" if data.referral_reason else None,
             check_in_at=now if referral_date == today else None,

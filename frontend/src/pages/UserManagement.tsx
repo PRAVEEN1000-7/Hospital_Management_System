@@ -172,7 +172,7 @@ const UserManagement: React.FC = () => {
                     <td className="px-6 py-4">{getRoleBadge(user.roles?.[0] || '')}</td>
                     <td className="px-6 py-4 text-sm">
                       {user.roles?.includes('doctor') ? (
-                        user.consultation_fee ? (
+                        user.consultation_fee != null ? (
                           <span className="font-semibold text-slate-700">₹{Number(user.consultation_fee).toLocaleString()}</span>
                         ) : (
                           <span className="text-amber-600 text-xs font-semibold">Not set</span>

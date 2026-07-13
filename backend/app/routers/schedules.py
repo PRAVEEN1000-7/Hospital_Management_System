@@ -93,7 +93,7 @@ async def list_doctors(
             "name": doctor_name or "Unknown",
             "specialization": d.specialization,
             "department_id": str(d.department_id) if d.department_id else None,
-            "consultation_fee": float(d.consultation_fee) if d.consultation_fee else None,
+            "consultation_fee": float(d.consultation_fee) if d.consultation_fee is not None else None,
             "employee_id": d.employee_id,
         })
     return result

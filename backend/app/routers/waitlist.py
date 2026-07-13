@@ -271,6 +271,7 @@ async def book_from_waitlist(
 
         # Create a walk-in appointment from the waitlist entry
         appt_number = generate_appointment_number("walk_in")
+        target_doctor = db.query(Doctor).filter(Doctor.id == target_doctor_id).first()
         appt = Appointment(
             hospital_id=entry.hospital_id,
             appointment_number=appt_number,
@@ -285,6 +286,7 @@ async def book_from_waitlist(
             priority=entry.priority or "normal",
             status="scheduled",
             chief_complaint=entry.chief_complaint,
+            consultation_fee=target_doctor.consultation_fee if target_doctor else None,
             check_in_at=now,
             created_by=current_user.id,
             notes=f"Promoted from waitlist (#{entry.position})",

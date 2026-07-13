@@ -400,7 +400,7 @@ const Dashboard: React.FC = () => {
               </div>
             </div>
             <div className="flex flex-col gap-2 shrink-0 sm:items-end">
-              {doctorProfile.consultation_fee ? (
+              {doctorProfile.consultation_fee != null ? (
                 <span className="inline-flex items-center gap-1 px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-xs font-bold">
                   <span className="material-symbols-outlined text-sm">payments</span>
                   Consultation ₹{Number(doctorProfile.consultation_fee).toLocaleString()}
@@ -525,7 +525,7 @@ const Dashboard: React.FC = () => {
                   </div>
                   <div className="p-4 rounded-lg bg-slate-50">
                     <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Consultation Fee</p>
-                    <p className="text-sm font-semibold text-slate-800">{doctorProfile?.consultation_fee ? `₹${Number(doctorProfile.consultation_fee).toLocaleString()}` : 'Not set'}</p>
+                    <p className="text-sm font-semibold text-slate-800">{doctorProfile?.consultation_fee != null ? `₹${Number(doctorProfile.consultation_fee).toLocaleString()}` : 'Not set'}</p>
                   </div>
                   <div className="p-4 rounded-lg bg-slate-50">
                     <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Follow-up Fee</p>

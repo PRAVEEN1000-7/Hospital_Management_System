@@ -179,6 +179,7 @@ export interface StockMovement {
   item_id: string;
   item_name: string | null;
   batch_id: string | null;
+  batch_number: string | null;
   movement_type: string;
   reference_type: string | null;
   reference_id: string | null;
@@ -199,6 +200,7 @@ export interface StockAdjustment {
   item_id: string;
   item_name: string | null;
   batch_id: string | null;
+  batch_number: string | null;
   adjustment_type: string;
   quantity: number;
   reason: string;

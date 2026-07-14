@@ -129,7 +129,7 @@ const StockMovementsPage: React.FC = () => {
                       </span>
                     </td>
                     <td className="px-4 py-4 text-right text-sm font-medium text-slate-700">{m.balance_after ?? '—'}</td>
-                    <td className="px-4 py-4 text-sm text-slate-600">{m.batch_id || '—'}</td>
+                    <td className="px-4 py-4 text-sm text-slate-600">{m.batch_number || '—'}</td>
                     <td className="px-4 py-4 text-sm text-slate-600">{m.reference_type ? `${m.reference_type}` : '—'}</td>
                   </tr>
                 ))}

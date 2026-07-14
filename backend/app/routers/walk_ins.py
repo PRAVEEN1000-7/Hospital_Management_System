@@ -267,6 +267,27 @@ async def register_walk_in(
         db.commit()
         db.refresh(appt)
 
+        # Notify the assigned doctor a patient has been added to their queue
+        # (Bug #41 — this was the main "OPD Assignment" flow that never told
+        # the doctor anything at all, unlike reassignment via assign-doctor).
+        if doctor_id and queue_entry:
+            try:
+                patient = db.query(Patient).filter(Patient.id == patient_id).first()
+                patient_name = f"{patient.first_name} {patient.last_name}".strip() if patient else "a patient"
+                notify_hospital_users(
+                    db=db,
+                    hospital_id=current_user.hospital_id,
+                    title="Patient Assigned to You",
+                    message=f"{patient_name} has been assigned to your queue (Token #{queue_entry.queue_number}).",
+                    notification_type="appointment",
+                    priority="high",
+                    reference_type="appointment",
+                    reference_id=appt.id,
+                    extra_user_ids=[doctor.user_id],
+                )
+            except Exception:
+                logger.warning("Failed to send walk-in assignment notification", exc_info=True)
+
         enriched = enrich_appointment(db, appt)
         enriched["queue_number"] = queue_entry.queue_number if queue_entry else None
         enriched["queue_position"] = queue_entry.position if queue_entry else None
@@ -748,7 +769,6 @@ async def assign_doctor_to_walkin(
     appt.doctor_id = doctor_uuid
     db.flush()
 
-    today = hospital_today(current_user.hospital.timezone if current_user.hospital else None)
     # Remove old queue entry if reassigning
     db.query(AppointmentQueue).filter(
         AppointmentQueue.appointment_id == appt_uuid,
@@ -760,11 +780,15 @@ async def assign_doctor_to_walkin(
     # registered) rather than minting a new one — reassigning to a
     # different doctor must not change the patient's token.
     q_num = get_or_assign_visit_token(db, appt.hospital_id, appointment_id=appt.id)
-    q_pos = _next_position(db, doctor_uuid, today)
+    # Queue by the appointment's own date, not "today" — a future-dated
+    # follow-up/referral assigned through this endpoint must not show up in
+    # today's waiting count (see get_doctor_queue_loads below, and the
+    # already-correct pattern in refer_patient_to_doctor's queue_date=referral_date).
+    q_pos = _next_position(db, doctor_uuid, appt.appointment_date)
     queue_entry = AppointmentQueue(
         appointment_id=appt.id,
         doctor_id=doctor_uuid,
-        queue_date=today,
+        queue_date=appt.appointment_date,
         queue_number=q_num,
         position=q_pos,
         status="waiting",
@@ -900,6 +924,11 @@ async def get_doctor_queue_loads(
         .join(Appointment, Appointment.id == AppointmentQueue.appointment_id)
         .filter(
             AppointmentQueue.queue_date == load_date,
+            # A queue row's own date can still drift from the appointment it
+            # belongs to for older data — matching /walk-ins/queue's stricter
+            # pattern here too so a future-dated follow-up is never counted
+            # as part of today's waiting load (Bug #42).
+            Appointment.appointment_date == load_date,
             AppointmentQueue.status.notin_(["skipped"]),
         )
     )
@@ -1172,6 +1201,23 @@ async def refer_patient_to_doctor(
         # Build response
         to_doctor_name = f"Dr. {to_doctor.user.full_name}" if to_doctor.user else "Doctor"
         patient = db.query(Patient).filter(Patient.id == original_appt.patient_id).first()
+
+        # Notify the receiving doctor — referrals never told them a patient
+        # was on the way (Bug #41).
+        try:
+            notify_hospital_users(
+                db=db,
+                hospital_id=original_appt.hospital_id,
+                title="New Patient Referral",
+                message=f"{patient.full_name if patient else 'A patient'} was referred to you for {referral_date.isoformat()} (Token #{new_queue.queue_number}).",
+                notification_type="appointment",
+                priority="high",
+                reference_type="appointment",
+                reference_id=referral_appt.id,
+                extra_user_ids=[to_doctor.user_id],
+            )
+        except Exception:
+            logger.warning("Failed to send referral notification", exc_info=True)
 
         return {
             "ok": True,

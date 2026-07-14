@@ -22,7 +22,7 @@ const staffCreateSchema = z.object({
     .max(100, 'Max 100 characters')
     .regex(/^[A-Za-z]+$/, 'Only letters (A–Z) allowed — no numbers, spaces or symbols'),
   last_name: z.string()
-    .min(1, 'Last name is required')
+    .min(3, 'Last name must be more than 2 letters')
     .max(100, 'Max 100 characters')
     .regex(/^[A-Za-z]+$/, 'Only letters (A–Z) allowed — no numbers, spaces or symbols'),
   email: z.string()
@@ -79,7 +79,7 @@ const staffCreateSchema = z.object({
 const staffEditSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
   first_name: z.string().min(1, 'Required').max(100).regex(/^[A-Za-z]+$/, 'Only letters (A–Z) allowed'),
-  last_name: z.string().min(1, 'Required').max(100).regex(/^[A-Za-z]+$/, 'Only letters (A–Z) allowed'),
+  last_name: z.string().min(3, 'Last name must be more than 2 letters').max(100).regex(/^[A-Za-z]+$/, 'Only letters (A–Z) allowed'),
   phone_number: z.string().optional().refine(val => !val || /^\d{10}$/.test(val), { message: 'Phone must be exactly 10 digits' }),
   country_code: z.string().optional(),
   role: z.string().min(1, 'Required'),

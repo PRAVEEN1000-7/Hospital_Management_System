@@ -165,6 +165,7 @@ const WalkInRegistration: React.FC = () => {
     else if (!/^[A-Za-z][A-Za-z\s'-]*$/.test(regForm.first_name.trim())) errs.first_name = 'Must start with a letter — only letters, spaces, hyphens and apostrophes';
     if (!regForm.last_name.trim()) errs.last_name = 'Required';
     else if (!/^[A-Za-z][A-Za-z\s'-]*$/.test(regForm.last_name.trim())) errs.last_name = 'Must start with a letter — only letters, spaces, hyphens and apostrophes';
+    else if (regForm.last_name.trim().length <= 2) errs.last_name = 'Last name must be more than 2 letters';
     if (!regForm.gender) errs.gender = 'Required';
     if (!regForm.date_of_birth) errs.date_of_birth = 'Required';
     if (!regForm.blood_group) errs.blood_group = 'Required';
@@ -251,6 +252,7 @@ const WalkInRegistration: React.FC = () => {
     } else if (field === 'last_name') {
       if (!value.trim()) error = 'Required';
       else if (!/^[A-Za-z\s.'\-]+$/.test(value)) error = 'Alphabets only';
+      else if (value.trim().length <= 2) error = 'Last name must be more than 2 letters';
     } else if (field === 'phone_number') {
       if (!value) error = 'Phone is required';
       else if (!/^\d{10}$/.test(value)) error = 'Must be exactly 10 digits';

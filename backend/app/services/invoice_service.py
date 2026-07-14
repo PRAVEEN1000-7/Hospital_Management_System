@@ -594,34 +594,53 @@ def remove_invoice_item(db: Session, invoice: Invoice, item_id: str) -> None:
     _recalculate_invoice(db, invoice)
 
 
-def resolve_consultation_fee_amount(db: Session, appointment: Appointment) -> Decimal:
-    """Consultation fee owed for this appointment: appointment-level override
-    first, then the doctor's own rate, then the hospital's default — same
-    priority order used everywhere else a consultation fee is billed.
+def resolve_consultation_fee_amount(
+    db: Session, appointment: Appointment, has_invoice: Optional[bool] = None
+) -> Decimal:
+    """Consultation fee owed for this appointment.
 
-    An explicit appointment-level fee of exactly 0 (a deliberate free
-    consultation) is honored as-is, not treated as "unset" — `None` is the
-    only signal to fall through to the doctor's rate. The doctor-rate ->
-    hospital-default cascade below intentionally still treats 0 as "not
-    configured", since `Doctor.consultation_fee` defaults to 0 at creation
-    rather than staying null."""
-    if appointment.consultation_fee is not None:
-        return Decimal(appointment.consultation_fee)
+    Bug #40: an appointment's consultation_fee is auto-filled from the
+    doctor's rate at BOOKING time (resolve_new_appointment_fee) and there's
+    no UI to set a genuine per-appointment override — so that frozen value
+    is never a deliberate one-off, it's just whatever the doctor's rate
+    happened to be when the appointment was created. Editing the doctor's
+    rate afterward must still reach any appointment that hasn't been billed
+    yet. Once an invoice exists, the amount actually charged is locked in and
+    must never be silently rewritten by a later rate change.
 
-    consultation_fee = Decimal("0")
-    if appointment.doctor and appointment.doctor.consultation_fee is not None:
-        consultation_fee = Decimal(appointment.doctor.consultation_fee)
-    if consultation_fee <= Decimal("0"):
-        from ..models.hospital_settings import HospitalSettings as _HospSettings
-        hs = db.query(_HospSettings).filter(_HospSettings.hospital_id == appointment.hospital_id).first()
-        if hs and hs.consultation_fee_default:
-            try:
-                fallback = Decimal(str(hs.consultation_fee_default))
-                if fallback > Decimal("0"):
-                    consultation_fee = fallback
-            except Exception:
-                pass
-    return consultation_fee
+    Priority order:
+      - Not yet invoiced: doctor's CURRENT rate > frozen appointment snapshot > hospital default.
+      - Already invoiced: frozen appointment snapshot (what was actually billed) > doctor's rate > hospital default.
+    """
+    if has_invoice is None:
+        has_invoice = db.query(Invoice.id).filter(
+            Invoice.appointment_id == appointment.id, Invoice.is_deleted == False,
+        ).first() is not None
+
+    doctor_fee = (
+        Decimal(appointment.doctor.consultation_fee)
+        if appointment.doctor and appointment.doctor.consultation_fee is not None
+        else None
+    )
+    appt_fee = Decimal(appointment.consultation_fee) if appointment.consultation_fee is not None else None
+
+    if not has_invoice and doctor_fee is not None and doctor_fee > Decimal("0"):
+        return doctor_fee
+    if appt_fee is not None:
+        return appt_fee
+    if doctor_fee is not None and doctor_fee > Decimal("0"):
+        return doctor_fee
+
+    from ..models.hospital_settings import HospitalSettings as _HospSettings
+    hs = db.query(_HospSettings).filter(_HospSettings.hospital_id == appointment.hospital_id).first()
+    if hs and hs.consultation_fee_default:
+        try:
+            fallback = Decimal(str(hs.consultation_fee_default))
+            if fallback > Decimal("0"):
+                return fallback
+        except Exception:
+            pass
+    return Decimal("0")
 
 
 def get_or_create_consultation_invoice_for_appointment(

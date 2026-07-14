@@ -282,6 +282,7 @@ class StockMovementResponse(BaseModel):
     item_id: str
     item_name: Optional[str] = None
     batch_id: Optional[str] = None
+    batch_number: Optional[str] = None
     movement_type: str
     reference_type: Optional[str] = None
     reference_id: Optional[str] = None
@@ -332,6 +333,7 @@ class StockAdjustmentResponse(BaseModel):
     item_id: str
     item_name: Optional[str] = None
     batch_id: Optional[str] = None
+    batch_number: Optional[str] = None
     adjustment_type: str
     quantity: int
     reason: str

@@ -324,7 +324,32 @@ Issue #46 — Refund doesn't restore inventory
 Root cause: the restock logic did work, but if the original batch had since been marked inactive (e.g. after running out), the refund still added stock back to it — invisibly, since inactive batches are excluded from stock totals shown everywhere else.
 Fix: when a refund restocks a batch that had been deactivated, it's now reactivated at the same time, so the returned quantity is immediately visible in stock again.
 
+-------
 
+Issue #43 — Username not autogenerating; missing hospital-code validation
+Root cause: staff creation already auto-generates usernames correctly with the hospital code. The "Create Hospital" flow (Super Admin) didn't, because the hospital's code doesn't exist yet when that form is filled out — it's generated after submission. Fix: the backend now always guarantees the code is included — auto-generating a code-based username when left blank, or prefixing the code onto whatever was typed. The "Auto-suggest" button also now suggests a sensible name-based username instead of a meaningless email+timestamp string.
+
+Issue #39 — Last name should require more than 2 letters
+Added a minimum-3-letters check consistently across every form and API that accepts a last name: patient registration, walk-in registration, staff create/edit, and hospital admin creation — both in the browser and on the server.
+
+Issue #42 — "Waiting" count wrong after OPD assignment
+Root cause: assigning a doctor to a walk-in always stamped the queue entry with today's date, even for a future-dated follow-up — so that future appointment got wrongly counted in today's "waiting" total. Fixed to use the appointment's actual date, and added the same date check to the doctor-workload count used by the "Send to Doctor" screen.
+
+Issue #41 — Doctor doesn't see notifications for new patients
+Root cause: two of the three ways a patient gets assigned to a doctor (walk-in registration, and referrals) never sent a notification at all. Added the missing notification in both places — the doctor now gets notified immediately when a patient is registered to them or referred to them.
+
+Issue #40 — Consultation fee doesn't update
+Root cause: each appointment locks in the doctor's fee at the moment it's booked. Editing the doctor's rate afterward never reached appointments that were already booked, even if nothing had been charged yet. Fixed so any appointment that hasn't been billed yet always reflects the doctor's current rate; once an appointment has actually been invoiced, that billed amount stays locked and isn't changed retroactively.
+
+Issues #52 / #53 / #54 — Batch number visibility in Stock Movements and Inventory Adjustments
+Batch tracking already existed in the database but was never shown usefully. Fixed: Stock Movements and Adjustments now show the actual batch number instead of a raw ID (or nothing at all), and the "New Stock Adjustment" form now lets you pick which specific batch an adjustment applies to.
+
+Issue #45 — "Add batches" in referral (issue #38) — no code change needed. Traced the entire referral feature and found no batch-related functionality was ever planned or removed there; this most likely refers to the earlier fix where "Refer to Doctor" was changed to save the doctor's notes and medicines first (previously discarded).
+
+Issue #47 — "Add batch number field" — covered by #52/#53/#54 above; not a separate item.
+
+
+-------
 
 ----------------------------------
 
@@ -472,3 +497,187 @@ Users can select specific batch for adjustment
 Acceptance Criteria
 Batch selection field enabled in new stock adjustment
 Users can select batch when creating adjustments
+
+
+
+PS D:\HMS_Multi> psql -U hms_user -d hms_db -f .\database_hole\09_prevent_duplicate_optical_dispensing.sql
+Password for user hms_user: 
+
+psql:database_hole/09_prevent_duplicate_optical_dispensing.sql:14: ERROR:  could not create unique index "uq_optical_orders_prescription_id"
+DETAIL:  Key (optical_prescription_id)=(47f1d828-a890-4938-9bfd-9af5245b36da) is duplicated.
+PS D:\HMS_Multi> psql -U hms_user -d hms_db -f .\database_hole\10_fix_batch_uniqueness.sql                
+Password for user hms_user: 
+
+psql:database_hole/10_fix_batch_uniqueness.sql:12: NOTICE:  constraint "uq_medicine_batch" of relation "medicine_batches" does not exist, skipping
+ALTER TABLE
+ALTER TABLE
+psql:database_hole/10_fix_batch_uniqueness.sql:16: NOTICE:  constraint "uq_optical_batch" of relation "optical_batches" does not exist, skipping
+ALTER TABLE
+ALTER TABLE
+
+
+
+
+
+
+# Fix 8 tracked issues: username/hospital-code, last-name validation, waiting count, doctor notifications, consultation fee re-sync, and batch-number visibility
+
+## Context
+
+Ten git issues were reported; research resolved them into 8 concrete fixes (two — #45 and #47 — turned out to be non-issues / duplicates of other fixes, per your confirmation).
+
+---
+
+## Issue #43 — Username not autogenerating; no hospital-code enforcement
+
+**Two separate creation paths exist, only one works correctly:**
+- **Add Staff/User** (existing hospital): `user_service.suggest_username()` (`backend/app/services/user_service.py:141-183`) already correctly builds `HospitalCode + First2(first) + First2(last) + "_" + seq` and the frontend (`StaffModals.tsx:401-420`) live-fills it. **Not broken.**
+- **Super Admin → Create Hospital** (the actual bug): `SuperAdminCreateHospital.tsx:310-317`'s own `suggestUsername()` builds `emailprefix_timestamp` — no hospital code at all, because **the hospital code doesn't exist yet at the point this form is filled out** (`tenant_service.py:134`, `code = generate_tenant_code()`, only generated after submission). The backend fallback (`tenant_service.py:193-195`) only appends the code when the field is left blank, and never validates a manually-typed username at all.
+
+**Fix — enforce the hospital code server-side, since the client structurally cannot know it in advance:**
+
+`backend/app/services/tenant_service.py`, right after `hospital` is flushed (has `.id`/`.code`, ~line 178), replace lines 193-195:
+```python
+requested_username = (admin_user_data.get('username') or '').strip().lower()
+if not requested_username:
+    # Reuse the same hospital-code-based template as ordinary staff creation
+    # (user_service.suggest_username) for consistency across both flows.
+    from .user_service import suggest_username
+    requested_username = suggest_username(
+        db, hospital.id, admin_user_data.get('first_name') or '', admin_user_data.get('last_name') or ''
+    )
+else:
+    # The admin typed something before the hospital code existed — it can't
+    # possibly already contain it, so guarantee inclusion server-side rather
+    # than rejecting a value the user had no way to get right.
+    code_prefix = code.lower()
+    if not requested_username.startswith(code_prefix):
+        requested_username = f"{code_prefix}_{requested_username}"
+```
+(existing uniqueness check right after is unchanged).
+
+**Frontend** (`SuperAdminCreateHospital.tsx:310-317`): replace the email+timestamp suggestion with a name-based one (mirroring the staff-creation generator's spirit — first-few-letters of admin name rather than email), and update the helper text near the username field to note the hospital code is added automatically. Cosmetic/UX only — the backend now guarantees correctness regardless of what reaches it.
+
+No Pydantic schema validator is added for "must contain hospital code" — it's provably impossible to check at that layer since the code doesn't exist until after the `Hospital` row is created, later in the same request.
+
+---
+
+## Issue #39 — Last name must be more than 2 letters, everywhere
+
+No schema or form currently enforces more than `min_length=1`. Add `min_length=3` (and matching frontend messaging "must be more than 2 letters") consistently:
+
+**Backend** (`backend/app/schemas/`):
+- `user.py`: `UserCreate.last_name` (line 19), `UserUpdate.last_name` (line 98)
+- `patient.py`: `PatientBase.last_name` (line 22) — keep existing pattern, just raise `min_length`
+- `tenant.py`: `TenantCreate.admin_last_name` (37), `TenantOnboardingRequest.admin_last_name` (495), `SuperAdminBase.last_name` (364), `SuperAdminUpdate.last_name` (382)
+
+**Frontend:**
+- `StaffModals.tsx`: `staffCreateSchema`/`staffEditSchema` last_name (`.min(1, ...)` → `.min(3, 'Last name must be more than 2 letters')`, lines 24-27, 82)
+- `Register.tsx:294-295`, `WalkInRegistration.tsx:166-167,251-253` (both its validators), `SuperAdminCreateHospital.tsx:229-230` — add a length check alongside the existing non-empty/letters-only check.
+
+(The orphaned, already-stricter `patientSchema` in `utils/validation.ts:13-24` is dead code — never imported by any page — left alone; not worth wiring in for this fix.)
+
+---
+
+## Issue #42 — "Waiting" count wrong after OPD assignment (future follow-ups counted as waiting today)
+
+**Root cause:** `assign_doctor_to_walkin` (`backend/app/routers/walk_ins.py:717-792`) hardcodes `queue_date=today` (line 767) when creating the `AppointmentQueue` row, regardless of the appointment's actual `appointment_date` — so a future-dated follow-up run through this endpoint gets a queue row dated today. The main queue list (`GET /walk-ins/queue`) correctly double-filters `queue_date == target AND Appointment.appointment_date == target` (`walk_ins.py:328-335`) so it's unaffected — but `GET /walk-ins/queue/doctor-loads` (`walk_ins.py:881-912`, backing the "Send to Doctor" modal's "N waiting" badge, `WalkInQueue.tsx:1721,1748`) only filters on `queue_date`, so it counts the mismatched row.
+
+**Fix:**
+- `walk_ins.py:767` — `queue_date=appt.appointment_date` instead of `queue_date=today` (matching the already-correct pattern in `refer_patient_to_doctor`, which uses `queue_date=referral_date`).
+- `walk_ins.py:895-905` (`get_doctor_queue_loads`) — add `Appointment.appointment_date == load_date` to the filter, mirroring `/walk-ins/queue`'s pattern, so a stray mismatched row can't be counted even if one already exists.
+
+---
+
+## Issue #41 — Doctor doesn't see notifications for newly assigned/upcoming patients
+
+Notification delivery itself works (`notify_hospital_users`, per-user `Notification` rows, the bell in `Layout.tsx` polling correctly). The gap is that two of the three ways a patient gets assigned to a doctor never call it at all:
+- `register_walk_in` (`walk_ins.py:123-283`) — the main "OPD Assignment" flow, doctor picked at registration time — **no notification call anywhere in this function.**
+- `refer_patient_to_doctor` (`walk_ins.py:1025-1197`) — **no notification call** to the target doctor either.
+- (`assign_doctor_to_walkin` already does this correctly, `walk_ins.py:776-792` — used as the template below.)
+
+**Fix:** add a `notify_hospital_users(...)` call in both functions, right after their respective commit, mirroring `assign_doctor_to_walkin`'s existing block (title "Patient Assigned to You" / "New Referral", `extra_user_ids=[doctor.user_id]` or `[to_doctor.user_id]`), wrapped in the same `try/except: logger.warning(...)` so a notification failure never blocks the actual registration/referral.
+
+*(Not touching the separately-noticed duplicate-notification issue in `POST /appointments` — unrelated to what was reported and would need its own confirmation.)*
+
+---
+
+## Issue #40 — Consultation fee doesn't change when updated
+
+Editing `Doctor.consultation_fee` **does** persist correctly today. The real bug: every appointment snapshots its own fee at booking time (`resolve_new_appointment_fee`, from the earlier consultation-fee fix), and once set, `resolve_consultation_fee_amount` (`invoice_service.py:597-624`) always preferred that frozen snapshot — so editing the doctor's rate never affected an appointment that was already booked, even if nothing has been billed yet. Per your confirmation: unbilled appointments should re-sync to the doctor's current rate; already-invoiced appointments must stay locked to what was actually charged.
+
+**Fix:**
+1. **`invoice_service.py::resolve_consultation_fee_amount`** — check whether the appointment already has an invoice; if not, prefer the doctor's *current* rate over the frozen `appointment.consultation_fee`; if it does, keep the frozen value authoritative (never rewrite an already-billed amount):
+```python
+def resolve_consultation_fee_amount(db: Session, appointment: Appointment, has_invoice: Optional[bool] = None) -> Decimal:
+    if has_invoice is None:
+        has_invoice = db.query(Invoice.id).filter(
+            Invoice.appointment_id == appointment.id, Invoice.is_deleted == False,
+        ).first() is not None
+
+    doctor_fee = Decimal(appointment.doctor.consultation_fee) if appointment.doctor and appointment.doctor.consultation_fee is not None else None
+    appt_fee = Decimal(appointment.consultation_fee) if appointment.consultation_fee is not None else None
+
+    if not has_invoice and doctor_fee is not None and doctor_fee > 0:
+        return doctor_fee
+    if appt_fee is not None:
+        return appt_fee
+    if doctor_fee is not None and doctor_fee > 0:
+        return doctor_fee
+    # ... existing hospital-default cascade unchanged ...
+```
+2. **`appointment_service.py::enrich_appointment` / `enrich_appointments`** — both already look up the appointment's most recent invoice (lines ~514-528, ~552-585). After that lookup, overwrite `d["consultation_fee"]` with `resolve_consultation_fee_amount(db, appt, has_invoice=consultation_invoice is not None)` so every display surface that reads an appointment (Queue badge, appointment lists, doctor summary) shows the same live-until-billed value instead of the raw frozen column — one canonical precedence rule used everywhere, not just at invoice-creation time.
+
+---
+
+## Issue #45 — "Enable 'add batches' in referral (issue #38)"
+
+No code change. Traced the entire referral workflow (`walk_ins.py`'s `/refer` endpoint, `WalkInQueue.tsx` and `PrescriptionBuilder.tsx` referral modals) — no batch-related field, UI, or backend column ever existed there. Per your confirmation, this is almost certainly a mislabeled reference to the already-shipped fix where "Refer to Doctor" was changed to save the referring doctor's clinical notes/medicines first (previously discarded) — documented as BUG-21 in `update.txt`. Reporting this back as resolved-by-clarification, no build needed.
+
+## Issue #47 — "Add batch number field" (no location specified)
+
+No separate fix — filed immediately before #52/#53/#54, which are the same underlying gap (`batch_id` exists on `StockMovement`/`StockAdjustment` but is never resolved to a human-readable `batch_number`) spelled out per-screen. Covered by the work below.
+
+---
+
+## Issues #52 / #53 / #54 — Batch number visibility in Stock Movements and Inventory Adjustments
+
+Both `StockMovement` and `StockAdjustment` (`backend/app/models/inventory.py:147,171`) already have a `batch_id` column, and `StockAdjustmentCreate` already accepts `batch_id` end-to-end (schema, service, and the batch-delta application logic) — it's just never surfaced as a human-readable batch number, and the generic Inventory Adjustments screen has no way to select one when creating an adjustment (unlike the legacy `pharmacy/StockAdjustments.tsx` screen, which already has a working batch `<select>` to model from).
+
+**Backend — resolve `batch_id` → `batch_number` (fixes #52 and #53's data gap):**
+- `inventory_service.py` — new helper next to `_resolve_item_name` (line 37):
+```python
+def _resolve_batch_number(db: Session, item_type: str, batch_id: Optional[uuid.UUID]) -> Optional[str]:
+    if not batch_id:
+        return None
+    if item_type == "medicine":
+        row = db.query(MedicineBatch.batch_number).filter(MedicineBatch.id == batch_id).first()
+    elif item_type == "optical_product":
+        row = db.query(OpticalBatch.batch_number).filter(OpticalBatch.id == batch_id).first()
+    else:
+        return None
+    return row[0] if row else None
+```
+- Wire into `_format_movement_response` (line 1119-1135) and `_format_adjustment_response` (line 1391-1406): add `"batch_number": _resolve_batch_number(db, m.item_type, m.batch_id)` (and same for `adj`).
+- `schemas/inventory.py` — add `batch_number: Optional[str] = None` to `StockMovementResponse` (line 279-296) and `StockAdjustmentResponse` (line 328-344).
+
+**Frontend:**
+- `types/inventory.ts` — add `batch_number: string | null` to `StockMovement` and `StockAdjustment` interfaces.
+- `StockMovementsPage.tsx` — its "Batch" column already exists but renders the raw UUID (`m.batch_id`, line 132); change to `m.batch_number || '—'` (#52).
+- `AdjustmentsPage.tsx` — add a "Batch" column to the list table (currently absent entirely, `:196-211`), rendering `adj.batch_number || '—'` (#53).
+- `AdjustmentsPage.tsx`'s "New Stock Adjustment" create modal (#54) — add a batch `<select>` after the Item field (~line 300-314), shown once an item is selected: fetch batches via `pharmacyService.getBatches(itemId)` or `opticalService.getBatches(itemId)` depending on `formData.item_type` (both already return `{batch_number, quantity, ...}[]`, same functions the legacy `pharmacy/StockAdjustments.tsx:112-121` selector already uses), list each as `{batch_number} (Qty: {quantity})`, and set `formData.batch_id` on selection — the create schema/type/service already accept and persist it (`StockAdjustmentCreate.batch_id`, already applied correctly by `create_stock_adjustment`), so this is purely a missing frontend control.
+
+## What is explicitly out of scope
+- The duplicate doctor-notification on `POST /appointments` (noticed during #41 research, not what was reported).
+- The dead `patientSchema` in `utils/validation.ts` (unused, not touched).
+- Any Pydantic-level "username contains hospital code" validator — structurally impossible pre-hospital-creation; enforced service-side instead (see #43).
+
+## Verification
+- Backend: `venv/Scripts/python.exe -m py_compile` on every touched file; `python -c "from app.main import app"` import check.
+- Frontend: `npx tsc --noEmit -p .` clean.
+- #43: create a new hospital via Super Admin leaving username blank → confirm it's generated with the new hospital's code; create another typing a custom username → confirm the code is still present in what's saved.
+- #39: attempt to save a 1-2 letter last name on Register, Walk-in Registration, Staff create/edit, and Create Hospital → confirm all reject it with a clear message.
+- #42: register a walk-in, assign a doctor, then check that same doctor's "waiting" count only reflects today's actual queue, not any future-dated follow-up.
+- #41: register a walk-in with a doctor assigned, and separately refer a patient to a doctor → confirm the doctor receives a notification each time (bell + `/notifications` list).
+- #40: book an appointment, change the doctor's consultation fee in Staff Directory, then check the appointment's fee (Queue badge) reflects the new rate before it's billed; after "Collect Fee" is used once, confirm changing the doctor's rate again does *not* alter that already-invoiced appointment.
+- #52/#53/#54: create a stock adjustment against a specific batch → confirm the batch number (not a raw UUID) shows in both Stock Movements and the Adjustments list, and that the "New Stock Adjustment" form lets you pick a batch when creating one.

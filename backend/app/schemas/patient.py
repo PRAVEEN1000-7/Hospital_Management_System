@@ -19,7 +19,7 @@ ADULT_ONLY_TITLES = ["Mr.", "Mrs.", "Ms.", "Dr.", "Prof."]
 class PatientBase(BaseModel):
     title: Optional[str] = Field(None, max_length=10)
     first_name: str = Field(..., min_length=1, max_length=100, pattern=r"^[A-Za-z][A-Za-z\s'-]*$")
-    last_name: str = Field(..., min_length=1, max_length=100, pattern=r"^[A-Za-z][A-Za-z\s'-]*$")
+    last_name: str = Field(..., min_length=3, max_length=100, pattern=r"^[A-Za-z][A-Za-z\s'-]*$")
     date_of_birth: Optional[date] = None
     gender: str = Field(..., pattern="^(male|female|other|prefer_not_to_say|Male|Female|Other|Not Disclosed|Unknown)$")
     blood_group: Optional[str] = None

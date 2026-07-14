@@ -49,6 +49,8 @@ const AdjustmentsPage: React.FC = () => {
   const [currentStock, setCurrentStock] = useState<number | null>(null);
   const [medicines, setMedicines] = useState<CatalogItem[]>([]);
   const [opticalProducts, setOpticalProducts] = useState<CatalogItem[]>([]);
+  const [batches, setBatches] = useState<{ id: string; batch_number: string; quantity: number }[]>([]);
+  const [loadingBatches, setLoadingBatches] = useState(false);
 
   useEffect(() => {
     pharmacyService.getMedicines(1, 500).then(r => setMedicines(r.data)).catch(() => {});
@@ -86,6 +88,7 @@ const AdjustmentsPage: React.FC = () => {
     setFormData({ item_type: 'medicine', item_id: '', adjustment_type: 'increase', quantity: 0, reason: '' });
     setItemLabel('');
     setCurrentStock(null);
+    setBatches([]);
     setShowModal(false);
   };
 
@@ -95,18 +98,32 @@ const AdjustmentsPage: React.FC = () => {
     setItemLabel(value);
     if (!metadata || !metadata.id) {
       // Typed text that doesn't match a suggestion — no real item_id exists for it.
-      setFormData(prev => ({ ...prev, item_id: '' }));
+      setFormData(prev => ({ ...prev, item_id: '', batch_id: undefined }));
       setCurrentStock(null);
+      setBatches([]);
       return;
     }
 
     const itemId = metadata.id as string;
     const itemType = formData.item_type as 'medicine' | 'optical_product';
-    setFormData(prev => ({ ...prev, item_id: itemId }));
+    setFormData(prev => ({ ...prev, item_id: itemId, batch_id: undefined }));
     // Show the list snapshot immediately, then replace it with a live DB read —
     // this number directly informs how much to increase/decrease/write off, so
     // it must reflect stock right now, not whatever it was when the page loaded.
     setCurrentStock(typeof metadata.stock === 'number' ? metadata.stock : null);
+
+    setBatches([]);
+    setLoadingBatches(true);
+    try {
+      const rows = itemType === 'medicine'
+        ? await pharmacyService.getBatches(itemId)
+        : await opticalService.getBatches(itemId);
+      setBatches(rows.map(b => ({ id: b.id, batch_number: b.batch_number, quantity: b.quantity })));
+    } catch {
+      // Batch selection is optional — a failed lookup shouldn't block the form.
+    } finally {
+      setLoadingBatches(false);
+    }
 
     setLoadingStock(true);
     try {
@@ -195,6 +212,7 @@ const AdjustmentsPage: React.FC = () => {
                 <tr>
                   <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Adj. Number</th>
                   <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Item</th>
+                  <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Batch</th>
                   <th className="px-4 py-3.5 text-center text-xs font-bold text-slate-600 uppercase tracking-wider">Type</th>
                   <th className="px-4 py-3.5 text-right text-xs font-bold text-slate-600 uppercase tracking-wider">Qty</th>
                   <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Reason</th>
@@ -210,6 +228,7 @@ const AdjustmentsPage: React.FC = () => {
                       <p className="text-sm text-slate-900">{adj.item_name || adj.item_id}</p>
                       <p className="text-xs text-slate-400 capitalize">{adj.item_type}</p>
                     </td>
+                    <td className="px-4 py-4 text-sm text-slate-600">{adj.batch_number || '—'}</td>
                     <td className="px-4 py-4 text-center">
                       <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${adj.adjustment_type === 'increase' ? 'bg-emerald-50 text-emerald-700' : adj.adjustment_type === 'decrease' ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-600'}`}>
                         {TYPE_LABELS[adj.adjustment_type] || adj.adjustment_type}
@@ -277,9 +296,10 @@ const AdjustmentsPage: React.FC = () => {
                     value={formData.item_type}
                     onChange={e => {
                       const item_type = e.target.value as 'medicine' | 'optical_product';
-                      setFormData(prev => ({ ...prev, item_type, item_id: '' }));
+                      setFormData(prev => ({ ...prev, item_type, item_id: '', batch_id: undefined }));
                       setItemLabel('');
                       setCurrentStock(null);
+                      setBatches([]);
                     }}
                     className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm bg-slate-50 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none">
                     <option value="medicine">Medicine</option>
@@ -312,6 +332,23 @@ const AdjustmentsPage: React.FC = () => {
                   </p>
                 )}
               </div>
+              {formData.item_id && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1.5">Batch (optional)</label>
+                  <select
+                    value={formData.batch_id || ''}
+                    onChange={e => setFormData(prev => ({ ...prev, batch_id: e.target.value || undefined }))}
+                    disabled={loadingBatches}
+                    className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm bg-slate-50 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none disabled:opacity-50">
+                    <option value="">
+                      {loadingBatches ? 'Loading batches…' : batches.length === 0 ? 'No batches for this item' : 'Any / not batch-specific'}
+                    </option>
+                    {batches.map(b => (
+                      <option key={b.id} value={b.id}>{b.batch_number} (Qty: {b.quantity})</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="block text-xs font-semibold text-slate-500 mb-1.5">Quantity *</label>
                 <input type="number" min="1" value={formData.quantity || ''} onChange={e => setFormData({ ...formData, quantity: parseInt(e.target.value) || 0 })}

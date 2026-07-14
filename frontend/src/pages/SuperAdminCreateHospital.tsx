@@ -228,6 +228,7 @@ function validateForm(d: FormData): FieldErrors {
 
   if (!d.admin_last_name.trim()) e.admin_last_name = 'Last name is required';
   else if (!/^[\p{L}\s'.-]+$/u.test(d.admin_last_name.trim())) e.admin_last_name = 'Letters only';
+  else if (d.admin_last_name.trim().length <= 2) e.admin_last_name = 'Last name must be more than 2 letters';
 
   if (!d.admin_password) e.admin_password = 'Password is required';
   else if (d.admin_password.length < 8) e.admin_password = 'Minimum 8 characters';
@@ -309,11 +310,16 @@ const SuperAdminCreateHospital: React.FC = () => {
 
   const suggestUsername = () => {
     if (form.admin_username.trim()) return;
+    // The hospital's code doesn't exist yet at this point in the form (it's
+    // generated server-side once the hospital record is created), so this
+    // can only suggest a name-based local part — the backend guarantees the
+    // real hospital code gets prefixed onto whatever is saved.
     const base =
+      (form.admin_first_name.trim() + form.admin_last_name.trim()).toLowerCase().replace(/[^a-z0-9]/g, '') ||
       form.admin_email.trim().split('@')[0] ||
       form.name.trim().toLowerCase().replace(/\s+/g, '_');
     if (!base) return;
-    set('admin_username', `${base}_${Date.now().toString().slice(-4)}`);
+    set('admin_username', base);
   };
 
   const blockNonDigit = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -722,7 +728,7 @@ const SuperAdminCreateHospital: React.FC = () => {
               />
               <Err field="admin_username" />
               {!fieldErrors.admin_username && (
-                <p className={hintClass}>Min 3 chars — lowercase letters, numbers and underscores only</p>
+                <p className={hintClass}>Min 3 chars — lowercase letters, numbers and underscores only. The new hospital's code will be added automatically as a prefix.</p>
               )}
             </div>
 

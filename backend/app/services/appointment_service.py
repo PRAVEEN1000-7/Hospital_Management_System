@@ -526,7 +526,13 @@ def enrich_appointment(db: Session, appt: Appointment) -> dict:
     balance_amount = float(consultation_invoice.balance_amount) if consultation_invoice and consultation_invoice.balance_amount is not None else None
     d["consultation_balance_amount"] = balance_amount
     d["consultation_fee_collected"] = bool(consultation_invoice and (balance_amount is not None) and balance_amount <= 0)
-    
+
+    # Bug #40: show the doctor's CURRENT rate for not-yet-invoiced
+    # appointments instead of the raw column (frozen at booking time) — see
+    # resolve_consultation_fee_amount's docstring for the full reasoning.
+    from .invoice_service import resolve_consultation_fee_amount
+    d["consultation_fee"] = resolve_consultation_fee_amount(db, appt, has_invoice=consultation_invoice is not None)
+
     return d
 
 
@@ -534,7 +540,9 @@ def enrich_appointments(db: Session, appointments: list[Appointment]) -> list[di
     """Add patient and doctor names to multiple appointments."""
     if not appointments:
         return []
-    
+
+    from .invoice_service import resolve_consultation_fee_amount
+
     # Batch load patients
     patient_ids = {a.patient_id for a in appointments}
     patients = {p.id: p for p in db.query(Patient).filter(Patient.id.in_(patient_ids)).all()}
@@ -584,6 +592,9 @@ def enrich_appointments(db: Session, appointments: list[Appointment]) -> list[di
         balance_amount = float(consultation_invoice.balance_amount) if consultation_invoice and consultation_invoice.balance_amount is not None else None
         d["consultation_balance_amount"] = balance_amount
         d["consultation_fee_collected"] = bool(consultation_invoice and (balance_amount is not None) and balance_amount <= 0)
+
+        # Bug #40: same live-until-billed precedence as enrich_appointment.
+        d["consultation_fee"] = resolve_consultation_fee_amount(db, a, has_invoice=consultation_invoice is not None)
         result.append(d)
     
     return result

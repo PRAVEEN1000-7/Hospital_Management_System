@@ -192,7 +192,23 @@ class TenantService:
 
         requested_username = (admin_user_data.get('username') or '').strip().lower()
         if not requested_username:
-            requested_username = f"{admin_user_data.get('email').split('@')[0]}_{code.lower()}"
+            # Reuse the same hospital-code-based template as ordinary staff
+            # creation (user_service.suggest_username) so both flows produce
+            # consistent, code-prefixed usernames.
+            from .user_service import suggest_username
+            requested_username = suggest_username(
+                db, hospital.id,
+                admin_user_data.get('first_name') or '',
+                admin_user_data.get('last_name') or '',
+            )
+        else:
+            # The super-admin filled this in before the hospital (and its
+            # code) existed, so nothing they typed can already contain it —
+            # guarantee inclusion server-side rather than rejecting a value
+            # they had no way to get right.
+            code_prefix = code.lower()
+            if not requested_username.startswith(code_prefix):
+                requested_username = f"{code_prefix}_{requested_username}"
 
         if db.query(User).filter(User.username == requested_username).first():
             raise ValueError(f"Username '{requested_username}' already exists")

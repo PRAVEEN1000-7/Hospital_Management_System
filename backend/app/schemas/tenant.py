@@ -34,7 +34,7 @@ class TenantCreate(TenantBase):
     admin_email: str
     admin_username: Optional[str] = Field(default=None, max_length=50)
     admin_first_name: str
-    admin_last_name: str
+    admin_last_name: str = Field(..., min_length=3, max_length=100)
     admin_password: str = Field(..., min_length=8)
     
 
@@ -361,7 +361,7 @@ class SuperAdminBase(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
     email: str = Field(..., min_length=1, max_length=255)
     first_name: str = Field(..., min_length=1, max_length=100)
-    last_name: str = Field(..., min_length=1, max_length=100)
+    last_name: str = Field(..., min_length=3, max_length=100)
     phone: Optional[str] = Field(None, max_length=20)
     is_active: bool = True
     
@@ -379,7 +379,7 @@ class SuperAdminCreate(SuperAdminBase):
 class SuperAdminUpdate(BaseModel):
     email: Optional[str] = Field(None, min_length=1, max_length=255)
     first_name: Optional[str] = Field(None, min_length=1, max_length=100)
-    last_name: Optional[str] = Field(None, min_length=1, max_length=100)
+    last_name: Optional[str] = Field(None, min_length=3, max_length=100)
     phone: Optional[str] = Field(None, max_length=20)
     is_active: Optional[bool] = None
     
@@ -492,7 +492,7 @@ class TenantOnboardingRequest(BaseModel):
     admin_email: str
     admin_username: Optional[str] = Field(default=None, min_length=3, max_length=50)
     admin_first_name: str
-    admin_last_name: str
+    admin_last_name: str = Field(..., min_length=3, max_length=100)
     admin_password: str = Field(..., min_length=8)
     # Subscription
     plan_id: Optional[uuid.UUID] = None

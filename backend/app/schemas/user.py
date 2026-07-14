@@ -16,7 +16,7 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=8, max_length=128)
     first_name: str = Field(..., min_length=1, max_length=100)
-    last_name: str = Field(..., min_length=1, max_length=100)
+    last_name: str = Field(..., min_length=3, max_length=100)
     full_name: Optional[str] = Field(None, max_length=255)
     role: str = Field(default="staff")
     employee_id: Optional[str] = Field(None, max_length=50)
@@ -95,7 +95,7 @@ class UserCreate(BaseModel):
 class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     first_name: Optional[str] = Field(None, min_length=1, max_length=100)
-    last_name: Optional[str] = Field(None, min_length=1, max_length=100)
+    last_name: Optional[str] = Field(None, min_length=3, max_length=100)
     full_name: Optional[str] = Field(None, min_length=1, max_length=255)
     role: Optional[str] = None
     employee_id: Optional[str] = Field(None, max_length=50)

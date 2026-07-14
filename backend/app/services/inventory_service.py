@@ -45,6 +45,20 @@ def _resolve_item_name(db: Session, item_type: str, item_id: uuid.UUID) -> Optio
     return None
 
 
+def _resolve_batch_number(db: Session, item_type: str, batch_id: Optional[uuid.UUID]) -> Optional[str]:
+    """Look up a medicine/optical batch's human-readable batch_number for
+    display — batch_id alone is a raw UUID, not useful shown directly (Bug #52/#53)."""
+    if not batch_id:
+        return None
+    if item_type == "medicine":
+        row = db.query(MedicineBatch.batch_number).filter(MedicineBatch.id == batch_id).first()
+        return row[0] if row else None
+    if item_type == "optical_product":
+        row = db.query(OpticalBatch.batch_number).filter(OpticalBatch.id == batch_id).first()
+        return row[0] if row else None
+    return None
+
+
 def _resolve_item_name_with_fallback(
     db: Session,
     item_type: str,
@@ -1123,6 +1137,7 @@ def _format_movement_response(m: StockMovement, db: Session) -> dict:
         "item_id": str(m.item_id),
         "item_name": _resolve_item_name(db, m.item_type, m.item_id),
         "batch_id": str(m.batch_id) if m.batch_id else None,
+        "batch_number": _resolve_batch_number(db, m.item_type, m.batch_id),
         "movement_type": m.movement_type,
         "reference_type": m.reference_type,
         "reference_id": str(m.reference_id) if m.reference_id else None,
@@ -1396,6 +1411,7 @@ def _format_adjustment_response(adj: StockAdjustment, db: Session) -> dict:
         "item_id": str(adj.item_id),
         "item_name": _resolve_item_name(db, adj.item_type, adj.item_id),
         "batch_id": str(adj.batch_id) if adj.batch_id else None,
+        "batch_number": _resolve_batch_number(db, adj.item_type, adj.batch_id),
         "adjustment_type": adj.adjustment_type,
         "quantity": adj.quantity,
         "reason": adj.reason,

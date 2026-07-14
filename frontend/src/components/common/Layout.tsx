@@ -563,6 +563,7 @@ const Layout: React.FC = () => {
         { to: '/inventory/purchase-orders', label: 'Purchase Orders', icon: 'receipt_long' },
         { to: '/inventory/grns', label: 'Goods Receipt', icon: 'inventory' },
         { to: '/inventory/stock-movements', label: 'Stock Movements', icon: 'swap_vert' },
+        { to: '/inventory/adjustments', label: 'Adjustments', icon: 'tune' },
       );
     }
   }

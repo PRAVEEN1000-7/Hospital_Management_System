@@ -218,8 +218,11 @@ const NewOpticalSale: React.FC = () => {
       });
       toast.success('Sale completed');
       navigate('/optical/sales');
-    } catch {
-      toast.error('Failed to complete sale');
+    } catch (err: any) {
+      // The backend raises specific, actionable reasons for a failed sale
+      // (insufficient stock, expired batch, prescription already dispensed,
+      // etc.) — showing a generic message here hid exactly why it failed.
+      toast.error(err?.response?.data?.detail || 'Failed to complete sale');
     } finally {
       setSaving(false);
     }

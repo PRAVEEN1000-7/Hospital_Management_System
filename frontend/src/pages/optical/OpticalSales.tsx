@@ -139,13 +139,13 @@ const OpticalSales: React.FC = () => {
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
                 <th className="px-4 py-3 font-semibold text-slate-600">Invoice #</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Date</th>
+                <th className="px-4 py-3 font-semibold text-slate-600">Sale Date</th>
                 <th className="px-4 py-3 font-semibold text-slate-600">Patient</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Items</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Total</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Collected</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Payment</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Fulfillment</th>
+                <th className="px-4 py-3 font-semibold text-slate-600">Item Count</th>
+                <th className="px-4 py-3 font-semibold text-slate-600">Total Amount</th>
+                <th className="px-4 py-3 font-semibold text-slate-600">Amount Collected</th>
+                <th className="px-4 py-3 font-semibold text-slate-600">Payment Status</th>
+                <th className="px-4 py-3 font-semibold text-slate-600">Order Status</th>
                 <th className="px-4 py-3 font-semibold text-slate-600">Actions</th>
               </tr>
             </thead>

@@ -402,7 +402,7 @@ const NewPurchaseOrderPage: React.FC = () => {
     new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 2 }).format(amount);
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
+    <div className="space-y-6">
       <header className="flex items-center gap-4">
         <button onClick={() => navigate('/inventory/purchase-orders')} className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
           <span className="material-symbols-outlined text-slate-500">arrow_back</span>
@@ -476,7 +476,7 @@ const NewPurchaseOrderPage: React.FC = () => {
           <table className="w-full table-fixed overflow-visible">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <th className="px-3 py-2.5 text-left text-xs font-bold text-slate-600 w-24">Type</th>
+                <th className="px-3 py-2.5 text-left text-xs font-bold text-slate-600 w-40">Type</th>
                 <th className="px-3 py-2.5 text-left text-xs font-bold text-slate-600">Item / Medicine *</th>
                 <th className="px-3 py-2.5 text-right text-xs font-bold text-slate-600 w-24">Qty</th>
                 <th className="px-3 py-2.5 text-right text-xs font-bold text-slate-600 w-32">Unit Price</th>

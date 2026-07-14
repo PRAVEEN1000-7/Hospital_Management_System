@@ -332,23 +332,27 @@ const AdjustmentsPage: React.FC = () => {
                   </p>
                 )}
               </div>
-              {formData.item_id && (
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-1.5">Batch (optional)</label>
-                  <select
-                    value={formData.batch_id || ''}
-                    onChange={e => setFormData(prev => ({ ...prev, batch_id: e.target.value || undefined }))}
-                    disabled={loadingBatches}
-                    className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm bg-slate-50 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none disabled:opacity-50">
-                    <option value="">
-                      {loadingBatches ? 'Loading batches…' : batches.length === 0 ? 'No batches for this item' : 'Any / not batch-specific'}
-                    </option>
-                    {batches.map(b => (
-                      <option key={b.id} value={b.id}>{b.batch_number} (Qty: {b.quantity})</option>
-                    ))}
-                  </select>
-                </div>
-              )}
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 mb-1.5">Batch (optional)</label>
+                <select
+                  value={formData.batch_id || ''}
+                  onChange={e => setFormData(prev => ({ ...prev, batch_id: e.target.value || undefined }))}
+                  disabled={!formData.item_id || loadingBatches}
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm bg-slate-50 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none disabled:opacity-50">
+                  <option value="">
+                    {!formData.item_id
+                      ? 'Select an item first'
+                      : loadingBatches
+                      ? 'Loading batches…'
+                      : batches.length === 0
+                      ? 'No batches for this item'
+                      : 'Any / not batch-specific'}
+                  </option>
+                  {batches.map(b => (
+                    <option key={b.id} value={b.id}>{b.batch_number} (Qty: {b.quantity})</option>
+                  ))}
+                </select>
+              </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-500 mb-1.5">Quantity *</label>
                 <input type="number" min="1" value={formData.quantity || ''} onChange={e => setFormData({ ...formData, quantity: parseInt(e.target.value) || 0 })}

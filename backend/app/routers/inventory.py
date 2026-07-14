@@ -39,7 +39,10 @@ adjustments_router = APIRouter(prefix="/inventory/adjustments", tags=["Inventory
 cycle_counts_router = APIRouter(prefix="/inventory/cycle-counts", tags=["Inventory – Cycle Counts"])
 
 inventory_view_roles = require_any_role("super_admin", "admin", "inventory_manager", "pharmacist")
-inventory_manage_roles = require_any_role("super_admin", "admin", "inventory_manager")
+# Pharmacists manage pharmacy stock end-to-end (receiving goods via GRNs,
+# raising purchase orders, adjusting stock, maintaining suppliers) — they
+# need the same write access as inventory_manager here, not just read access.
+inventory_manage_roles = require_any_role("super_admin", "admin", "inventory_manager", "pharmacist")
 grn_verify_roles = require_any_role("super_admin", "admin", "inventory_manager", "pharmacist")
 
 

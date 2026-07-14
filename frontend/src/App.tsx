@@ -668,7 +668,7 @@ const App: React.FC = () => {
               } />
               <Route path="/inventory/adjustments" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'inventory_manager']}
+                  allowedRoles={['super_admin', 'admin', 'inventory_manager', 'pharmacist']}
                   requiredModule="inventory"
                 >
                   <AdjustmentsPage />

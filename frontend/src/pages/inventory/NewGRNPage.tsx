@@ -106,7 +106,7 @@ const NewGRNPage: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
+    <div className="space-y-6">
       <header className="flex items-center gap-4">
         <button onClick={() => navigate('/inventory/grns')} className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
           <span className="material-symbols-outlined text-slate-500">arrow_back</span>

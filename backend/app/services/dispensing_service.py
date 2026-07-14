@@ -264,16 +264,16 @@ def get_pending_prescriptions(
     total = query.count()
     offset = (page - 1) * limit
     
-    # FIFO — whoever finalized (entered the pharmacy queue) earliest gets
-    # dispensed first, oldest first (asc), not newest first. This used to
-    # sort created_at DESC, so a patient waiting 20+ hours was buried below
-    # one that had been waiting 5 minutes. Falls back to created_at only for
-    # the rare legacy row where finalized_at is somehow unset — matches the
-    # same timestamp the "wait time" column on this screen is computed from.
+    # Newest-finalized-first, per explicit request — note this means a
+    # long-waiting patient can sit below one that just arrived; the "wait
+    # time" column on this screen still shows how long each has been
+    # waiting, so staff can still spot a starved patient even though the
+    # list itself no longer surfaces them automatically. Falls back to
+    # created_at only for the rare legacy row where finalized_at is unset.
     rows = (
         query
         .order_by(
-            func.coalesce(Prescription.finalized_at, Prescription.created_at).asc()
+            func.coalesce(Prescription.finalized_at, Prescription.created_at).desc()
         )
         .offset(offset)
         .limit(limit)

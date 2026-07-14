@@ -50,7 +50,7 @@ def list_tax_configs(
     if active_only:
         query = query.filter(TaxConfiguration.is_active == True)
     total = query.count()
-    rows = query.order_by(TaxConfiguration.name).offset((page - 1) * limit).limit(limit).all()
+    rows = query.order_by(TaxConfiguration.created_at.desc()).offset((page - 1) * limit).limit(limit).all()
     return PaginatedTaxConfigResponse(
         items=[TaxConfigResponse.model_validate(r) for r in rows],
         total=total,

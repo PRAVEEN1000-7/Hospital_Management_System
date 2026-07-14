@@ -482,7 +482,7 @@ def list_suppliers(
             Supplier.contact_person.ilike(term),
         ))
     total = q.count()
-    suppliers = q.order_by(Supplier.name).offset((page - 1) * limit).limit(limit).all()
+    suppliers = q.order_by(Supplier.created_at.desc()).offset((page - 1) * limit).limit(limit).all()
     return {**_paginate(total, page, limit), "data": suppliers}
 
 

@@ -6,6 +6,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Tuple, Optional
 from datetime import datetime, timedelta, timezone
+from sqlalchemy import or_, func
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import ProgrammingError
 from ..models.user import User, UserRole, Role, RevokedToken
@@ -85,7 +86,10 @@ def _apply_lockout(user: User) -> None:
 
 def authenticate_user(db: Session, username: str, password: str) -> tuple:
     """
-    Authenticate by username and password. Eagerly loads roles.
+    Authenticate by username-or-email and password. Eagerly loads roles.
+    `username` is whatever identifier the user typed in the login field — it
+    may be their username or their email, matched case-insensitively against
+    either column (both are unique, so there's no ambiguity either way).
     Returns (user, reason) where reason is:
       - 'success' if authenticated
       - 'invalid_username' if user not found
@@ -93,13 +97,17 @@ def authenticate_user(db: Session, username: str, password: str) -> tuple:
       - 'account_inactive' if account is deactivated
       - 'account_locked' if account is temporarily locked
     """
+    identifier = (username or "").strip().lower()
     user = (
         db.query(User)
         .options(
             joinedload(User.user_roles).joinedload(UserRole.role),
             joinedload(User.hospital),
         )
-        .filter(User.username == username, User.is_deleted == False)
+        .filter(
+            or_(func.lower(User.username) == identifier, func.lower(User.email) == identifier),
+            User.is_deleted == False,
+        )
         .first()
     )
 

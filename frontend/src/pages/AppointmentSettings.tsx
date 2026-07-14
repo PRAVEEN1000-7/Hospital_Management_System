@@ -23,7 +23,6 @@ const settingGroups: SettingGroup[] = [
       { key: 'appointment_slot_duration_minutes', label: 'Slot Duration', description: 'Duration of each appointment slot (5-120)', type: 'number', suffix: 'min' },
       { key: 'appointment_buffer_minutes', label: 'Buffer Time', description: 'Buffer time between appointments (0-60)', type: 'number', suffix: 'min' },
       { key: 'max_daily_appointments_per_doctor', label: 'Max Daily Appointments', description: 'Maximum appointments per doctor per day (1-100)', type: 'number' },
-      { key: 'consultation_fee_default', label: 'Default Consultation Fee', description: 'Default consultation fee amount (numeric)', type: 'number', suffix: '₹' },
       { key: 'follow_up_validity_days', label: 'Follow-up Validity', description: 'Days within which follow-up is valid (1-365)', type: 'number', suffix: 'days' },
     ],
   },
@@ -105,12 +104,6 @@ const AppointmentSettings: React.FC = () => {
     if (key === 'follow_up_validity_days' && typeof value === 'number') {
       value = Math.max(1, Math.min(365, value));
     }
-    // consultation_fee_default is stored as a string on the backend (String column).
-    // Always keep it as a string so Pydantic v2 doesn't reject a numeric type.
-    if (key === 'consultation_fee_default') {
-      const n = Number(value);
-      value = isNaN(n) ? '0' : String(Math.max(0, n));
-    }
     // Validate invoice_prefix and prescription_prefix: max 10 chars
     if ((key === 'invoice_prefix' || key === 'prescription_prefix') && typeof value === 'string') {
       value = value.slice(0, 10);
@@ -139,14 +132,7 @@ const AppointmentSettings: React.FC = () => {
 
     setSaving(true);
     try {
-      // Ensure consultation_fee_default is always a string (backend schema is Optional[str]).
-      const payload: Partial<HospitalSettings> = {
-        ...editValues,
-        consultation_fee_default: editValues.consultation_fee_default !== undefined
-          ? String(editValues.consultation_fee_default)
-          : undefined,
-      };
-      const updated = await appointmentSettingsService.updateSettings(payload);
+      const updated = await appointmentSettingsService.updateSettings(editValues);
       setSettings(updated);
       setEditValues(updated);
       setHasChanges(false);

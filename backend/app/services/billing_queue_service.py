@@ -4,12 +4,13 @@ Optical sales, so both modules compute payment status and assign queue
 tokens/states the same way instead of drifting into two divergent
 implementations.
 """
+import hashlib
 import uuid
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from ..core.hospital_time import hospital_today_utc_range_by_id
@@ -62,12 +63,26 @@ def _next_hospital_wide_daily_token(db: Session, hospital_id: uuid.UUID) -> int:
     timezone, not the hospital's, which silently breaks daily reset for any
     hospital not in that exact timezone (see the queue-reset fix this
     replaced).
+
+    Two receptionists registering walk-ins for the same hospital at nearly
+    the same moment can both run this MAX(...)+1 query before either has
+    committed, computing the identical "next" token and colliding on
+    AppointmentQueue's (doctor_id, queue_date, queue_number) unique
+    constraint — surfaced to the user as a raw psycopg2 UniqueViolation.
+    A Postgres transaction-scoped advisory lock, keyed per hospital+day,
+    serializes token issuance: the second caller blocks here until the
+    first commits, so by the time it reads MAX(...) the first token is
+    already visible and it correctly gets the next one. The lock is
+    released automatically at commit/rollback — no manual unlock needed.
     """
     from ..models.appointment import Appointment
     from ..models.pharmacy import PharmacyQueueEntry, PharmacySale
     from ..models.optical import OpticalSale
 
     day_start, day_end = hospital_today_utc_range_by_id(db, hospital_id)
+
+    lock_key = int(hashlib.md5(f"visit_token:{hospital_id}:{day_start.date()}".encode()).hexdigest()[:15], 16)
+    db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": lock_key})
 
     def _max_today(model, token_col):
         return (

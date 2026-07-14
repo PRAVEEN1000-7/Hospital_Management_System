@@ -296,11 +296,15 @@ async def register_walk_in(
     except HTTPException:
         raise
     except Exception as e:
+        # Log the full internals (SQL, params) server-side for debugging, but
+        # never echo them to the client — a raw psycopg2/SQLAlchemy message
+        # (table/column names, constraint names, query text) is an internal
+        # detail leak, not something a receptionist can act on.
         logger.exception(f"Walk-in registration failed: {e}")
         db.rollback()
         raise HTTPException(
             status_code=500,
-            detail=f"Walk-in registration failed: {str(e)}",
+            detail="Walk-in registration failed. Please try again.",
         )
 
 
@@ -908,7 +912,9 @@ async def get_doctor_queue_loads(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    """Return queue load per doctor (total patient count) for the Send-to-Doctor / referral modal."""
+    """Return queue load per doctor (count of patients still WAITING, not yet
+    seen) for the Send-to-Doctor / referral modal — lets a receptionist see
+    which doctor is free before assigning a new patient."""
     load_date = hospital_today(current_user.hospital.timezone if current_user.hospital else None)
     if target_date:
         try:
@@ -929,7 +935,12 @@ async def get_doctor_queue_loads(
             # pattern here too so a future-dated follow-up is never counted
             # as part of today's waiting load (Bug #42).
             Appointment.appointment_date == load_date,
-            AppointmentQueue.status.notin_(["skipped"]),
+            # "Waiting" means not yet seen — matches the same status set used
+            # for total_waiting in GET /walk-ins/today below. Previously this
+            # only excluded "skipped", so patients already in consultation or
+            # fully "completed" still inflated the badge (Bug: waiting count
+            # includes completed patients).
+            AppointmentQueue.status.in_(["waiting", "called", "sent_to_doctor"]),
         )
     )
     # Without this, doctor workload counts were computed across every
@@ -1235,9 +1246,10 @@ async def refer_patient_to_doctor(
     except HTTPException:
         raise
     except Exception as e:
+        # Same reasoning as register_walk_in above — log internals, never echo them.
         logger.exception(f"Referral failed: {e}")
         db.rollback()
         raise HTTPException(
             status_code=500,
-            detail=f"Referral failed: {str(e)}",
+            detail="Referral failed. Please try again.",
         )

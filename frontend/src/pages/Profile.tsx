@@ -10,6 +10,7 @@ import { changePasswordSchema } from '../utils/validation';
 import { ROLE_LABELS, ROLE_COLORS, ROLE_ICONS } from '../utils/constants';
 import { useToast } from '../contexts/ToastContext';
 import type { DoctorProfile as DoctorProfileType } from '../types/doctor';
+import ImageCropModal from '../components/common/ImageCropModal';
 
 type ChangePasswordData = {
   current_password: string;
@@ -28,6 +29,8 @@ const Profile: React.FC = () => {
   const [doctorProfile, setDoctorProfile] = useState<DoctorProfileType | null>(null);
   const [uploading, setUploading] = useState(false);
   const [photoFailed, setPhotoFailed] = useState(false);
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
+  const [cropFileName, setCropFileName] = useState('photo.jpg');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isDoctor = user?.roles?.includes('doctor');
@@ -76,18 +79,27 @@ const Profile: React.FC = () => {
     }
   };
 
-  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const allowed = ['image/jpeg', 'image/png', 'image/gif'];
     if (!allowed.includes(file.type)) {
       toast.error('Only JPG, PNG, or GIF images are allowed');
+      if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error('Photo must be 2 MB or smaller');
-      return;
-    }
+    setCropFileName(file.name);
+    setCropSrc(URL.createObjectURL(file));
+  };
+
+  const closeCropper = () => {
+    if (cropSrc) URL.revokeObjectURL(cropSrc);
+    setCropSrc(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleCropped = async (file: File) => {
+    closeCropper();
     setUploading(true);
     try {
       const result = await userService.uploadMyPhoto(file);
@@ -97,7 +109,6 @@ const Profile: React.FC = () => {
       toast.error(err?.response?.data?.detail || 'Failed to upload photo');
     } finally {
       setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -155,6 +166,9 @@ const Profile: React.FC = () => {
             className="hidden"
             onChange={handlePhotoChange}
           />
+          {cropSrc && (
+            <ImageCropModal imageSrc={cropSrc} fileName={cropFileName} onCancel={closeCropper} onCropped={handleCropped} />
+          )}
         </div>
         <h1 className="text-xl font-bold">{fullName}</h1>
         <span className="inline-block mt-2 px-3 py-1 text-xs font-semibold rounded-full bg-white/20 text-white">

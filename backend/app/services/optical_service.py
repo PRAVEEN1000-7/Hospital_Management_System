@@ -90,7 +90,7 @@ def list_optical_products(
             )
         )
     total = query.count()
-    items = query.order_by(OpticalProduct.name).offset((page - 1) * limit).limit(limit).all()
+    items = query.order_by(OpticalProduct.created_at.desc()).offset((page - 1) * limit).limit(limit).all()
 
     # Enrich with total stock across active batches.
     product_ids = [p.id for p in items]

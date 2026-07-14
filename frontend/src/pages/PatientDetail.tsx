@@ -5,6 +5,7 @@ import patientService from '../services/patientService';
 import type { Patient } from '../types/patient';
 import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
+import ImageCropModal from '../components/common/ImageCropModal';
 
 const EDIT_ALLOWED_ROLES = ['super_admin', 'admin', 'receptionist'];
 
@@ -20,6 +21,8 @@ const PatientDetail: React.FC = () => {
   const [uploading, setUploading] = useState(false);
   const [fetchError, setFetchError] = useState('');
   const [photoFailed, setPhotoFailed] = useState(false);
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
+  const [cropFileName, setCropFileName] = useState('photo.jpg');
 
   useEffect(() => {
     const fetchPatient = async () => {
@@ -40,18 +43,27 @@ const PatientDetail: React.FC = () => {
     setPhotoFailed(false);
   }, [patient?.photo_url]);
 
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const allowedTypes = ['image/jpeg', 'image/png'];
     if (!allowedTypes.includes(file.type)) {
       toast.error('Only JPEG and PNG images are allowed');
+      if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error('File size must be less than 2MB');
-      return;
-    }
+    setCropFileName(file.name);
+    setCropSrc(URL.createObjectURL(file));
+  };
+
+  const closeCropper = () => {
+    if (cropSrc) URL.revokeObjectURL(cropSrc);
+    setCropSrc(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleCropped = async (file: File) => {
+    closeCropper();
     setUploading(true);
     try {
       const updatedPatient = await patientService.uploadPhoto(id!, file);
@@ -152,6 +164,9 @@ const PatientDetail: React.FC = () => {
               <div className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center">
                 <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
               </div>
+            )}
+            {cropSrc && (
+              <ImageCropModal imageSrc={cropSrc} fileName={cropFileName} onCancel={closeCropper} onCropped={handleCropped} />
             )}
           </div>
           <div className="text-center sm:text-left">

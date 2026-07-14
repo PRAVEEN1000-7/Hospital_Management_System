@@ -112,7 +112,7 @@ def list_medicines(
             )
         )
     total = query.count()
-    items = query.order_by(Medicine.name).offset((page - 1) * limit).limit(limit).all()
+    items = query.order_by(Medicine.created_at.desc()).offset((page - 1) * limit).limit(limit).all()
 
     # Enrich with total stock
     med_ids = [m.id for m in items]

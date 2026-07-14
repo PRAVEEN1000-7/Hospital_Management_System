@@ -141,11 +141,12 @@ const StockMovementsReport: React.FC = () => {
   // Export to CSV
   const handleExport = () => {
     const csv = [
-      ['Date', 'Time', 'Item', 'Type', 'Movement', 'Quantity', 'Balance', 'Reference', 'Notes'].join(','),
+      ['Date', 'Time', 'Item', 'Batch', 'Type', 'Movement', 'Quantity', 'Balance', 'Reference', 'Notes'].join(','),
       ...movements.map(m => [
         formatDateTime(m.created_at, 'dd MMM yyyy'),
         formatTimeOnly(m.created_at, 'HH:mm:ss'),
         m.item_name || 'Unknown',
+        m.batch_number || '—',
         MOVEMENT_TYPE_LABELS[m.movement_type]?.label || m.movement_type,
         m.quantity > 0 ? 'IN' : 'OUT',
         Math.abs(m.quantity),
@@ -307,6 +308,7 @@ const StockMovementsReport: React.FC = () => {
                   <tr>
                     <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Time</th>
                     <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Item</th>
+                    <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Batch</th>
                     <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Type</th>
                     <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">Reference</th>
                     <th className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 uppercase tracking-wide">By</th>
@@ -319,7 +321,7 @@ const StockMovementsReport: React.FC = () => {
                   {groupedByDate.map((group) => (
                     <React.Fragment key={group.date}>
                       <tr>
-                        <td colSpan={8} className="px-3 py-2 bg-slate-50/80 text-xs font-bold text-slate-600 border-y border-slate-100 sticky top-0">
+                        <td colSpan={9} className="px-3 py-2 bg-slate-50/80 text-xs font-bold text-slate-600 border-y border-slate-100 sticky top-0">
                           {group.date}
                           <span className="ml-2 font-normal text-slate-400">({group.movements.length})</span>
                         </td>
@@ -340,6 +342,7 @@ const StockMovementsReport: React.FC = () => {
                             <td className="px-3 py-2.5 font-medium text-slate-900 max-w-[220px] truncate" title={m.item_name || 'Unknown Item'}>
                               {m.item_name || 'Unknown Item'}
                             </td>
+                            <td className="px-3 py-2.5 text-xs text-slate-500 whitespace-nowrap">{m.batch_number || '—'}</td>
                             <td className="px-3 py-2.5">
                               <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap ${type.color}`}>
                                 <span className="material-symbols-outlined text-[13px]">{type.icon}</span>

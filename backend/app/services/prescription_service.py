@@ -1098,7 +1098,7 @@ def list_global_medicines(
 
     total = q.count()
     offset = (page - 1) * limit
-    rows = q.order_by(Medicine.name).offset(offset).limit(limit).all()
+    rows = q.order_by(Medicine.created_at.desc()).offset(offset).limit(limit).all()
     total_pages = ceil(total / limit) if total > 0 else 0
     return total, page, limit, total_pages, rows
 

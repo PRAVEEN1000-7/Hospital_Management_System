@@ -10,6 +10,7 @@ import { ROLE_LABELS, COUNTRIES } from '../../utils/constants';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
 import feLogger from '../../services/loggerService';
+import ImageCropModal from '../common/ImageCropModal';
 
 // ────────────────────────────────────────
 // Shared schemas — single source of truth for both Staff Directory and
@@ -232,11 +233,27 @@ const PhotoUpload: React.FC<{
   label: string;
 }> = ({ preview, onChange, error, fallbackInitials, label }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
+  const [cropFileName, setCropFileName] = useState('photo.jpg');
+
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    onChange(file);
+    setCropFileName(file.name);
+    setCropSrc(URL.createObjectURL(file));
   };
+
+  const closeCropper = () => {
+    if (cropSrc) URL.revokeObjectURL(cropSrc);
+    setCropSrc(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleCropped = (file: File) => {
+    onChange(file);
+    closeCropper();
+  };
+
   return (
     <section className="flex flex-col items-center">
       <div className="w-24 h-24 rounded-full bg-slate-100 border-2 border-slate-200 overflow-hidden flex items-center justify-center">
@@ -249,6 +266,9 @@ const PhotoUpload: React.FC<{
         <button type="button" onClick={() => fileInputRef.current?.click()} className="text-sm font-semibold text-primary hover:text-primary/80 transition-colors">{label}</button>
         {error && <p className="text-xs text-red-500 mt-2">{error}</p>}
       </div>
+      {cropSrc && (
+        <ImageCropModal imageSrc={cropSrc} fileName={cropFileName} onCancel={closeCropper} onCropped={handleCropped} />
+      )}
     </section>
   );
 };

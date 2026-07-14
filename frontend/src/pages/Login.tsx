@@ -107,18 +107,19 @@ const Login: React.FC = () => {
             )}
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2" htmlFor="username">
-                Email or Username
+                Username or Email
               </label>
               <div className="relative group">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <span className="material-icons text-slate-400 group-focus-within:text-primary transition-colors text-xl">alternate_email</span>
+                  <span className="material-icons text-slate-400 group-focus-within:text-primary transition-colors text-xl">person_outline</span>
                 </div>
                 <input
                   {...register('username')}
                   id="username"
                   className="block w-full pl-10 pr-3 py-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
-                  placeholder="name@hospital.com"
+                  placeholder="Enter your username or email"
                   type="text"
+                  autoComplete="username"
                 />
               </div>
               {errors.username && (

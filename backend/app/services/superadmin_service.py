@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple, Dict, Any
 
+from sqlalchemy import or_, func
 from sqlalchemy.orm import Session, joinedload
 
 from ..models.user import User, UserRole, Role
@@ -18,13 +19,15 @@ class SuperAdminService:
     
     @staticmethod
     def authenticate(db: Session, username: str, password: str) -> Optional[User]:
-        """Authenticate super admin credentials using existing users table"""
-        # Query user with roles loaded
+        """Authenticate super admin credentials using existing users table.
+        `username` may be either the account's username or its email,
+        matched case-insensitively — same rule as the regular login."""
+        identifier = (username or "").strip().lower()
         user = (
             db.query(User)
             .options(joinedload(User.user_roles).joinedload(UserRole.role))
             .filter(
-                User.username == username,
+                or_(func.lower(User.username) == identifier, func.lower(User.email) == identifier),
                 User.is_active == True
             )
             .first()

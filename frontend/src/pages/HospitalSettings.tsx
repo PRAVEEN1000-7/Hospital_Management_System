@@ -33,7 +33,6 @@ const settingGroups: {
       { key: 'appointment_slot_duration_minutes', label: 'Slot Duration', description: 'Duration per appointment slot (5–120)', type: 'number', suffix: 'min' },
       { key: 'appointment_buffer_minutes', label: 'Buffer Time', description: 'Buffer between appointments (0–60)', type: 'number', suffix: 'min' },
       { key: 'max_daily_appointments_per_doctor', label: 'Max Daily Appointments', description: 'Maximum per doctor per day (1–100)', type: 'number' },
-      { key: 'consultation_fee_default', label: 'Default Consultation Fee', description: 'Default fee amount', type: 'number', suffix: '₹' },
       { key: 'follow_up_validity_days', label: 'Follow-up Validity', description: 'Days a follow-up is valid (1–365)', type: 'number', suffix: 'days' },
     ],
   },
@@ -506,7 +505,6 @@ const SystemSettingsTab: React.FC = () => {
     if (key === 'appointment_buffer_minutes' && typeof value === 'number') value = Math.max(0, Math.min(60, value));
     if (key === 'max_daily_appointments_per_doctor' && typeof value === 'number') value = Math.max(1, Math.min(100, value));
     if (key === 'follow_up_validity_days' && typeof value === 'number') value = Math.max(1, Math.min(365, value));
-    if (key === 'consultation_fee_default') { const n = Number(value); value = isNaN(n) ? '0' : String(Math.max(0, n)); }
     if ((key === 'invoice_prefix' || key === 'prescription_prefix') && typeof value === 'string') value = value.slice(0, 10);
     setEditValues(prev => ({ ...prev, [key]: value }));
     setHasChanges(true);
@@ -520,13 +518,7 @@ const SystemSettingsTab: React.FC = () => {
     }
     setSaving(true);
     try {
-      const payload: Partial<HospitalSettingsType> = {
-        ...editValues,
-        consultation_fee_default: editValues.consultation_fee_default !== undefined
-          ? String(editValues.consultation_fee_default)
-          : undefined,
-      };
-      const updated = await hospitalService.updateSettings(payload);
+      const updated = await hospitalService.updateSettings(editValues);
       setSettings(updated);
       setEditValues(updated);
       setHasChanges(false);

@@ -831,13 +831,21 @@ def update_grn(
         grn.verified_by = verifier_id
     for k, v in update_data.items():
         setattr(grn, k, v)
+
+    # Stock mutation (and the PO receipt-status rollup it triggers) must commit
+    # in the SAME transaction as the status flip to "accepted". Previously the
+    # status change committed on its own first, so a failure inside stock
+    # processing (e.g. a batch write violating a DB constraint) left the GRN
+    # permanently stuck at status="accepted" with no stock actually received —
+    # and no way to retry, since update_grn_item_batch only allows edits while
+    # the GRN is still "pending". Letting an exception here propagate now rolls
+    # back the status change too, instead of leaving a corrupted half-state.
+    if grn.status == "accepted":
+        _process_grn_acceptance(db, grn)
+
     db.commit()
     db.refresh(grn)
     logger.info("GRN updated: %s → %s", grn.grn_number, grn.status)
-
-    # When GRN is accepted, create stock-in movements and update PO received quantities
-    if grn.status == "accepted":
-        _process_grn_acceptance(db, grn)
 
     _notify_hospital_users(
         db,
@@ -1013,7 +1021,7 @@ def _process_grn_acceptance(db: Session, grn: GoodsReceiptNote):
             if po_item:
                 po_item.quantity_received = (po_item.quantity_received or 0) + accepted
 
-    db.commit()
+    db.flush()
 
     # Update PO status if all items received
     if grn.purchase_order_id:
@@ -1038,7 +1046,7 @@ def _update_po_receipt_status(db: Session, po_id: uuid.UUID):
         po.status = "received"
     elif any_received:
         po.status = "partially_received"
-    db.commit()
+    db.flush()
 
 
 def _format_grn_response(grn: GoodsReceiptNote, db: Session) -> dict:

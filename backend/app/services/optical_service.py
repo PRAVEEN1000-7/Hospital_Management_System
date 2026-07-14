@@ -528,7 +528,13 @@ def create_sale(db: Session, hospital_id: uuid.UUID, data: dict, user_id: uuid.U
     tax_total = Decimal("0")
 
     for item_data in items_data:
-        product = get_optical_product_by_id(db, item_data["product_id"])
+        # Scoped to this hospital — without it, a product_id from another
+        # tenant would still resolve here and, via the batch_id branch below
+        # or the auto-select branch matching on product_id alone, let this
+        # sale decrement a different hospital's stock while billing this one.
+        product = get_optical_product_by_id(db, item_data["product_id"], hospital_id=hospital_id)
+        if not product:
+            raise ValueError("Optical product not found")
         product_uuid = uuid.UUID(item_data["product_id"])
         qty = item_data["quantity"]
         unit_price = Decimal(str(item_data["unit_price"]))
@@ -544,7 +550,15 @@ def create_sale(db: Session, hospital_id: uuid.UUID, data: dict, user_id: uuid.U
         batch = None
         batch_id = item_data.get("batch_id")
         if batch_id:
-            batch = db.query(OpticalBatch).filter(OpticalBatch.id == uuid.UUID(batch_id)).first()
+            # Must belong to the product this line claims to sell — otherwise a
+            # client-supplied batch_id for an unrelated product (any hospital,
+            # since OpticalBatch carries no hospital_id of its own) would
+            # silently decrement the wrong item's stock.
+            batch = db.query(OpticalBatch).filter(
+                OpticalBatch.id == uuid.UUID(batch_id),
+                OpticalBatch.product_id == product_uuid,
+                OpticalBatch.is_active == True,
+            ).first()
         else:
             # FEFO: earliest real expiry first; null-expiry batches (frames,
             # solutions) are never blocked and are consumed last.

@@ -188,6 +188,16 @@ const WalkInQueue: React.FC = () => {
     }
   }, [canFilter, fetchUnassigned]);
 
+  // Refresh doctor waiting counts every time the Send to Doctor modal opens —
+  // otherwise it shows whatever was fetched on page load (or after the last
+  // send), which drifts stale as other patients are called/completed/sent in
+  // the meantime, so the badge disagrees with the doctor's actual live queue.
+  useEffect(() => {
+    if (sendModalId) {
+      walkInService.getDoctorLoads().then(setDoctorLoads).catch(() => {});
+    }
+  }, [sendModalId]);
+
   // Load doctor list for referral modal (doctor role)
   useEffect(() => {
     if (isDoctor) {

@@ -280,15 +280,60 @@ def list_batches(
     return query.order_by(MedicineBatch.expiry_date).all()
 
 
-def update_batch(db: Session, batch_id: str | uuid.UUID, data: dict) -> Optional[MedicineBatch]:
+def update_batch(
+    db: Session,
+    batch_id: str | uuid.UUID,
+    data: dict,
+    hospital_id: Optional[uuid.UUID] = None,
+    performed_by: Optional[uuid.UUID] = None,
+) -> Optional[MedicineBatch]:
+    """Update a batch. When `quantity` changes, this is a direct stock edit (e.g.
+    the "Open Stock" field on the Medicine edit form) — log a StockMovement for
+    it just like every other stock-changing path (GRN, adjustments, dispensing),
+    otherwise stock can silently change here with zero audit trail."""
+    from ..models.inventory import StockMovement
+
     if isinstance(batch_id, str):
         batch_id = uuid.UUID(batch_id)
     batch = db.query(MedicineBatch).filter(MedicineBatch.id == batch_id).first()
     if not batch:
         return None
+
+    old_qty = batch.quantity or 0
+    qty_delta = None
+    if "quantity" in data and data["quantity"] is not None and int(data["quantity"]) != old_qty:
+        new_qty = int(data["quantity"])
+        if new_qty < 0:
+            raise ValueError("Stock quantity cannot be negative")
+        qty_delta = new_qty - old_qty
+
     for key, value in data.items():
         if hasattr(batch, key) and value is not None:
             setattr(batch, key, value)
+
+    if qty_delta is not None:
+        if qty_delta > 0:
+            batch.initial_quantity = (batch.initial_quantity or 0) + qty_delta
+        db.flush()
+        balance_after = int(
+            db.query(func.coalesce(func.sum(MedicineBatch.quantity), 0)).filter(
+                MedicineBatch.medicine_id == batch.medicine_id,
+                MedicineBatch.is_active == True,
+            ).scalar() or 0
+        )
+        db.add(StockMovement(
+            hospital_id=hospital_id or batch.medicine.hospital_id,
+            item_type="medicine",
+            item_id=batch.medicine_id,
+            batch_id=batch.id,
+            movement_type="adjustment",
+            reference_type="manual_edit",
+            quantity=qty_delta,
+            balance_after=balance_after,
+            notes=f"Stock manually edited on batch {batch.batch_number}: {old_qty} -> {batch.quantity}",
+            performed_by=performed_by,
+        ))
+
     db.commit()
     db.refresh(batch)
     return batch
@@ -571,17 +616,17 @@ def receive_purchase_order(
             )
             db.add(batch)
 
-        last_movement = (
-            db.query(StockMovement)
-            .filter(
-                StockMovement.hospital_id == po.hospital_id,
-                StockMovement.item_type == "medicine",
-                StockMovement.item_id == item.item_id,
-            )
-            .order_by(StockMovement.created_at.desc())
-            .first()
+        # balance_after must reflect the real post-update batch total, not a
+        # shadow running total off the last movement's own balance_after —
+        # that shadow figure can silently drift from what batches actually
+        # hold (mirrors the same fix applied to GRN receipt processing).
+        db.flush()
+        balance_after = int(
+            db.query(func.coalesce(func.sum(MedicineBatch.quantity), 0)).filter(
+                MedicineBatch.medicine_id == item.item_id,
+                MedicineBatch.is_active == True,
+            ).scalar() or 0
         )
-        current_balance = last_movement.balance_after if last_movement else 0
 
         movement = StockMovement(
             hospital_id=po.hospital_id,
@@ -591,7 +636,7 @@ def receive_purchase_order(
             reference_type="purchase_order",
             reference_id=po.id,
             quantity=received_qty,
-            balance_after=current_balance + received_qty,
+            balance_after=balance_after,
             unit_cost=float(purchase_price),
             notes=f"PO receipt: {po.po_number}",
             performed_by=user_id,
@@ -681,7 +726,13 @@ def create_sale(
     line_discount_total = Decimal("0")
 
     for item_data in items_data:
-        med = get_medicine_by_id(db, item_data["medicine_id"])
+        # Scoped to this hospital — without it, any medicine_id from another
+        # tenant would still resolve here and (via the batch_id branch below,
+        # or the auto-select branch matching on medicine_id alone) let this
+        # sale decrement a different hospital's stock while billing this one.
+        med = get_medicine_by_id(db, item_data["medicine_id"], hospital_id=hospital_id)
+        if not med:
+            raise ValueError("Medicine not found")
         qty = item_data["quantity"]
         unit_price = Decimal(str(item_data["unit_price"]))
         disc_pct = Decimal(str(item_data.get("discount_percent", 0)))
@@ -697,7 +748,15 @@ def create_sale(
         batch_id = item_data.get("batch_id")
         if batch_id:
             batch_id_uuid = uuid.UUID(batch_id)
-            batch = db.query(MedicineBatch).filter(MedicineBatch.id == batch_id_uuid).first()
+            # Must belong to the medicine this line claims to sell — otherwise
+            # a client-supplied batch_id for an unrelated medicine (any
+            # hospital, since MedicineBatch carries no hospital_id of its own)
+            # would silently decrement the wrong item's stock.
+            batch = db.query(MedicineBatch).filter(
+                MedicineBatch.id == batch_id_uuid,
+                MedicineBatch.medicine_id == uuid.UUID(item_data["medicine_id"]),
+                MedicineBatch.is_active == True,
+            ).first()
         else:
             # ✅ FIX BUG #7: Add expiry date validation - block expired batches
             batch = db.query(MedicineBatch).filter(
@@ -727,22 +786,20 @@ def create_sale(
 
         batch.quantity -= qty
 
-        # ✅ FIX BUG #2: Create stock movement record for pharmacy sale
+        # Create stock movement record for pharmacy sale
         from ..models.inventory import StockMovement
 
-        # Get current balance from last movement
-        last_movement = (
-            db.query(StockMovement)
-            .filter(
-                StockMovement.hospital_id == hospital_id,
-                StockMovement.item_type == "medicine",
-                StockMovement.item_id == uuid.UUID(item_data["medicine_id"]),
-            )
-            .order_by(StockMovement.created_at.desc())
-            .first()
+        # balance_after reflects the real post-deduction batch total, not a
+        # shadow running total off the last movement's own balance_after (see
+        # the matching fix in receive_purchase_order / _process_grn_acceptance).
+        db.flush()
+        balance_after = int(
+            db.query(func.coalesce(func.sum(MedicineBatch.quantity), 0)).filter(
+                MedicineBatch.medicine_id == uuid.UUID(item_data["medicine_id"]),
+                MedicineBatch.is_active == True,
+            ).scalar() or 0
         )
-        current_balance = last_movement.balance_after if last_movement else 0
-        
+
         movement = StockMovement(
             hospital_id=hospital_id,
             item_type="medicine",
@@ -752,7 +809,7 @@ def create_sale(
             reference_type="dispensing",
             reference_id=sale.id,
             quantity=-qty,
-            balance_after=current_balance - qty,
+            balance_after=balance_after,
             unit_cost=float(unit_price),
             notes=f"Pharmacy sale: {sale.invoice_number}",
             performed_by=user_id,

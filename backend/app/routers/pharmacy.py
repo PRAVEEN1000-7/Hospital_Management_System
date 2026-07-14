@@ -264,12 +264,18 @@ async def update_batch(
         )
         if not batch_check:
             raise HTTPException(status_code=404, detail="Batch not found")
-        batch = svc.update_batch(db, batch_id, data.model_dump(exclude_unset=True))
+        batch = svc.update_batch(
+            db, batch_id, data.model_dump(exclude_unset=True),
+            hospital_id=current_user.hospital_id, performed_by=current_user.id,
+        )
         if not batch:
             raise HTTPException(status_code=404, detail="Batch not found")
         return BatchResponse.model_validate(batch)
     except HTTPException:
         raise
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
     except IntegrityError:
         db.rollback()
         raise HTTPException(

@@ -11,7 +11,7 @@ from datetime import date, datetime, timezone
 from typing import Optional
 
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import or_
+from sqlalchemy import or_, func
 
 from ..models.refund import Refund
 from ..models.payment import Payment
@@ -267,6 +267,18 @@ def _restock_refunded_item(db: Session, refund: Refund, user_id: Optional[uuid.U
     if not batch.is_active:
         batch.is_active = True
 
+    db.flush()
+    # balance_after must be the medicine's total active-batch stock (what every
+    # other movement path — GRN, PO receipt, sale, adjustment — records), not
+    # just this one batch's own quantity, otherwise the ledger understates the
+    # real total whenever the medicine has more than one batch.
+    balance_after = int(
+        db.query(func.coalesce(func.sum(MedicineBatch.quantity), 0)).filter(
+            MedicineBatch.medicine_id == item.reference_id,
+            MedicineBatch.is_active == True,
+        ).scalar() or 0
+    )
+
     db.add(StockMovement(
         hospital_id=refund.hospital_id,
         item_type="medicine",
@@ -276,7 +288,7 @@ def _restock_refunded_item(db: Session, refund: Refund, user_id: Optional[uuid.U
         reference_type="refund",
         reference_id=refund.id,
         quantity=int(qty),
-        balance_after=batch.quantity,
+        balance_after=balance_after,
         unit_cost=batch.purchase_price,
         notes=f"Restocked from refund {refund.refund_number}",
         performed_by=user_id,

@@ -126,7 +126,16 @@ def create_appointment(
     if not doctor_id:
         raise ValueError("Doctor selection is required")
 
-    doctor = db.query(Doctor).filter(Doctor.id == doctor_id).first()
+    # Scoped to this hospital — without it, a doctor_id from another hospital
+    # still resolved here: the appointment got created (tagged with the
+    # booking hospital's own hospital_id, not the doctor's real one), its fee
+    # was silently taken from a doctor nobody at this hospital can see, and
+    # the resulting "assigned to you" notification was later computed with
+    # extra_user_ids from a user outside hospital_id — undeliverable, since
+    # GET /notifications filters by hospital_id AND user_id together.
+    doctor = db.query(Doctor).filter(Doctor.id == doctor_id, Doctor.hospital_id == hospital_id).first()
+    if not doctor:
+        raise ValueError("Doctor not found")
 
     department_id = data.get("department_id")
     if isinstance(department_id, str):
@@ -185,13 +194,13 @@ def create_appointment(
         notify_hospital_users(
             db=db,
             hospital_id=appt.hospital_id,
-            title="New Appointment",
-            message=f"Appointment booked for {patient_name} on {appt.appointment_date}.",
+            title="New Appointment Booked",
+            message=f"{patient_name} — {appt.appointment_number} on {appt.appointment_date}.",
             notification_type="appointment",
             priority="normal",
             reference_type="appointment",
             reference_id=appt.id,
-            role_names=["receptionist"],
+            role_names=["admin", "receptionist"],
             extra_user_ids=[doctor_user_id] if doctor_user_id else None,
             exclude_user_ids=[created_by],
         )
@@ -399,21 +408,20 @@ def cancel_appointment(
     _log_status_change(db, appt.id, old_status, "cancelled", cancelled_by, reason)
 
     try:
-        patient = db.query(Patient).filter(Patient.id == appt.patient_id).first()
-        patient_name = f"{patient.first_name} {patient.last_name}".strip() if patient else "a patient"
         doctor = db.query(Doctor).filter(Doctor.id == appt.doctor_id).first()
-        if doctor and doctor.user_id:
-            notify_hospital_users(
-                db=db,
-                hospital_id=appt.hospital_id,
-                title="Appointment Cancelled",
-                message=f"Appointment for {patient_name} on {appt.appointment_date} has been cancelled.",
-                notification_type="appointment",
-                priority="high",
-                reference_type="appointment",
-                reference_id=appt.id,
-                extra_user_ids=[doctor.user_id],
-            )
+        notify_hospital_users(
+            db=db,
+            hospital_id=appt.hospital_id,
+            title="Appointment Cancelled",
+            message=f"Appointment {appt.appointment_number} has been cancelled.",
+            notification_type="appointment",
+            priority="high",
+            reference_type="appointment",
+            reference_id=appt.id,
+            role_names=["admin", "receptionist"],
+            extra_user_ids=[doctor.user_id] if doctor and doctor.user_id else None,
+            exclude_user_ids=[cancelled_by],
+        )
     except Exception:
         logger.warning("Failed to send appointment cancellation notification", exc_info=True)
 
@@ -496,7 +504,20 @@ def enrich_appointment(db: Session, appt: Appointment) -> dict:
     d["department_id"] = str(appt.department_id) if appt.department_id else None
     d["created_by"] = str(appt.created_by) if appt.created_by else None
     d["parent_appointment_id"] = str(appt.parent_appointment_id) if appt.parent_appointment_id else None
-    
+
+    # Resolve referring doctor's name for referral appointments — this is
+    # what lets the receiving doctor's consultation screen show who referred
+    # the patient and why (the "why" itself travels in `notes`, set at
+    # referral time). Mirrors the same lookup already used for the
+    # upcoming-queue list (get_upcoming_queue).
+    d["referring_doctor_name"] = None
+    if appt.parent_appointment_id:
+        parent_appt = db.query(Appointment).filter(Appointment.id == appt.parent_appointment_id).first()
+        if parent_appt and parent_appt.doctor_id:
+            referring_doctor = db.query(Doctor).filter(Doctor.id == parent_appt.doctor_id).first()
+            if referring_doctor and referring_doctor.user:
+                d["referring_doctor_name"] = f"Dr. {referring_doctor.user.full_name}"
+
     # Get patient name
     patient = db.query(Patient).filter(Patient.id == appt.patient_id).first()
     d["patient_name"] = patient.full_name if patient else None

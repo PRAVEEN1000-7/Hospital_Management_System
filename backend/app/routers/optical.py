@@ -339,21 +339,8 @@ async def create_optical_prescription(
 ):
     try:
         rx = svc.create_optical_prescription(db, current_user.hospital_id, data.model_dump(), created_by=current_user.id)
-        try:
-            notify_hospital_users(
-                db=db,
-                hospital_id=current_user.hospital_id,
-                title="New Optical Prescription",
-                message=f"Optical prescription {rx.prescription_number} has been created and is ready for dispensing.",
-                notification_type="optical",
-                priority="normal",
-                reference_type="optical_prescription",
-                reference_id=rx.id,
-                role_names=["optical_staff", "admin"],
-                exclude_user_ids=[current_user.id],
-            )
-        except Exception:
-            pass
+        # Notification is sent inside create_optical_prescription() itself —
+        # a second call here duplicated "New Optical Prescription" for every create.
         return _enrich_prescription_response(rx)
     except ValueError as e:
         db.rollback()

@@ -5,6 +5,7 @@ import HospitalLogo from './HospitalLogo';
 import UserAvatar from './UserAvatar';
 import { NavLink, useNavigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 import { formatRole } from '../../utils/constants';
 import hospitalService from '../../services/hospitalService';
 import pharmacyService from '../../services/pharmacyService';
@@ -19,6 +20,7 @@ import {
 
 const Layout: React.FC = () => {
   const { user, logout, isModuleEnabled, isEyeHospitalFeatureEnabled } = useAuth();
+  const toast = useToast();
   const navigate = useNavigate();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -202,7 +204,11 @@ const Layout: React.FC = () => {
   const fetchNotifications = useCallback(async (silent = false) => {
     if (!silent) setNotificationsLoading(true);
     try {
-      const res = await notificationsService.getNotifications(1, 15, false);
+      // There's no dedicated "view all" notifications page — this dropdown is
+      // the only place notifications are ever listed — so the fetch limit is
+      // kept generous rather than the previous 15, which could silently hide
+      // older unread items behind an otherwise-correct unread badge count.
+      const res = await notificationsService.getNotifications(1, 50, false);
       setNotifications(res.data);
       setUnreadCount(res.unread_count || 0);
     } catch {
@@ -244,7 +250,7 @@ const Layout: React.FC = () => {
       setNotifications(prev => prev.map(n => (n.id === id ? { ...n, is_read: true } : n)));
       setUnreadCount(prev => Math.max(0, prev - 1));
     } catch {
-      // Ignore individual mark-read failures
+      toast.error('Failed to mark notification as read');
     }
   };
 
@@ -254,23 +260,51 @@ const Layout: React.FC = () => {
       setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
       setUnreadCount(0);
     } catch {
-      // Ignore mark-all failures
+      toast.error('Failed to mark all notifications as read');
     }
   };
 
-  // Hide a single notification from the panel — UI only, no DB change.
-  const handleDismiss = (e: React.MouseEvent, id: string) => {
+  // Permanently remove a single notification. This used to only hide it
+  // locally (dismissedIds, never touching the backend) — it looked deleted
+  // but reappeared on the next refresh since the row was still there.
+  const handleDismiss = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     setDismissedIds(prev => new Set(prev).add(id));
+    try {
+      await notificationsService.deleteNotification(id);
+    } catch {
+      setDismissedIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      toast.error('Failed to remove notification');
+    }
   };
 
-  // Hide all currently visible notifications — UI only, no DB change.
-  const handleDismissAll = () => {
+  // Permanently remove every currently visible notification (same
+  // reasoning as handleDismiss — this must actually delete server-side).
+  // Unread ones are marked read first since DELETE /notifications/read only
+  // removes already-read rows.
+  const handleDismissAll = async () => {
+    const ids = notifications.map(n => n.id);
     setDismissedIds(prev => {
       const next = new Set(prev);
-      notifications.forEach(n => next.add(n.id));
+      ids.forEach(id => next.add(id));
       return next;
     });
+    try {
+      await notificationsService.markAllRead();
+      await notificationsService.deleteAllRead();
+      setUnreadCount(0);
+    } catch {
+      setDismissedIds(prev => {
+        const next = new Set(prev);
+        ids.forEach(id => next.delete(id));
+        return next;
+      });
+      toast.error('Failed to clear notifications');
+    }
   };
 
   const handleLogout = async () => {

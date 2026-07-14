@@ -55,7 +55,23 @@ def notify_hospital_users(
     recipient_ids: set[uuid.UUID] = {row[0] for row in q.distinct().all()}
 
     if extra_user_ids:
-        recipient_ids.update(extra_user_ids)
+        # Re-scoped to this hospital rather than trusted as-is — a caller
+        # resolving e.g. a doctor's user_id without its own hospital filter
+        # (a bug fixed at the appointment-booking call site, but a real risk
+        # for any future caller) would otherwise create a Notification row
+        # stamped with THIS hospital_id but a user from another hospital.
+        # GET /notifications filters by hospital_id AND user_id together, so
+        # that row could never be seen by anyone — a silent, permanent loss
+        # of the notification rather than a visible error.
+        valid_extra_ids = {
+            row[0] for row in db.query(User.id).filter(
+                User.id.in_(extra_user_ids),
+                User.hospital_id == hospital_id,
+                User.is_active == True,
+                User.is_deleted == False,
+            ).all()
+        }
+        recipient_ids.update(valid_extra_ids)
     if exclude_user_ids:
         recipient_ids.difference_update(exclude_user_ids)
 

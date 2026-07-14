@@ -434,12 +434,30 @@ async def get_queue_status(
                 if doc and doc.user:
                     doctor_name = f"Dr. {doc.user.full_name}"
 
+        # Resolve referring doctor name if this is a referral — mirrors the
+        # same lookup in get_upcoming_queue, but was missing here, so a
+        # referred-in patient showed no indication of who referred them (or
+        # why — see `notes`) in the doctor's actual TODAY queue.
+        appointment_type = appt.appointment_type if appt else None
+        referring_doctor_name = None
+        referral_notes = None
+        if appt and appt.parent_appointment_id:
+            parent = db.query(Appointment).filter(Appointment.id == appt.parent_appointment_id).first()
+            if parent and parent.doctor_id:
+                ref_doc = db.query(Doctor).filter(Doctor.id == parent.doctor_id).first()
+                if ref_doc and ref_doc.user:
+                    referring_doctor_name = f"Dr. {ref_doc.user.full_name}"
+            referral_notes = appt.notes
+
         items.append({
             "queue_id": str(qe.id),
             "appointment_id": str(qe.appointment_id),
             "queue_number": qe.queue_number,
             "position": qe.position,
             "status": qe.status,
+            "appointment_type": appointment_type,
+            "referring_doctor_name": referring_doctor_name,
+            "referral_notes": referral_notes,
             "priority": priority,
             "patient_name": patient_name,
             "patient_id": patient_id_str,
@@ -1156,6 +1174,19 @@ async def refer_patient_to_doctor(
 
         now = datetime.now(timezone.utc)
 
+        # The referring doctor is whoever the patient's queue was actually
+        # under (qe.doctor_id) — not necessarily current_user, since an admin
+        # can also submit a referral on a doctor's behalf. Resolving it here
+        # (rather than leaving the note as the literal, unfilled placeholder
+        # "Referral from Dr. queue") is what actually lets Doctor B see who
+        # referred the patient and why.
+        referring_doctor = db.query(Doctor).filter(Doctor.id == qe.doctor_id).first()
+        referring_doctor_name = (
+            f"Dr. {referring_doctor.user.full_name}"
+            if referring_doctor and referring_doctor.user else "the referring doctor"
+        )
+        reason_text = (data.referral_reason or "").strip() or "Specialist consultation"
+
         # ── Create referral appointment ──
         appt_number = generate_appointment_number("referral")
         referral_appt = Appointment(
@@ -1173,7 +1204,11 @@ async def refer_patient_to_doctor(
             chief_complaint=original_appt.chief_complaint,
             consultation_fee=to_doctor.consultation_fee,
             parent_appointment_id=original_appt.id,
-            notes=f"Referral from Dr. queue. Reason: {data.referral_reason or 'Specialist consultation'}" if data.referral_reason else None,
+            # Previously this was dropped to NULL entirely whenever the
+            # referring doctor left the reason blank (the ternary's inner
+            # "or" fallback was unreachable dead code) — Doctor B's screen
+            # would then have nothing to show at all for that referral.
+            notes=f"Referred by {referring_doctor_name}. Reason: {reason_text}",
             check_in_at=now if referral_date == today else None,
             created_by=current_user.id,
         )

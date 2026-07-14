@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import prescriptionService from '../services/prescriptionService';
+import appointmentService from '../services/appointmentService';
 import patientService from '../services/patientService';
 import walkInService from '../services/walkInService';
 import scheduleService from '../services/scheduleService';
@@ -143,6 +144,14 @@ const PrescriptionBuilder: React.FC = () => {
   const [queueId] = useState(searchParams.get('queue_id') || '');
   const isConsultationMode = Boolean(queueId);
   const [patient, setPatient] = useState<Patient | null>(null);
+  // Referral context (who referred this patient in, and why) — fetched so it's
+  // visible to the receiving doctor instead of silently never surfacing.
+  const [referralInfo, setReferralInfo] = useState<{
+    isReferral: boolean;
+    referringDoctorName: string | null;
+    notes: string | null;
+    chiefComplaint: string | null;
+  } | null>(null);
   const [clinicalNotes, setClinicalNotes] = useState('');
   const [advice, setAdvice] = useState('');
   const [isOpthal, setIsOpthal] = useState(user?.hospital_specialty === 'eye_hospital');
@@ -259,6 +268,26 @@ const PrescriptionBuilder: React.FC = () => {
         .catch(() => showToast('error', 'Patient not found'));
     }
   }, [patientId, isEyeHospital, editId]);
+
+  // Load referral context, if this consultation was reached via a referral —
+  // previously nothing here ever fetched the appointment record at all, so a
+  // referring doctor's notes/reason never reached the receiving doctor's screen.
+  useEffect(() => {
+    if (!appointmentId) { setReferralInfo(null); return; }
+    let cancelled = false;
+    appointmentService.getAppointment(appointmentId)
+      .then(appt => {
+        if (cancelled) return;
+        setReferralInfo({
+          isReferral: appt.appointment_type === 'referral',
+          referringDoctorName: appt.referring_doctor_name || null,
+          notes: appt.notes || null,
+          chiefComplaint: appt.chief_complaint || null,
+        });
+      })
+      .catch(() => { if (!cancelled) setReferralInfo(null); });
+    return () => { cancelled = true; };
+  }, [appointmentId]);
 
   // Load existing prescription in edit mode
   useEffect(() => {
@@ -838,6 +867,25 @@ const PrescriptionBuilder: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Referral banner — surfaces the referring doctor's notes/reason so
+          they're actually visible here instead of only living in the DB. */}
+      {referralInfo?.isReferral && (
+        <div className="mb-6 flex items-start gap-3 rounded-xl border border-orange-200 bg-orange-50 p-4">
+          <span className="material-symbols-outlined text-orange-500 mt-0.5">forward_to_inbox</span>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-orange-800">
+              Referred patient{referralInfo.referringDoctorName ? ` from ${referralInfo.referringDoctorName}` : ''}
+            </p>
+            {referralInfo.notes && (
+              <p className="mt-0.5 text-sm text-orange-700">{referralInfo.notes}</p>
+            )}
+            {referralInfo.chiefComplaint && (
+              <p className="mt-0.5 text-xs text-orange-600">Original complaint: {referralInfo.chiefComplaint}</p>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* Left: Form — expanded to take 3/4 width */}

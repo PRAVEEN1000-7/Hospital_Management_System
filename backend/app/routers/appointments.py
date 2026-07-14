@@ -102,29 +102,11 @@ async def book_appointment(
         except Exception as email_err:
             logger.warning(f"Failed to send confirmation email: {email_err}")
 
-        # Notify the assigned doctor + admin (fire-and-forget)
-        try:
-            patient_name = enriched.get("patient_name", "A patient")
-            extra_ids = []
-            if appt.doctor_id:
-                doc = db.query(Doctor).filter(Doctor.id == appt.doctor_id).first()
-                if doc:
-                    extra_ids = [doc.user_id]
-            notify_hospital_users(
-                db=db,
-                hospital_id=current_user.hospital_id,
-                title="New Appointment Booked",
-                message=f"{patient_name} — {appt.appointment_number} on {appt.appointment_date}.",
-                notification_type="appointment",
-                priority="normal",
-                reference_type="appointment",
-                reference_id=appt.id,
-                role_names=["admin", "receptionist"],
-                extra_user_ids=extra_ids,
-                exclude_user_ids=[current_user.id],
-            )
-        except Exception:
-            pass
+        # Notification is sent inside create_appointment() itself — it's called
+        # from here and from two other places (prescriptions.py follow-up
+        # booking), so it has to live there to cover all three; a second call
+        # here duplicated every "New Appointment Booked" notification for
+        # this endpoint's callers specifically.
 
         return enriched
     except HTTPException:
@@ -342,28 +324,8 @@ async def cancel_appt(
         except Exception as email_err:
             logger.warning(f"Failed to send cancellation email: {email_err}")
 
-        # Notify doctor + admin of cancellation (fire-and-forget)
-        try:
-            extra_ids = []
-            if appt.doctor_id:
-                doc = db.query(Doctor).filter(Doctor.id == appt.doctor_id).first()
-                if doc:
-                    extra_ids = [doc.user_id]
-            notify_hospital_users(
-                db=db,
-                hospital_id=current_user.hospital_id,
-                title="Appointment Cancelled",
-                message=f"Appointment {appt.appointment_number} has been cancelled.",
-                notification_type="appointment",
-                priority="normal",
-                reference_type="appointment",
-                reference_id=appt.id,
-                role_names=["admin", "receptionist"],
-                extra_user_ids=extra_ids,
-                exclude_user_ids=[current_user.id],
-            )
-        except Exception:
-            pass
+        # Notification is sent inside cancel_appointment() itself — a second
+        # call here duplicated the "Appointment Cancelled" notification.
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
 

@@ -1,6 +1,6 @@
 // ── Enums / Literals ──────────────────────────────────────────────────────
 
-export type AppointmentType = 'scheduled' | 'walk-in' | 'emergency' | 'follow_up';
+export type AppointmentType = 'scheduled' | 'walk-in' | 'emergency' | 'follow_up' | 'referral';
 export type VisitType = 'new_visit' | 'follow_up' | 'referral' | 'emergency';
 export type AppointmentStatus = 'scheduled' | 'pending' | 'confirmed' | 'in-progress' | 'completed' | 'cancelled' | 'no-show' | 'rescheduled';
 export type Priority = 'normal' | 'urgent' | 'emergency';
@@ -98,6 +98,8 @@ export interface Appointment {
   consultation_invoice_status?: string | null;
   consultation_fee_collected?: boolean;
   consultation_balance_amount?: number | null;
+  parent_appointment_id?: string | null;
+  referring_doctor_name?: string | null;
 }
 
 export interface AppointmentCreate {
@@ -160,6 +162,9 @@ export interface QueueItem {
   patient_emergency_contact_relation: string | null;
   doctor_id: string | null;
   doctor_name: string | null;
+  appointment_type?: string | null;
+  referring_doctor_name?: string | null;
+  referral_notes?: string | null;
   chief_complaint: string | null;
   check_in_at: string | null;
   called_at: string | null;

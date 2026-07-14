@@ -601,18 +601,17 @@ def finalize_prescription(
 
     # Notify pharmacists that a prescription is ready for dispensing.
     try:
-        patient = db.query(Patient).filter(Patient.id == rx.patient_id).first()
-        patient_name = f"{patient.first_name} {patient.last_name}".strip() if patient else "a patient"
         notify_hospital_users(
             db=db,
             hospital_id=rx.hospital_id,
             title="Prescription Ready for Dispensing",
-            message=f"Prescription {rx.prescription_number} for {patient_name} is ready to dispense.",
+            message=f"Prescription {rx.prescription_number} has been finalized and is awaiting dispensing.",
             notification_type="prescription",
-            priority="normal",
+            priority="high",
             reference_type="prescription",
             reference_id=rx.id,
-            role_names=["pharmacist"],
+            role_names=["pharmacist", "admin"],
+            exclude_user_ids=[performed_by],
         )
     except Exception:
         logger.warning("Failed to send prescription finalize notification", exc_info=True)

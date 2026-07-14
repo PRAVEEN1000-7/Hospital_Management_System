@@ -586,16 +586,19 @@ def create_purchase_order(
 
     db.commit()
     db.refresh(po)
-    _notify_hospital_users(
-        db,
-        hospital_id,
-        title="Purchase Order Created",
-        message=f"{po.po_number} was created with total {float(po.total_amount or 0):.2f}",
-        reference_type="purchase_order",
-        reference_id=po.id,
-        role_names=["super_admin", "admin", "inventory_manager"],
-        extra_user_ids=[user_id],
-    )
+    try:
+        _notify_hospital_users(
+            db,
+            hospital_id,
+            title="New Purchase Order Created",
+            message=f"Purchase Order {po.po_number} has been created and is pending approval.",
+            reference_type="purchase_order",
+            reference_id=po.id,
+            role_names=["super_admin", "admin", "inventory_manager"],
+            exclude_user_ids=[user_id],
+        )
+    except Exception:
+        logger.warning("Failed to send purchase order creation notification", exc_info=True)
     logger.info("Purchase order created: %s (total=%.2f)", po.po_number, total)
     return po
 
@@ -759,16 +762,19 @@ def create_grn(
 
     db.commit()
     db.refresh(grn)
-    _notify_hospital_users(
-        db,
-        hospital_id,
-        title="Goods Receipt Created",
-        message=f"{grn.grn_number} was created and is pending review",
-        reference_type="grn",
-        reference_id=grn.id,
-        role_names=["super_admin", "admin", "inventory_manager", "pharmacist"],
-        extra_user_ids=[user_id],
-    )
+    try:
+        _notify_hospital_users(
+            db,
+            hospital_id,
+            title="Goods Receipt Note Created",
+            message=f"GRN {grn.grn_number} has been recorded and is pending review.",
+            reference_type="grn",
+            reference_id=grn.id,
+            role_names=["super_admin", "admin", "inventory_manager", "pharmacist"],
+            exclude_user_ids=[user_id],
+        )
+    except Exception:
+        logger.warning("Failed to send GRN creation notification", exc_info=True)
     logger.info("GRN created: %s (total=%.2f)", grn.grn_number, total)
     return grn
 
@@ -847,16 +853,19 @@ def update_grn(
     db.refresh(grn)
     logger.info("GRN updated: %s → %s", grn.grn_number, grn.status)
 
-    _notify_hospital_users(
-        db,
-        grn.hospital_id,
-        title="Goods Receipt Updated",
-        message=f"{grn.grn_number} status changed to {grn.status}",
-        reference_type="grn",
-        reference_id=grn.id,
-        role_names=["super_admin", "admin", "inventory_manager", "pharmacist"],
-        extra_user_ids=[verifier_id] if verifier_id else None,
-    )
+    try:
+        _notify_hospital_users(
+            db,
+            grn.hospital_id,
+            title="Goods Receipt Updated",
+            message=f"{grn.grn_number} status changed to {grn.status}",
+            reference_type="grn",
+            reference_id=grn.id,
+            role_names=["super_admin", "admin", "inventory_manager", "pharmacist"],
+            extra_user_ids=[verifier_id] if verifier_id else None,
+        )
+    except Exception:
+        logger.warning("Failed to send GRN status update notification", exc_info=True)
 
     return grn
 
@@ -1371,16 +1380,19 @@ def create_stock_adjustment(
     db.add(adj)
     db.commit()
     db.refresh(adj)
-    _notify_hospital_users(
-        db,
-        hospital_id,
-        title="Stock Adjustment Raised",
-        message=f"{adj.adjustment_number} is pending approval",
-        reference_type="stock_adjustment",
-        reference_id=adj.id,
-        role_names=["super_admin", "admin", "inventory_manager"],
-        extra_user_ids=[user_id],
-    )
+    try:
+        _notify_hospital_users(
+            db,
+            hospital_id,
+            title="Stock Adjustment Raised",
+            message=f"{adj.adjustment_number} is pending approval",
+            reference_type="stock_adjustment",
+            reference_id=adj.id,
+            role_names=["super_admin", "admin", "inventory_manager"],
+            exclude_user_ids=[user_id],
+        )
+    except Exception:
+        logger.warning("Failed to send stock adjustment creation notification", exc_info=True)
     logger.info("Stock adjustment created: %s (%s %d)", adj.adjustment_number, adj.adjustment_type, adj.quantity)
     return adj
 
@@ -1456,16 +1468,21 @@ def approve_stock_adjustment(
     db.commit()
     db.refresh(adj)
 
-    _notify_hospital_users(
-        db,
-        adj.hospital_id,
-        title="Stock Adjustment Updated",
-        message=f"{adj.adjustment_number} was {adj.status}",
-        reference_type="stock_adjustment",
-        reference_id=adj.id,
-        role_names=["super_admin", "admin", "inventory_manager"],
-        extra_user_ids=[adj.created_by, approver_id],
-    )
+    try:
+        approver = db.query(User).filter(User.id == approver_id).first()
+        _notify_hospital_users(
+            db,
+            adj.hospital_id,
+            title=f"Stock Adjustment {adj.status.capitalize()}",
+            message=f"{adj.adjustment_number} was {adj.status} by {approver.username if approver else 'a user'}.",
+            reference_type="stock_adjustment",
+            reference_id=adj.id,
+            role_names=["super_admin", "admin", "inventory_manager"],
+            extra_user_ids=[adj.created_by],
+            exclude_user_ids=[approver_id],
+        )
+    except Exception:
+        logger.warning("Failed to send stock adjustment status notification", exc_info=True)
 
     return adj
 
@@ -1524,16 +1541,19 @@ def create_cycle_count(
 
     db.commit()
     db.refresh(cc)
-    _notify_hospital_users(
-        db,
-        hospital_id,
-        title="Cycle Count Created",
-        message=f"{cc.count_number} was created with {len(data.items)} items",
-        reference_type="cycle_count",
-        reference_id=cc.id,
-        role_names=["super_admin", "admin", "inventory_manager"],
-        extra_user_ids=[user_id],
-    )
+    try:
+        _notify_hospital_users(
+            db,
+            hospital_id,
+            title="Cycle Count Created",
+            message=f"{cc.count_number} was created with {len(data.items)} items",
+            reference_type="cycle_count",
+            reference_id=cc.id,
+            role_names=["super_admin", "admin", "inventory_manager"],
+            exclude_user_ids=[user_id],
+        )
+    except Exception:
+        logger.warning("Failed to send cycle count creation notification", exc_info=True)
     logger.info("Cycle count created: %s (%d items)", cc.count_number, len(data.items))
     return cc
 
@@ -1626,16 +1646,20 @@ def update_cycle_count(
 
     db.commit()
     db.refresh(cc)
-    _notify_hospital_users(
-        db,
-        cc.hospital_id,
-        title="Cycle Count Updated",
-        message=f"{cc.count_number} status changed to {cc.status}",
-        reference_type="cycle_count",
-        reference_id=cc.id,
-        role_names=["super_admin", "admin", "inventory_manager"],
-        extra_user_ids=[cc.counted_by, verifier_id] if verifier_id else [cc.counted_by],
-    )
+    try:
+        _notify_hospital_users(
+            db,
+            cc.hospital_id,
+            title="Cycle Count Updated",
+            message=f"{cc.count_number} status changed to {cc.status}",
+            reference_type="cycle_count",
+            reference_id=cc.id,
+            role_names=["super_admin", "admin", "inventory_manager"],
+            extra_user_ids=[cc.counted_by] if cc.counted_by else None,
+            exclude_user_ids=[verifier_id] if verifier_id else None,
+        )
+    except Exception:
+        logger.warning("Failed to send cycle count status notification", exc_info=True)
     logger.info("Cycle count updated: %s → %s", cc.count_number, cc.status)
     return cc
 

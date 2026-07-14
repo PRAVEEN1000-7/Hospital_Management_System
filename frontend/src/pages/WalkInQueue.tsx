@@ -675,6 +675,15 @@ const WalkInQueue: React.FC = () => {
                               <span className="font-medium text-slate-500">Complaint:</span> {currentPatient.chief_complaint}
                             </p>
                           )}
+                          {currentPatient.appointment_type === 'referral' && (
+                            <p className="text-sm text-orange-700 mt-2 bg-orange-50 border border-orange-200 rounded-lg px-3 py-1.5 inline-flex items-start gap-1.5 max-w-full">
+                              <span className="material-symbols-outlined shrink-0" style={{ fontSize: 15 }}>forward_to_inbox</span>
+                              <span className="truncate">
+                                {currentPatient.referring_doctor_name ? `From ${currentPatient.referring_doctor_name}` : 'Referred patient'}
+                                {currentPatient.referral_notes ? ` — ${currentPatient.referral_notes}` : ''}
+                              </span>
+                            </p>
+                          )}
                         </div>
                       </div>
                       <div className="flex flex-wrap items-center gap-2 shrink-0">

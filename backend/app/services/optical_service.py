@@ -267,13 +267,14 @@ def create_optical_prescription(
             notify_hospital_users(
                 db=db,
                 hospital_id=hospital_id,
-                title="New Eye Prescription",
+                title="New Optical Prescription",
                 message=f"Optical prescription {rx.prescription_number} for {patient_name} is ready for dispensing.",
                 notification_type="optical",
                 priority="normal",
                 reference_type="optical_prescription",
                 reference_id=rx.id,
-                role_names=["optical_staff"],
+                role_names=["optical_staff", "admin"],
+                exclude_user_ids=[created_by],
             )
         except Exception:
             logger.warning("Failed to send optical prescription notification", exc_info=True)

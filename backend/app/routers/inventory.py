@@ -237,21 +237,8 @@ async def create_purchase_order(
     """Create a new purchase order."""
     po = svc.create_purchase_order(db, payload, current_user.hospital_id, current_user.id)
     full_po = svc.get_purchase_order(db, po.id)
-    try:
-        notify_hospital_users(
-            db=db,
-            hospital_id=current_user.hospital_id,
-            title="New Purchase Order Created",
-            message=f"Purchase Order {po.po_number} has been created and is pending approval.",
-            notification_type="inventory",
-            priority="normal",
-            reference_type="purchase_order",
-            reference_id=po.id,
-            role_names=["admin", "inventory_manager"],
-            exclude_user_ids=[current_user.id],
-        )
-    except Exception:
-        pass
+    # Notification is sent inside create_purchase_order() itself — a second
+    # call here duplicated "Purchase Order Created" for admin/inventory_manager.
     return svc._format_po_response(full_po, db)
 
 
@@ -338,21 +325,8 @@ async def create_grn(
     """Create a new goods receipt note."""
     grn = svc.create_grn(db, payload, current_user.hospital_id, current_user.id)
     full_grn = svc.get_grn(db, grn.id)
-    try:
-        notify_hospital_users(
-            db=db,
-            hospital_id=current_user.hospital_id,
-            title="Goods Receipt Note Created",
-            message=f"GRN {grn.grn_number} has been recorded and stock is being updated.",
-            notification_type="inventory",
-            priority="normal",
-            reference_type="grn",
-            reference_id=grn.id,
-            role_names=["admin", "inventory_manager"],
-            exclude_user_ids=[current_user.id],
-        )
-    except Exception:
-        pass
+    # Notification is sent inside create_grn() itself — a second call here
+    # duplicated "Goods Receipt Note Created" for admin/inventory_manager.
     return svc._format_grn_response(full_grn, db)
 
 
@@ -513,21 +487,9 @@ async def approve_adjustment(
     adj = svc.approve_stock_adjustment(db, adjustment_id, payload, current_user.id)
     if not adj:
         raise HTTPException(status_code=404, detail="Adjustment not found or already processed")
-    try:
-        action = payload.status.capitalize() if hasattr(payload, "status") and payload.status else "Processed"
-        notify_hospital_users(
-            db=db,
-            hospital_id=current_user.hospital_id,
-            title=f"Stock Adjustment {action}",
-            message=f"Stock adjustment has been {action.lower()} by {current_user.username}.",
-            notification_type="inventory",
-            priority="normal",
-            reference_type="stock_adjustment",
-            reference_id=adj.id,
-            role_names=["admin", "inventory_manager"],
-        )
-    except Exception:
-        pass
+    # Notification is sent inside approve_stock_adjustment() itself — a second
+    # call here duplicated it for admin/inventory_manager, and also failed to
+    # exclude the approver (self-notification) unlike the service-layer version.
     return svc._format_adjustment_response(adj, db)
 
 

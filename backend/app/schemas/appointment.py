@@ -215,11 +215,14 @@ class AppointmentResponse(BaseModel):
     status: str
     priority: Optional[str] = "normal"
     chief_complaint: Optional[str] = None
+    notes: Optional[str] = None
     consultation_fee: Optional[Decimal] = None
     cancel_reason: Optional[str] = None
     reschedule_reason: Optional[str] = None
     reschedule_count: int = 0
     created_by: Optional[str] = None
+    parent_appointment_id: Optional[str] = None
+    referring_doctor_name: Optional[str] = None
     check_in_at: Optional[datetime] = None
     consultation_start_at: Optional[datetime] = None
     consultation_end_at: Optional[datetime] = None

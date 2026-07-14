@@ -1214,6 +1214,7 @@ def get_low_stock_items(db: Session, hospital_id: uuid.UUID, limit: int = 20) ->
 
     med_ids = [m.id for m in medicines]
     stock_map: dict[uuid.UUID, int] = {}
+    batch_map: dict[uuid.UUID, list[str]] = {}
     if med_ids:
         rows = (
             db.query(MedicineBatch.medicine_id, func.coalesce(func.sum(MedicineBatch.quantity), 0))
@@ -1225,6 +1226,21 @@ def get_low_stock_items(db: Session, hospital_id: uuid.UUID, limit: int = 20) ->
             .all()
         )
         stock_map = {row[0]: int(row[1]) for row in rows}
+
+        # Which physical batch(es) this remaining stock actually sits in — a
+        # low-stock item can be low because its one batch is nearly empty, or
+        # because several are, and staff need to know which to reference.
+        batch_rows = (
+            db.query(MedicineBatch.medicine_id, MedicineBatch.batch_number)
+            .filter(
+                MedicineBatch.medicine_id.in_(med_ids),
+                MedicineBatch.is_active == True,
+                MedicineBatch.quantity > 0,
+            )
+            .all()
+        )
+        for medicine_id, batch_number in batch_rows:
+            batch_map.setdefault(medicine_id, []).append(batch_number)
 
     low_stock = []
     for med in medicines:
@@ -1238,6 +1254,7 @@ def get_low_stock_items(db: Session, hospital_id: uuid.UUID, limit: int = 20) ->
                 "current_stock": current,
                 "reorder_level": reorder,
                 "purchase_price": float(med.purchase_price or 0),
+                "batch_numbers": batch_map.get(med.id, []),
             })
 
     # Optical products — wrapped in try/except so a missing optical_batches
@@ -1250,6 +1267,7 @@ def get_low_stock_items(db: Session, hospital_id: uuid.UUID, limit: int = 20) ->
         )
         product_ids = [p.id for p in products]
         optical_stock_map: dict[uuid.UUID, int] = {}
+        optical_batch_map: dict[uuid.UUID, list[str]] = {}
         if product_ids:
             rows = (
                 db.query(OpticalBatch.product_id, func.coalesce(func.sum(OpticalBatch.quantity), 0))
@@ -1258,6 +1276,18 @@ def get_low_stock_items(db: Session, hospital_id: uuid.UUID, limit: int = 20) ->
                 .all()
             )
             optical_stock_map = {row[0]: int(row[1]) for row in rows}
+
+            batch_rows = (
+                db.query(OpticalBatch.product_id, OpticalBatch.batch_number)
+                .filter(
+                    OpticalBatch.product_id.in_(product_ids),
+                    OpticalBatch.is_active == True,
+                    OpticalBatch.quantity > 0,
+                )
+                .all()
+            )
+            for product_id, batch_number in batch_rows:
+                optical_batch_map.setdefault(product_id, []).append(batch_number)
 
         for product in products:
             current = optical_stock_map.get(product.id, 0)
@@ -1270,6 +1300,7 @@ def get_low_stock_items(db: Session, hospital_id: uuid.UUID, limit: int = 20) ->
                     "current_stock": current,
                     "reorder_level": reorder,
                     "purchase_price": float(product.purchase_price or 0),
+                    "batch_numbers": optical_batch_map.get(product.id, []),
                 })
     except Exception as e:
         logger.warning("Could not fetch optical low-stock items (schema may need migration): %s", e)

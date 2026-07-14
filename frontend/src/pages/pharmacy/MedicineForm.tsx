@@ -272,8 +272,18 @@ const MedicineForm: React.FC = () => {
                   <input name="hsn_code" value={form.hsn_code} onChange={handleChange} className={fieldClass} />
                 </div>
                 <div>
-                  <label className={labelClass}>SKU</label>
-                  <input name="sku" value={form.sku} onChange={handleChange} className={fieldClass} />
+                  <label className={labelClass}>Medicine Code (SKU)</label>
+                  <input
+                    name="sku"
+                    value={isEdit ? form.sku : 'Auto-generated on save'}
+                    disabled
+                    className={`${fieldClass} bg-slate-50 text-slate-500`}
+                  />
+                  {!isEdit && (
+                    <p className="mt-1 text-xs text-slate-400">
+                      Format: HOSPITALCODE + MD + type letter + sequence, e.g. QXMDT_001
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className={labelClass}>Barcode</label>

@@ -60,7 +60,8 @@ class MedicineCreate(BaseModel):
     strength: Optional[str] = Field(None, max_length=100)
     manufacturer: Optional[str] = Field(None, max_length=200)
     hsn_code: Optional[str] = Field(None, max_length=20)
-    sku: Optional[str] = Field(None, max_length=50)
+    # sku intentionally omitted — server-generated (see
+    # pharmacy_service.generate_medicine_code), never client-supplied.
     barcode: Optional[str] = Field(None, max_length=50)
     unit: str = Field(default="Nos", max_length=30)
     description: Optional[str] = None

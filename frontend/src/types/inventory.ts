@@ -271,6 +271,7 @@ export interface LowStockItem {
   reorder_level: number;
   max_stock_level?: number | null;
   purchase_price?: number | null;
+  batch_numbers?: string[];
 }
 
 export interface ExpiringItem {

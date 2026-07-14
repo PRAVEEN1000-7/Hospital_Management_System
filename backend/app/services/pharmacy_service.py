@@ -58,12 +58,62 @@ def _normalize_medicine_payload(data: dict) -> dict:
 # Medicine CRUD
 # ══════════════════════════════════════════════════
 
+# Medicine category -> single-letter type code used in the generated medicine
+# code (see generate_medicine_code). Keep in sync with MedicineForm.tsx's
+# CATEGORIES list — an unrecognised/missing category falls back to "X".
+MEDICINE_TYPE_CODES: dict[str, str] = {
+    "tablet": "T",
+    "capsule": "C",
+    "syrup": "S",
+    "injection": "I",
+    "cream": "R",
+    "ointment": "O",
+    "drops": "D",
+    "eye drops": "E",
+    "eye ointment": "Y",
+    "inhaler": "H",
+    "powder": "P",
+    "other": "X",
+}
+
+
+def generate_medicine_code(db: Session, hospital_id: uuid.UUID, category: Optional[str]) -> str:
+    """Auto-generate the next sequential medicine code for this hospital+type:
+    "{HOSPITAL_CODE}MD{TYPE_LETTER}_001", "_002", ... (e.g. "QXMDT_001" for
+    the first tablet at hospital "QX"). The sequence is scoped per
+    hospital+type, so each medicine type gets its own 001, 002, ... run."""
+    hospital = db.query(Hospital.code).filter(Hospital.id == hospital_id).first()
+    hospital_code = (hospital[0] if hospital and hospital[0] else "").upper()
+    type_letter = MEDICINE_TYPE_CODES.get((category or "").strip().lower(), "X")
+    prefix = f"{hospital_code}MD{type_letter}_"
+
+    existing = db.query(Medicine.sku).filter(
+        Medicine.hospital_id == hospital_id,
+        Medicine.sku.like(f"{prefix}%"),
+    ).all()
+    max_seq = 0
+    for (sku,) in existing:
+        suffix = sku[len(prefix):]
+        if suffix.isdigit():
+            max_seq = max(max_seq, int(suffix))
+
+    code = f"{prefix}{max_seq + 1:03d}"
+    # Collision guard (e.g. two medicines of the same type created back-to-back).
+    while db.query(Medicine.id).filter(Medicine.hospital_id == hospital_id, Medicine.sku == code).first():
+        max_seq += 1
+        code = f"{prefix}{max_seq + 1:03d}"
+    return code
+
+
 def create_medicine(db: Session, hospital_id: uuid.UUID, data: dict, user_id: uuid.UUID) -> Medicine:
     payload = _filter_model_data(Medicine, _normalize_medicine_payload(data))
     if not payload.get("generic_name"):
         payload["generic_name"] = payload.get("name", "")
     if not payload.get("unit_of_measure"):
         payload["unit_of_measure"] = "Nos"
+    # Medicine code is always server-generated — never trust/keep a
+    # client-supplied sku, so codes stay unique and in the QXMDT_001 format.
+    payload["sku"] = generate_medicine_code(db, hospital_id, payload.get("category"))
     med = Medicine(hospital_id=hospital_id, **payload)
     db.add(med)
     db.commit()

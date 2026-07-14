@@ -306,6 +306,7 @@ const LowStockAlertsPage: React.FC = () => {
                       </th>
                     )}
                     <th className="px-4 py-3 text-left font-semibold text-slate-700">Item Name</th>
+                    <th className="px-4 py-3 text-left font-semibold text-slate-700">Batch</th>
                     <th className="px-4 py-3 text-center font-semibold text-slate-700">Current Stock</th>
                     <th className="px-4 py-3 text-center font-semibold text-slate-700">Reorder Level</th>
                     <th className="px-4 py-3 text-center font-semibold text-slate-700">Suggested Qty</th>
@@ -331,6 +332,11 @@ const LowStockAlertsPage: React.FC = () => {
                         </td>
                       )}
                       <td className="px-4 py-3 font-medium text-slate-900">{item.item_name}</td>
+                      <td className="px-4 py-3 text-slate-600">
+                        {item.batch_numbers && item.batch_numbers.length > 0
+                          ? item.batch_numbers.join(', ')
+                          : <span className="text-slate-400">—</span>}
+                      </td>
                       <td className="px-4 py-3 text-center font-bold text-slate-900">{item.current_stock}</td>
                       <td className="px-4 py-3 text-center text-slate-600">{item.reorder_level}</td>
                       <td className="px-4 py-3 text-center text-primary font-semibold">

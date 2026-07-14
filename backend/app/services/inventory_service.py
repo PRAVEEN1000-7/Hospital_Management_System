@@ -19,7 +19,7 @@ from ..models.inventory import (
 from ..models.prescription import Medicine
 from ..models.optical import OpticalProduct, OpticalBatch
 from ..models.pharmacy import MedicineBatch
-from ..models.user import User, Role, UserRole
+from ..models.user import User, Role, UserRole, Hospital
 from .notification_service import notify_hospital_users as _notify_hospital_users_shared
 from ..schemas.inventory import (
     SupplierCreate, SupplierUpdate,
@@ -444,11 +444,39 @@ def _notify_hospital_users(
 #  SUPPLIERS
 # ═══════════════════════════════════════════════════════════════════════════
 
+def generate_supplier_code(db: Session, hospital_id: uuid.UUID) -> str:
+    """Next sequential supplier code for this hospital: "{HOSPITAL_CODE}SUP-001",
+    "{HOSPITAL_CODE}SUP-002", ... (e.g. hospital code "QX" -> "QXSUP-001").
+    Supplier codes are only unique per-hospital (see Supplier.__table_args__),
+    so the sequence is scoped per hospital and restarts at 001 for each one."""
+    hospital = db.query(Hospital.code).filter(Hospital.id == hospital_id).first()
+    hospital_code = (hospital[0] if hospital and hospital[0] else "").upper()
+    prefix = f"{hospital_code}SUP-"
+
+    existing = db.query(Supplier.code).filter(
+        Supplier.hospital_id == hospital_id,
+        Supplier.code.like(f"{prefix}%"),
+    ).all()
+    max_seq = 0
+    for (code,) in existing:
+        suffix = code[len(prefix):]
+        if suffix.isdigit():
+            max_seq = max(max_seq, int(suffix))
+
+    code = f"{prefix}{max_seq + 1:03d}"
+    # Collision guard (e.g. two suppliers created back-to-back) — fall back to
+    # incrementing further rather than failing outright on the rare race.
+    while db.query(Supplier.id).filter(Supplier.hospital_id == hospital_id, Supplier.code == code).first():
+        max_seq += 1
+        code = f"{prefix}{max_seq + 1:03d}"
+    return code
+
+
 def create_supplier(db: Session, data: SupplierCreate, hospital_id: uuid.UUID) -> Supplier:
     supplier = Supplier(
         hospital_id=hospital_id,
         name=data.name,
-        code=data.code,
+        code=generate_supplier_code(db, hospital_id),
         contact_person=data.contact_person,
         phone=data.phone,
         email=data.email,

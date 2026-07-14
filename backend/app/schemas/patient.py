@@ -131,6 +131,13 @@ class PatientUpdate(PatientBase):
     # lock a patient with a genuinely short existing surname (e.g. "Li", "Wu")
     # out of ever being edited again.
     last_name: str = Field(..., min_length=1, max_length=100, pattern=r"^[A-Za-z][A-Za-z\s'-]*$")
+    # Same reasoning for emergency_contact_phone — some existing patients have
+    # one stored with a "+<country code>" prefix (pre-dating the exactly-10-
+    # digits rule on PatientBase). The edit form resends it unchanged, so
+    # keeping the strict pattern here would permanently block editing those
+    # patients. New/changed values from the edit form are still expected to
+    # be 10 digits — the frontend enforces that at the point of entry.
+    emergency_contact_phone: Optional[str] = Field(None, max_length=20)
 
     @model_validator(mode="after")
     def validate_rules(self) -> "PatientUpdate":

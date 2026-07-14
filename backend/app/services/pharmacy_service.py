@@ -112,7 +112,21 @@ def list_medicines(
             )
         )
     total = query.count()
-    items = query.order_by(Medicine.created_at.desc()).offset((page - 1) * limit).limit(limit).all()
+    # Soonest-to-expire stock surfaces first — a pharmacist scanning this list
+    # needs to see what's about to expire (and still has stock to act on)
+    # before anything else, ahead of plain recency. Medicines with no
+    # in-stock batches (nothing urgent to flag) sort last.
+    earliest_expiry = (
+        db.query(func.min(MedicineBatch.expiry_date))
+        .filter(
+            MedicineBatch.medicine_id == Medicine.id,
+            MedicineBatch.quantity > 0,
+            MedicineBatch.is_active == True,
+        )
+        .correlate(Medicine)
+        .scalar_subquery()
+    )
+    items = query.order_by(earliest_expiry.asc().nulls_last(), Medicine.created_at.desc()).offset((page - 1) * limit).limit(limit).all()
 
     # Enrich with total stock
     med_ids = [m.id for m in items]

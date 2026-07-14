@@ -308,7 +308,10 @@ const Register: React.FC = () => {
     else if (!/[A-Za-z]/.test(d.address_line_1)) e.address_line_1 = 'Address must contain text, not just numbers';
     if (d.pin_code && !/^\d{6}$/.test(d.pin_code)) e.pin_code = 'PIN code must be exactly 6 digits';
     if (d.emergency_contact_phone) {
-      if (!/^\d{10}$/.test(d.emergency_contact_phone)) e.emergency_contact_phone = 'Must be exactly 10 digits';
+      // Only enforced for new patients — some existing patients have this
+      // stored with a country-code prefix (pre-dating the 10-digit rule);
+      // editing their other fields must not be blocked by that legacy value.
+      if (!isEditMode && !/^\d{10}$/.test(d.emergency_contact_phone)) e.emergency_contact_phone = 'Must be exactly 10 digits';
       else if (d.emergency_contact_phone === d.phone_number) e.emergency_contact_phone = 'Must differ from the patient\'s phone number';
     }
     // Title vs age

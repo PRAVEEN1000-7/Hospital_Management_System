@@ -33,7 +33,7 @@ export interface Supplier {
 
 export interface SupplierCreate {
   name: string;
-  code: string;
+  // code intentionally omitted — server-generated (HOSPITALCODE + "SUP-NNN").
   contact_person?: string;
   phone?: string;
   email?: string;

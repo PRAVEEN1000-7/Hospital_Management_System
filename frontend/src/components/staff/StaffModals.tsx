@@ -84,7 +84,11 @@ const staffEditSchema = z.object({
   // form resends the full record, so keeping it here would lock an existing
   // short-surnamed staff member out of ever being edited again.
   last_name: z.string().min(1, 'Required').max(100).regex(/^[A-Za-z]+$/, 'Only letters (A–Z) allowed'),
-  phone_number: z.string().optional().refine(val => !val || /^\d{10}$/.test(val), { message: 'Phone must be exactly 10 digits' }),
+  // Not the strict 10-digit rule from staffCreateSchema (same reasoning as
+  // last_name above) — some existing staff have a phone number stored with
+  // a country-code prefix from before this rule existed; this form resends
+  // it unchanged, so enforcing it here would lock them out of every edit.
+  phone_number: z.string().optional(),
   country_code: z.string().optional(),
   role: z.string().min(1, 'Required'),
   is_active: z.boolean(),

@@ -29,7 +29,6 @@ const SupplierModal: React.FC<ModalProps> = ({ supplier, onClose, onSaved }) => 
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     name: supplier?.name || '',
-    code: supplier?.code || '',
     contact_person: supplier?.contact_person || '',
     phone: supplier?.phone || '',
     email: supplier?.email || '',
@@ -54,8 +53,12 @@ const SupplierModal: React.FC<ModalProps> = ({ supplier, onClose, onSaved }) => 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name.trim() || !form.code.trim()) {
-      toast.error('Name and Code are required');
+    if (!form.name.trim()) {
+      toast.error('Name is required');
+      return;
+    }
+    if (form.phone && !/^\d{10}$/.test(form.phone)) {
+      toast.error('Phone number must be exactly 10 digits');
       return;
     }
     setSaving(true);
@@ -78,7 +81,6 @@ const SupplierModal: React.FC<ModalProps> = ({ supplier, onClose, onSaved }) => 
       } else {
         const payload: SupplierCreate = {
           name: form.name,
-          code: form.code,
           contact_person: form.contact_person || undefined,
           phone: form.phone || undefined,
           email: form.email || undefined,
@@ -119,18 +121,29 @@ const SupplierModal: React.FC<ModalProps> = ({ supplier, onClose, onSaved }) => 
             <div>
               <label className={labelClass}>Supplier Name <span className="text-red-500">*</span></label>
               <input className={inputClass} value={form.name} onChange={e => set('name', e.target.value)} placeholder="ABC Pharmaceuticals" />
+              {!isEdit && <p className="text-xs text-slate-400 mt-1">Supplier code is generated automatically</p>}
             </div>
-            <div>
-              <label className={labelClass}>Supplier Code <span className="text-red-500">*</span></label>
-              <input className={inputClass} value={form.code} onChange={e => set('code', e.target.value.toUpperCase())} placeholder="SUP-001" disabled={isEdit} />
-            </div>
+            {isEdit && (
+              <div>
+                <label className={labelClass}>Supplier Code</label>
+                <input className={inputClass + ' bg-slate-50 text-slate-500'} value={supplier?.code || ''} disabled />
+              </div>
+            )}
             <div>
               <label className={labelClass}>Contact Person</label>
               <input className={inputClass} value={form.contact_person} onChange={e => set('contact_person', e.target.value)} placeholder="John Doe" />
             </div>
             <div>
               <label className={labelClass}>Phone</label>
-              <input className={inputClass} value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="+91 9876543210" type="tel" />
+              <input
+                className={inputClass}
+                value={form.phone}
+                onChange={e => set('phone', e.target.value.replace(/\D/g, '').slice(0, 10))}
+                placeholder="9876543210"
+                type="tel"
+                inputMode="numeric"
+                maxLength={10}
+              />
             </div>
             <div>
               <label className={labelClass}>Email</label>

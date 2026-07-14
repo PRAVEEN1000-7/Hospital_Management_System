@@ -24,9 +24,10 @@ VALID_PRODUCT_CATEGORIES = ["medicine", "optical", "surgical", "equipment", "lab
 
 class SupplierBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
-    code: str = Field(..., min_length=1, max_length=20)
+    # code intentionally omitted — it's server-generated (see
+    # inventory_service.generate_supplier_code), never client-supplied.
     contact_person: Optional[str] = Field(None, max_length=100)
-    phone: Optional[str] = Field(None, max_length=20)
+    phone: Optional[str] = Field(None, pattern=r"^\d{10}$", description="Phone number digits only (exactly 10 digits)")
     email: Optional[str] = Field(None, max_length=255)
     address: Optional[str] = None
     tax_id: Optional[str] = Field(None, max_length=50)

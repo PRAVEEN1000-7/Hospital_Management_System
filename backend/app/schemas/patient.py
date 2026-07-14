@@ -125,6 +125,13 @@ class PatientCreate(PatientBase):
 
 
 class PatientUpdate(PatientBase):
+    # Override PatientBase's stricter >2-letter rule (Bug #39, enforced on
+    # PatientCreate) — the edit form resends the full record including an
+    # unchanged last_name, so keeping the strict rule here would permanently
+    # lock a patient with a genuinely short existing surname (e.g. "Li", "Wu")
+    # out of ever being edited again.
+    last_name: str = Field(..., min_length=1, max_length=100, pattern=r"^[A-Za-z][A-Za-z\s'-]*$")
+
     @model_validator(mode="after")
     def validate_rules(self) -> "PatientUpdate":
         if self.date_of_birth and self.title:

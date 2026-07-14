@@ -293,7 +293,9 @@ const Register: React.FC = () => {
     else if (!/^[A-Za-z]+$/.test(d.first_name.trim())) e.first_name = 'Only letters (A–Z) allowed — no numbers, spaces or symbols';
     if (!d.last_name.trim()) e.last_name = 'Last name is required';
     else if (!/^[A-Za-z]+$/.test(d.last_name.trim())) e.last_name = 'Only letters (A–Z) allowed — no numbers, spaces or symbols';
-    else if (d.last_name.trim().length <= 2) e.last_name = 'Last name must be more than 2 letters';
+    // Only enforced for new patients — an existing patient's real (possibly
+    // short, e.g. "Li"/"Wu") last name must not block editing their other fields.
+    else if (!isEditMode && d.last_name.trim().length <= 2) e.last_name = 'Last name must be more than 2 letters';
     if (!d.date_of_birth) e.date_of_birth = 'Date of birth is required';
     else if (new Date(d.date_of_birth) >= new Date()) e.date_of_birth = 'Date of birth must be in the past';
     if (!d.gender) e.gender = 'Gender is required';

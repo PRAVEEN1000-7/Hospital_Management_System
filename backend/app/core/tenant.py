@@ -305,8 +305,28 @@ def generate_tenant_slug(name: str) -> str:
     return slug[:50]
 
 
-def generate_tenant_code() -> str:
-    """Generate unique 2-character code for tenant"""
+def generate_tenant_code(name: str) -> str:
+    """Derive a 2-letter hospital code from the hospital's name:
+    - Single-word name (e.g. "Apollo"): first 2 letters of that word -> "AP".
+    - Multi-word name (e.g. "City General Hospital"): first letter of the
+      first 2 words -> "CG" (extra words beyond the first two are ignored).
+    Falls back to random uppercase letters for whatever's missing if the name
+    has no usable alphabetic characters at all (blank/numeric/symbols-only).
+    Collision handling (if this base code is already taken) is the caller's
+    responsibility — see tenant_service.py::create_tenant."""
     import secrets
     import string
-    return ''.join(secrets.choice(string.ascii_uppercase) for _ in range(2))
+
+    words = [w for w in name.strip().split() if any(ch.isalpha() for ch in w)]
+    if len(words) >= 2:
+        base = words[0][0] + words[1][0]
+    elif len(words) == 1:
+        letters = ''.join(ch for ch in words[0] if ch.isalpha())
+        base = letters[:2]
+    else:
+        base = ''
+
+    base = base.upper()
+    if len(base) < 2:
+        base += ''.join(secrets.choice(string.ascii_uppercase) for _ in range(2 - len(base)))
+    return base

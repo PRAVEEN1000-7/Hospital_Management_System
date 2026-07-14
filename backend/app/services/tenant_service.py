@@ -130,11 +130,18 @@ class TenantService:
             slug = f"{base_slug}-{counter}"
             counter += 1
         
-        # Generate unique 2-char code
-        code = generate_tenant_code()
+        # Generate a hospital code derived from the hospital name (e.g.
+        # "City General Hospital" -> "CG", "Apollo" -> "AP"). generate_tenant_code
+        # is deterministic per name now, so a collision can't be resolved by
+        # simply calling it again — append a running numeric suffix instead,
+        # keeping the code traceable to the name ("CG", "CG2", "CG3", ...).
+        base_code = generate_tenant_code(name)
+        code = base_code
+        suffix = 1
         while db.query(Tenant).filter(Tenant.code == code).first():
-            code = generate_tenant_code()
-        
+            suffix += 1
+            code = f"{base_code}{suffix}"
+
         # Create tenant
         tenant_data = kwargs.copy()
         trial_days = tenant_data.pop('trial_days', 14)

@@ -379,7 +379,10 @@ class SuperAdminCreate(SuperAdminBase):
 class SuperAdminUpdate(BaseModel):
     email: Optional[str] = Field(None, min_length=1, max_length=255)
     first_name: Optional[str] = Field(None, min_length=1, max_length=100)
-    last_name: Optional[str] = Field(None, min_length=3, max_length=100)
+    # Not the stricter >2-letter rule from SuperAdminBase/Create (Bug #39) —
+    # the edit form resends the full record, so keeping it here would lock
+    # an existing short-surnamed admin out of ever being edited again.
+    last_name: Optional[str] = Field(None, min_length=1, max_length=100)
     phone: Optional[str] = Field(None, max_length=20)
     is_active: Optional[bool] = None
     

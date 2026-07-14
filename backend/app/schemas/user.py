@@ -95,7 +95,11 @@ class UserCreate(BaseModel):
 class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     first_name: Optional[str] = Field(None, min_length=1, max_length=100)
-    last_name: Optional[str] = Field(None, min_length=3, max_length=100)
+    # The >2-letter rule (Bug #39) is enforced on UserCreate only. Edit forms
+    # resend the full record including an unchanged last_name, so a stricter
+    # rule here would permanently lock a person with a genuinely short
+    # existing surname (e.g. "Li", "Wu") out of ever being edited again.
+    last_name: Optional[str] = Field(None, min_length=1, max_length=100)
     full_name: Optional[str] = Field(None, min_length=1, max_length=255)
     role: Optional[str] = None
     employee_id: Optional[str] = Field(None, max_length=50)

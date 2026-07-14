@@ -518,11 +518,14 @@ def get_tenant_subscription(
     admin: User = Depends(require_superadmin),
     db: Session = Depends(get_db)
 ):
-    """Get tenant's active subscription"""
-    subscription = SubscriptionService.get_active_subscription(db, tenant_id)
+    """Get tenant's subscription — active if there is one, else the most
+    recent one of any status, so a lapsed trial/cancelled plan shows its real
+    status in the SuperAdmin UI instead of a bare 404. Only 404s when the
+    tenant has genuinely never had a subscription row at all."""
+    subscription = SubscriptionService.get_latest_subscription(db, tenant_id)
     if not subscription:
-        raise HTTPException(status_code=404, detail="No active subscription")
-    
+        raise HTTPException(status_code=404, detail="No subscription found")
+
     return subscription
 
 

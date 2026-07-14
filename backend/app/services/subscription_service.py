@@ -16,7 +16,7 @@ from ..models.tenant import (
 )
 from ..models.patient import Patient
 from ..models.appointment import Appointment
-from ..models.user import User
+from ..models.user import User, Hospital
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +97,22 @@ class SubscriptionService:
             TenantSubscription.tenant_id == tenant_id,
             TenantSubscription.status.in_(['trialing', 'active', 'past_due'])
         ).first()
+
+    @staticmethod
+    def get_latest_subscription(
+        db: Session,
+        tenant_id: uuid.UUID
+    ) -> Optional[TenantSubscription]:
+        """Active subscription if there is one, else the most recent one of
+        any status (e.g. expired/cancelled) — for display purposes (the
+        SuperAdmin hospital detail page), so a lapsed trial shows its real
+        status instead of an opaque "not found"."""
+        active = SubscriptionService.get_active_subscription(db, tenant_id)
+        if active:
+            return active
+        return db.query(TenantSubscription).filter(
+            TenantSubscription.tenant_id == tenant_id
+        ).order_by(TenantSubscription.updated_at.desc()).first()
     
     @staticmethod
     def create_subscription(
@@ -254,21 +270,35 @@ class SubscriptionService:
     
     @staticmethod
     def _get_real_count(db: Session, tenant_id: uuid.UUID, resource_type: str) -> int:
-        """Query actual DB table count for a resource type."""
-        if resource_type == 'patients':
-            return db.query(func.count(Patient.id)).filter(
-                Patient.hospital_id == tenant_id,
-                Patient.is_active == True  # noqa: E712
-            ).scalar() or 0
-        elif resource_type == 'appointments':
-            return db.query(func.count(Appointment.id)).filter(
-                Appointment.hospital_id == tenant_id
-            ).scalar() or 0
-        elif resource_type == 'users':
-            return db.query(func.count(User.id)).filter(
-                User.hospital_id == tenant_id,
-                User.is_active == True  # noqa: E712
-            ).scalar() or 0
+        """Query actual DB table count for a resource type.
+
+        Users/Patients/Appointments are keyed by Hospital.id (hospital_id
+        FKs), not Tenant.id — a tenant and its hospital are two separate rows
+        with two separate UUIDs, linked via Hospital.tenant_id. Comparing
+        User.hospital_id == tenant_id directly (the previous bug) compares a
+        Hospital PK column against a Tenant PK value, which never matches —
+        every hospital's usage silently showed 0 regardless of real data.
+        Resolve the hospital first, then filter children by its real id."""
+        if resource_type in ('patients', 'appointments', 'users'):
+            hospital = db.query(Hospital.id).filter(Hospital.tenant_id == tenant_id).first()
+            if not hospital:
+                return 0
+            hospital_id = hospital[0]
+
+            if resource_type == 'patients':
+                return db.query(func.count(Patient.id)).filter(
+                    Patient.hospital_id == hospital_id,
+                    Patient.is_active == True  # noqa: E712
+                ).scalar() or 0
+            elif resource_type == 'appointments':
+                return db.query(func.count(Appointment.id)).filter(
+                    Appointment.hospital_id == hospital_id
+                ).scalar() or 0
+            else:  # users
+                return db.query(func.count(User.id)).filter(
+                    User.hospital_id == hospital_id,
+                    User.is_active == True  # noqa: E712
+                ).scalar() or 0
         else:
             # For storage and unknown types fall back to UsageTracking sum
             now = datetime.now(timezone.utc)

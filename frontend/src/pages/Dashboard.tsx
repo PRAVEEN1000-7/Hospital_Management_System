@@ -12,6 +12,7 @@ import waitlistService from '../services/waitlistService';
 import appointmentService, { type DoctorTodaySummary } from '../services/appointmentService';
 import { useToast } from '../contexts/ToastContext';
 import type { DoctorProfile } from '../types/doctor';
+import type { QueueItem } from '../types/appointment';
 
 /* ────────────────────────────── helpers ────────────────────────────── */
 
@@ -185,6 +186,13 @@ const Dashboard: React.FC = () => {
   const [queueCompleted, setQueueCompleted] = useState<number>(0);
   const [waitlistWaiting, setWaitlistWaiting] = useState<number>(0);
   const [doctorTodaySummary, setDoctorTodaySummary] = useState<DoctorTodaySummary | null>(null);
+  // Assigned/upcoming patient details for the doctor's dashboard — previously
+  // this screen only ever showed queue *counts*, never the actual patients,
+  // so a doctor logging in had no way to see who they're assigned to or what's
+  // coming up without navigating away to the full queue page.
+  const [todayQueueItems, setTodayQueueItems] = useState<QueueItem[]>([]);
+  const [upcomingPreview, setUpcomingPreview] = useState<{ date: string; patient_name: string | null; appointment_type: string }[]>([]);
+  const [upcomingTotal, setUpcomingTotal] = useState<number>(0);
 
   const role = user?.roles?.[0] || '';
   const isDoctor = role === 'doctor';
@@ -235,8 +243,21 @@ const Dashboard: React.FC = () => {
           setQueueWaiting(queueData.total_waiting || 0);
           setQueueInProgress(queueData.total_in_progress || 0);
           setQueueCompleted(queueData.total_completed || 0);
+          // Only patients still actionable today — not ones already completed/skipped.
+          setTodayQueueItems(
+            (queueData.items || []).filter((i) => ['waiting', 'called', 'sent_to_doctor', 'in_consultation'].includes(i.status))
+          );
         } catch { /* silent */ }
         try { const wlStats = await waitlistService.getStats(); setWaitlistWaiting(wlStats.total_waiting || 0); } catch { /* silent */ }
+        try {
+          const upcoming = await walkInService.getUpcomingQueue(7);
+          setUpcomingTotal(upcoming.total_upcoming || 0);
+          setUpcomingPreview(
+            upcoming.date_groups
+              .flatMap((g) => g.items.map((it) => ({ date: g.date, patient_name: it.patient_name, appointment_type: it.appointment_type })))
+              .slice(0, 5)
+          );
+        } catch { /* silent */ }
       }
 
       // Nurse: queue counts
@@ -546,6 +567,58 @@ const Dashboard: React.FC = () => {
                     <p className="text-sm text-slate-700 leading-relaxed">{doctorProfile.bio}</p>
                   </div>
                 )}
+
+                {/* Assigned patients — today's queue */}
+                <div className="pt-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-bold text-slate-500 uppercase">Assigned Patients Today</p>
+                    <button onClick={() => navigate('/appointments/queue')} className="text-primary text-xs font-bold hover:underline">View Queue</button>
+                  </div>
+                  {todayQueueItems.length === 0 ? (
+                    <p className="text-sm text-slate-400 py-3">No patients assigned to you today.</p>
+                  ) : (
+                    <div className="divide-y divide-slate-100 border border-slate-100 rounded-lg overflow-hidden">
+                      {todayQueueItems.slice(0, 6).map((item) => (
+                        <div key={item.queue_id} className="flex items-center justify-between gap-3 px-3 py-2 hover:bg-slate-50">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-slate-800 truncate">{item.patient_name || 'Unknown'}</p>
+                            {item.chief_complaint && (
+                              <p className="text-xs text-slate-400 truncate">{item.chief_complaint}</p>
+                            )}
+                          </div>
+                          <span className="shrink-0 text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-blue-50 text-blue-600">
+                            {item.status.replace(/_/g, ' ')}
+                          </span>
+                        </div>
+                      ))}
+                      {todayQueueItems.length > 6 && (
+                        <div className="px-3 py-1.5 text-xs text-slate-400 text-center">
+                          + {todayQueueItems.length - 6} more
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Upcoming appointments preview */}
+                <div className="pt-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-bold text-slate-500 uppercase">Upcoming Appointments</p>
+                    <button onClick={() => navigate('/appointments/queue')} className="text-primary text-xs font-bold hover:underline">View All ({upcomingTotal})</button>
+                  </div>
+                  {upcomingPreview.length === 0 ? (
+                    <p className="text-sm text-slate-400 py-3">No upcoming appointments in the next 7 days.</p>
+                  ) : (
+                    <div className="divide-y divide-slate-100 border border-slate-100 rounded-lg overflow-hidden">
+                      {upcomingPreview.map((item, idx) => (
+                        <div key={idx} className="flex items-center justify-between gap-3 px-3 py-2 hover:bg-slate-50">
+                          <p className="text-sm font-semibold text-slate-800 truncate">{item.patient_name || 'Unknown'}</p>
+                          <span className="shrink-0 text-xs text-slate-400">{item.date}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </>
           ) : (

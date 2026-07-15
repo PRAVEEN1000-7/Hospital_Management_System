@@ -265,8 +265,8 @@ const PhotoUpload: React.FC<{
       </div>
       <div className="mt-3 text-center">
         <p className="text-sm font-semibold text-slate-700 mb-1">Profile Photo</p>
-        <p className="text-xs text-slate-500 mb-2">JPG, PNG or GIF. Max size 2MB.</p>
-        <input ref={fileInputRef} type="file" accept="image/jpeg,image/jpg,image/png,image/gif" onChange={handlePhotoChange} className="hidden" />
+        <p className="text-xs text-slate-500 mb-2">JPG or PNG. Max size 2MB.</p>
+        <input ref={fileInputRef} type="file" accept="image/jpeg,image/jpg,image/png" onChange={handlePhotoChange} className="hidden" />
         <button type="button" onClick={() => fileInputRef.current?.click()} className="text-sm font-semibold text-primary hover:text-primary/80 transition-colors">{label}</button>
         {error && <p className="text-xs text-red-500 mt-2">{error}</p>}
       </div>
@@ -278,8 +278,12 @@ const PhotoUpload: React.FC<{
 };
 
 const validatePhoto = (file: File): string => {
-  const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
-  if (!validTypes.includes(file.type)) return 'Please upload a JPG, PNG, or GIF image';
+  // GIF was previously accepted here but the backend (user_service.save_user_photo,
+  // used by both create-staff and edit-staff photo upload) only ever allowed
+  // .jpg/.jpeg/.png — a GIF passed this check but then failed server-side
+  // after the crop step, with no indication beforehand of why.
+  const validTypes = ['image/jpeg', 'image/jpg', 'image/png'];
+  if (!validTypes.includes(file.type)) return 'Please upload a JPG or PNG image';
   if (file.size > 2 * 1024 * 1024) return 'Image size must be less than 2MB';
   return '';
 };

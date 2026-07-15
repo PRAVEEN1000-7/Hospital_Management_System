@@ -43,12 +43,22 @@ const PatientDetail: React.FC = () => {
     setPhotoFailed(false);
   }, [patient?.photo_url]);
 
+  const MAX_PHOTO_SIZE_MB = 2;
+
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const allowedTypes = ['image/jpeg', 'image/png'];
     if (!allowedTypes.includes(file.type)) {
       toast.error('Only JPEG and PNG images are allowed');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+    // Matches the server-side limit (patient_service.save_patient_photo) —
+    // checking here avoids the crop step succeeding only for the upload to
+    // fail afterward with no indication beforehand of why.
+    if (file.size > MAX_PHOTO_SIZE_MB * 1024 * 1024) {
+      toast.error(`Image is too large. Maximum size: ${MAX_PHOTO_SIZE_MB}MB`);
       if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
@@ -149,6 +159,7 @@ const PatientDetail: React.FC = () => {
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
+              title={`Upload photo — JPEG or PNG, max ${MAX_PHOTO_SIZE_MB}MB`}
               className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
             >
               <span className="material-icons text-white">camera_alt</span>
@@ -167,6 +178,9 @@ const PatientDetail: React.FC = () => {
             )}
             {cropSrc && (
               <ImageCropModal imageSrc={cropSrc} fileName={cropFileName} onCancel={closeCropper} onCropped={handleCropped} />
+            )}
+            {canEdit && (
+              <p className="mt-1.5 text-center text-[10px] text-white/70">JPEG/PNG, max {MAX_PHOTO_SIZE_MB}MB</p>
             )}
           </div>
           <div className="text-center sm:text-left">

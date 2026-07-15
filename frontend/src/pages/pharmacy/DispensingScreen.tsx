@@ -348,6 +348,89 @@ const DispensingScreen: React.FC = () => {
     setExtraItems((prev) => prev.filter((item) => item.clientId !== clientId));
   };
 
+  // Manual "Add Batch" — lets the pharmacist create a brand-new batch right
+  // here (e.g. stock just arrived and hasn't been entered as a batch yet)
+  // instead of only ever picking among whatever batches already existed when
+  // the screen loaded. Works for both prescribed items and extra items.
+  const [addBatchTarget, setAddBatchTarget] = useState<
+    { kind: 'prescribed'; index: number; medicineId: string; medicineName: string }
+    | { kind: 'extra'; clientId: string; medicineId: string; medicineName: string }
+    | null
+  >(null);
+  const [addBatchForm, setAddBatchForm] = useState({
+    batch_number: '', mfg_date: '', expiry_date: '', quantity: 0,
+    purchase_price: 0, selling_price: 0,
+  });
+  const [savingBatch, setSavingBatch] = useState(false);
+
+  const openAddBatchModal = (target: typeof addBatchTarget) => {
+    setAddBatchTarget(target);
+    setAddBatchForm({ batch_number: '', mfg_date: '', expiry_date: '', quantity: 0, purchase_price: 0, selling_price: 0 });
+  };
+
+  const handleCreateBatch = async () => {
+    if (!addBatchTarget) return;
+    if (!addBatchForm.batch_number.trim()) { showToast('error', 'Batch number is required'); return; }
+    if (!addBatchForm.expiry_date) { showToast('error', 'Expiry date is required'); return; }
+    if (addBatchForm.quantity <= 0) { showToast('error', 'Quantity must be greater than 0'); return; }
+    if (addBatchForm.purchase_price < 0 || addBatchForm.selling_price < 0) { showToast('error', 'Prices cannot be negative'); return; }
+
+    setSavingBatch(true);
+    try {
+      const newBatch = await pharmacyService.createBatch({
+        medicine_id: addBatchTarget.medicineId,
+        batch_number: addBatchForm.batch_number.trim(),
+        mfg_date: addBatchForm.mfg_date || undefined,
+        expiry_date: addBatchForm.expiry_date,
+        quantity: addBatchForm.quantity,
+        purchase_price: addBatchForm.purchase_price,
+        selling_price: addBatchForm.selling_price,
+      });
+
+      if (addBatchTarget.kind === 'prescribed') {
+        const targetIndex = addBatchTarget.index;
+        setDispensingItems((prev) => prev.map((item, idx) => {
+          if (idx !== targetIndex) return item;
+          const updatedBatches = [...item.available_batches, newBatch].sort(
+            (a, b) => new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime()
+          );
+          return {
+            ...item,
+            available_batches: updatedBatches,
+            available_quantity: (item.available_quantity || 0) + newBatch.quantity,
+            selectedBatchId: newBatch.id,
+            // The item may have been auto-skipped for lack of stock — now that
+            // a batch exists, bring it back into the dispensable list.
+            skip: false,
+            skipReason: undefined,
+            dispensedQty: Math.min(item.remainingQty, newBatch.quantity),
+          };
+        }));
+      } else {
+        const targetClientId = addBatchTarget.clientId;
+        setExtraItems((prev) => prev.map((item) => {
+          if (item.clientId !== targetClientId) return item;
+          const updatedBatches = [...item.available_batches, newBatch].sort(
+            (a, b) => new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime()
+          );
+          return {
+            ...item,
+            available_batches: updatedBatches,
+            selectedBatchId: newBatch.id,
+            quantity: item.quantity > 0 ? item.quantity : 1,
+          };
+        }));
+      }
+
+      showToast('success', `Batch ${newBatch.batch_number} added`);
+      setAddBatchTarget(null);
+    } catch (err: any) {
+      showToast('error', err?.response?.data?.detail || 'Failed to add batch');
+    } finally {
+      setSavingBatch(false);
+    }
+  };
+
   // Extra items ready to submit — has a batch selected and a positive quantity.
   const extraItemsPayload: DispenseItemData[] = extraItems
     .filter((item) => item.quantity > 0 && item.selectedBatchId)
@@ -1029,9 +1112,21 @@ const DispensingScreen: React.FC = () => {
                       <div className="grid grid-cols-2 gap-4 mb-3">
                         {/* Batch Selection */}
                         <div>
-                          <label className="block text-xs font-semibold text-slate-600 uppercase mb-1.5">
-                            Select Batch
-                          </label>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <label className="block text-xs font-semibold text-slate-600 uppercase">
+                              Select Batch
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => openAddBatchModal({
+                                kind: 'prescribed', index, medicineId: item.medicine_id!, medicineName: item.medicine_name,
+                              })}
+                              className="text-[11px] font-semibold text-emerald-600 hover:text-emerald-700 flex items-center gap-0.5"
+                            >
+                              <span className="material-symbols-outlined" style={{ fontSize: 13 }}>add_circle</span>
+                              Add Batch
+                            </button>
+                          </div>
                           <select
                             value={item.selectedBatchId || ''}
                             onChange={(e) => handleBatchChange(index, e.target.value)}
@@ -1192,13 +1287,29 @@ const DispensingScreen: React.FC = () => {
                           <option value="expired_batch">Expired batch</option>
                           <option value="other">Other</option>
                         </select>
-                        <button
-                          onClick={() => handleSkipItem(index, false)}
-                          className="text-sm text-emerald-600 hover:text-emerald-700 mt-2 flex items-center gap-1"
-                        >
-                          <span className="material-symbols-outlined text-sm">undo</span>
-                          Undo - Include this item
-                        </button>
+                        <div className="flex items-center gap-4 mt-2">
+                          <button
+                            onClick={() => handleSkipItem(index, false)}
+                            className="text-sm text-emerald-600 hover:text-emerald-700 flex items-center gap-1"
+                          >
+                            <span className="material-symbols-outlined text-sm">undo</span>
+                            Undo - Include this item
+                          </button>
+                          {/* Most useful right here — this is exactly where "no batch
+                              exists yet" (out_of_stock) leaves the pharmacist stuck with
+                              no way to select one at all. */}
+                          {item.medicine_id && (
+                            <button
+                              onClick={() => openAddBatchModal({
+                                kind: 'prescribed', index, medicineId: item.medicine_id!, medicineName: item.medicine_name,
+                              })}
+                              className="text-sm text-primary hover:text-primary/80 flex items-center gap-1"
+                            >
+                              <span className="material-symbols-outlined text-sm">add_circle</span>
+                              Add Batch
+                            </button>
+                          )}
+                        </div>
                       </div>
                     )}
 
@@ -1344,27 +1455,39 @@ const DispensingScreen: React.FC = () => {
                             </div>
 
                             {/* Stock Status Alert */}
-                            <div className={`mb-3 p-3 rounded-lg flex items-center gap-2 ${
+                            <div className={`mb-3 p-3 rounded-lg flex items-center justify-between gap-2 ${
                               isOutOfStock ? 'bg-red-100 text-red-700' : selectedBatch ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
                             }`}>
-                              <span className="material-symbols-outlined text-lg">
-                                {isOutOfStock ? 'error' : selectedBatch ? 'check_circle' : 'warning'}
-                              </span>
-                              <div className="text-sm">
-                                {isOutOfStock ? (
-                                  <span className="font-semibold">❌ Out of Stock</span>
-                                ) : selectedBatch ? (
-                                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                                    <span><span className="font-semibold">Selected batch:</span> {selectedBatch.quantity} units</span>
-                                    <span><span className="font-semibold">Total available:</span> {totalAvailable} units</span>
-                                    {selectedBatch.expiry_date && (
-                                      <span className="text-xs">Exp: {formatDateOnly(selectedBatch.expiry_date)}</span>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <span className="font-semibold">⚠️ No stock available</span>
-                                )}
+                              <div className="flex items-center gap-2">
+                                <span className="material-symbols-outlined text-lg">
+                                  {isOutOfStock ? 'error' : selectedBatch ? 'check_circle' : 'warning'}
+                                </span>
+                                <div className="text-sm">
+                                  {isOutOfStock ? (
+                                    <span className="font-semibold">❌ Out of Stock</span>
+                                  ) : selectedBatch ? (
+                                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                                      <span><span className="font-semibold">Selected batch:</span> {selectedBatch.quantity} units</span>
+                                      <span><span className="font-semibold">Total available:</span> {totalAvailable} units</span>
+                                      {selectedBatch.expiry_date && (
+                                        <span className="text-xs">Exp: {formatDateOnly(selectedBatch.expiry_date)}</span>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <span className="font-semibold">⚠️ No stock available</span>
+                                  )}
+                                </div>
                               </div>
+                              <button
+                                type="button"
+                                onClick={() => openAddBatchModal({
+                                  kind: 'extra', clientId: item.clientId, medicineId: item.medicine_id, medicineName: item.medicine_name,
+                                })}
+                                className="shrink-0 text-[11px] font-semibold underline hover:no-underline flex items-center gap-0.5"
+                              >
+                                <span className="material-symbols-outlined" style={{ fontSize: 13 }}>add_circle</span>
+                                Add Batch
+                              </button>
                             </div>
 
                             {/* Batch split warning — same reasoning as the prescribed-item
@@ -1569,6 +1692,104 @@ const DispensingScreen: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Add Batch Modal */}
+      {addBatchTarget && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setAddBatchTarget(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-10 h-10 bg-emerald-50 rounded-xl flex items-center justify-center">
+                <span className="material-symbols-outlined text-emerald-600">add_box</span>
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Add Batch</h3>
+                <p className="text-xs text-slate-500">New stock batch for <strong>{addBatchTarget.medicineName}</strong></p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Batch Number *</label>
+                <input
+                  value={addBatchForm.batch_number}
+                  onChange={(e) => setAddBatchForm((prev) => ({ ...prev, batch_number: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-emerald-500"
+                  autoFocus
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Mfg Date</label>
+                  <input
+                    type="date"
+                    value={addBatchForm.mfg_date}
+                    max={new Date().toISOString().split('T')[0]}
+                    onChange={(e) => setAddBatchForm((prev) => ({ ...prev, mfg_date: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Expiry Date *</label>
+                  <input
+                    type="date"
+                    value={addBatchForm.expiry_date}
+                    min={new Date().toISOString().split('T')[0]}
+                    onChange={(e) => setAddBatchForm((prev) => ({ ...prev, expiry_date: e.target.value }))}
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Quantity *</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={addBatchForm.quantity || ''}
+                  onChange={(e) => setAddBatchForm((prev) => ({ ...prev, quantity: parseInt(e.target.value) || 0 }))}
+                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Purchase Price *</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.01}
+                    value={addBatchForm.purchase_price || ''}
+                    onChange={(e) => setAddBatchForm((prev) => ({ ...prev, purchase_price: parseFloat(e.target.value) || 0 }))}
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Selling Price *</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.01}
+                    value={addBatchForm.selling_price || ''}
+                    onChange={(e) => setAddBatchForm((prev) => ({ ...prev, selling_price: parseFloat(e.target.value) || 0 }))}
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-5 pt-4 border-t border-slate-100">
+              <button onClick={() => setAddBatchTarget(null)} className="px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 rounded-lg">
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateBatch}
+                disabled={savingBatch}
+                className="inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50 shadow-sm"
+              >
+                {savingBatch ? 'Adding...' : 'Add Batch'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -79,12 +79,22 @@ const Profile: React.FC = () => {
     }
   };
 
+  const MAX_PHOTO_SIZE_MB = 2;
+
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const allowed = ['image/jpeg', 'image/png', 'image/gif'];
+    // GIF was previously accepted here but the backend (user_service.save_user_photo)
+    // only ever allowed .jpg/.jpeg/.png — a GIF passed this check but then failed
+    // server-side after the crop step, with no indication beforehand of why.
+    const allowed = ['image/jpeg', 'image/png'];
     if (!allowed.includes(file.type)) {
-      toast.error('Only JPG, PNG, or GIF images are allowed');
+      toast.error('Only JPEG and PNG images are allowed');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+    if (file.size > MAX_PHOTO_SIZE_MB * 1024 * 1024) {
+      toast.error(`Image is too large. Maximum size: ${MAX_PHOTO_SIZE_MB}MB`);
       if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
@@ -152,7 +162,7 @@ const Profile: React.FC = () => {
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
             className="absolute bottom-0 right-0 w-8 h-8 bg-white text-primary rounded-full flex items-center justify-center shadow-md hover:bg-slate-100 transition-colors disabled:opacity-60"
-            title="Change profile photo"
+            title={`Change profile photo — JPEG or PNG, max ${MAX_PHOTO_SIZE_MB}MB`}
           >
             {uploading
               ? <span className="material-symbols-outlined text-sm animate-spin">progress_activity</span>
@@ -162,7 +172,7 @@ const Profile: React.FC = () => {
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/jpeg,image/png,image/gif"
+            accept="image/jpeg,image/png"
             className="hidden"
             onChange={handlePhotoChange}
           />
@@ -170,6 +180,7 @@ const Profile: React.FC = () => {
             <ImageCropModal imageSrc={cropSrc} fileName={cropFileName} onCancel={closeCropper} onCropped={handleCropped} />
           )}
         </div>
+        <p className="text-[10px] text-white/70 -mt-2 mb-1">JPEG/PNG, max {MAX_PHOTO_SIZE_MB}MB</p>
         <h1 className="text-xl font-bold">{fullName}</h1>
         <span className="inline-block mt-2 px-3 py-1 text-xs font-semibold rounded-full bg-white/20 text-white">
           {roleLabel}

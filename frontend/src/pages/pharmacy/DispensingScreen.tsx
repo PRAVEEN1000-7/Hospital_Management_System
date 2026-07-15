@@ -190,7 +190,12 @@ const DispensingScreen: React.FC = () => {
           const hasStock = !notLinked && item.available_batches && item.available_batches.length > 0;
           const isOutOfStock = !notLinked && item.available_quantity === 0;
           const firstBatch = hasStock ? item.available_batches[0] : undefined;
-          const defaultDispenseQty = firstBatch ? Math.min(remainingQty, firstBatch.quantity || 0) : 0;
+          // Capped by TOTAL stock across all batches, not just the auto-selected
+          // (soonest-expiring) one — e.g. prescribed 1000, soon-expiring batch
+          // only has 500: this must default to 1000 (not silently 500) so the
+          // existing FEFO batch-split preview/allocation kicks in immediately
+          // and the pharmacist isn't left thinking only 500 could be dispensed.
+          const defaultDispenseQty = firstBatch ? Math.min(remainingQty, item.available_quantity || 0) : 0;
           const isAlreadyFulfilled = item.is_dispensed || remainingQty <= 0;
 
           let skipReason: string | undefined;
@@ -1204,7 +1209,10 @@ const DispensingScreen: React.FC = () => {
                           )}
                           {(() => {
                             const dailyDoseCount = getDailyDoseCount(item.frequency);
-                            const unitPrice = selectedBatch?.selling_price || 0;
+                            // selling_price arrives as a string (Decimal serialized by the
+                            // API) despite the MedicineBatch type claiming number — Number()
+                            // it here since unitPrice.toFixed() below needs a real number.
+                            const unitPrice = Number(selectedBatch?.selling_price) || 0;
                             if (!dailyDoseCount || !unitPrice || item.dispensedQty <= 0) return null;
                             const totalDays = prescribedQuantity / dailyDoseCount;
                             const daysCoveredNow = item.dispensedQty / dailyDoseCount;
@@ -1346,7 +1354,7 @@ const DispensingScreen: React.FC = () => {
                         </div>
                         <div className="text-right shrink-0">
                           <p className="text-sm font-semibold text-slate-900">{item.quantity} units</p>
-                          <p className="text-xs text-slate-500">₹{item.total_price.toFixed(2)}</p>
+                          <p className="text-xs text-slate-500">₹{Number(item.total_price).toFixed(2)}</p>
                         </div>
                       </div>
                     ))}
@@ -1421,7 +1429,10 @@ const DispensingScreen: React.FC = () => {
                         const selectedBatch = item.available_batches.find((b) => b.id === item.selectedBatchId);
                         const totalAvailable = item.available_batches.reduce((s, b) => s + (b.quantity || 0), 0);
                         const isOutOfStock = totalAvailable === 0;
-                        const unitPrice = selectedBatch?.selling_price || 0;
+                        // selling_price arrives as a string (Decimal serialized by the API)
+                        // despite the MedicineBatch type claiming number — Number() it here
+                        // since unitPrice.toFixed() below needs a real number.
+                        const unitPrice = Number(selectedBatch?.selling_price) || 0;
                         const lineTotal = item.quantity * unitPrice;
 
                         return (

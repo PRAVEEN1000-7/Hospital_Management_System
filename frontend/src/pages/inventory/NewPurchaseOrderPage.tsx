@@ -7,7 +7,6 @@ import pharmacyService from '../../services/pharmacyService';
 import SearchableSelect, { type SuggestionOption } from '../../components/common/SearchableSelect';
 import type { Supplier, PurchaseOrderCreate } from '../../types/inventory';
 import type { Medicine } from '../../types/pharmacy';
-import { VALID_PRODUCT_CATEGORIES } from '../../types/inventory';
 
 interface ItemRow {
   item_type: string;
@@ -95,24 +94,20 @@ const NewPurchaseOrderPage: React.FC = () => {
   const selectedSupplier = useMemo(() => suppliers.find(s => s.id === supplierId), [suppliers, supplierId]);
   
   const availableItemTypes = useMemo(() => {
-    if (!selectedSupplier?.product_categories || selectedSupplier.product_categories.length === 0) {
-      // Default to medicine and optical if supplier has no categories set
-      return ['medicine', 'optical_product'];
-    }
-    // Map supplier categories to item types
+    const categories = selectedSupplier?.product_categories || [];
+    // Only "medicine" and "optical_product" are real purchasable item
+    // catalogs in this system — every other supplier category (surgical,
+    // equipment, laboratory, disposable, other) is an informational tag with
+    // no matching catalog to order against. This used to push those raw
+    // category strings straight into the Item Type dropdown (e.g.
+    // "Surgical"), which looked selectable but always failed on save since
+    // the backend's item_type validation only accepts medicine|optical_product.
     const types: string[] = [];
-    if (selectedSupplier.product_categories.includes('medicine')) {
-      types.push('medicine');
-    }
-    if (selectedSupplier.product_categories.includes('optical')) {
-      types.push('optical_product');
-    }
-    // Add other categories as generic item types
-    selectedSupplier.product_categories.forEach(cat => {
-      if (cat !== 'medicine' && cat !== 'optical' && !types.includes(cat)) {
-        types.push(cat);
-      }
-    });
+    if (categories.length === 0 || categories.includes('medicine')) types.push('medicine');
+    if (categories.length === 0 || categories.includes('optical')) types.push('optical_product');
+    // Supplier has categories set, but none of them are medicine/optical
+    // (e.g. "surgical" only) — fall back to offering both rather than an
+    // empty, unusable dropdown.
     return types.length > 0 ? types : ['medicine', 'optical_product'];
   }, [selectedSupplier]);
 

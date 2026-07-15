@@ -296,6 +296,83 @@ const MedicineForm: React.FC = () => {
                 <textarea name="description" value={form.description} onChange={handleChange} rows={4} className={`${fieldClass} resize-none`} />
               </div>
             </section>
+
+            {/* Edit mode — current batch stock, editable (BUG-24). Stock lives on
+                batches, so this is where "open stock" gets corrected. Placed in
+                the wider left column so the table (5 columns) has room to
+                breathe instead of being squeezed into the narrow sidebar. */}
+            {isEdit && editBatches.length > 0 && (
+              <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="mb-5">
+                  <h2 className={sectionTitleClass}>Open Stock</h2>
+                  <p className={sectionHintClass}>Adjust the on-hand quantity per batch. Changes are saved together with the medicine.</p>
+                </div>
+                <div className="overflow-x-auto rounded-xl border border-slate-200">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                        <th className="px-4 py-2.5">Batch #</th>
+                        <th className="px-4 py-2.5">Expiry</th>
+                        <th className="px-4 py-2.5">Status</th>
+                        <th className="px-4 py-2.5 text-right">Current Stock</th>
+                        <th className="px-4 py-2.5 text-right">New Stock</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {editBatches.map(b => {
+                        const newQty = editedQty[b.id] ?? b.quantity;
+                        const isDirty = newQty !== b.quantity;
+                        const isExpired = b.expiry_date ? new Date(b.expiry_date) < new Date() : false;
+                        return (
+                          <tr key={b.id} className={isDirty ? 'bg-amber-50/60' : undefined}>
+                            <td className="px-4 py-2.5 font-semibold text-slate-800">{b.batch_number}</td>
+                            <td className="px-4 py-2.5">
+                              <span className={isExpired ? 'font-medium text-red-600' : 'text-slate-600'}>
+                                {b.expiry_date || '—'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2.5">
+                              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                                b.is_active === false ? 'bg-slate-100 text-slate-500' : 'bg-emerald-50 text-emerald-700'
+                              }`}>
+                                {b.is_active === false ? 'Inactive' : 'Active'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2.5 text-right text-slate-600">{b.quantity}</td>
+                            <td className="px-4 py-2.5 text-right">
+                              <input
+                                type="number"
+                                min={0}
+                                value={newQty}
+                                onChange={(e) => setEditedQty(prev => ({ ...prev, [b.id]: Math.max(0, parseInt(e.target.value) || 0) }))}
+                                className={`w-28 rounded-lg border px-3 py-1.5 text-sm text-right shadow-sm focus:outline-none focus:ring-2 ${
+                                  isDirty
+                                    ? 'border-amber-300 bg-white focus:border-amber-500 focus:ring-amber-200'
+                                    : 'border-slate-200 bg-white focus:border-primary focus:ring-primary/10'
+                                }`}
+                              />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t border-slate-200 bg-slate-50">
+                        <td colSpan={3} className="px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Total ({editBatches.length} batch{editBatches.length !== 1 ? 'es' : ''})
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-sm font-semibold text-slate-700">
+                          {editBatches.reduce((s, b) => s + b.quantity, 0)}
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-sm font-bold text-slate-900">
+                          {editBatches.reduce((s, b) => s + (editedQty[b.id] ?? b.quantity), 0)}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </section>
+            )}
           </div>
 
           <div className="space-y-6">
@@ -362,40 +439,6 @@ const MedicineForm: React.FC = () => {
                 </div>
               </div>
             </section>
-
-            {/* Edit mode — current batch stock, editable (BUG-24). Stock lives on
-                batches, so this is where "open stock" gets corrected. */}
-            {isEdit && editBatches.length > 0 && (
-              <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                <div className="mb-5">
-                  <h2 className={sectionTitleClass}>Open Stock</h2>
-                  <p className={sectionHintClass}>Adjust the on-hand quantity per batch. Changes are saved together with the medicine.</p>
-                </div>
-                <div className="space-y-2">
-                  {editBatches.map(b => (
-                    <div key={b.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5">
-                      <div className="flex-1 min-w-[140px]">
-                        <p className="text-sm font-semibold text-slate-800">{b.batch_number}</p>
-                        <p className="text-xs text-slate-500">Exp: {b.expiry_date || '—'}{b.is_active === false ? ' · inactive' : ''}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Qty</label>
-                        <input
-                          type="number"
-                          min={0}
-                          value={editedQty[b.id] ?? b.quantity}
-                          onChange={(e) => setEditedQty(prev => ({ ...prev, [b.id]: Math.max(0, parseInt(e.target.value) || 0) }))}
-                          className="w-28 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-right shadow-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/10"
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <p className="mt-3 text-xs text-slate-400">
-                  Total: {editBatches.reduce((s, b) => s + (editedQty[b.id] ?? b.quantity), 0)} units across {editBatches.length} batch(es)
-                </p>
-              </section>
-            )}
 
             {!isEdit && (
               <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">

@@ -18,6 +18,14 @@ Documentation for the multi-tenant Hospital Management System. The root
 - [deployment/DEPLOYMENT.md](deployment/DEPLOYMENT.md) — deployment guide
 - Deployment artifacts (script, nginx, systemd) live in [`../deploy/`](../deploy/)
 
+### Security
+- [security/SECURITY_AUDIT.md](security/SECURITY_AUDIT.md) — full-stack security & code audit
+- [security/SECURITY_FIXES_2026-07-05.md](security/SECURITY_FIXES_2026-07-05.md) — findings & fix plan
+
+### Business Requirements
+- [brd/BRD_HMS_v1.md](brd/BRD_HMS_v1.md) — business requirements document
+- [brd/BRD_HMS_v1_GapAnalysis.md](brd/BRD_HMS_v1_GapAnalysis.md) — gap analysis vs. the codebase
+
 ### Multi-tenant
 - [multi-tenant/ARCHITECTURE_ANALYSIS_MULTI_TENANT.md](multi-tenant/ARCHITECTURE_ANALYSIS_MULTI_TENANT.md)
 - [multi-tenant/HMS_MultiTenant_Transformation_Plan.md](multi-tenant/HMS_MultiTenant_Transformation_Plan.md)
@@ -32,6 +40,8 @@ Documentation for the multi-tenant Hospital Management System. The root
 
 ### Status & notes
 - [PROJECT_STATUS_SUMMARY.md](PROJECT_STATUS_SUMMARY.md) — current project status
+- [PROJECT_STATUS.md](PROJECT_STATUS.md) — earlier full status/completion report
+- [PROJECT_DOCUMENTATION.md](PROJECT_DOCUMENTATION.md) — working reference snapshot of a past change set
 - [notes/](notes/) — scratch notes and miscellaneous assets
 
 > Database SQL scripts are in [`../database_hole/`](../database_hole/) — see its

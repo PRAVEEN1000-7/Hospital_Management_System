@@ -110,7 +110,7 @@ Notifications appear in the bell icon in the top navigation bar, scoped to the l
 
 ## Quick Start (Local Development)
 
-See [SETUP_GUIDE.md](SETUP_GUIDE.md) for detailed step-by-step instructions.
+See [docs/setup/SETUP_GUIDE.md](docs/setup/SETUP_GUIDE.md) for detailed step-by-step instructions.
 
 ```powershell
 # Database
@@ -136,7 +136,7 @@ Default login: `superadmin` / `Admin@123`
 
 See [deploy/deploy.sh](deploy/deploy.sh) for the authoritative 7-step deploy script (Ubuntu/Debian server with Nginx + systemd).
 
-See [linux_setup_detailed.md](linux_setup_detailed.md) for the full server setup walkthrough.
+See [docs/setup/linux_setup_detailed.md](docs/setup/linux_setup_detailed.md) for the full server setup walkthrough.
 
 ---
 

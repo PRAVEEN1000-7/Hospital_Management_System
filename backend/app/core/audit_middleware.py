@@ -81,8 +81,15 @@ def record_audit_event(method: str, path: str, headers: dict, client_ip: str, st
         if not action:
             return
 
+        # Same fix as audit_logger.py: use the caller's actual role instead of
+        # collapsing every non-super-admin action to the literal "hospital".
         roles = payload.get("roles") or []
-        user_type = "superadmin" if "super_admin" in roles else "hospital"
+        if "super_admin" in roles:
+            user_type = "superadmin"
+        elif roles:
+            user_type = roles[0][:20]
+        else:
+            user_type = "hospital"
 
         from ..models.tenant import AuditLog
         db = SessionLocal()

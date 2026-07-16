@@ -139,8 +139,19 @@ class AuditLogger:
             from ..database import SessionLocal
             from ..models.tenant import AuditLog
 
+            # Previously every non-super-admin login/action collapsed to the
+            # literal string "hospital" here, so the Super Admin audit log's
+            # "USER" column showed that generic label under every staff
+            # member's name instead of their actual role (doctor, receptionist,
+            # etc). Use the user's real primary role, falling back to
+            # "hospital" only when no role info is available at all.
             roles = getattr(user, "roles", None) or []
-            user_type = "superadmin" if "super_admin" in roles else "hospital"
+            if "super_admin" in roles:
+                user_type = "superadmin"
+            elif roles:
+                user_type = roles[0][:20]
+            else:
+                user_type = "hospital"
 
             new_vals = dict(new_values or {})
             if metadata:

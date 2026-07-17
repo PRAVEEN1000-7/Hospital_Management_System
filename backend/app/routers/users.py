@@ -150,8 +150,12 @@ async def create_new_user(
         # Send welcome email if requested
         if send_email:
             try:
-                from ..services.email_service import send_welcome_email
-                send_welcome_email(
+                # Was importing a function that doesn't exist in email_service.py
+                # (send_welcome_email) — every "send welcome email" request has
+                # been silently failing via the except below, ImportError never
+                # surfaced anywhere. The actual function is send_password_email.
+                from ..services.email_service import send_password_email
+                send_password_email(
                     to_email=user.email,
                     username=user.username,
                     password=user_data.password,

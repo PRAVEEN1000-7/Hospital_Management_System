@@ -735,7 +735,11 @@ const Layout: React.FC = () => {
               ))}
             </div>
           ) : appointmentItems.length > 0 && (
-            <div className="mt-4">
+            <div
+              className="mt-4"
+              onMouseEnter={() => setAppointmentsOpen(true)}
+              onMouseLeave={() => setAppointmentsOpen(false)}
+            >
               <div className="px-6 mb-1">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Appointments</span>
               </div>
@@ -815,7 +819,11 @@ const Layout: React.FC = () => {
 
           {/* ══ PHARMACY — collapsible (with badge notifications) ══ */}
           {pharmacyItems.length > 0 && (
-            <div className="mt-4">
+            <div
+              className="mt-4"
+              onMouseEnter={() => setPharmacyOpen(true)}
+              onMouseLeave={() => setPharmacyOpen(false)}
+            >
               <div className="px-6 mb-1">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Pharmacy</span>
               </div>
@@ -864,7 +872,11 @@ const Layout: React.FC = () => {
 
           {/* ══ OPTICAL STORE — collapsible ══ */}
           {opticalItems.length > 0 && (
-            <div className="mt-4">
+            <div
+              className="mt-4"
+              onMouseEnter={() => setOpticalOpen(true)}
+              onMouseLeave={() => setOpticalOpen(false)}
+            >
               <div className="px-6 mb-1">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Optical Store</span>
               </div>
@@ -907,7 +919,11 @@ const Layout: React.FC = () => {
 
           {/* ══ INVENTORY — collapsible ══ */}
           {inventoryItems.length > 0 && (
-            <div className="mt-4">
+            <div
+              className="mt-4"
+              onMouseEnter={() => setInventoryOpen(true)}
+              onMouseLeave={() => setInventoryOpen(false)}
+            >
               <div className="px-6 mb-1">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Inventory</span>
               </div>
@@ -951,7 +967,11 @@ const Layout: React.FC = () => {
 
           {/* ══ BILLING — collapsible ══ */}
           {billingItems.length > 0 && (
-            <div className="mt-4">
+            <div
+              className="mt-4"
+              onMouseEnter={() => setBillingOpen(true)}
+              onMouseLeave={() => setBillingOpen(false)}
+            >
               <div className="px-6 mb-1">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Billing</span>
               </div>

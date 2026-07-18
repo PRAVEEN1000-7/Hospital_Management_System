@@ -452,7 +452,7 @@ async def forgot_password(
     import secrets
     import hashlib
     from datetime import datetime, timezone, timedelta
-    from ..models.user import User as UserModel, PasswordResetToken
+    from ..models.user import User as UserModel, PasswordResetToken, Hospital
     from ..services.email_service import send_email
 
     user = db.query(UserModel).filter(
@@ -486,12 +486,15 @@ async def forgot_password(
             origin = settings.CORS_ORIGINS[0] if settings.CORS_ORIGINS else "http://localhost:5173"
         reset_url = f"{origin}/reset-password?token={raw_token}"
 
+        hospital = db.query(Hospital).filter(Hospital.id == user.hospital_id).first()
+        h_name = hospital.name if hospital else settings.HOSPITAL_NAME
+
         html_body = f"""
         <html>
         <body style="font-family: Arial, sans-serif; background: #f3f4f6; padding: 20px;">
         <div style="max-width:600px; margin:0 auto; background:white; border-radius:8px; overflow:hidden; border:1px solid #e5e7eb;">
             <div style="background:#0284c7; color:white; padding:24px; text-align:center;">
-                <h1 style="margin:0; font-size:22px;">{settings.HOSPITAL_NAME}</h1>
+                <h1 style="margin:0; font-size:22px;">{h_name}</h1>
                 <p style="margin:4px 0 0; font-size:13px; opacity:.9;">Password Reset Request</p>
             </div>
             <div style="padding:30px;">
@@ -517,7 +520,7 @@ async def forgot_password(
         </body>
         </html>
         """
-        send_email(user.email, f"{settings.HOSPITAL_NAME} — Password Reset", html_body)
+        send_email(user.email, f"{h_name} — Password Reset", html_body)
         logger.info(f"Password reset token generated for user id={user.id}")
 
     return {

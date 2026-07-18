@@ -11,7 +11,7 @@ import type { PrescriptionListItem, PaginatedResponse } from '../types/prescript
 import type { OpticalPrescription } from '../types/optical';
 import type { DoctorOption } from '../types/appointment';
 import DateRangeFilter from '../components/common/DateRangeFilter';
-import { formatDateTime } from '../utils/calendarDate';
+import { formatDateTime, formatLocalDateISO } from '../utils/calendarDate';
 import { VISIT_REASON_OPTIONS } from '../utils/constants';
 import VerifiedBadge from '../components/patients/VerifiedBadge';
 
@@ -65,8 +65,9 @@ const PrescriptionList: React.FC = () => {
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState(() => searchParams.get('search') || '');
   const [statusFilter, setStatusFilter] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const today = formatLocalDateISO();
+  const [dateFrom, setDateFrom] = useState(today);
+  const [dateTo, setDateTo] = useState(today);
   const [doctorFilter, setDoctorFilter] = useState('');
   const [reasonFilter, setReasonFilter] = useState('');
   const [doctors, setDoctors] = useState<DoctorOption[]>([]);
@@ -113,7 +114,10 @@ const PrescriptionList: React.FC = () => {
       let res: PaginatedResponse<PrescriptionListItem>;
 
       if (isDoctor) {
-        res = await prescriptionService.getMyPrescriptions(page, 10, statusFilter || undefined, sortBy, sortOrder);
+        res = await prescriptionService.getMyPrescriptions(
+          page, 10, statusFilter || undefined, sortBy, sortOrder,
+          dateFrom || undefined, dateTo || undefined, search || undefined, reasonFilter || undefined,
+        );
       } else {
         res = await prescriptionService.getPrescriptions(page, 10, {
           status: statusFilter || undefined,

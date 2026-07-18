@@ -8,6 +8,23 @@ from ..config import settings
 logger = logging.getLogger(__name__)
 
 
+def _connect_smtp() -> smtplib.SMTP:
+    """Open an SMTP connection per the .env-configured mode. SMTP_USE_SSL/
+    SMTP_USE_TLS come from settings (backend/.env) — SMTP_PORT == 465 is kept
+    only as a fallback for installs that don't set those two explicitly."""
+    use_ssl = settings.SMTP_USE_SSL or settings.SMTP_PORT == 465
+    if use_ssl:
+        server = smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, timeout=30)
+    else:
+        server = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=30)
+        if settings.SMTP_USE_TLS:
+            server.starttls()
+
+    if settings.SMTP_USERNAME and settings.SMTP_PASSWORD:
+        server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
+    return server
+
+
 def send_email_with_attachment(
     to_email: str, subject: str, html_body: str,
     attachment_bytes: bytes, attachment_filename: str,
@@ -36,15 +53,7 @@ def send_email_with_attachment(
         attachment.add_header("Content-Disposition", "attachment", filename=attachment_filename)
         msg.attach(attachment)
 
-        if settings.SMTP_PORT == 465:
-            server = smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, timeout=30)
-        else:
-            server = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=30)
-            server.starttls()
-
-        if settings.SMTP_USERNAME and settings.SMTP_PASSWORD:
-            server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
-
+        server = _connect_smtp()
         server.sendmail(settings.SMTP_FROM_EMAIL, to_email, msg.as_string())
         server.quit()
 
@@ -70,15 +79,7 @@ def send_email(to_email: str, subject: str, html_body: str) -> bool:
         html_part = MIMEText(html_body, "html")
         msg.attach(html_part)
 
-        if settings.SMTP_PORT == 465:
-            server = smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, timeout=30)
-        else:
-            server = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=30)
-            server.starttls()
-
-        if settings.SMTP_USERNAME and settings.SMTP_PASSWORD:
-            server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
-
+        server = _connect_smtp()
         server.sendmail(settings.SMTP_FROM_EMAIL, to_email, msg.as_string())
         server.quit()
 
@@ -131,10 +132,12 @@ def send_password_email(
 
 def send_patient_verification_email(
     to_email: str, patient_name: str, verification_link: str, verification_code: str = "",
+    hospital_name: str = "",
 ) -> bool:
     """Send the patient email-verification link, plus the code counterpart
     the front desk can key in directly (BRD_OP_1 §3.2.1 — "link or code")."""
-    subject = f"{settings.HOSPITAL_NAME} - Verify Your Email"
+    h_name = hospital_name or settings.HOSPITAL_NAME
+    subject = f"{h_name} - Verify Your Email"
     code_block = f"""
             <p style="text-align:center; margin:20px 0; color:#374151; font-size:13px;">
                 Or give this code to the front desk to verify without clicking the link:
@@ -151,7 +154,7 @@ def send_patient_verification_email(
     <body style="font-family: Arial, sans-serif; background: #f3f4f6; padding: 20px;">
     <div style="max-width:600px; margin:0 auto; background:white; border-radius:8px; overflow:hidden; border:1px solid #e5e7eb;">
         <div style="background:#0284c7; color:white; padding:24px; text-align:center;">
-            <h1 style="margin:0; font-size:22px;">{settings.HOSPITAL_NAME}</h1>
+            <h1 style="margin:0; font-size:22px;">{h_name}</h1>
             <p style="margin:4px 0 0; font-size:13px; opacity:.9;">Email Verification</p>
         </div>
         <div style="padding:30px;">

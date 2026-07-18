@@ -23,7 +23,7 @@ from ..schemas.patient import (
     PatientLastVisitResponse,
 )
 from ..models.patient import Patient
-from ..models.user import User
+from ..models.user import User, Hospital
 from ..dependencies import get_current_active_user, require_any_role
 from ..core.tenant_security import is_eye_hospital_feature_enabled
 from ..core.audit_logger import AuditLogger, AuditAction
@@ -253,6 +253,9 @@ async def email_id_card(
     if not pdf_bytes:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded PDF is empty")
 
+    hospital = db.query(Hospital).filter(Hospital.id == current_user.hospital_id).first()
+    h_name = hospital.name if hospital else settings.HOSPITAL_NAME
+
     html_body = f"""
     <html>
     <body style="font-family: Arial, sans-serif; padding: 20px; background-color: #f3f4f6;">
@@ -260,7 +263,7 @@ async def email_id_card(
             <p style="font-size: 16px;">Dear <strong>{patient.full_name}</strong>,</p>
             <p>Please find your Patient ID Card attached to this email.</p>
             <p style="color: #6b7280; font-size: 12px;">
-                This is a system-generated email from {settings.HOSPITAL_NAME}. Please do not reply to this email.
+                This is a system-generated email from {h_name}. Please do not reply to this email.
             </p>
         </div>
     </body>
@@ -268,7 +271,7 @@ async def email_id_card(
     """
     sent = send_email_with_attachment(
         patient.email,
-        f"{settings.HOSPITAL_NAME} - Patient ID Card",
+        f"{h_name} - Patient ID Card",
         html_body,
         pdf_bytes,
         f"ID-Card-{patient.patient_reference_number}.pdf",
@@ -380,7 +383,11 @@ async def send_email_verification(
     if not origin:
         origin = settings.CORS_ORIGINS[0] if settings.CORS_ORIGINS else "http://localhost:5173"
     verification_link = f"{origin}/verify-email?token={raw_token}"
-    sent = send_patient_verification_email(patient.email, patient.full_name, verification_link, raw_code)
+    hospital = db.query(Hospital).filter(Hospital.id == current_user.hospital_id).first()
+    sent = send_patient_verification_email(
+        patient.email, patient.full_name, verification_link, raw_code,
+        hospital_name=hospital.name if hospital else "",
+    )
 
     AuditLogger.log(
         action=AuditAction.PATIENT_EMAIL_VERIFICATION_SENT,

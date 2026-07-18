@@ -42,11 +42,16 @@ const prescriptionService = {
 
   async getMyPrescriptions(
     page = 1, limit = 10, status?: string, sortBy?: string, sortOrder?: 'asc' | 'desc',
+    dateFrom?: string, dateTo?: string, search?: string, reason?: string,
   ): Promise<PaginatedResponse<PrescriptionListItem>> {
     const params: Record<string, string | number> = { page, limit };
     if (status) params.status = status;
     if (sortBy) params.sort_by = sortBy;
     if (sortOrder) params.sort_order = sortOrder;
+    if (dateFrom) params.date_from = dateFrom;
+    if (dateTo) params.date_to = dateTo;
+    if (search) params.search = search;
+    if (reason) params.reason = reason;
     const res = await api.get<PaginatedResponse<PrescriptionListItem>>('/prescriptions/my-prescriptions', { params });
     return res.data;
   },

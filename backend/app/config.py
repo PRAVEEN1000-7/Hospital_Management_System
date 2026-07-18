@@ -50,6 +50,11 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = ""
     SMTP_FROM_EMAIL: str = "noreply@hospital.com"
     SMTP_FROM_NAME: str = "Hospital Management System"
+    # Explicit connection mode — falls back to SMTP_PORT == 465 inference in
+    # email_service.py when left at these defaults, but honors .env when set
+    # (e.g. STARTTLS on a non-587 port, or implicit SSL on a non-465 port).
+    SMTP_USE_SSL: bool = False
+    SMTP_USE_TLS: bool = True
 
     # Rate Limiting (per tenant)
     RATE_LIMIT_ENABLED: bool = True

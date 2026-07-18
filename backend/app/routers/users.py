@@ -9,7 +9,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from typing import Optional
 from ..database import get_db
-from ..models.user import User, UserRole, Role
+from ..models.user import User, UserRole, Role, Hospital
 from ..models.appointment import Doctor
 from ..dependencies import get_current_active_user, require_super_admin, require_admin_or_super_admin
 from ..schemas.user import (
@@ -155,11 +155,13 @@ async def create_new_user(
                 # been silently failing via the except below, ImportError never
                 # surfaced anywhere. The actual function is send_password_email.
                 from ..services.email_service import send_password_email
+                hospital = db.query(Hospital).filter(Hospital.id == current_user.hospital_id).first()
                 send_password_email(
                     to_email=user.email,
                     username=user.username,
                     password=user_data.password,
                     full_name=f"{user.first_name} {user.last_name}".strip(),
+                    hospital_name=hospital.name if hospital else "",
                 )
             except Exception as email_err:
                 logger.warning(f"Failed to send welcome email: {email_err}")

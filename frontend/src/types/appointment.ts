@@ -157,6 +157,8 @@ export interface QueueItem {
   patient_email: string | null;
   patient_known_allergies: string | null;
   patient_chronic_conditions: string | null;
+  is_email_verified?: boolean;
+  is_phone_verified?: boolean;
   patient_emergency_contact_name: string | null;
   patient_emergency_contact_phone: string | null;
   patient_emergency_contact_relation: string | null;

@@ -86,6 +86,16 @@ const PrescriptionList: React.FC = () => {
   };
   const sortIcon = (col: string) => sortBy === col ? (sortOrder === 'asc' ? 'arrow_upward' : 'arrow_downward') : 'unfold_more';
 
+  // "Billed Tablets" can't be sorted server-side without a costly correlated
+  // subquery over PharmacySaleItem per row (BRD §4 performance target), so it
+  // sorts within the current page only — a documented trade-off from the dev
+  // plan. Every other column sorts server-side across all pages.
+  const displayedPrescriptions = React.useMemo(() => {
+    if (sortBy !== 'billed') return prescriptions;
+    const sorted = [...prescriptions].sort((a, b) => (a.billed_qty || 0) - (b.billed_qty || 0));
+    return sortOrder === 'asc' ? sorted : sorted.reverse();
+  }, [prescriptions, sortBy, sortOrder]);
+
   // Optical prescription state
   const [optRx, setOptRx] = useState<OpticalPrescription[]>([]);
   const [optLoading, setOptLoading] = useState(false);
@@ -103,7 +113,7 @@ const PrescriptionList: React.FC = () => {
       let res: PaginatedResponse<PrescriptionListItem>;
 
       if (isDoctor) {
-        res = await prescriptionService.getMyPrescriptions(page, 10, statusFilter || undefined);
+        res = await prescriptionService.getMyPrescriptions(page, 10, statusFilter || undefined, sortBy, sortOrder);
       } else {
         res = await prescriptionService.getPrescriptions(page, 10, {
           status: statusFilter || undefined,
@@ -454,14 +464,24 @@ const PrescriptionList: React.FC = () => {
             <table className="w-full">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200">
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">PRN</th>
+                  <th
+                    className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer select-none hover:text-slate-700"
+                    onClick={() => toggleSort('prescription_number')}
+                  >
+                    <span className="inline-flex items-center gap-1">PRN <span className="material-symbols-outlined text-[13px]">{sortIcon('prescription_number')}</span></span>
+                  </th>
                   <th
                     className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer select-none hover:text-slate-700"
                     onClick={() => toggleSort('patient_name')}
                   >
                     <span className="inline-flex items-center gap-1">Patient <span className="material-symbols-outlined text-[13px]">{sortIcon('patient_name')}</span></span>
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Doctor</th>
+                  <th
+                    className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer select-none hover:text-slate-700"
+                    onClick={() => toggleSort('doctor_name')}
+                  >
+                    <span className="inline-flex items-center gap-1">Doctor <span className="material-symbols-outlined text-[13px]">{sortIcon('doctor_name')}</span></span>
+                  </th>
                   <th
                     className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer select-none hover:text-slate-700"
                     onClick={() => toggleSort('reason')}
@@ -469,8 +489,19 @@ const PrescriptionList: React.FC = () => {
                     <span className="inline-flex items-center gap-1">Reason for Visit <span className="material-symbols-outlined text-[13px]">{sortIcon('reason')}</span></span>
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Past Prescribed Medicines</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Billed Tablets</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Diagnosis</th>
+                  <th
+                    className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer select-none hover:text-slate-700"
+                    onClick={() => toggleSort('billed')}
+                    title="Sorts within the current page"
+                  >
+                    <span className="inline-flex items-center gap-1">Billed Tablets <span className="material-symbols-outlined text-[13px]">{sortIcon('billed')}</span></span>
+                  </th>
+                  <th
+                    className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer select-none hover:text-slate-700"
+                    onClick={() => toggleSort('diagnosis')}
+                  >
+                    <span className="inline-flex items-center gap-1">Diagnosis <span className="material-symbols-outlined text-[13px]">{sortIcon('diagnosis')}</span></span>
+                  </th>
                   <th
                     className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer select-none hover:text-slate-700"
                     onClick={() => toggleSort('status')}
@@ -487,7 +518,7 @@ const PrescriptionList: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {prescriptions.map(rx => (
+                {displayedPrescriptions.map(rx => (
                   <tr key={rx.id} className="hover:bg-slate-50/50 transition-colors">
                     <td className="px-4 py-3">
                       <button

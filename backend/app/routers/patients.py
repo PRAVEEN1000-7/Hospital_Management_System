@@ -405,16 +405,22 @@ async def verify_email(
     """Confirm a patient's email via the link they clicked. Unauthenticated —
     patients have no login in this system, so token possession alone is the
     proof of identity (single-use, 24h expiry — see patient_service.verify_email_token)."""
-    patient = verify_email_token(db, payload.token)
+    patient, reason = verify_email_token(db, payload.token)
     if not patient:
+        expired = reason == "expired"
         AuditLogger.log(
-            action=AuditAction.PATIENT_EMAIL_VERIFICATION_FAILED,
+            action=AuditAction.PATIENT_EMAIL_VERIFICATION_EXPIRED if expired
+            else AuditAction.PATIENT_EMAIL_VERIFICATION_FAILED,
             user=None,
             tenant=None,
             resource_type="patient",
-            error="Invalid, used, or expired token",
+            error="Expired token" if expired else "Invalid or used token",
         )
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired verification link")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Verification link has expired — please request a new one" if expired
+            else "Invalid or already-used verification link",
+        )
 
     AuditLogger.log(
         action=AuditAction.PATIENT_EMAIL_VERIFIED,
@@ -446,17 +452,22 @@ async def verify_email_code_endpoint(
     if not patient:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
 
-    verified_patient = verify_email_code(db, patient.id, payload.code)
+    verified_patient, reason = verify_email_code(db, patient.id, payload.code)
     if not verified_patient:
+        expired = reason == "expired"
         AuditLogger.log(
-            action=AuditAction.PATIENT_EMAIL_VERIFICATION_FAILED,
+            action=AuditAction.PATIENT_EMAIL_VERIFICATION_EXPIRED if expired
+            else AuditAction.PATIENT_EMAIL_VERIFICATION_FAILED,
             user=current_user,
             tenant=None,
             resource_type="patient",
             resource_id=patient.id,
-            error="Invalid, used, or expired code",
+            error="Expired code" if expired else "Incorrect or used code",
         )
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Incorrect or expired code")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Verification code has expired — please resend" if expired else "Incorrect code",
+        )
 
     AuditLogger.log(
         action=AuditAction.PATIENT_EMAIL_VERIFIED,

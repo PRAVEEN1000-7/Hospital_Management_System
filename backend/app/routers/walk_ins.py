@@ -413,6 +413,8 @@ async def get_queue_status(
         patient_email = None
         patient_known_allergies = None
         patient_chronic_conditions = None
+        patient_is_email_verified = False
+        patient_is_phone_verified = False
         patient_emergency_contact_name = None
         patient_emergency_contact_phone = None
         patient_emergency_contact_relation = None
@@ -434,6 +436,8 @@ async def get_queue_status(
                 patient_email = patient.email
                 patient_known_allergies = patient.known_allergies
                 patient_chronic_conditions = patient.chronic_conditions
+                patient_is_email_verified = bool(patient.is_email_verified)
+                patient_is_phone_verified = bool(patient.is_phone_verified)
                 patient_emergency_contact_name = patient.emergency_contact_name
                 patient_emergency_contact_phone = patient.emergency_contact_phone
                 patient_emergency_contact_relation = patient.emergency_contact_relation
@@ -486,6 +490,8 @@ async def get_queue_status(
             "patient_email": patient_email,
             "patient_known_allergies": patient_known_allergies,
             "patient_chronic_conditions": patient_chronic_conditions,
+            "is_email_verified": patient_is_email_verified,
+            "is_phone_verified": patient_is_phone_verified,
             "patient_emergency_contact_name": patient_emergency_contact_name,
             "patient_emergency_contact_phone": patient_emergency_contact_phone,
             "patient_emergency_contact_relation": patient_emergency_contact_relation,
@@ -1133,6 +1139,12 @@ async def refer_patient_to_doctor(
 
         to_doctor = db.query(Doctor).filter(Doctor.id == to_doctor_uuid).first()
         if not to_doctor:
+            raise HTTPException(status_code=404, detail="Target doctor not found")
+        # Without this, a referral could target a doctor from a different
+        # hospital — the resulting Appointment.hospital_id (the referring
+        # hospital) would then disagree with the assigned doctor's actual
+        # hospital, and that doctor's queue would show a cross-tenant patient.
+        if str(to_doctor.hospital_id) != str(original_appt.hospital_id):
             raise HTTPException(status_code=404, detail="Target doctor not found")
 
         # Prevent self-referral

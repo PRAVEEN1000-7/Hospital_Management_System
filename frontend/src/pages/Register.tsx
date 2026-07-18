@@ -13,6 +13,7 @@ import { useAuth } from '../contexts/AuthContext';
 import feLogger from '../services/loggerService';
 import EmailVerificationField from '../components/patients/EmailVerificationField';
 import PhoneVerificationField from '../components/patients/PhoneVerificationField';
+import VerifiedBadge from '../components/patients/VerifiedBadge';
 
 // BRD v1.1 §2.4 — Patient History symptom dropdown (multi-select + custom entries)
 const SYMPTOM_OPTIONS = [
@@ -443,6 +444,7 @@ const Register: React.FC = () => {
             <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
               <span className="material-symbols-outlined text-primary">{isEditMode ? 'edit' : 'person_add'}</span>
               {isEditMode ? 'Edit Patient' : 'Patient Registration'}
+              {isEditMode && <VerifiedBadge patient={verification} />}
             </h1>
             <p className="text-slate-500 text-sm">
               {isEditMode ? 'Update the patient\'s details below.' : 'Fill in the patient details to create a new record.'}

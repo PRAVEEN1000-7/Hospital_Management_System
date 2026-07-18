@@ -281,7 +281,10 @@ async def update_appt(
     existing = get_appointment(db, appointment_id, hospital_id=current_user.hospital_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Appointment not found")
-    appt = update_appointment(db, appointment_id, data.model_dump(exclude_unset=True), current_user.id)
+    try:
+        appt = update_appointment(db, appointment_id, data.model_dump(exclude_unset=True), current_user.id)
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
     if not appt:
         raise HTTPException(status_code=404, detail="Appointment not found")
     return enrich_appointment(db, appt)

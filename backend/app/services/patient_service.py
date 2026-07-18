@@ -281,27 +281,28 @@ def can_resend_email_verification(db: Session, patient: Patient) -> bool:
     return elapsed >= EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS
 
 
-def verify_email_token(db: Session, raw_token: str) -> Optional[Patient]:
+def verify_email_token(db: Session, raw_token: str) -> tuple[Optional[Patient], str]:
     """Validate a single-use email verification token and mark the owning
-    patient's email verified. Returns the patient on success, None if the
-    token is invalid/used/expired."""
+    patient's email verified. Returns (patient, reason) where reason is one
+    of "ok" | "invalid" | "expired" — the caller distinguishes expired from
+    invalid for the audit trail (BRD_OP_1 §4)."""
     token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
     record = db.query(PatientEmailVerificationToken).filter(
         PatientEmailVerificationToken.token_hash == token_hash,
         PatientEmailVerificationToken.used_at.is_(None),
     ).first()
     if not record:
-        return None
+        return None, "invalid"
 
     expires_at = record.expires_at
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=timezone.utc)
     if datetime.now(timezone.utc) > expires_at:
-        return None
+        return None, "expired"
 
     patient = get_patient_by_id(db, record.patient_id)
     if not patient:
-        return None
+        return None, "invalid"
 
     now = datetime.now(timezone.utc)
     record.used_at = now
@@ -309,15 +310,16 @@ def verify_email_token(db: Session, raw_token: str) -> Optional[Patient]:
     patient.email_verified_at = now
     db.commit()
     db.refresh(patient)
-    return patient
+    return patient, "ok"
 
 
-def verify_email_code(db: Session, patient_id: uuid.UUID, raw_code: str) -> Optional[Patient]:
+def verify_email_code(db: Session, patient_id: uuid.UUID, raw_code: str) -> tuple[Optional[Patient], str]:
     """Validate the 6-digit code counterpart to verify_email_token — lets
     staff confirm a patient's email is correct by having them read the code
     back, without depending on the patient's mail client rendering the link
     (BRD_OP_1 §3.2.1's "link or code"). Attempts are capped since a 6-digit
-    code, unlike the link token, is guessable."""
+    code, unlike the link token, is guessable. Returns (patient, reason)
+    where reason is "ok" | "invalid" | "expired"."""
     record = (
         db.query(PatientEmailVerificationToken)
         .filter(
@@ -328,13 +330,13 @@ def verify_email_code(db: Session, patient_id: uuid.UUID, raw_code: str) -> Opti
         .first()
     )
     if not record or not record.code_hash:
-        return None
+        return None, "invalid"
 
     expires_at = record.expires_at
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=timezone.utc)
     if datetime.now(timezone.utc) > expires_at:
-        return None
+        return None, "expired"
 
     if record.attempts_count >= record.max_attempts:
         raise HTTPException(
@@ -345,11 +347,11 @@ def verify_email_code(db: Session, patient_id: uuid.UUID, raw_code: str) -> Opti
     if hashlib.sha256(raw_code.encode()).hexdigest() != record.code_hash:
         record.attempts_count += 1
         db.commit()
-        return None
+        return None, "invalid"
 
     patient = get_patient_by_id(db, patient_id)
     if not patient:
-        return None
+        return None, "invalid"
 
     now = datetime.now(timezone.utc)
     record.used_at = now
@@ -357,7 +359,7 @@ def verify_email_code(db: Session, patient_id: uuid.UUID, raw_code: str) -> Opti
     patient.email_verified_at = now
     db.commit()
     db.refresh(patient)
-    return patient
+    return patient, "ok"
 
 
 def get_patient_last_visit(db: Session, patient_id: str | uuid.UUID, hospital_id: Optional[uuid.UUID] = None):

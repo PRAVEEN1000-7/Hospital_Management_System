@@ -13,6 +13,7 @@ import { useDoctorMonthAvailability } from '../hooks/useDoctorMonthAvailability'
 import { formatTimeOnly, formatDateOnly } from '../utils/calendarDate';
 import { formatLocalDateISO, formatMonthKey } from '../utils/calendarDate';
 import type { Patient } from '../types/patient';
+import VerifiedBadge from '../components/patients/VerifiedBadge';
 
 // ── Priority helpers ───────────────────────────────────────────────
 const PRIORITY_CONFIG: Record<string, { label: string; bg: string; text: string; icon: string }> = {
@@ -1798,7 +1799,10 @@ const WalkInQueue: React.FC = () => {
                 <span className="material-symbols-outlined text-primary text-2xl">person</span>
               </div>
               <div className="min-w-0 flex-1">
-                <h3 className="text-lg font-bold text-slate-900 truncate">{detailItem.patient_name || 'Unknown Patient'}</h3>
+                <h3 className="text-lg font-bold text-slate-900 truncate flex items-center gap-1">
+                  {detailItem.patient_name || 'Unknown Patient'}
+                  <VerifiedBadge patient={detailItem} />
+                </h3>
                 {detailItem.patient_reference_number && (
                   <p className="text-xs text-slate-400 font-mono">PRN: {detailItem.patient_reference_number}</p>
                 )}

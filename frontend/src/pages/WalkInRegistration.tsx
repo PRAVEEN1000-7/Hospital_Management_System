@@ -438,6 +438,14 @@ const WalkInRegistration: React.FC = () => {
                       {p.first_name} {p.last_name}
                       <VerifiedBadge patient={p} />
                     </p>
+                    {/* Age / gender / phone for disambiguation (BRD_OP_1 §3.3.1) */}
+                    <p className="text-[10px] text-slate-400 truncate">
+                      {[
+                        p.age_years != null ? `${p.age_years} yrs` : null,
+                        p.gender || null,
+                        p.phone_number || null,
+                      ].filter(Boolean).join(' · ')}
+                    </p>
                     <p className="text-[10px] text-slate-400">PRN: {p.patient_reference_number}</p>
                   </div>
                 </button>

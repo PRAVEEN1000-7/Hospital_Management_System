@@ -41,10 +41,12 @@ const prescriptionService = {
   },
 
   async getMyPrescriptions(
-    page = 1, limit = 10, status?: string,
+    page = 1, limit = 10, status?: string, sortBy?: string, sortOrder?: 'asc' | 'desc',
   ): Promise<PaginatedResponse<PrescriptionListItem>> {
     const params: Record<string, string | number> = { page, limit };
     if (status) params.status = status;
+    if (sortBy) params.sort_by = sortBy;
+    if (sortOrder) params.sort_order = sortOrder;
     const res = await api.get<PaginatedResponse<PrescriptionListItem>>('/prescriptions/my-prescriptions', { params });
     return res.data;
   },

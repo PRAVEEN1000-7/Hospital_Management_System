@@ -57,6 +57,7 @@ function getQuickActions(role: string, isSuperAdmin: boolean): QuickAction[] {
       return [
         { icon: 'person_add', iconColor: 'text-primary', label: 'Patient Registration', desc: 'Add a new patient record', to: '/register' },
         { icon: 'group', iconColor: 'text-emerald-500', label: 'Patient Directory', desc: 'Browse all patient records', to: '/patients' },
+        { icon: 'list_alt', iconColor: 'text-blue-500', label: 'Prescription Dashboard', desc: 'View visits, medicines & billing', to: '/prescriptions', module: 'prescriptions' },
         ...(isSuperAdmin ? [
           { icon: 'admin_panel_settings', iconColor: 'text-rose-500', label: 'User Management', desc: 'Manage staff accounts', to: '/user-management' },
           { icon: 'cloud', iconColor: 'text-indigo-500', label: 'Super Admin Panel', desc: 'Manage multi-tenant platform', to: '/superadmin' }
@@ -66,6 +67,7 @@ function getQuickActions(role: string, isSuperAdmin: boolean): QuickAction[] {
       return [
         { icon: 'queue', iconColor: 'text-amber-500', label: 'My Queue', desc: 'View your patient queue', to: '/appointments/queue' },
         { icon: 'note_add', iconColor: 'text-blue-500', label: 'New Prescription', desc: 'Create a prescription', to: '/prescriptions/new', module: 'prescriptions' },
+        { icon: 'list_alt', iconColor: 'text-primary', label: 'Prescription Dashboard', desc: 'View visits, medicines & billing', to: '/prescriptions', module: 'prescriptions' },
         { icon: 'edit_calendar', iconColor: 'text-emerald-500', label: 'My Schedule', desc: 'Manage your appointment schedule', to: '/appointments/doctor-schedule' },
         { icon: 'person', iconColor: 'text-purple-500', label: 'My Profile', desc: 'Update your information', to: '/profile' },
       ];

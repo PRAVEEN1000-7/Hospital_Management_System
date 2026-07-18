@@ -407,6 +407,12 @@ def list_prescriptions(
         order_clause = (
             Appointment.chief_complaint.asc() if sort_order == "asc" else Appointment.chief_complaint.desc()
         )
+    elif sort_by == "doctor_name":
+        # Doctor name lives on User (Prescription.doctor_id -> Doctor.id ->
+        # Doctor.user_id -> User). Joined only when actually sorting on it.
+        q = q.outerjoin(Doctor, Prescription.doctor_id == Doctor.id).outerjoin(User, Doctor.user_id == User.id)
+        doctor_full_name = func.concat(User.first_name, ' ', User.last_name)
+        order_clause = doctor_full_name.asc() if sort_order == "asc" else doctor_full_name.desc()
     else:
         _sortable = {
             "created_at": Prescription.created_at,

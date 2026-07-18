@@ -115,6 +115,8 @@ async def my_prescriptions(
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100),
     status_filter: Optional[str] = Query(None, alias="status"),
+    sort_by: Optional[str] = None,
+    sort_order: str = Query("desc", pattern="^(asc|desc)$"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
@@ -127,6 +129,7 @@ async def my_prescriptions(
     total, pg, lim, tp, rows = list_prescriptions(
         db, page, limit, hospital_id=current_user.hospital_id,
         doctor_id=str(doctor.id), status=status_filter,
+        sort_by=sort_by, sort_order=sort_order,
     )
     enriched = enrich_prescriptions(db, rows)
     return PaginatedPrescriptionResponse(

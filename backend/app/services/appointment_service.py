@@ -321,6 +321,16 @@ def update_appointment(
     old_status = appt.status
     old_doctor_id = appt.doctor_id
 
+    # A doctor_id in the update payload must belong to the same hospital as
+    # the appointment being updated — without this, reassigning via this
+    # endpoint could silently point an appointment at another hospital's
+    # doctor (Appointment.hospital_id then disagrees with the assigned
+    # doctor's actual hospital).
+    if data.get("doctor_id") and str(data["doctor_id"]) != str(appt.doctor_id):
+        new_doctor = db.query(Doctor).filter(Doctor.id == data["doctor_id"]).first()
+        if not new_doctor or str(new_doctor.hospital_id) != str(appt.hospital_id):
+            raise ValueError("Selected doctor not found")
+
     for k, v in data.items():
         if v is not None and hasattr(appt, k):
             setattr(appt, k, v)

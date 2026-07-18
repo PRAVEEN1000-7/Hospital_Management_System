@@ -117,6 +117,14 @@ export interface PrescriptionListItem {
   patient_reference_number?: string | null;
   appointment_number?: string | null;
   doctor_name?: string | null;
+  // Prescription Dashboard (BRD_OP_1 §3.1)
+  chief_complaint?: string | null;
+  medicine_names?: string[];
+  billed_qty?: number;
+  billed_cost?: number;
+  is_email_verified?: boolean;
+  is_phone_verified?: boolean;
+  is_verified?: boolean;
 }
 
 export interface PrescriptionCreate {

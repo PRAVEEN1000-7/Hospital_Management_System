@@ -1,5 +1,15 @@
 export const TITLE_OPTIONS = ['Mr.', 'Mrs.', 'Ms.', 'Master', 'Dr.', 'Prof.', 'Baby'];
 
+// Coded "Reason for Visit" options (BRD_OP_1 §3.1.1) — a fixed set of common
+// reasons plus a free-text "Other". Written verbatim into
+// Appointment.chief_complaint (no schema change); the Prescription
+// Dashboard's reason filter dropdown reuses this same list, so a value
+// picked here must match exactly for filtering to work.
+export const VISIT_REASON_OPTIONS = [
+  'Fever', 'Follow-up', 'Routine Checkup', 'Injury', 'Vaccination',
+  'Consultation', 'Lab Test Review', 'Chronic Condition Management',
+];
+
 export const GENDER_OPTIONS = ['Male', 'Female', 'Other'];
 
 export const BLOOD_GROUP_OPTIONS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];

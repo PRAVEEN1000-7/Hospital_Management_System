@@ -1,18 +1,21 @@
 """
 Patient service — works with new hms_db UUID schema.
 """
+import hashlib
 import logging
 import os
+import secrets
 import shutil
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_, func
 from math import ceil
 from typing import Optional
 from fastapi import UploadFile, HTTPException, status
 from ..config import settings
-from ..models.patient import Patient
+from ..models.appointment import Appointment
+from ..models.patient import Patient, PatientEmailVerificationToken
 from ..models.user import Hospital
 from ..schemas.patient import PatientCreate, PatientUpdate, PaginatedPatientResponse, PatientListItem
 from ..services.patient_id_service import generate_patient_id
@@ -23,6 +26,10 @@ from .user_service import (
     ensure_upload_directory,
     _has_valid_photo_signature,
 )
+
+EMAIL_VERIFICATION_TOKEN_TTL_HOURS = 24
+EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS = 60
+EMAIL_VERIFICATION_CODE_MAX_ATTEMPTS = 5
 
 logger = logging.getLogger(__name__)
 
@@ -210,13 +217,162 @@ def update_patient(
     db_patient = get_patient_by_id(db, patient_id)
     if not db_patient:
         return None
-    for field, value in patient_data.model_dump(exclude_unset=True).items():
+    update_fields = patient_data.model_dump(exclude_unset=True)
+    # Editing a verified email/phone must clear its verified status — BRD_OP_1
+    # §3.2.1/§3.2.2. Compare before the generic setattr loop overwrites the
+    # old value.
+    if "email" in update_fields and update_fields["email"] != db_patient.email and db_patient.is_email_verified:
+        db_patient.is_email_verified = False
+        db_patient.email_verified_at = None
+    if (
+        "phone_number" in update_fields
+        and update_fields["phone_number"] != db_patient.phone_number
+        and db_patient.is_phone_verified
+    ):
+        db_patient.is_phone_verified = False
+        db_patient.phone_verified_at = None
+    for field, value in update_fields.items():
         if hasattr(db_patient, field):
             setattr(db_patient, field, value)
     db_patient.updated_by = user_id
     db.commit()
     db.refresh(db_patient)
     return db_patient
+
+
+def generate_email_verification_token(db: Session, patient: Patient, user_id: Optional[uuid.UUID] = None) -> tuple[str, str]:
+    """Issue a single-use email verification token plus a 6-digit code,
+    invalidating any unused ones already outstanding for this patient
+    (mirrors auth.py's forgot_password token-issuance pattern). Both the
+    token (emailed as a link) and the code (read back by the patient to
+    the front desk) confirm the same record — BRD_OP_1 §3.2.1 allows
+    either. Returns (raw_token, raw_code)."""
+    db.query(PatientEmailVerificationToken).filter(
+        PatientEmailVerificationToken.patient_id == patient.id,
+        PatientEmailVerificationToken.used_at.is_(None),
+    ).delete()
+
+    raw_token = secrets.token_urlsafe(32)
+    raw_code = f"{secrets.randbelow(1_000_000):06d}"
+    db.add(PatientEmailVerificationToken(
+        patient_id=patient.id,
+        token_hash=hashlib.sha256(raw_token.encode()).hexdigest(),
+        code_hash=hashlib.sha256(raw_code.encode()).hexdigest(),
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=EMAIL_VERIFICATION_TOKEN_TTL_HOURS),
+        created_by=user_id,
+    ))
+    db.commit()
+    return raw_token, raw_code
+
+
+def can_resend_email_verification(db: Session, patient: Patient) -> bool:
+    latest = (
+        db.query(PatientEmailVerificationToken)
+        .filter(PatientEmailVerificationToken.patient_id == patient.id)
+        .order_by(PatientEmailVerificationToken.created_at.desc())
+        .first()
+    )
+    if not latest or not latest.created_at:
+        return True
+    created_at = latest.created_at
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    elapsed = (datetime.now(timezone.utc) - created_at).total_seconds()
+    return elapsed >= EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS
+
+
+def verify_email_token(db: Session, raw_token: str) -> Optional[Patient]:
+    """Validate a single-use email verification token and mark the owning
+    patient's email verified. Returns the patient on success, None if the
+    token is invalid/used/expired."""
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    record = db.query(PatientEmailVerificationToken).filter(
+        PatientEmailVerificationToken.token_hash == token_hash,
+        PatientEmailVerificationToken.used_at.is_(None),
+    ).first()
+    if not record:
+        return None
+
+    expires_at = record.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if datetime.now(timezone.utc) > expires_at:
+        return None
+
+    patient = get_patient_by_id(db, record.patient_id)
+    if not patient:
+        return None
+
+    now = datetime.now(timezone.utc)
+    record.used_at = now
+    patient.is_email_verified = True
+    patient.email_verified_at = now
+    db.commit()
+    db.refresh(patient)
+    return patient
+
+
+def verify_email_code(db: Session, patient_id: uuid.UUID, raw_code: str) -> Optional[Patient]:
+    """Validate the 6-digit code counterpart to verify_email_token — lets
+    staff confirm a patient's email is correct by having them read the code
+    back, without depending on the patient's mail client rendering the link
+    (BRD_OP_1 §3.2.1's "link or code"). Attempts are capped since a 6-digit
+    code, unlike the link token, is guessable."""
+    record = (
+        db.query(PatientEmailVerificationToken)
+        .filter(
+            PatientEmailVerificationToken.patient_id == patient_id,
+            PatientEmailVerificationToken.used_at.is_(None),
+        )
+        .order_by(PatientEmailVerificationToken.created_at.desc())
+        .first()
+    )
+    if not record or not record.code_hash:
+        return None
+
+    expires_at = record.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if datetime.now(timezone.utc) > expires_at:
+        return None
+
+    if record.attempts_count >= record.max_attempts:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Too many incorrect attempts. Request a new verification email.",
+        )
+
+    if hashlib.sha256(raw_code.encode()).hexdigest() != record.code_hash:
+        record.attempts_count += 1
+        db.commit()
+        return None
+
+    patient = get_patient_by_id(db, patient_id)
+    if not patient:
+        return None
+
+    now = datetime.now(timezone.utc)
+    record.used_at = now
+    patient.is_email_verified = True
+    patient.email_verified_at = now
+    db.commit()
+    db.refresh(patient)
+    return patient
+
+
+def get_patient_last_visit(db: Session, patient_id: str | uuid.UUID, hospital_id: Optional[uuid.UUID] = None):
+    """Most recent visit date for a patient, for the OPD assignment confirm
+    dialog (BRD_OP_1 §3.3.2) — no "last visit" concept exists elsewhere in
+    the schema, so this is derived from Appointment.appointment_date."""
+    if isinstance(patient_id, str):
+        try:
+            patient_id = uuid.UUID(patient_id)
+        except ValueError:
+            return None
+    query = db.query(func.max(Appointment.appointment_date)).filter(Appointment.patient_id == patient_id)
+    if hospital_id is not None:
+        query = query.filter(Appointment.hospital_id == hospital_id)
+    return query.scalar()
 
 
 def soft_delete_patient(db: Session, patient_id: str | uuid.UUID, user_id: uuid.UUID) -> Optional[Patient]:

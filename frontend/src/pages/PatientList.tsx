@@ -4,6 +4,7 @@ import patientService from '../services/patientService';
 import { useAuth } from '../contexts/AuthContext';
 import type { Patient } from '../types/patient';
 import { format } from 'date-fns';
+import VerifiedBadge from '../components/patients/VerifiedBadge';
 
 const PatientList: React.FC = () => {
   const navigate = useNavigate();
@@ -382,10 +383,11 @@ const PatientList: React.FC = () => {
                         </div>
                         <div className="min-w-0">
                           <p
-                            className="text-sm font-bold text-primary hover:underline cursor-pointer truncate"
+                            className="text-sm font-bold text-primary hover:underline cursor-pointer truncate flex items-center gap-1"
                             onClick={() => navigate(`/patients/${patient.id}`)}
                           >
                           {patient.first_name} {patient.last_name}
+                          <VerifiedBadge patient={patient} />
                           </p>
                           <p className="text-xs text-slate-500 truncate">{patient.email || `${patient.phone_country_code} ${patient.phone_number}`}</p>
                         </div>

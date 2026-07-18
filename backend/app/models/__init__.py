@@ -2,7 +2,7 @@ from .user import (
     User, Role, Permission, UserRole, RolePermission,
     RefreshToken, RevokedToken, Hospital,
 )
-from .patient import Patient
+from .patient import Patient, PatientEmailVerificationToken
 from .patient_id_sequence import IdSequence
 from .department import Department
 from .hospital_settings import HospitalSettings

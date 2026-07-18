@@ -12,6 +12,9 @@ import {
 } from '../utils/constants';
 import type { DoctorOption } from '../types/appointment';
 import type { Patient } from '../types/patient';
+import VerifiedBadge from '../components/patients/VerifiedBadge';
+import OpdAssignConfirmDialog from '../components/opd/OpdAssignConfirmDialog';
+import { VISIT_REASON_OPTIONS } from '../utils/constants';
 
 // ── Quick-register form ────────────────────────────────────────────────
 interface RegForm {
@@ -53,8 +56,37 @@ const WalkInRegistration: React.FC = () => {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [patientLoading, setPatientLoading] = useState(false);
-  const selectPatient = (p: Patient) => { setSelectedPatient(p); setPatientSearch(`${p.first_name} ${p.last_name}`); setPatients([]); };
+
+  // OPD assignment confirm dialog (BRD_OP_1 §3.3.2) — selecting a patient
+  // from search opens this dialog for review; only "Confirm & Assign"
+  // proceeds to the existing selectedPatient/doctor-assignment flow below.
+  const [confirmingPatient, setConfirmingPatient] = useState<Patient | null>(null);
+  const [confirmAsOf, setConfirmAsOf] = useState<Date | null>(null);
+  const [confirmLastVisit, setConfirmLastVisit] = useState<string | null>(null);
+  const [confirmLoadingLastVisit, setConfirmLoadingLastVisit] = useState(false);
+
+  const selectPatient = (p: Patient) => {
+    setConfirmingPatient(p);
+    // Computed once here (an event handler, not render) and passed down so
+    // the dialog's age calculation never calls Date.now() during render.
+    setConfirmAsOf(new Date());
+    setConfirmLastVisit(null);
+    setConfirmLoadingLastVisit(true);
+    patientService.getLastVisit(p.id)
+      .then((res) => setConfirmLastVisit(res.last_visit_date))
+      .catch(() => setConfirmLastVisit(null))
+      .finally(() => setConfirmLoadingLastVisit(false));
+  };
   const patientNav = useListKeyboardNav(patients, selectPatient);
+
+  const handleConfirmAssign = () => {
+    if (!confirmingPatient) return;
+    setSelectedPatient(confirmingPatient);
+    setPatientSearch(`${confirmingPatient.first_name} ${confirmingPatient.last_name}`);
+    setPatients([]);
+    setConfirmingPatient(null);
+  };
+  const handleCancelAssign = () => setConfirmingPatient(null);
 
   // ── Register new patient modal ────────────────────────────────────────
   const [showRegModal, setShowRegModal] = useState(false);
@@ -402,7 +434,10 @@ const WalkInRegistration: React.FC = () => {
                   }`}>
                   <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">{p.first_name[0]}{p.last_name[0]}</div>
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-slate-900 truncate">{p.first_name} {p.last_name}</p>
+                    <p className="text-sm font-semibold text-slate-900 truncate flex items-center gap-1">
+                      {p.first_name} {p.last_name}
+                      <VerifiedBadge patient={p} />
+                    </p>
                     <p className="text-[10px] text-slate-400">PRN: {p.patient_reference_number}</p>
                   </div>
                 </button>
@@ -428,7 +463,10 @@ const WalkInRegistration: React.FC = () => {
             <div className="mt-2 bg-primary/5 border border-primary/20 rounded-xl px-4 py-3 flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold shrink-0">{selectedPatient.first_name[0]}{selectedPatient.last_name[0]}</div>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-bold text-slate-900">{selectedPatient.first_name} {selectedPatient.last_name}</p>
+                <p className="text-sm font-bold text-slate-900 flex items-center gap-1">
+                  {selectedPatient.first_name} {selectedPatient.last_name}
+                  <VerifiedBadge patient={selectedPatient} />
+                </p>
                 <p className="text-[10px] text-slate-500">PRN: {selectedPatient.patient_reference_number}{selectedPatient.phone_number ? ` · ${selectedPatient.phone_number}` : ''}</p>
               </div>
               <button onClick={() => { setSelectedPatient(null); setPatientSearch(''); }} className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors">
@@ -506,11 +544,24 @@ const WalkInRegistration: React.FC = () => {
           </div>
 
           {/* Reason */}
-          <div className="flex-1 flex flex-col">
-            <label className="block text-xs font-bold text-slate-500 mb-1">Reason for Visit</label>
-            <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3}
-              placeholder="Brief description of the visit reason..."
-              className="w-full flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none resize-none" />
+          <div className="flex-1 flex flex-col gap-2">
+            <div>
+              <label className="block text-xs font-bold text-slate-500 mb-1">Reason for Visit</label>
+              <select
+                value={VISIT_REASON_OPTIONS.includes(reason) ? reason : (reason ? 'Other' : '')}
+                onChange={(e) => setReason(e.target.value === 'Other' ? '' : e.target.value)}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+              >
+                <option value="">Select a reason</option>
+                {VISIT_REASON_OPTIONS.map((r) => <option key={r} value={r}>{r}</option>)}
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            {(!VISIT_REASON_OPTIONS.includes(reason)) && (
+              <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2}
+                placeholder="Describe the reason for visit..."
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none resize-none" />
+            )}
           </div>
 
           {/* Submit */}
@@ -795,6 +846,17 @@ const WalkInRegistration: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {confirmingPatient && confirmAsOf && (
+        <OpdAssignConfirmDialog
+          patient={confirmingPatient}
+          asOf={confirmAsOf}
+          lastVisitDate={confirmLastVisit}
+          loadingLastVisit={confirmLoadingLastVisit}
+          onConfirm={handleConfirmAssign}
+          onCancel={handleCancelAssign}
+        />
       )}
     </div>
   );

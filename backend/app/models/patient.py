@@ -52,6 +52,13 @@ class Patient(Base):
     blood_sugar_value = Column(Numeric(10, 2))
     blood_sugar_unit = Column(String(10))  # 'mg/dL' or 'mmol/L'
     preferred_language = Column(String(10), default="en")
+    # Verification (BRD_OP_1 §3.2) — checkmark requires BOTH true, see
+    # schemas.patient.PatientListItem.is_verified. Phone/OTP is scaffolded
+    # (columns only) but never set True until a future SMS-integration pass.
+    is_email_verified = Column(Boolean, default=False)
+    email_verified_at = Column(DateTime(timezone=True))
+    is_phone_verified = Column(Boolean, default=False)
+    phone_verified_at = Column(DateTime(timezone=True))
     is_active = Column(Boolean, default=True)
     registered_at = Column(DateTime(timezone=True), server_default=func.now())
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
@@ -76,4 +83,25 @@ class Patient(Base):
         parts.append(self.first_name)
         parts.append(self.last_name)
         return " ".join(parts)
+
+
+# Single-use hashed email verification token, mirroring
+# backend/app/models/user.py::PasswordResetToken. Phone/OTP has no
+# equivalent table yet — that flow is out of scope until an SMS provider
+# is integrated (see BRD_OP_1_Development_Plan.md Phase 3d).
+class PatientEmailVerificationToken(Base):
+    __tablename__ = "patient_email_verification_tokens"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
+    token_hash = Column(String(64), unique=True, nullable=False)
+    code_hash = Column(String(64))
+    attempts_count = Column(Integer, nullable=False, default=0)
+    max_attempts = Column(Integer, nullable=False, default=5)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    used_at = Column(DateTime(timezone=True))
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    patient = relationship("Patient")
 

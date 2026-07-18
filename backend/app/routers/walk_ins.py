@@ -29,6 +29,7 @@ from ..services.waitlist_service import (
 )
 from ..services.notification_service import notify_hospital_users
 from ..core.hospital_time import hospital_today
+from ..core.audit_logger import AuditLogger, AuditAction
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/walk-ins", tags=["Walk-in Registration"])
@@ -266,6 +267,21 @@ async def register_walk_in(
 
         db.commit()
         db.refresh(appt)
+
+        # OPD assignment audit trail (BRD_OP_1 §4 Auditability) — this was
+        # the first data-mutation call in this router to use AuditLogger.
+        AuditLogger.log(
+            action=AuditAction.OPD_ASSIGNMENT,
+            user=current_user,
+            tenant=None,
+            resource_type="appointment",
+            resource_id=appt.id,
+            new_values={
+                "patient_id": str(patient_id),
+                "doctor_id": str(doctor_id),
+                "queue_number": queue_entry.queue_number if queue_entry else None,
+            },
+        )
 
         # Notify the assigned doctor a patient has been added to their queue
         # (Bug #41 — this was the main "OPD Assignment" flow that never told

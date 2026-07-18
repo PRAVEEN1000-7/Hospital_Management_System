@@ -11,6 +11,8 @@ import { useToast } from '../contexts/ToastContext';
 import { useDashboardRefresh } from '../contexts/DashboardRefreshContext';
 import { useAuth } from '../contexts/AuthContext';
 import feLogger from '../services/loggerService';
+import EmailVerificationField from '../components/patients/EmailVerificationField';
+import PhoneVerificationField from '../components/patients/PhoneVerificationField';
 
 // BRD v1.1 §2.4 — Patient History symptom dropdown (multi-select + custom entries)
 const SYMPTOM_OPTIONS = [
@@ -68,6 +70,10 @@ const Register: React.FC = () => {
   const [customSymptom, setCustomSymptom] = useState('');
   const [bloodSugarValue, setBloodSugarValue] = useState('');
   const [bloodSugarUnit, setBloodSugarUnit] = useState('mg/dL');
+
+  // Verification status (BRD_OP_1 §3.2) — only meaningful in edit mode; a
+  // brand-new, unsaved patient has neither an id nor a verification state yet.
+  const [verification, setVerification] = useState({ is_email_verified: false, is_phone_verified: false });
 
   const toggleSymptom = (symptom: string) => {
     setSymptoms(prev => prev.includes(symptom) ? prev.filter(s => s !== symptom) : [...prev, symptom]);
@@ -137,6 +143,10 @@ const Register: React.FC = () => {
       setSymptoms(p.symptoms || []);
       setBloodSugarValue(p.blood_sugar_value != null ? String(p.blood_sugar_value) : '');
       setBloodSugarUnit(p.blood_sugar_unit || 'mg/dL');
+      setVerification({
+        is_email_verified: !!p.is_email_verified,
+        is_phone_verified: !!p.is_phone_verified,
+      });
     }).catch(() => {
       toast.error('Failed to load patient details');
       navigate('/patients');
@@ -153,6 +163,7 @@ const Register: React.FC = () => {
   const watchTitle = watch('title');
   const watchGender = watch('gender');
   const watchPhone = watch('phone_number');
+  const watchEmail = watch('email');
 
   // Duplicate-patient guard (BUG-06): once a full 10-digit mobile number is
   // entered, look it up. If someone is already registered with it, warn with
@@ -562,6 +573,12 @@ const Register: React.FC = () => {
               {fieldErrors.email
                 ? <p className={errorClass}><span className="material-symbols-outlined text-xs">error</span>{fieldErrors.email}</p>
                 : <p className={hintClass}>Optional — used for appointment reminders</p>}
+              <EmailVerificationField
+                patientId={patientId || null}
+                email={watchEmail}
+                isEmailVerified={verification.is_email_verified}
+                onVerified={() => setVerification(v => ({ ...v, is_email_verified: true }))}
+              />
             </div>
           </div>
         </div>
@@ -599,6 +616,11 @@ const Register: React.FC = () => {
               {fieldErrors.phone_number
                 ? <p className={errorClass}><span className="material-symbols-outlined text-xs">error</span>{fieldErrors.phone_number}</p>
                 : <p className={hintClass}>Enter exactly 10 digits — no spaces or dashes</p>}
+              <PhoneVerificationField
+                patientId={patientId || null}
+                isPhoneVerified={verification.is_phone_verified}
+                onVerified={() => setVerification(v => ({ ...v, is_phone_verified: true }))}
+              />
             </div>
           </div>
 

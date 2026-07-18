@@ -1,5 +1,5 @@
 import api, { API_BASE_URL } from './api';
-import type { Patient, PatientCreateData, PaginatedResponse } from '../types/patient';
+import type { Patient, PatientCreateData, PaginatedResponse, PatientLastVisit } from '../types/patient';
 
 export const patientService = {
   async getPatients(
@@ -77,6 +77,36 @@ export const patientService = {
       return response.data;
     }
     const response = await api.post(`/patients/${id}/email-id-card`);
+    return response.data;
+  },
+
+  async sendEmailVerification(id: string): Promise<{ cooldown_seconds: number; message: string }> {
+    const response = await api.post(`/patients/${id}/send-email-verification`);
+    return response.data;
+  },
+
+  async verifyEmail(token: string): Promise<{ is_email_verified: boolean; is_phone_verified: boolean; is_verified: boolean }> {
+    const response = await api.post('/patients/verify-email', { token });
+    return response.data;
+  },
+
+  async verifyEmailCode(id: string, code: string): Promise<{ is_email_verified: boolean; is_phone_verified: boolean; is_verified: boolean }> {
+    const response = await api.post(`/patients/${id}/verify-email-code`, { code });
+    return response.data;
+  },
+
+  async sendPhoneOtp(id: string): Promise<{ cooldown_seconds: number; message: string }> {
+    const response = await api.post(`/patients/${id}/send-phone-otp`);
+    return response.data;
+  },
+
+  async verifyPhoneOtp(id: string, code: string): Promise<{ is_email_verified: boolean; is_phone_verified: boolean; is_verified: boolean }> {
+    const response = await api.post(`/patients/${id}/verify-phone-otp`, { code });
+    return response.data;
+  },
+
+  async getLastVisit(id: string): Promise<PatientLastVisit> {
+    const response = await api.get<PatientLastVisit>(`/patients/${id}/last-visit`);
     return response.data;
   },
 

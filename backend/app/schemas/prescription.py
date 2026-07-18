@@ -2,7 +2,7 @@
 Pydantic schemas for the Prescription module.
 Follows the same patterns as appointment.py schemas.
 """
-from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict
+from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict, computed_field
 from typing import Optional, Any
 from datetime import date, datetime
 
@@ -328,6 +328,13 @@ class PrescriptionListItem(BaseModel):
     patient_reference_number: Optional[str] = None
     appointment_number: Optional[str] = None
     doctor_name: Optional[str] = None
+    # Prescription Dashboard (BRD_OP_1 §3.1)
+    chief_complaint: Optional[str] = None
+    medicine_names: list[str] = []
+    billed_qty: int = 0
+    billed_cost: float = 0.0
+    is_email_verified: bool = False
+    is_phone_verified: bool = False
 
     @model_validator(mode="before")
     @classmethod
@@ -337,6 +344,11 @@ class PrescriptionListItem(BaseModel):
         return _orm_to_dict(data)
 
     model_config = ConfigDict(from_attributes=True, extra="ignore")
+
+    @computed_field
+    @property
+    def is_verified(self) -> bool:
+        return self.is_email_verified and self.is_phone_verified
 
 
 class PaginatedPrescriptionResponse(BaseModel):

@@ -2,9 +2,57 @@ import logging
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.application import MIMEApplication
 from ..config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def send_email_with_attachment(
+    to_email: str, subject: str, html_body: str,
+    attachment_bytes: bytes, attachment_filename: str,
+    attachment_mime_subtype: str = "pdf",
+) -> bool:
+    """Send an email with a single binary attachment (e.g. the patient ID
+    card PDF). Separate from send_email() because attachments need an outer
+    "mixed" multipart container with the HTML body nested as an
+    "alternative" part — send_email()'s plain "alternative" container has
+    no attachment slot."""
+    if not settings.SMTP_HOST:
+        logger.warning("SMTP not configured (SMTP_HOST is empty). Email not sent to %s.", to_email)
+        return False
+
+    try:
+        msg = MIMEMultipart("mixed")
+        msg["Subject"] = subject
+        msg["From"] = f"{settings.SMTP_FROM_NAME} <{settings.SMTP_FROM_EMAIL}>"
+        msg["To"] = to_email
+
+        body = MIMEMultipart("alternative")
+        body.attach(MIMEText(html_body, "html"))
+        msg.attach(body)
+
+        attachment = MIMEApplication(attachment_bytes, _subtype=attachment_mime_subtype)
+        attachment.add_header("Content-Disposition", "attachment", filename=attachment_filename)
+        msg.attach(attachment)
+
+        if settings.SMTP_PORT == 465:
+            server = smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, timeout=30)
+        else:
+            server = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=30)
+            server.starttls()
+
+        if settings.SMTP_USERNAME and settings.SMTP_PASSWORD:
+            server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
+
+        server.sendmail(settings.SMTP_FROM_EMAIL, to_email, msg.as_string())
+        server.quit()
+
+        logger.info(f"Email with attachment sent successfully to {to_email}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to send email with attachment to {to_email}: {e}", exc_info=True)
+        return False
 
 
 def send_email(to_email: str, subject: str, html_body: str) -> bool:
@@ -75,6 +123,58 @@ def send_password_email(
                 </p>
             </div>
         </div>
+    </body>
+    </html>
+    """
+    return send_email(to_email, subject, html_body)
+
+
+def send_patient_verification_email(
+    to_email: str, patient_name: str, verification_link: str, verification_code: str = "",
+) -> bool:
+    """Send the patient email-verification link, plus the code counterpart
+    the front desk can key in directly (BRD_OP_1 §3.2.1 — "link or code")."""
+    subject = f"{settings.HOSPITAL_NAME} - Verify Your Email"
+    code_block = f"""
+            <p style="text-align:center; margin:20px 0; color:#374151; font-size:13px;">
+                Or give this code to the front desk to verify without clicking the link:
+            </p>
+            <p style="text-align:center; margin:0 0 20px;">
+                <span style="display:inline-block; background:#f3f4f6; border:1px solid #e5e7eb; border-radius:6px;
+                             padding:10px 20px; font-size:22px; font-weight:bold; letter-spacing:4px; color:#0284c7;">
+                    {verification_code}
+                </span>
+            </p>
+    """ if verification_code else ""
+    html_body = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; background: #f3f4f6; padding: 20px;">
+    <div style="max-width:600px; margin:0 auto; background:white; border-radius:8px; overflow:hidden; border:1px solid #e5e7eb;">
+        <div style="background:#0284c7; color:white; padding:24px; text-align:center;">
+            <h1 style="margin:0; font-size:22px;">{settings.HOSPITAL_NAME}</h1>
+            <p style="margin:4px 0 0; font-size:13px; opacity:.9;">Email Verification</p>
+        </div>
+        <div style="padding:30px;">
+            <p>Hello <strong>{patient_name}</strong>,</p>
+            <p>Please confirm this is your email address on file with us. Click the button below to verify.
+               This link is valid for <strong>24 hours</strong>.</p>
+            <p style="text-align:center; margin:30px 0;">
+                <a href="{verification_link}"
+                   style="background:#0284c7; color:white; padding:12px 28px; border-radius:6px;
+                          text-decoration:none; font-weight:bold; font-size:15px;">
+                    Verify Email
+                </a>
+            </p>
+            <p style="color:#6b7280; font-size:13px;">
+                If the button doesn't work, copy this link:<br/>
+                <a href="{verification_link}">{verification_link}</a>
+            </p>
+            {code_block}
+            <p style="color:#6b7280; font-size:13px;">
+                If you weren't expecting this, you can safely ignore this email.
+            </p>
+        </div>
+    </div>
     </body>
     </html>
     """

@@ -89,6 +89,9 @@ async def list_all_prescriptions(
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
     search: Optional[str] = None,
+    reason: Optional[str] = None,
+    sort_by: Optional[str] = None,
+    sort_order: str = Query("desc", pattern="^(asc|desc)$"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
@@ -98,7 +101,7 @@ async def list_all_prescriptions(
         hospital_id=current_user.hospital_id,
         doctor_id=doctor_id, patient_id=patient_id,
         status=status_filter, date_from=date_from, date_to=date_to,
-        search=search,
+        search=search, reason=reason, sort_by=sort_by, sort_order=sort_order,
     )
     enriched = enrich_prescriptions(db, rows)
     return PaginatedPrescriptionResponse(

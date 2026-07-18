@@ -333,9 +333,14 @@ def list_prescriptions(
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
     search: Optional[str] = None,
+    reason: Optional[str] = None,
+    sort_by: Optional[str] = None,
+    sort_order: str = "desc",
 ):
     """List prescriptions with filters and pagination."""
     q = db.query(Prescription).filter(Prescription.is_deleted == False)
+    patient_joined = False
+    appointment_joined = False
 
     if hospital_id:
         q = q.filter(Prescription.hospital_id == hospital_id)
@@ -361,7 +366,9 @@ def list_prescriptions(
 
     if search:
         term = f"%{search}%"
-        q = q.outerjoin(Patient, Prescription.patient_id == Patient.id).filter(
+        q = q.outerjoin(Patient, Prescription.patient_id == Patient.id)
+        patient_joined = True
+        q = q.filter(
             or_(
                 Prescription.prescription_number.ilike(term),
                 Prescription.diagnosis.ilike(term),
@@ -371,10 +378,47 @@ def list_prescriptions(
             )
         )
 
+    # "Reason for Visit" (BRD_OP_1 §3.1.1) — per-visit, sourced from
+    # Appointment.chief_complaint (see enrich_prescriptions' fallback to
+    # Patient.reason_for_visit for prescriptions with no linked appointment).
+    if reason:
+        q = q.join(Appointment, Prescription.appointment_id == Appointment.id)
+        appointment_joined = True
+        q = q.filter(Appointment.chief_complaint == reason)
+
     total = q.count()
     offset = (page - 1) * limit
+
+    # Safe sort allowlist, mirroring patient_service.list_patients' pattern.
+    # patient_name/reason need a join added only when actually sorted on (and
+    # only if the filters above haven't already joined that table), to avoid
+    # paying for it on every request and to avoid a duplicate-join error.
+    # "Billed Tablets" isn't sortable server-side (would need a correlated
+    # subquery over PharmacySaleItem per row) — the dashboard sorts that
+    # column within the current page only.
+    if sort_by == "patient_name":
+        if not patient_joined:
+            q = q.outerjoin(Patient, Prescription.patient_id == Patient.id)
+        full_name = func.concat(Patient.first_name, ' ', Patient.last_name)
+        order_clause = full_name.asc() if sort_order == "asc" else full_name.desc()
+    elif sort_by == "reason":
+        if not appointment_joined:
+            q = q.outerjoin(Appointment, Prescription.appointment_id == Appointment.id)
+        order_clause = (
+            Appointment.chief_complaint.asc() if sort_order == "asc" else Appointment.chief_complaint.desc()
+        )
+    else:
+        _sortable = {
+            "created_at": Prescription.created_at,
+            "status": Prescription.status,
+            "diagnosis": Prescription.diagnosis,
+            "prescription_number": Prescription.prescription_number,
+        }
+        sort_col = _sortable.get(sort_by, Prescription.created_at)
+        order_clause = sort_col.asc() if sort_order == "asc" else sort_col.desc()
+
     rows = (
-        q.order_by(Prescription.created_at.desc())
+        q.order_by(order_clause)
         .offset(offset)
         .limit(limit)
         .all()
@@ -742,15 +786,18 @@ def enrich_prescriptions(db: Session, prescriptions: list[Prescription]) -> list
             if doc.user:
                 doctors[doc.id] = doc.user.full_name
 
-    # Batch load appointment numbers
+    # Batch load appointment numbers + chief_complaint ("Reason for Visit")
     appointment_ids = {rx.appointment_id for rx in prescriptions if rx.appointment_id}
     appointment_numbers = {}
+    chief_complaints = {}
     if appointment_ids:
         appt_records = db.query(Appointment).filter(Appointment.id.in_(appointment_ids)).all()
         appointment_numbers = {a.id: a.appointment_number for a in appt_records}
+        chief_complaints = {a.id: a.chief_complaint for a in appt_records}
 
-    # Batch load item counts
+    # Batch load item counts + medicine names ("Past Prescribed Medicines")
     item_counts = {}
+    medicine_names = {}
     rx_ids = [rx.id for rx in prescriptions]
     if rx_ids:
         counts = (
@@ -760,6 +807,34 @@ def enrich_prescriptions(db: Session, prescriptions: list[Prescription]) -> list
             .all()
         )
         item_counts = {pid: cnt for pid, cnt in counts}
+
+        name_rows = (
+            db.query(PrescriptionItem.prescription_id, PrescriptionItem.medicine_name)
+            .filter(PrescriptionItem.prescription_id.in_(rx_ids))
+            .order_by(PrescriptionItem.display_order)
+            .all()
+        )
+        for pid, name in name_rows:
+            medicine_names.setdefault(pid, []).append(name)
+
+        # "Billed Tablets" (BRD_OP_1 §3.1.1) — dispensed quantity/amount per
+        # prescription, joined through PrescriptionItem -> PharmacySaleItem,
+        # same join path as enrich_prescription()'s single-row version above,
+        # turned into a GROUP BY to stay batch (no N+1) for the dashboard.
+        billed_rows = (
+            db.query(
+                PrescriptionItem.prescription_id,
+                func.coalesce(func.sum(PharmacySaleItem.quantity), 0),
+                func.coalesce(func.sum(PharmacySaleItem.total_price), 0),
+            )
+            .join(PharmacySaleItem, PharmacySaleItem.prescription_item_id == PrescriptionItem.id)
+            .filter(PrescriptionItem.prescription_id.in_(rx_ids))
+            .group_by(PrescriptionItem.prescription_id)
+            .all()
+        )
+        billed = {pid: (int(qty), float(cost)) for pid, qty, cost in billed_rows}
+    else:
+        billed = {}
 
     result = []
     for rx in prescriptions:
@@ -775,6 +850,17 @@ def enrich_prescriptions(db: Session, prescriptions: list[Prescription]) -> list
         d["appointment_number"] = appointment_numbers.get(rx.appointment_id) if rx.appointment_id else None
         d["doctor_name"] = doctors.get(rx.doctor_id)
         d["item_count"] = item_counts.get(rx.id, 0)
+        d["is_email_verified"] = bool(p.is_email_verified) if p else False
+        d["is_phone_verified"] = bool(p.is_phone_verified) if p else False
+        # Prefer the per-visit reason (Appointment.chief_complaint); fall
+        # back to the patient-level field only when no appointment is linked.
+        d["chief_complaint"] = (
+            chief_complaints.get(rx.appointment_id) if rx.appointment_id else None
+        ) or (p.reason_for_visit if p else None)
+        d["medicine_names"] = medicine_names.get(rx.id, [])
+        billed_qty, billed_cost = billed.get(rx.id, (0, 0.0))
+        d["billed_qty"] = billed_qty
+        d["billed_cost"] = billed_cost
         result.append(d)
 
     return result

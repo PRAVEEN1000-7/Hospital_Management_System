@@ -5,11 +5,17 @@ import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../contexts/ConfirmContext';
 import prescriptionService from '../services/prescriptionService';
 import { opticalService } from '../services/opticalService';
+import scheduleService from '../services/scheduleService';
 import { htmlStringToPdf } from '../utils/pdf';
 import type { PrescriptionListItem, PaginatedResponse } from '../types/prescription';
 import type { OpticalPrescription } from '../types/optical';
+import type { DoctorOption } from '../types/appointment';
 import DateRangeFilter from '../components/common/DateRangeFilter';
 import { formatDateTime } from '../utils/calendarDate';
+import { VISIT_REASON_OPTIONS } from '../utils/constants';
+import VerifiedBadge from '../components/patients/VerifiedBadge';
+
+const REFRESH_INTERVAL_MS = 15000;
 
 const STATUS_OPTIONS = [
   { value: '', label: 'All Statuses' },
@@ -61,6 +67,24 @@ const PrescriptionList: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [doctorFilter, setDoctorFilter] = useState('');
+  const [reasonFilter, setReasonFilter] = useState('');
+  const [doctors, setDoctors] = useState<DoctorOption[]>([]);
+  const [sortBy, setSortBy] = useState<string>('created_at');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  useEffect(() => { scheduleService.getDoctors().then(setDoctors).catch(() => {}); }, []);
+
+  const toggleSort = (col: string) => {
+    if (sortBy === col) {
+      setSortOrder(o => (o === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(col);
+      setSortOrder('asc');
+    }
+    setPage(1);
+  };
+  const sortIcon = (col: string) => sortBy === col ? (sortOrder === 'asc' ? 'arrow_upward' : 'arrow_downward') : 'unfold_more';
 
   // Optical prescription state
   const [optRx, setOptRx] = useState<OpticalPrescription[]>([]);
@@ -72,8 +96,8 @@ const PrescriptionList: React.FC = () => {
 
   const role = user?.roles?.[0];
 
-  const fetchPrescriptions = useCallback(async () => {
-    setLoading(true);
+  const fetchPrescriptions = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const isDoctor = role === 'doctor';
       let res: PaginatedResponse<PrescriptionListItem>;
@@ -86,6 +110,10 @@ const PrescriptionList: React.FC = () => {
           search: search || undefined,
           date_from: dateFrom || undefined,
           date_to: dateTo || undefined,
+          doctor_id: doctorFilter || undefined,
+          reason: reasonFilter || undefined,
+          sort_by: sortBy,
+          sort_order: sortOrder,
         });
       }
 
@@ -93,13 +121,23 @@ const PrescriptionList: React.FC = () => {
       setTotalPages(res.total_pages);
       setTotal(res.total);
     } catch (err: any) {
-      showToast('error', 'Failed to load prescriptions');
+      if (!silent) showToast('error', 'Failed to load prescriptions');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  }, [page, search, statusFilter, dateFrom, dateTo, role]);
+  }, [page, search, statusFilter, dateFrom, dateTo, doctorFilter, reasonFilter, sortBy, sortOrder, role]);
 
   useEffect(() => { fetchPrescriptions(); }, [fetchPrescriptions]);
+
+  // Near-real-time refresh (BRD_OP_1 §3.1.2) — poll matching the existing
+  // WalkInQueue.tsx convention (no WebSocket infra exists in this repo).
+  // Silent (no spinner/toast) so it doesn't flicker the table on every tick;
+  // skipped while a manual fetch is already in flight.
+  useEffect(() => {
+    if (activeTab !== 'medicine') return;
+    const interval = setInterval(() => { if (!loading) fetchPrescriptions(true); }, REFRESH_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [activeTab, loading, fetchPrescriptions]);
 
   const fetchOpticalRx = useCallback(async () => {
     if (!showOpticalTab) return;
@@ -284,6 +322,22 @@ const PrescriptionList: React.FC = () => {
               <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
           </select>
+          <select
+            value={doctorFilter}
+            onChange={e => { setDoctorFilter(e.target.value); setPage(1); }}
+            className="input-field w-full sm:w-48"
+          >
+            <option value="">All Doctors</option>
+            {doctors.map(d => <option key={d.doctor_id} value={d.doctor_id}>{d.name}</option>)}
+          </select>
+          <select
+            value={reasonFilter}
+            onChange={e => { setReasonFilter(e.target.value); setPage(1); }}
+            className="input-field w-full sm:w-48"
+          >
+            <option value="">All Reasons</option>
+            {VISIT_REASON_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
+          </select>
         </div>
         <div className="mt-3">
           <DateRangeFilter
@@ -401,12 +455,34 @@ const PrescriptionList: React.FC = () => {
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200">
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">PRN</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Patient</th>
+                  <th
+                    className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer select-none hover:text-slate-700"
+                    onClick={() => toggleSort('patient_name')}
+                  >
+                    <span className="inline-flex items-center gap-1">Patient <span className="material-symbols-outlined text-[13px]">{sortIcon('patient_name')}</span></span>
+                  </th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Doctor</th>
+                  <th
+                    className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer select-none hover:text-slate-700"
+                    onClick={() => toggleSort('reason')}
+                  >
+                    <span className="inline-flex items-center gap-1">Reason for Visit <span className="material-symbols-outlined text-[13px]">{sortIcon('reason')}</span></span>
+                  </th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Past Prescribed Medicines</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Billed Tablets</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Diagnosis</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Items</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Date</th>
+                  <th
+                    className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer select-none hover:text-slate-700"
+                    onClick={() => toggleSort('status')}
+                  >
+                    <span className="inline-flex items-center gap-1">Status <span className="material-symbols-outlined text-[13px]">{sortIcon('status')}</span></span>
+                  </th>
+                  <th
+                    className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer select-none hover:text-slate-700"
+                    onClick={() => toggleSort('created_at')}
+                  >
+                    <span className="inline-flex items-center gap-1">Date <span className="material-symbols-outlined text-[13px]">{sortIcon('created_at')}</span></span>
+                  </th>
                   <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
@@ -421,8 +497,36 @@ const PrescriptionList: React.FC = () => {
                         {rx.patient_reference_number || rx.prescription_number}
                       </button>
                     </td>
-                    <td className="px-4 py-3 text-sm text-slate-700">{rx.patient_name || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-slate-700">
+                      {rx.patient_id ? (
+                        <button
+                          onClick={() => navigate(`/patients/${rx.patient_id}`)}
+                          className="font-medium text-primary hover:underline flex items-center gap-1"
+                        >
+                          {rx.patient_name || '—'}
+                          <VerifiedBadge patient={rx} />
+                        </button>
+                      ) : (
+                        <span className="flex items-center gap-1">{rx.patient_name || '—'}<VerifiedBadge patient={rx} /></span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-sm text-slate-700">{rx.doctor_name || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-slate-500 max-w-[160px]">
+                      <span className="truncate block" title={rx.chief_complaint || undefined}>{rx.chief_complaint || '—'}</span>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-slate-500 max-w-[200px]">
+                      {rx.medicine_names && rx.medicine_names.length > 0 ? (
+                        <span title={rx.medicine_names.join(', ')}>
+                          {rx.medicine_names.slice(0, 2).join(', ')}
+                          {rx.medicine_names.length > 2 && (
+                            <span className="text-slate-400"> +{rx.medicine_names.length - 2} more</span>
+                          )}
+                        </span>
+                      ) : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-slate-700">
+                      {rx.billed_qty ? `${rx.billed_qty} tabs · ₹${(rx.billed_cost || 0).toFixed(2)}` : '—'}
+                    </td>
                     <td className="px-4 py-3 text-sm text-slate-500 max-w-[200px]">
                       <div className="flex items-center gap-1.5">
                         <span className="truncate">{rx.diagnosis || '—'}</span>
@@ -437,7 +541,6 @@ const PrescriptionList: React.FC = () => {
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-sm text-slate-700 text-center">{rx.item_count}</td>
                     <td className="px-4 py-3">
                       <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusColor[rx.status] || 'bg-slate-100 text-slate-600'}`}>
                         {rx.status.replace('_', ' ')}

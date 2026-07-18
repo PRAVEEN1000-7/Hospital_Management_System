@@ -6,6 +6,9 @@ import type { Patient } from '../types/patient';
 import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
 import ImageCropModal from '../components/common/ImageCropModal';
+import VerifiedBadge from '../components/patients/VerifiedBadge';
+import EmailVerificationField from '../components/patients/EmailVerificationField';
+import PhoneVerificationField from '../components/patients/PhoneVerificationField';
 
 const EDIT_ALLOWED_ROLES = ['super_admin', 'admin', 'receptionist'];
 
@@ -24,18 +27,19 @@ const PatientDetail: React.FC = () => {
   const [cropSrc, setCropSrc] = useState<string | null>(null);
   const [cropFileName, setCropFileName] = useState('photo.jpg');
 
+  const refreshPatient = async () => {
+    try {
+      const data = await patientService.getPatient(id!);
+      setPatient(data);
+    } catch {
+      setFetchError('Patient not found');
+    }
+  };
+
   useEffect(() => {
-    const fetchPatient = async () => {
-      try {
-        const data = await patientService.getPatient(id!);
-        setPatient(data);
-      } catch {
-        setFetchError('Patient not found');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchPatient();
+    setLoading(true);
+    refreshPatient().finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   // Reset the broken-image flag whenever the photo actually changes (e.g. after a new upload).
@@ -184,7 +188,10 @@ const PatientDetail: React.FC = () => {
             )}
           </div>
           <div className="text-center sm:text-left">
-            <h1 className="text-2xl font-bold">{patient.first_name} {patient.last_name}</h1>
+            <h1 className="text-2xl font-bold flex items-center justify-center sm:justify-start gap-1.5">
+              {patient.first_name} {patient.last_name}
+              <VerifiedBadge patient={patient} />
+            </h1>
             <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 mt-2">
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-white/20">
                 <span className="material-icons text-xs">tag</span> {patient.patient_reference_number}
@@ -226,8 +233,31 @@ const PatientDetail: React.FC = () => {
             <h2 className="text-sm font-bold text-primary uppercase tracking-wider">Contact Information</h2>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <InfoItem icon="phone" label="Mobile" value={`${patient.phone_country_code} ${patient.phone_number}`} />
-            <InfoItem icon="email" label="Email" value={patient.email || '—'} />
+            <InfoItem
+              icon="phone"
+              label="Mobile"
+              value={`${patient.phone_country_code} ${patient.phone_number}`}
+              action={canEdit && (
+                <PhoneVerificationField
+                  patientId={patient.id}
+                  isPhoneVerified={patient.is_phone_verified}
+                  onVerified={refreshPatient}
+                />
+              )}
+            />
+            <InfoItem
+              icon="email"
+              label="Email"
+              value={patient.email || '—'}
+              action={canEdit && patient.email && (
+                <EmailVerificationField
+                  patientId={patient.id}
+                  email={patient.email}
+                  isEmailVerified={patient.is_email_verified}
+                  onVerified={refreshPatient}
+                />
+              )}
+            />
           </div>
         </div>
 
@@ -277,7 +307,7 @@ const PatientDetail: React.FC = () => {
   );
 };
 
-const InfoItem: React.FC<{ icon: string; label: string; value: string }> = ({ icon, label, value }) => (
+const InfoItem: React.FC<{ icon: string; label: string; value: string; action?: React.ReactNode }> = ({ icon, label, value, action }) => (
   <div className="flex items-center gap-3">
     <div className="w-9 h-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">
       <span className="material-symbols-outlined text-lg">{icon}</span>
@@ -285,6 +315,7 @@ const InfoItem: React.FC<{ icon: string; label: string; value: string }> = ({ ic
     <div>
       <p className="text-xs text-slate-400">{label}</p>
       <p className="text-sm font-medium text-slate-900">{value}</p>
+      {action}
     </div>
   </div>
 );

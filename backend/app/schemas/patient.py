@@ -191,7 +191,13 @@ class PatientResponse(BaseModel):
     symptoms: Optional[list[str]] = None
     blood_sugar_value: Optional[Decimal] = None
     blood_sugar_unit: Optional[str] = None
+    known_allergies: Optional[str] = None
+    chronic_conditions: Optional[str] = None
     photo_url: Optional[str] = None
+    is_email_verified: bool = False
+    email_verified_at: Optional[datetime] = None
+    is_phone_verified: bool = False
+    phone_verified_at: Optional[datetime] = None
     is_active: bool
     is_deleted: bool = False
     created_at: datetime
@@ -215,6 +221,14 @@ class PatientResponse(BaseModel):
     class Config:
         from_attributes = True
 
+    # Checkmark shown wherever the patient's name appears requires BOTH
+    # verified — see BRD_OP_1.md §3.2.3. Single source of truth so the
+    # AND-logic can't drift out of sync across frontend call sites.
+    @computed_field
+    @property
+    def is_verified(self) -> bool:
+        return self.is_email_verified and self.is_phone_verified
+
 
 class PatientListItem(BaseModel):
     id: str
@@ -222,12 +236,19 @@ class PatientListItem(BaseModel):
     title: Optional[str] = None
     first_name: str
     last_name: str
+    date_of_birth: Optional[date] = None
+    age_years: Optional[int] = None
+    age_months: Optional[int] = None
     gender: str
     phone_country_code: str = "+1"
     phone_number: str
     email: Optional[str] = None
     city: Optional[str] = None
     blood_group: Optional[str] = None
+    known_allergies: Optional[str] = None
+    chronic_conditions: Optional[str] = None
+    is_email_verified: bool = False
+    is_phone_verified: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -258,6 +279,11 @@ class PatientListItem(BaseModel):
         parts.append(self.last_name)
         return " ".join(parts)
 
+    @computed_field
+    @property
+    def is_verified(self) -> bool:
+        return self.is_email_verified and self.is_phone_verified
+
 
 class PaginatedPatientResponse(BaseModel):
     total: int
@@ -265,3 +291,30 @@ class PaginatedPatientResponse(BaseModel):
     limit: int
     total_pages: int
     data: list[PatientListItem]
+
+
+class SendEmailVerificationResponse(BaseModel):
+    cooldown_seconds: int
+    message: str
+
+
+class VerifyEmailRequest(BaseModel):
+    token: str
+
+
+class VerifyEmailCodeRequest(BaseModel):
+    code: str
+
+
+class VerifyPhoneOtpRequest(BaseModel):
+    code: str
+
+
+class PatientVerificationStatus(BaseModel):
+    is_email_verified: bool
+    is_phone_verified: bool
+    is_verified: bool
+
+
+class PatientLastVisitResponse(BaseModel):
+    last_visit_date: Optional[date] = None

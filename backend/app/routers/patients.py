@@ -3,7 +3,7 @@ Patients router — works with new hms_db UUID schema.
 """
 import logging
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from typing import Optional
@@ -15,11 +15,19 @@ from ..schemas.patient import (
     PatientResponse,
     PatientListItem,
     PaginatedPatientResponse,
+    SendEmailVerificationResponse,
+    VerifyEmailRequest,
+    VerifyEmailCodeRequest,
+    VerifyPhoneOtpRequest,
+    PatientVerificationStatus,
+    PatientLastVisitResponse,
 )
 from ..models.patient import Patient
 from ..models.user import User
 from ..dependencies import get_current_active_user, require_any_role
 from ..core.tenant_security import is_eye_hospital_feature_enabled
+from ..core.audit_logger import AuditLogger, AuditAction
+from ..config import settings
 from ..services.patient_service import (
     create_patient,
     get_patient_by_id,
@@ -29,7 +37,14 @@ from ..services.patient_service import (
     soft_delete_patient,
     save_patient_photo,
     list_patients as list_patients_service,
+    generate_email_verification_token,
+    can_resend_email_verification,
+    verify_email_token,
+    verify_email_code,
+    get_patient_last_visit,
+    EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS,
 )
+from ..services.email_service import send_patient_verification_email, send_email_with_attachment
 
 logger = logging.getLogger(__name__)
 
@@ -218,6 +233,63 @@ async def update_existing_patient(
         )
 
 
+@router.post("/{patient_id}/email-id-card")
+async def email_id_card(
+    patient_id: str,
+    pdf_file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(patient_read_role_guard),
+):
+    """Email the patient's ID card PDF (generated client-side in
+    PatientIdCard.tsx) as an attachment. This endpoint never existed before
+    — the frontend button called a route with no backend implementation."""
+    patient = get_patient_by_id(db, patient_id, hospital_id=current_user.hospital_id)
+    if not patient:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
+    if not patient.email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Patient has no email address on file")
+
+    pdf_bytes = await pdf_file.read()
+    if not pdf_bytes:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded PDF is empty")
+
+    html_body = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; padding: 20px; background-color: #f3f4f6;">
+        <div style="max-width: 600px; margin: 0 auto;">
+            <p style="font-size: 16px;">Dear <strong>{patient.full_name}</strong>,</p>
+            <p>Please find your Patient ID Card attached to this email.</p>
+            <p style="color: #6b7280; font-size: 12px;">
+                This is a system-generated email from {settings.HOSPITAL_NAME}. Please do not reply to this email.
+            </p>
+        </div>
+    </body>
+    </html>
+    """
+    sent = send_email_with_attachment(
+        patient.email,
+        f"{settings.HOSPITAL_NAME} - Patient ID Card",
+        html_body,
+        pdf_bytes,
+        f"ID-Card-{patient.patient_reference_number}.pdf",
+    )
+    if not sent:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to send email — check SMTP configuration.",
+        )
+
+    AuditLogger.log(
+        action=AuditAction.PATIENT_UPDATE,
+        user=current_user,
+        tenant=None,
+        resource_type="patient",
+        resource_id=patient.id,
+        metadata={"action": "email_id_card", "email": patient.email},
+    )
+    return {"message": f"ID card sent to {patient.email}"}
+
+
 @router.post("/{patient_id}/photo", response_model=PatientResponse)
 async def upload_patient_photo(
     patient_id: str,
@@ -266,4 +338,176 @@ async def delete_patient(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete patient.",
         )
+
+
+@router.get("/{patient_id}/last-visit", response_model=PatientLastVisitResponse)
+async def get_last_visit(
+    patient_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(patient_read_role_guard),
+):
+    """Most recent visit date for the OPD assignment confirm dialog (BRD_OP_1 §3.3.2)."""
+    patient = get_patient_by_id(db, patient_id, hospital_id=current_user.hospital_id)
+    if not patient:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
+    last_visit = get_patient_last_visit(db, patient_id, hospital_id=current_user.hospital_id)
+    return PatientLastVisitResponse(last_visit_date=last_visit)
+
+
+@router.post("/{patient_id}/send-email-verification", response_model=SendEmailVerificationResponse)
+async def send_email_verification(
+    patient_id: str,
+    request: Request = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(patient_update_role_guard),
+):
+    """Send/resend the patient's email verification link (BRD_OP_1 §3.2.1)."""
+    patient = get_patient_by_id(db, patient_id, hospital_id=current_user.hospital_id)
+    if not patient:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
+    if not patient.email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Patient has no email address on file")
+    if patient.is_email_verified:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email is already verified")
+    if not can_resend_email_verification(db, patient):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Please wait {EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS} seconds before requesting another verification email",
+        )
+
+    raw_token, raw_code = generate_email_verification_token(db, patient, user_id=current_user.id)
+    origin = request.headers.get("origin", "") if request else ""
+    if not origin:
+        origin = settings.CORS_ORIGINS[0] if settings.CORS_ORIGINS else "http://localhost:5173"
+    verification_link = f"{origin}/verify-email?token={raw_token}"
+    sent = send_patient_verification_email(patient.email, patient.full_name, verification_link, raw_code)
+
+    AuditLogger.log(
+        action=AuditAction.PATIENT_EMAIL_VERIFICATION_SENT,
+        user=current_user,
+        tenant=None,
+        resource_type="patient",
+        resource_id=patient.id,
+        metadata={"email": patient.email, "sent": sent},
+    )
+    logger.info("Email verification sent for patient id=%s by user %s", patient_id, current_user.username)
+    return SendEmailVerificationResponse(
+        cooldown_seconds=EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS,
+        message="Verification email sent" if sent else "Verification link generated (email delivery not configured)",
+    )
+
+
+@router.post("/verify-email", response_model=PatientVerificationStatus)
+async def verify_email(
+    payload: VerifyEmailRequest,
+    db: Session = Depends(get_db),
+):
+    """Confirm a patient's email via the link they clicked. Unauthenticated —
+    patients have no login in this system, so token possession alone is the
+    proof of identity (single-use, 24h expiry — see patient_service.verify_email_token)."""
+    patient = verify_email_token(db, payload.token)
+    if not patient:
+        AuditLogger.log(
+            action=AuditAction.PATIENT_EMAIL_VERIFICATION_FAILED,
+            user=None,
+            tenant=None,
+            resource_type="patient",
+            error="Invalid, used, or expired token",
+        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired verification link")
+
+    AuditLogger.log(
+        action=AuditAction.PATIENT_EMAIL_VERIFIED,
+        user=None,
+        tenant=None,
+        resource_type="patient",
+        resource_id=patient.id,
+    )
+    logger.info("Email verified for patient id=%s", patient.id)
+    return PatientVerificationStatus(
+        is_email_verified=patient.is_email_verified,
+        is_phone_verified=patient.is_phone_verified,
+        is_verified=patient.is_email_verified and patient.is_phone_verified,
+    )
+
+
+@router.post("/{patient_id}/verify-email-code", response_model=PatientVerificationStatus)
+async def verify_email_code_endpoint(
+    patient_id: str,
+    payload: VerifyEmailCodeRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(patient_update_role_guard),
+):
+    """Staff-entered alternative to clicking the emailed link — the desk
+    reads the 6-digit code back from the patient and types it in, confirming
+    the email address is correct without depending on the patient's mail
+    client rendering the link (BRD_OP_1 §3.2.1 allows "link or code")."""
+    patient = get_patient_by_id(db, patient_id, hospital_id=current_user.hospital_id)
+    if not patient:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
+
+    verified_patient = verify_email_code(db, patient.id, payload.code)
+    if not verified_patient:
+        AuditLogger.log(
+            action=AuditAction.PATIENT_EMAIL_VERIFICATION_FAILED,
+            user=current_user,
+            tenant=None,
+            resource_type="patient",
+            resource_id=patient.id,
+            error="Invalid, used, or expired code",
+        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Incorrect or expired code")
+
+    AuditLogger.log(
+        action=AuditAction.PATIENT_EMAIL_VERIFIED,
+        user=current_user,
+        tenant=None,
+        resource_type="patient",
+        resource_id=verified_patient.id,
+        metadata={"method": "code"},
+    )
+    logger.info("Email verified via code for patient id=%s by user %s", patient_id, current_user.username)
+    return PatientVerificationStatus(
+        is_email_verified=verified_patient.is_email_verified,
+        is_phone_verified=verified_patient.is_phone_verified,
+        is_verified=verified_patient.is_email_verified and verified_patient.is_phone_verified,
+    )
+
+
+@router.post("/{patient_id}/send-phone-otp")
+async def send_phone_otp_stub(
+    patient_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(patient_update_role_guard),
+):
+    """Phone/SMS OTP verification is not yet implemented — no SMS gateway is
+    integrated (BRD_OP_1_Development_Plan.md Phase 3d, deferred). This stub
+    exists so the frontend "Send OTP" button calls a real endpoint rather
+    than faking success client-side."""
+    patient = get_patient_by_id(db, patient_id, hospital_id=current_user.hospital_id)
+    if not patient:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail="SMS verification is not yet available",
+    )
+
+
+@router.post("/{patient_id}/verify-phone-otp")
+async def verify_phone_otp_stub(
+    patient_id: str,
+    payload: VerifyPhoneOtpRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(patient_update_role_guard),
+):
+    """Stub matching send-phone-otp above — real OTP verification is not
+    wired up yet. Kept symmetric so the frontend's OTP-entry flow gets a
+    consistent 501 instead of a raw 404 until this is implemented."""
+    patient = get_patient_by_id(db, patient_id, hospital_id=current_user.hospital_id)
+    if not patient:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail="SMS verification is not yet available",
+    )
 

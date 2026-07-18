@@ -19,6 +19,9 @@ interface PrescriptionFilters {
   date_from?: string;
   date_to?: string;
   search?: string;
+  reason?: string;
+  sort_by?: string;
+  sort_order?: 'asc' | 'desc';
 }
 
 const prescriptionService = {

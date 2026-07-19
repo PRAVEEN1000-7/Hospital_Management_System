@@ -31,9 +31,12 @@ def hospital_today_by_id(db, hospital_id) -> date:
     return hospital_today(tz_name)
 
 
-def hospital_today_utc_range(tz_name: str | None) -> tuple[datetime, datetime]:
+def hospital_today_utc_range(tz_name: str | None, target_date: date | None = None) -> tuple[datetime, datetime]:
     """
-    UTC-aware [start, end) instants spanning "today" in the given timezone.
+    UTC-aware [start, end) instants spanning a day in the given timezone —
+    "today" in that timezone by default, or `target_date` if given (e.g. a
+    future pre-booked appointment's own date, so its daily counters resolve
+    against the day it's actually for rather than the day it was booked on).
 
     Use this instead of `func.date(some_timestamptz_column) == hospital_today(...)`
     when filtering a stored TIMESTAMPTZ column (e.g. created_at) by hospital-
@@ -49,14 +52,14 @@ def hospital_today_utc_range(tz_name: str | None) -> tuple[datetime, datetime]:
     boundary sidesteps the DB session timezone entirely.
     """
     tz = _resolve_tz(tz_name)
-    now_local = datetime.now(tz)
-    start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+    start_local = (target_date or datetime.now(tz).date())
+    start_local = datetime(start_local.year, start_local.month, start_local.day, tzinfo=tz)
     end_local = start_local + timedelta(days=1)
     return start_local.astimezone(timezone.utc), end_local.astimezone(timezone.utc)
 
 
-def hospital_today_utc_range_by_id(db, hospital_id) -> tuple[datetime, datetime]:
+def hospital_today_utc_range_by_id(db, hospital_id, target_date: date | None = None) -> tuple[datetime, datetime]:
     """Same as hospital_today_utc_range(), but looks up the timezone by hospital_id."""
     from ..models.user import Hospital
     tz_name = db.query(Hospital.timezone).filter(Hospital.id == hospital_id).scalar()
-    return hospital_today_utc_range(tz_name)
+    return hospital_today_utc_range(tz_name, target_date)

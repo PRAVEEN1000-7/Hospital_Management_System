@@ -51,12 +51,21 @@ def compute_payment_breakdown(
     }
 
 
-def _next_hospital_wide_daily_token(db: Session, hospital_id: uuid.UUID) -> int:
+def _next_hospital_wide_daily_token(
+    db: Session, hospital_id: uuid.UUID, visit_date: Optional[date] = None
+) -> int:
     """
-    Max token issued anywhere for this hospital today — doctor queue,
-    pharmacy, or optical — plus one. Used by get_or_assign_visit_token() so
-    a brand-new visit never collides with a token already handed out by a
-    different department.
+    Max token issued anywhere for this hospital on `visit_date` (default:
+    hospital's today) — doctor queue, pharmacy, or optical — plus one. Used
+    by get_or_assign_visit_token() so a brand-new visit never collides with
+    a token already handed out by a different department.
+
+    `visit_date` matters for appointments pre-booked ahead of time: a walk-in
+    is always created the same day it's for, so "today" and "the visit's
+    date" are the same thing — but a pre-booked appointment is created days
+    before the date it's actually for, and its token must reset against
+    *that* future date's count (starting back at 1), not against however
+    many visits have already been created today when the booking was made.
 
     Uses the UTC-range day-boundary check (hospital_today_utc_range_by_id),
     not func.date(): func.date() compares using the DB session's own
@@ -78,10 +87,12 @@ def _next_hospital_wide_daily_token(db: Session, hospital_id: uuid.UUID) -> int:
     from ..models.appointment import Appointment
     from ..models.pharmacy import PharmacyQueueEntry, PharmacySale
     from ..models.optical import OpticalSale
+    from ..core.hospital_time import hospital_today_by_id
 
-    day_start, day_end = hospital_today_utc_range_by_id(db, hospital_id)
+    target_date = visit_date or hospital_today_by_id(db, hospital_id)
+    day_start, day_end = hospital_today_utc_range_by_id(db, hospital_id, target_date)
 
-    lock_key = int(hashlib.md5(f"visit_token:{hospital_id}:{day_start.date()}".encode()).hexdigest()[:15], 16)
+    lock_key = int(hashlib.md5(f"visit_token:{hospital_id}:{target_date}".encode()).hexdigest()[:15], 16)
     db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": lock_key})
 
     def _max_today(model, token_col):
@@ -95,8 +106,23 @@ def _next_hospital_wide_daily_token(db: Session, hospital_id: uuid.UUID) -> int:
             .scalar()
         )
 
+    # Appointment is matched on its own appointment_date, not created_at:
+    # pharmacy/optical sales and walk-ins are always created the same day
+    # they occur, so a created_at range is equivalent to their visit date.
+    # A pre-booked appointment isn't — it's created days before target_date
+    # — so counting by created_at would miss every other appointment
+    # already booked for that same future date and hand out duplicate 1s.
+    appointment_max = (
+        db.query(func.max(Appointment.visit_token))
+        .filter(
+            Appointment.hospital_id == hospital_id,
+            Appointment.appointment_date == target_date,
+        )
+        .scalar()
+    )
+
     maxes = [
-        _max_today(Appointment, Appointment.visit_token),
+        appointment_max,
         _max_today(PharmacyQueueEntry, PharmacyQueueEntry.queue_token),
         _max_today(PharmacySale, PharmacySale.queue_token),
         _max_today(OpticalSale, OpticalSale.queue_token),
@@ -105,7 +131,10 @@ def _next_hospital_wide_daily_token(db: Session, hospital_id: uuid.UUID) -> int:
 
 
 def get_or_assign_visit_token(
-    db: Session, hospital_id: uuid.UUID, appointment_id: Optional[uuid.UUID] = None
+    db: Session,
+    hospital_id: uuid.UUID,
+    appointment_id: Optional[uuid.UUID] = None,
+    visit_date: Optional[date] = None,
 ) -> int:
     """
     The one token for a patient's whole visit — shared by every department
@@ -121,6 +150,11 @@ def get_or_assign_visit_token(
     called for it. Otherwise a new hospital-wide token is minted and, if an
     appointment was given, persisted onto it so every later lookup for this
     visit reuses it.
+
+    `visit_date` defaults to the hospital's today (every same-day caller —
+    walk-ins, pharmacy, optical). Pass the appointment's own date for a
+    pre-booked-ahead appointment so its token resets against that date's
+    count instead of the (irrelevant) day it happened to be booked on.
     """
     from ..models.appointment import Appointment
 
@@ -130,7 +164,7 @@ def get_or_assign_visit_token(
         if appt and appt.visit_token:
             return appt.visit_token
 
-    token = _next_hospital_wide_daily_token(db, hospital_id)
+    token = _next_hospital_wide_daily_token(db, hospital_id, visit_date)
     if appt:
         appt.visit_token = token
         db.flush()

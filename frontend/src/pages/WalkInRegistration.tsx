@@ -40,6 +40,7 @@ const emptyReg = (): RegForm => ({
 
 const WalkInRegistration: React.FC = () => {
   const toast = useToast();
+  const navigate = useNavigate();
   const { triggerRefresh } = useDashboardRefresh();
 
   const [doctors, setDoctors] = useState<DoctorOption[]>([]);
@@ -395,13 +396,23 @@ const WalkInRegistration: React.FC = () => {
           </h1>
           <p className="text-slate-400 text-xs mt-0.5">Register a walk-in patient and add to the queue</p>
         </div>
-        <button
-          onClick={() => setShowRegModal(true)}
-          className="flex items-center gap-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 px-4 py-2 rounded-lg transition-colors shadow-sm"
-        >
-          <span className="material-symbols-outlined text-base">person_add</span>
-          Register New Patient
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => navigate('/appointments/book')}
+            title="Book this patient for a future date instead of today's walk-in queue"
+            className="flex items-center gap-1.5 text-xs font-bold text-primary bg-primary/10 hover:bg-primary/20 px-4 py-2 rounded-lg transition-colors"
+          >
+            <span className="material-symbols-outlined text-base">event_available</span>
+            Pre-book for Later Date
+          </button>
+          <button
+            onClick={() => setShowRegModal(true)}
+            className="flex items-center gap-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 px-4 py-2 rounded-lg transition-colors shadow-sm"
+          >
+            <span className="material-symbols-outlined text-base">person_add</span>
+            Register New Patient
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">

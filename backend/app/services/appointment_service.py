@@ -72,7 +72,9 @@ def _create_queue_entry(db: Session, appt: Appointment) -> None:
             appointment_id=appt.id,
             doctor_id=appt.doctor_id,
             queue_date=appt.appointment_date,
-            queue_number=get_or_assign_visit_token(db, appt.hospital_id, appointment_id=appt.id),
+            queue_number=get_or_assign_visit_token(
+                db, appt.hospital_id, appointment_id=appt.id, visit_date=appt.appointment_date
+            ),
             position=_next_queue_position(db, appt.doctor_id, appt.appointment_date),
             status="waiting",
         )

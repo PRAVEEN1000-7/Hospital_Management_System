@@ -32,7 +32,7 @@ const OpdAssignConfirmDialog: React.FC<OpdAssignConfirmDialogProps> = ({
       onClick={onCancel}
     >
       <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col"
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
@@ -71,11 +71,25 @@ const OpdAssignConfirmDialog: React.FC<OpdAssignConfirmDialogProps> = ({
             </div>
             <div>
               <p className="text-[10px] font-bold text-slate-400 uppercase">Contact</p>
-              <p className="text-slate-700">{patient.phone_country_code} {patient.phone_number}</p>
+              <p className="text-slate-700 flex items-center gap-1">
+                {patient.phone_country_code} {patient.phone_number}
+                {patient.is_phone_verified && (
+                  <span className="material-icons text-emerald-500 text-sm align-middle" title="Phone verified">
+                    check_circle
+                  </span>
+                )}
+              </p>
             </div>
             <div>
               <p className="text-[10px] font-bold text-slate-400 uppercase">Email</p>
-              <p className="text-slate-700 truncate">{patient.email || '—'}</p>
+              <p className="text-slate-700 flex items-center gap-1 truncate">
+                <span className="truncate">{patient.email || '—'}</span>
+                {patient.email && patient.is_email_verified && (
+                  <span className="material-icons text-emerald-500 text-sm align-middle shrink-0" title="Email verified">
+                    check_circle
+                  </span>
+                )}
+              </p>
             </div>
             <div>
               <p className="text-[10px] font-bold text-slate-400 uppercase">Last Visit</p>

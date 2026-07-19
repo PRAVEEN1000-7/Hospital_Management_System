@@ -688,6 +688,11 @@ def get_or_create_consultation_invoice_for_appointment(
             Invoice.appointment_id == appointment.id,
             Invoice.patient_id == patient_id,
             Invoice.is_deleted == False,
+            # A void/cancelled invoice can never accept payment (see
+            # record_payment) — reusing one here would trap the appointment
+            # behind an unpayable invoice forever. Fall through and create a
+            # fresh one instead.
+            Invoice.status.notin_(["void", "cancelled"]),
         )
         .order_by(Invoice.created_at.desc())
         .first()

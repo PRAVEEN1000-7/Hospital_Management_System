@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -64,6 +64,10 @@ const AppointmentManagement: React.FC = () => {
   const [collectRef, setCollectRef] = useState('');
   const [collectNotes, setCollectNotes] = useState('');
   const [collectDate, setCollectDate] = useState(today);
+  // Bumped on every open/close so a slow in-flight invoice fetch from a
+  // dialog the user already closed (or reopened for another appointment)
+  // can't land its response into state after the fact.
+  const collectRequestRef = useRef(0);
 
   // Prescription viewer state (loaded when detail modal opens)
   const [viewRxs, setViewRxs] = useState<PrescriptionListItem[]>([]);
@@ -238,10 +242,12 @@ const AppointmentManagement: React.FC = () => {
   };
 
   const openCollectFee = async (appt: Appointment) => {
+    const requestId = ++collectRequestRef.current;
     setCollectAppt(appt);
     setCollectLoading(true);
     try {
       const invoice = await invoiceService.getOrCreateConsultationInvoice(appt.id);
+      if (collectRequestRef.current !== requestId) return; // dialog closed/reopened since this fetch started
       setCollectInvoice(invoice);
       // Predefined consultation billing template: always collect the current outstanding amount.
       setCollectAmount(Number(invoice.balance_amount || 0));
@@ -250,15 +256,17 @@ const AppointmentManagement: React.FC = () => {
       setCollectNotes('');
       setCollectDate(today);
     } catch (err: any) {
+      if (collectRequestRef.current !== requestId) return;
       toast.error(err?.response?.data?.detail || 'Failed to prepare consultation invoice');
       setCollectAppt(null);
       setCollectInvoice(null);
     } finally {
-      setCollectLoading(false);
+      if (collectRequestRef.current === requestId) setCollectLoading(false);
     }
   };
 
   const closeCollectFee = () => {
+    collectRequestRef.current++; // invalidate any in-flight invoice fetch
     setCollectAppt(null);
     setCollectInvoice(null);
     setCollectLoading(false);

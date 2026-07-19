@@ -398,9 +398,18 @@ async def send_email_verification(
         metadata={"email": patient.email, "sent": sent},
     )
     logger.info("Email verification sent for patient id=%s by user %s", patient_id, current_user.username)
+    if sent:
+        message = "Verification email sent"
+    elif not settings.SMTP_HOST:
+        # send_patient_verification_email() short-circuits to False without
+        # attempting anything when SMTP isn't set up at all — distinct from
+        # a real send failure below, which staff should actually act on.
+        message = "Verification link generated (email delivery not configured)"
+    else:
+        message = "Verification link generated, but the email failed to send — check server logs or resend"
     return SendEmailVerificationResponse(
         cooldown_seconds=EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS,
-        message="Verification email sent" if sent else "Verification link generated (email delivery not configured)",
+        message=message,
     )
 
 

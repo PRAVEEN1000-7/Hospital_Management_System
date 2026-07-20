@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import ProgrammingError
 
@@ -442,6 +442,7 @@ async def change_password(
 @router.post("/forgot-password")
 async def forgot_password(
     payload: ForgotPasswordRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     request: Request = None,
 ):
@@ -520,7 +521,7 @@ async def forgot_password(
         </body>
         </html>
         """
-        send_email(user.email, f"{h_name} — Password Reset", html_body)
+        background_tasks.add_task(send_email, user.email, f"{h_name} — Password Reset", html_body)
         logger.info(f"Password reset token generated for user id={user.id}")
 
     return {

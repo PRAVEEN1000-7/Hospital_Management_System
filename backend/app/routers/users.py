@@ -3,7 +3,7 @@ Users router — works with new hms_db UUID/RBAC schema.
 """
 import logging
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query, UploadFile, File
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
@@ -38,6 +38,7 @@ router = APIRouter(prefix="/users", tags=["User Management"])
 @router.post("", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def create_new_user(
     user_data: UserCreate,
+    background_tasks: BackgroundTasks,
     send_email: bool = Query(False),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin_or_super_admin),
@@ -156,7 +157,8 @@ async def create_new_user(
                 # surfaced anywhere. The actual function is send_password_email.
                 from ..services.email_service import send_password_email
                 hospital = db.query(Hospital).filter(Hospital.id == current_user.hospital_id).first()
-                send_password_email(
+                background_tasks.add_task(
+                    send_password_email,
                     to_email=user.email,
                     username=user.username,
                     password=user_data.password,

@@ -1,6 +1,7 @@
 """
 Patients router — works with new hms_db UUID schema.
 """
+import asyncio
 import logging
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Request
@@ -269,7 +270,8 @@ async def email_id_card(
     </body>
     </html>
     """
-    sent = send_email_with_attachment(
+    sent = await asyncio.to_thread(
+        send_email_with_attachment,
         patient.email,
         f"{h_name} - Patient ID Card",
         html_body,
@@ -384,7 +386,8 @@ async def send_email_verification(
         origin = settings.CORS_ORIGINS[0] if settings.CORS_ORIGINS else "http://localhost:5173"
     verification_link = f"{origin}/verify-email?token={raw_token}"
     hospital = db.query(Hospital).filter(Hospital.id == current_user.hospital_id).first()
-    sent = send_patient_verification_email(
+    sent = await asyncio.to_thread(
+        send_patient_verification_email,
         patient.email, patient.full_name, verification_link, raw_code,
         hospital_name=hospital.name if hospital else "",
     )

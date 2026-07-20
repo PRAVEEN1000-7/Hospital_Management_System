@@ -2,7 +2,7 @@
 Appointments router â€“ CRUD, reschedule, cancel, status updates.
 """
 import logging
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from typing import Optional
 from datetime import date, datetime
@@ -44,6 +44,7 @@ router = APIRouter(prefix="/appointments", tags=["Appointments"])
 @router.post("", response_model=AppointmentResponse, status_code=status.HTTP_201_CREATED)
 async def book_appointment(
     data: AppointmentCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
@@ -85,7 +86,8 @@ async def book_appointment(
             patient = db.query(Patient).filter(Patient.id == appt.patient_id).first()
             hospital = db.query(Hospital).filter(Hospital.id == current_user.hospital_id).first()
             if patient and getattr(patient, "email", None):
-                send_appointment_confirmation_email(
+                background_tasks.add_task(
+                    send_appointment_confirmation_email,
                     to_email=patient.email,
                     patient_name=patient.full_name,
                     doctor_name=enriched.get("doctor_name", "TBA"),
@@ -293,6 +295,7 @@ async def update_appt(
 @router.delete("/{appointment_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def cancel_appt(
     appointment_id: str,
+    background_tasks: BackgroundTasks,
     reason: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
@@ -312,7 +315,8 @@ async def cancel_appt(
             patient = db.query(Patient).filter(Patient.id == appt.patient_id).first()
             hospital = db.query(Hospital).filter(Hospital.id == current_user.hospital_id).first()
             if patient and getattr(patient, "email", None):
-                send_appointment_cancellation_email(
+                background_tasks.add_task(
+                    send_appointment_cancellation_email,
                     to_email=patient.email,
                     patient_name=patient.full_name,
                     appointment_number=appt.appointment_number,
@@ -337,6 +341,7 @@ async def cancel_appt(
 async def reschedule_appt(
     appointment_id: str,
     data: AppointmentReschedule,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
@@ -362,7 +367,8 @@ async def reschedule_appt(
         patient = db.query(Patient).filter(Patient.id == appt.patient_id).first()
         hospital = db.query(Hospital).filter(Hospital.id == current_user.hospital_id).first()
         if patient and getattr(patient, "email", None):
-            send_appointment_reschedule_email(
+            background_tasks.add_task(
+                send_appointment_reschedule_email,
                 to_email=patient.email,
                 patient_name=patient.full_name,
                 doctor_name=enriched.get("doctor_name", "TBA"),

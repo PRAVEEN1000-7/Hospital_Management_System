@@ -181,6 +181,29 @@ def _eye_hospital_features_enabled(db: Session, hospital_id: uuid.UUID) -> bool:
     return is_eye_hospital_feature_enabled(hospital) if hospital else False
 
 
+def _find_linked_lab_order(db: Session, rx):
+    """The lab order attached to this clinical prescription's visit, if any.
+    Matches the same way the optical lookup does — by appointment_id when
+    present, else patient_id + doctor_id within the hospital's today window
+    (the builder submits the lab order as a non-blocking call right after the
+    Rx save, so it shares that visit)."""
+    from ..models.lab import LabOrder
+
+    q = db.query(LabOrder).filter(LabOrder.hospital_id == rx.hospital_id)
+    existing = q.filter(LabOrder.prescription_id == rx.id).first()
+    if existing:
+        return existing
+    if rx.appointment_id:
+        return q.filter(LabOrder.appointment_id == rx.appointment_id).first()
+    day_start, day_end = hospital_today_utc_range_by_id(db, rx.hospital_id)
+    return q.filter(
+        LabOrder.patient_id == rx.patient_id,
+        LabOrder.doctor_id == rx.doctor_id,
+        LabOrder.created_at >= day_start,
+        LabOrder.created_at < day_end,
+    ).first()
+
+
 def create_prescription(
     db: Session,
     data: dict,
@@ -556,7 +579,13 @@ def finalize_prescription(
                     OpticalPrescription.created_at < day_end,
                 ).count() > 0
 
-        if not has_optical:
+        # A prescription may carry only a lab order (no medicines, no optical)
+        # — that must still finalize. Lab isn't eye-specific, so this check is
+        # unconditional; the order only exists if the doctor created one via
+        # the module-gated Lab Tests card in the builder.
+        has_lab = _find_linked_lab_order(db, rx) is not None
+
+        if not has_optical and not has_lab:
             raise ValueError("Cannot finalize a prescription with no items")
 
     # ✅ FIX BUG #1: Check stock availability before finalizing
@@ -630,6 +659,17 @@ def finalize_prescription(
             ).first()
         if opt_rx:
             opt_rx.is_finalized = True
+
+    # Also finalize the linked lab order (if any) and hand it a queue token —
+    # unconditional, since Lab applies to every hospital type. A token is
+    # assigned right here at finalize time, before any bill exists (see
+    # lab_service.enqueue_lab_queue_entry).
+    lab_order = _find_linked_lab_order(db, rx)
+    if lab_order and not lab_order.is_finalized:
+        from .lab_service import enqueue_lab_queue_entry
+        lab_order.is_finalized = True
+        lab_order.prescription_id = rx.id
+        enqueue_lab_queue_entry(db, lab_order)
 
     # Pharmacy Queue (BRD v1.1 PQ-02) — eye-hospital feature pack only.
     # A token is assigned right here, at submission, well before any bill

@@ -51,7 +51,29 @@ CREATE TABLE IF NOT EXISTS lab_tests (
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 13.2 lab_orders — doctor's order; also carries the queue fields (see
 -- header note on why the token lives here rather than on lab_sales)
+--
+-- The base schema (01_full_schema.sql §6.5) ships a legacy, UNUSED `lab_orders`
+-- stub with a different shape (no hospital_id, no order_number, no queue
+-- fields) that no application code ever reads or writes. Without this drop,
+-- the CREATE TABLE IF NOT EXISTS below would silently no-op against that stub
+-- and every index/column this module needs would then be missing. The drop is
+-- guarded to fire ONLY on that legacy shape (has test_name, lacks hospital_id),
+-- so re-running against a DB that already has this module's real table (with
+-- data) is a safe no-op.
 -- ─────────────────────────────────────────────────────────────────────────────
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'lab_orders' AND column_name = 'test_name'
+    ) AND NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'lab_orders' AND column_name = 'hospital_id'
+    ) THEN
+        DROP TABLE lab_orders CASCADE;
+    END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS lab_orders (
     id              UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
     hospital_id     UUID          NOT NULL REFERENCES hospitals(id),

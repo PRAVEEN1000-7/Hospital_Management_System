@@ -51,6 +51,11 @@ export interface HospitalSettings {
   appointment_slot_duration_minutes: number;
   appointment_buffer_minutes: number;
   max_daily_appointments_per_doctor: number;
+  // OPD session timings (HH:MM 24h) — pre-fill the Doctor Schedule form.
+  opd_morning_start_time: string;
+  opd_morning_end_time: string;
+  opd_evening_start_time: string;
+  opd_evening_end_time: string;
   allow_walk_in: boolean;
   allow_emergency_bypass: boolean;
   enable_sms_notifications: boolean;

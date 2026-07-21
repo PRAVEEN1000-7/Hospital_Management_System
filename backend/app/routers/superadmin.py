@@ -469,6 +469,27 @@ def update_plan(
         entity_id=plan.id, entity_name=plan.name,
         new_values={k: str(v) for k, v in update_data.items()},
     )
+
+    # When the plan's module set changes, re-provision every tenant currently
+    # subscribed to this plan so the change reflects for hospitals ACTIVELY on
+    # it — not just future assignments. Previously update_plan only saved the
+    # new modules_included array, so adding a module (e.g. 'lab') to a plan
+    # never reached hospitals already on that plan until they were re-assigned.
+    # _enable_modules_for_plan is an additive upsert (only enables, never
+    # force-disables), so newly-added modules turn on for active subscribers
+    # while manually-toggled ones are left untouched. Removing a module from a
+    # plan is intentionally NOT propagated as a disable here, matching that
+    # same only-upgrade philosophy.
+    if 'modules_included' in update_data:
+        from ..models.tenant import TenantSubscription
+        active_subs = db.query(TenantSubscription).filter(
+            TenantSubscription.plan_id == plan.id,
+            TenantSubscription.status.in_(['trialing', 'active', 'past_due']),
+        ).all()
+        for sub in active_subs:
+            TenantService._enable_modules_for_plan(db, sub.tenant_id, plan)
+        db.commit()
+
     return plan
 
 

@@ -2,7 +2,7 @@
 // Billing & Invoice — TypeScript type definitions
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type InvoiceType = 'opd' | 'pharmacy' | 'optical' | 'combined';
+export type InvoiceType = 'opd' | 'pharmacy' | 'optical' | 'lab' | 'combined';
 export type InvoiceStatus =
   | 'draft'
   | 'issued'
@@ -16,6 +16,7 @@ export type InvoiceItemType =
   | 'consultation'
   | 'medicine'
   | 'optical_product'
+  | 'lab_test'
   | 'service'
   | 'procedure'
   | 'registration';

@@ -20,7 +20,7 @@ from .routers import (
     appointments, schedules, appointment_settings, appointment_reports,
     departments, doctors, hospital_settings as hospital_settings_router,
     walk_ins, waitlist, prescriptions, pharmacy, pharmacy_dispensing,
-    inventory, notifications, optical,
+    inventory, notifications, optical, lab,
     # Billing & Invoice module
     invoices, payments, refunds, settlements, tax_configurations,
 )
@@ -36,7 +36,7 @@ from fastapi import Depends
 logger = get_logger(__name__)
 
 # Import models so they're registered with Base.metadata
-from .models import user, patient, appointment, patient_id_sequence, department, hospital_settings, prescription, inventory as inventory_models, notification, optical as optical_models  # noqa: F401
+from .models import user, patient, appointment, patient_id_sequence, department, hospital_settings, prescription, inventory as inventory_models, notification, optical as optical_models, lab as lab_models  # noqa: F401
 # Ensure PasswordResetToken is registered with SQLAlchemy metadata
 from .models import tax_config, invoice, payment, refund, settlement, insurance  # noqa: F401
 from .models import tenant  # noqa: F401
@@ -252,6 +252,7 @@ _require_pharmacy      = [Depends(SubscriptionValidator.require_module_access('p
 _require_inventory     = [Depends(SubscriptionValidator.require_module_access('inventory'))]
 _require_billing       = [Depends(SubscriptionValidator.require_module_access('billing'))]
 _require_optical       = [Depends(SubscriptionValidator.require_module_access('optical'))]
+_require_lab           = [Depends(SubscriptionValidator.require_module_access('lab'))]
 
 app.include_router(prescriptions.router, prefix="/api/v1", dependencies=_require_prescriptions)
 app.include_router(prescriptions.medicines_router, prefix="/api/v1", dependencies=_require_prescriptions)
@@ -275,6 +276,9 @@ app.include_router(inventory.adjustments_router, prefix="/api/v1", dependencies=
 
 # Optical Store module
 app.include_router(optical.router, prefix="/api/v1", dependencies=_require_optical)
+
+# Laboratory module
+app.include_router(lab.router, prefix="/api/v1", dependencies=_require_lab)
 
 # Billing & Invoice module
 app.include_router(invoices.router, prefix="/api/v1", dependencies=_require_billing)

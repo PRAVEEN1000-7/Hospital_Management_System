@@ -58,6 +58,9 @@ const Layout: React.FC = () => {
   const [opticalOpen, setOpticalOpen] = useState(
     () => location.pathname.startsWith('/optical')
   );
+  const [labOpen, setLabOpen] = useState(
+    () => location.pathname.startsWith('/lab')
+  );
 
   const role = user?.roles?.[0];
   const [billingOpen, setBillingOpen] = useState(
@@ -103,6 +106,9 @@ const Layout: React.FC = () => {
   // Optical Store is a back-of-store retail/dispensing operation, not part of a doctor's
   // clinical workflow — only admin/super_admin (oversight) and optical_staff (the job) get it.
   const canAccessOptical       = hasRole('super_admin', 'admin', 'optical_staff') && isModuleEnabled('optical') && isEyeHospitalFeatureEnabled;
+  // Laboratory applies to every hospital type (not eye-specific) — admin/
+  // super_admin (oversight) and lab_technician (the job) get it.
+  const canAccessLab           = hasRole('super_admin', 'admin', 'lab_technician') && isModuleEnabled('lab');
   // Report Viewer's whole job is the appointment reports export — no other role gets a
   // sidebar entry for it since admin/super_admin already reach it via the Appointments dropdown.
   const canAccessAppointmentReports = hasRole('report_viewer') && isModuleEnabled('appointments');
@@ -195,6 +201,9 @@ const Layout: React.FC = () => {
     }
     if (location.pathname.startsWith('/optical')) {
       setOpticalOpen(true);
+    }
+    if (location.pathname.startsWith('/lab')) {
+      setLabOpen(true);
     }
     if (location.pathname.startsWith('/billing')) {
       setBillingOpen(true);
@@ -572,6 +581,16 @@ const Layout: React.FC = () => {
     );
   }
 
+  // ── Laboratory navigation ── applies to every hospital type
+  const labItems: { to: string; label: string; icon: string }[] = [];
+  if (canAccessLab) {
+    labItems.push(
+      { to: '/lab', label: 'Dashboard', icon: 'dashboard' },
+      { to: '/lab/queue', label: 'Lab Queue', icon: 'queue' },
+      { to: '/lab/tests', label: 'Test Catalog', icon: 'biotech' },
+    );
+  }
+
   // ── Inventory navigation ── role-driven
   const inventoryItems: { to: string; label: string; icon: string }[] = [];
 
@@ -899,6 +918,53 @@ const Layout: React.FC = () => {
               </button>
               <div id="optical-menu" className={`overflow-hidden transition-all duration-200 ${opticalOpen ? 'max-h-[700px] opacity-100' : 'max-h-0 opacity-0'}`}>
                 {opticalItems.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    onClick={() => setSidebarOpen(false)}
+                    className={`flex items-center pl-10 pr-6 py-2.5 text-[13px] font-medium transition-all ${
+                      isExactActive(item.to)
+                        ? 'sidebar-item-active'
+                        : 'text-slate-400 hover:text-primary hover:bg-slate-50'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined mr-3 text-[18px]">{item.icon}</span>
+                    {item.label}
+                  </NavLink>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ══ LABORATORY — collapsible ══ */}
+          {labItems.length > 0 && (
+            <div
+              className="mt-4"
+              onMouseEnter={() => setLabOpen(true)}
+              onMouseLeave={() => setLabOpen(false)}
+            >
+              <div className="px-6 mb-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Laboratory</span>
+              </div>
+              <button
+                onClick={() => setLabOpen(!labOpen)}
+                aria-expanded={labOpen}
+                aria-controls="lab-menu"
+                className={`w-full flex items-center justify-between px-6 py-2.5 text-sm font-medium transition-all ${
+                  location.pathname.startsWith('/lab')
+                    ? 'text-primary bg-primary/5'
+                    : 'text-slate-500 hover:text-primary hover:bg-slate-50'
+                }`}
+              >
+                <div className="flex items-center">
+                  Laboratory
+                </div>
+                <span className={`material-symbols-outlined text-[18px] transition-transform duration-200 ${labOpen ? 'rotate-180' : ''}`}>
+                  expand_more
+                </span>
+              </button>
+              <div id="lab-menu" className={`overflow-hidden transition-all duration-200 ${labOpen ? 'max-h-[700px] opacity-100' : 'max-h-0 opacity-0'}`}>
+                {labItems.map((item) => (
                   <NavLink
                     key={item.to}
                     to={item.to}

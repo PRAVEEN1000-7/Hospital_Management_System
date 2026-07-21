@@ -1,46 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useToast } from '../contexts/ToastContext';
 import { useDashboardRefresh } from '../contexts/DashboardRefreshContext';
 import walkInService from '../services/walkInService';
 import scheduleService from '../services/scheduleService';
 import patientService from '../services/patientService';
 import { useListKeyboardNav } from '../hooks/useListKeyboardNav';
-import {
-  TITLE_OPTIONS, GENDER_OPTIONS, BLOOD_GROUP_OPTIONS,
-  COUNTRIES, getStatesForCountry, getPostalLabel, getPhoneCode,
-} from '../utils/constants';
 import type { DoctorOption } from '../types/appointment';
 import type { Patient } from '../types/patient';
 import VerifiedBadge from '../components/patients/VerifiedBadge';
 import OpdAssignConfirmDialog from '../components/opd/OpdAssignConfirmDialog';
 import { VISIT_REASON_OPTIONS } from '../utils/constants';
 
-// ── Quick-register form ────────────────────────────────────────────────
-interface RegForm {
-  title: string; first_name: string; last_name: string;
-  gender: string; date_of_birth: string; blood_group: string;
-  phone_country_code: string; phone_number: string; email: string;
-  address_line_1: string; address_line_2: string;
-  city: string; state: string; postal_code: string; country: string;
-  emergency_contact_name: string;
-  emergency_contact_country_code: string;
-  emergency_contact_phone: string; emergency_contact_relation: string;
-}
-const emptyReg = (): RegForm => ({
-  title: '', first_name: '', last_name: '',
-  gender: '', date_of_birth: '', blood_group: '',
-  phone_country_code: '+91', phone_number: '', email: '',
-  address_line_1: '', address_line_2: '',
-  city: '', state: '', postal_code: '', country: 'India',
-  emergency_contact_name: '',
-  emergency_contact_country_code: '+91',
-  emergency_contact_phone: '', emergency_contact_relation: '',
-});
-
 const WalkInRegistration: React.FC = () => {
   const toast = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { triggerRefresh } = useDashboardRefresh();
 
   const [doctors, setDoctors] = useState<DoctorOption[]>([]);
@@ -89,17 +65,37 @@ const WalkInRegistration: React.FC = () => {
   };
   const handleCancelAssign = () => setConfirmingPatient(null);
 
-  // ── Register new patient modal ────────────────────────────────────────
-  const [showRegModal, setShowRegModal] = useState(false);
-  const [regForm, setRegForm] = useState<RegForm>(emptyReg());
-  const [regErrors, setRegErrors] = useState<Partial<Record<keyof RegForm, string>>>({});
-  const [regSubmitting, setRegSubmitting] = useState(false);
-  const [regSection, setRegSection] = useState<'personal' | 'contact' | 'emergency'>('personal');
+  // ── Register a new patient ────────────────────────────────────────────
+  // Instead of a slimmed-down inline modal, send the user to the full
+  // Patient Registration form (identical fields + functions — duplicate-phone
+  // guard, title auto-correction, verification, patient history, etc.). The
+  // full form reads walkInReturnUrl and comes back here with ?new_patient_id=,
+  // which the effect below turns into an auto-selected patient.
+  const goToRegister = () => {
+    sessionStorage.setItem('walkInReturnUrl', location.pathname);
+    navigate('/register');
+  };
 
-  const regStates = getStatesForCountry(regForm.country || 'India');
-  const regPostalLabel = getPostalLabel(regForm.country || 'India');
-  const setReg = (field: keyof RegForm, value: string) =>
-    setRegForm(f => ({ ...f, [field]: value }));
+  // Returning from the full registration form with a freshly-created patient —
+  // fetch and select them, then strip the query param so a refresh doesn't
+  // re-trigger this.
+  useEffect(() => {
+    const newPatientId = searchParams.get('new_patient_id');
+    if (!newPatientId) return;
+    patientService.getPatient(newPatientId)
+      .then((p) => {
+        setSelectedPatient(p);
+        setPatientSearch(`${p.first_name} ${p.last_name}`);
+        toast.success(`Patient selected: ${p.patient_reference_number}`);
+        triggerRefresh();
+      })
+      .catch(() => toast.error('Could not load the newly registered patient'))
+      .finally(() => {
+        searchParams.delete('new_patient_id');
+        setSearchParams(searchParams, { replace: true });
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => { scheduleService.getDoctors().then(setDoctors).catch(() => {}); }, []);
 
@@ -121,11 +117,6 @@ const WalkInRegistration: React.FC = () => {
       setDoctorScheduleState('idle');
     }
   };
-
-  // Sync country code when country changes in reg form
-  useEffect(() => {
-    if (regForm.country) setReg('phone_country_code', getPhoneCode(regForm.country));
-  }, [regForm.country]);
 
   useEffect(() => {
     if (patientSearch.length < 2) { setPatients([]); return; }
@@ -188,118 +179,6 @@ const WalkInRegistration: React.FC = () => {
     setReason('');
     setSuccess(null);
     setWaitlisted(null);
-  };
-
-  // ── Reg modal handlers ────────────────────────────────────────────────
-  const validateRegPersonal = (): boolean => {
-    const errs: Partial<Record<keyof RegForm, string>> = {};
-    if (!regForm.title) errs.title = 'Required';
-    if (!regForm.first_name.trim()) errs.first_name = 'Required';
-    else if (!/^[A-Za-z][A-Za-z\s'-]*$/.test(regForm.first_name.trim())) errs.first_name = 'Must start with a letter — only letters, spaces, hyphens and apostrophes';
-    if (!regForm.last_name.trim()) errs.last_name = 'Required';
-    else if (!/^[A-Za-z][A-Za-z\s'-]*$/.test(regForm.last_name.trim())) errs.last_name = 'Must start with a letter — only letters, spaces, hyphens and apostrophes';
-    else if (regForm.last_name.trim().length <= 2) errs.last_name = 'Last name must be more than 2 letters';
-    if (!regForm.gender) errs.gender = 'Required';
-    if (!regForm.date_of_birth) errs.date_of_birth = 'Required';
-    if (!regForm.blood_group) errs.blood_group = 'Required';
-    setRegErrors(errs);
-    return Object.keys(errs).length === 0;
-  };
-
-  const validateRegContact = (): boolean => {
-    const errs: Partial<Record<keyof RegForm, string>> = {};
-    if (!regForm.phone_number.trim()) errs.phone_number = 'Required';
-    else if (!/^\d{10}$/.test(regForm.phone_number)) errs.phone_number = 'Must be exactly 10 digits';
-    if (!regForm.address_line_1.trim()) errs.address_line_1 = 'Required';
-    if (regForm.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(regForm.email))
-      errs.email = 'Invalid email';
-    if (regForm.postal_code && !/^\d{6}$/.test(regForm.postal_code))
-      errs.postal_code = 'PIN code must be exactly 6 digits';
-    setRegErrors(errs);
-    return Object.keys(errs).length === 0;
-  };
-
-  const handleRegNext = () => {
-    if (regSection === 'personal' && validateRegPersonal()) setRegSection('contact');
-    else if (regSection === 'contact' && validateRegContact()) setRegSection('emergency');
-  };
-
-  const handleRegSubmit = async () => {
-    if (!validateRegContact()) { setRegSection('contact'); return; }
-    // Validate emergency contact phone before submitting
-    if (regForm.emergency_contact_phone) {
-      const eErr: Partial<Record<keyof RegForm, string>> = {};
-      if (!/^\d{10}$/.test(regForm.emergency_contact_phone))
-        eErr.emergency_contact_phone = 'Must be exactly 10 digits';
-      else if (regForm.emergency_contact_phone === regForm.phone_number)
-        eErr.emergency_contact_phone = 'Must differ from the patient\'s phone number';
-      if (Object.keys(eErr).length) {
-        setRegErrors(prev => ({ ...prev, ...eErr }));
-        setRegSection('emergency');
-        return;
-      }
-    }
-    setRegSubmitting(true);
-    try {
-      const payload: Record<string, string | undefined> = {};
-      (Object.keys(regForm) as (keyof RegForm)[]).forEach(k => {
-        payload[k] = regForm[k] || undefined;
-      });
-      if (payload.phone_number) payload.phone_number = payload.phone_number.replace(/\D/g, '');
-      if (payload.emergency_contact_phone)
-        payload.emergency_contact_phone = payload.emergency_contact_phone.replace(/\D/g, '') || undefined;
-      const newPatient = await patientService.createPatient(payload as any);
-      toast.success(`Patient registered! PRN: ${newPatient.patient_reference_number}`);
-      setSelectedPatient(newPatient);
-      setPatientSearch(`${newPatient.first_name} ${newPatient.last_name}`);
-      setPatients([]);
-      closeRegModal();
-      triggerRefresh();
-    } catch (err: any) {
-      const detail = err?.response?.data?.detail;
-      toast.error(Array.isArray(detail) ? detail.map((d: any) => d.msg).join(', ') : detail || 'Registration failed');
-    }
-    setRegSubmitting(false);
-  };
-
-  const closeRegModal = () => {
-    setShowRegModal(false);
-    setRegForm(emptyReg());
-    setRegErrors({});
-    setRegSection('personal');
-  };
-
-  const blockNonDigit = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (!/^\d$/.test(e.key) && !['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Home', 'End'].includes(e.key))
-      e.preventDefault();
-  };
-  const blockNonAlpha = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (!/^[A-Za-z\s.'\-]$/.test(e.key) && !['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Home', 'End'].includes(e.key))
-      e.preventDefault();
-  };
-  const validateField = (field: keyof RegForm, value: string) => {
-    let error = '';
-    if (field === 'first_name') {
-      if (!value.trim()) error = 'Required';
-      else if (!/^[A-Za-z\s.'\-]+$/.test(value)) error = 'Alphabets only';
-    } else if (field === 'last_name') {
-      if (!value.trim()) error = 'Required';
-      else if (!/^[A-Za-z\s.'\-]+$/.test(value)) error = 'Alphabets only';
-      else if (value.trim().length <= 2) error = 'Last name must be more than 2 letters';
-    } else if (field === 'phone_number') {
-      if (!value) error = 'Phone is required';
-      else if (!/^\d{10}$/.test(value)) error = 'Must be exactly 10 digits';
-    } else if (field === 'emergency_contact_phone') {
-      if (value && !/^\d{10}$/.test(value)) error = 'Must be exactly 10 digits';
-      else if (value && value === regForm.phone_number) error = 'Must differ from patient phone';
-    } else if (field === 'postal_code') {
-      if (value && !/^\d{6}$/.test(value)) error = 'PIN code must be 6 digits';
-    } else if (field === 'email') {
-      if (value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) error = 'Invalid email';
-    } else if (field === 'address_line_1') {
-      if (!value.trim()) error = 'Address is required';
-    }
-    setRegErrors(prev => ({ ...prev, [field]: error || undefined }));
   };
 
   if (waitlisted) {
@@ -406,7 +285,7 @@ const WalkInRegistration: React.FC = () => {
             Pre-book for Later Date
           </button>
           <button
-            onClick={() => setShowRegModal(true)}
+            onClick={goToRegister}
             className="flex items-center gap-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 px-4 py-2 rounded-lg transition-colors shadow-sm"
           >
             <span className="material-symbols-outlined text-base">person_add</span>
@@ -472,7 +351,7 @@ const WalkInRegistration: React.FC = () => {
               <p className="text-[10px] text-slate-400 pl-6">
                 Try searching with first name, last name, PRN, or phone number.
               </p>
-              <button onClick={() => setShowRegModal(true)} className="flex items-center gap-1 text-xs text-emerald-600 font-semibold hover:underline pl-6">
+              <button onClick={goToRegister} className="flex items-center gap-1 text-xs text-emerald-600 font-semibold hover:underline pl-6">
                 <span className="material-symbols-outlined text-sm">person_add</span>
                 Register as new patient
               </button>
@@ -496,7 +375,7 @@ const WalkInRegistration: React.FC = () => {
           {!selectedPatient && patientSearch.length === 0 && (
             <div className="mt-3 flex flex-col items-center justify-center py-6 text-slate-300">
               <span className="material-symbols-outlined text-4xl mb-1">person_search</span>
-              <p className="text-xs text-slate-400">Search for a patient or <button onClick={() => setShowRegModal(true)} className="text-emerald-600 font-semibold hover:underline">register a new one</button></p>
+              <p className="text-xs text-slate-400">Search for a patient or <button onClick={goToRegister} className="text-emerald-600 font-semibold hover:underline">register a new one</button></p>
             </div>
           )}
         </div>
@@ -591,281 +470,6 @@ const WalkInRegistration: React.FC = () => {
           </button>
         </div>
       </div>
-
-      {/* ══ Register New Patient Modal ═══════════════════════════════════════ */}
-      {showRegModal && (
-        <div
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-          onClick={closeRegModal}
-        >
-          <div
-            className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col"
-            onClick={e => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center">
-                  <span className="material-symbols-outlined text-emerald-600 text-xl">person_add</span>
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">Register New Patient</h3>
-                  <p className="text-[11px] text-slate-400">Create a record then proceed with walk-in</p>
-                </div>
-              </div>
-              <button onClick={closeRegModal} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg">
-                <span className="material-symbols-outlined">close</span>
-              </button>
-            </div>
-
-            {/* Section tabs */}
-            <div className="flex gap-1 px-6 pt-4">
-              {(['personal', 'contact', 'emergency'] as const).map((s, i) => (
-                <button
-                  key={s}
-                  onClick={() => setRegSection(s)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold transition-colors ${
-                    regSection === s ? 'bg-primary text-white' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'
-                  }`}
-                >
-                  <span className="w-4 h-4 rounded-full border-2 border-current flex items-center justify-center text-[9px]">{i + 1}</span>
-                  {s === 'personal' ? 'Personal' : s === 'contact' ? 'Contact' : 'Emergency'}
-                </button>
-              ))}
-            </div>
-
-            {/* Scrollable form body */}
-            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
-
-              {/* ─ Personal ─ */}
-              {regSection === 'personal' && (
-                <>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-1">Title <span className="text-red-500">*</span></label>
-                      <select value={regForm.title} onChange={e => setReg('title', e.target.value)}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none">
-                        <option value="">Select</option>
-                        {TITLE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
-                      </select>
-                      {regErrors.title && <p className="text-[10px] text-red-500 mt-0.5">{regErrors.title}</p>}
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-1">First Name <span className="text-red-500">*</span></label>
-                      <input value={regForm.first_name} onChange={e => setReg('first_name', e.target.value)}
-                        onBlur={e => validateField('first_name', e.target.value)}
-                        placeholder="First name" maxLength={100} onKeyDown={blockNonAlpha}
-                        className={`w-full px-3 py-2 border ${regErrors.first_name ? 'border-red-400' : 'border-slate-200'} rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none`} />
-                      {regErrors.first_name && <p className="text-[10px] text-red-500 mt-0.5">{regErrors.first_name}</p>}
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-1">Last Name <span className="text-red-500">*</span></label>
-                      <input value={regForm.last_name} onChange={e => setReg('last_name', e.target.value)}
-                        onBlur={e => validateField('last_name', e.target.value)}
-                        placeholder="Last name" maxLength={100} onKeyDown={blockNonAlpha}
-                        className={`w-full px-3 py-2 border ${regErrors.last_name ? 'border-red-400' : 'border-slate-200'} rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none`} />
-                      {regErrors.last_name && <p className="text-[10px] text-red-500 mt-0.5">{regErrors.last_name}</p>}
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-1">Gender <span className="text-red-500">*</span></label>
-                      <select value={regForm.gender} onChange={e => setReg('gender', e.target.value)}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none">
-                        <option value="">Select</option>
-                        {GENDER_OPTIONS.map(g => <option key={g} value={g}>{g}</option>)}
-                      </select>
-                      {regErrors.gender && <p className="text-[10px] text-red-500 mt-0.5">{regErrors.gender}</p>}
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-1">Date of Birth <span className="text-red-500">*</span></label>
-                      <input type="date" value={regForm.date_of_birth} onChange={e => setReg('date_of_birth', e.target.value)}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
-                      {regErrors.date_of_birth && <p className="text-[10px] text-red-500 mt-0.5">{regErrors.date_of_birth}</p>}
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-1">Blood Group <span className="text-red-500">*</span></label>
-                      <select value={regForm.blood_group} onChange={e => setReg('blood_group', e.target.value)}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none">
-                        <option value="">Select</option>
-                        {BLOOD_GROUP_OPTIONS.map(b => <option key={b} value={b}>{b}</option>)}
-                      </select>
-                      {regErrors.blood_group && <p className="text-[10px] text-red-500 mt-0.5">{regErrors.blood_group}</p>}
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-1">Email (optional)</label>
-                    <input type="email" value={regForm.email} onChange={e => setReg('email', e.target.value)}
-                      onBlur={e => validateField('email', e.target.value)}
-                      placeholder="patient@example.com"
-                      className={`w-full px-3 py-2 border ${regErrors.email ? 'border-red-400' : 'border-slate-200'} rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none`} />
-                    {regErrors.email && <p className="text-[10px] text-red-500 mt-0.5">{regErrors.email}</p>}
-                  </div>
-                </>
-              )}
-
-              {/* ─ Contact ─ */}
-              {regSection === 'contact' && (
-                <>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-1">Country Code <span className="text-red-500">*</span></label>
-                      <select value={regForm.phone_country_code} onChange={e => setReg('phone_country_code', e.target.value)}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none">
-                        {COUNTRIES.map(c => (
-                          <option key={c.code} value={c.phoneCode}>{c.phoneCode} ({c.name})</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="sm:col-span-2">
-                      <label className="block text-xs font-bold text-slate-500 mb-1">Phone Number <span className="text-red-500">*</span></label>
-                      <input value={regForm.phone_number} onChange={e => setReg('phone_number', e.target.value)}
-                        onBlur={e => validateField('phone_number', e.target.value)}
-                        placeholder="10-digit phone number" maxLength={10} onKeyDown={blockNonDigit}
-                        className={`w-full px-3 py-2 border ${regErrors.phone_number ? 'border-red-400' : 'border-slate-200'} rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none`} />
-                      {regErrors.phone_number && <p className="text-[10px] text-red-500 mt-0.5">{regErrors.phone_number}</p>}
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-1">Address Line 1 <span className="text-red-500">*</span></label>
-                    <input value={regForm.address_line_1} onChange={e => setReg('address_line_1', e.target.value)}
-                      onBlur={e => validateField('address_line_1', e.target.value)}
-                      placeholder="Street address, building..."
-                      className={`w-full px-3 py-2 border ${regErrors.address_line_1 ? 'border-red-400' : 'border-slate-200'} rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none`} />
-                    {regErrors.address_line_1 && <p className="text-[10px] text-red-500 mt-0.5">{regErrors.address_line_1}</p>}
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-1">Address Line 2 (optional)</label>
-                    <input value={regForm.address_line_2} onChange={e => setReg('address_line_2', e.target.value)}
-                      placeholder="Apartment, suite, floor..."
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-1">City</label>
-                      <input value={regForm.city} onChange={e => setReg('city', e.target.value)}
-                        placeholder="City"
-                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-1">State</label>
-                      {regStates.length > 0 ? (
-                        <select value={regForm.state} onChange={e => setReg('state', e.target.value)}
-                          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none">
-                          <option value="">Select</option>
-                          {regStates.map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                      ) : (
-                        <input value={regForm.state} onChange={e => setReg('state', e.target.value)}
-                          placeholder="State / Province"
-                          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
-                      )}
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-1">{regPostalLabel}</label>
-                      <input value={regForm.postal_code} onChange={e => setReg('postal_code', e.target.value)}
-                        onBlur={e => validateField('postal_code', e.target.value)}
-                        placeholder="6-digit PIN code" maxLength={6} onKeyDown={blockNonDigit}
-                        className={`w-full px-3 py-2 border ${regErrors.postal_code ? 'border-red-400' : 'border-slate-200'} rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none`} />
-                      {regErrors.postal_code && <p className="text-[10px] text-red-500 mt-0.5">{regErrors.postal_code}</p>}
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-1">Country</label>
-                      <select value={regForm.country} onChange={e => setReg('country', e.target.value)}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none">
-                        {COUNTRIES.map(c => <option key={c.code} value={c.name}>{c.name}</option>)}
-                      </select>
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* ─ Emergency Contact ─ */}
-              {regSection === 'emergency' && (
-                <>
-                  <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5 flex items-start gap-2">
-                    <span className="material-symbols-outlined text-amber-500 text-lg mt-0.5">info</span>
-                    <p className="text-[11px] text-amber-700">Emergency contact is optional but recommended for walk-in patients.</p>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-1">Contact Name</label>
-                      <input value={regForm.emergency_contact_name} onChange={e => setReg('emergency_contact_name', e.target.value)}
-                        placeholder="Full name" maxLength={200} onKeyDown={blockNonAlpha}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-1">Relationship</label>
-                      <select value={regForm.emergency_contact_relation} onChange={e => setReg('emergency_contact_relation', e.target.value)}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none">
-                        <option value="">Select</option>
-                        {['Father', 'Mother', 'Husband', 'Wife', 'Son', 'Daughter', 'Brother', 'Sister', 'Friend', 'Guardian', 'Other'].map(r => (
-                          <option key={r} value={r}>{r}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="sm:col-span-3">
-                      <label className="block text-xs font-bold text-slate-500 mb-1">Phone Number</label>
-                      <div className="flex gap-2">
-                        <select
-                          value={regForm.emergency_contact_country_code}
-                          onChange={e => setReg('emergency_contact_country_code', e.target.value)}
-                          className="w-32 shrink-0 px-2 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                        >
-                          {COUNTRIES.map(c => (
-                            <option key={c.code} value={c.phoneCode}>{c.phoneCode} ({c.name})</option>
-                          ))}
-                        </select>
-                        <input value={regForm.emergency_contact_phone} onChange={e => setReg('emergency_contact_phone', e.target.value)}
-                          onBlur={e => validateField('emergency_contact_phone', e.target.value)}
-                          placeholder="10-digit emergency phone" maxLength={10} onKeyDown={blockNonDigit}
-                          className={`flex-1 px-3 py-2 border ${regErrors.emergency_contact_phone ? 'border-red-400' : 'border-slate-200'} rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none`} />
-                      </div>
-                      {regErrors.emergency_contact_phone && <p className="text-[10px] text-red-500 mt-0.5">{regErrors.emergency_contact_phone}</p>}
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between gap-3">
-              <button onClick={closeRegModal} className="px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 rounded-lg font-medium">
-                Cancel
-              </button>
-              <div className="flex gap-2">
-                {regSection !== 'personal' && (
-                  <button
-                    onClick={() => setRegSection(regSection === 'emergency' ? 'contact' : 'personal')}
-                    className="px-4 py-2 text-sm font-semibold text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50"
-                  >
-                    <span className="material-symbols-outlined text-sm align-middle mr-1">arrow_back</span>Back
-                  </button>
-                )}
-                {regSection !== 'emergency' ? (
-                  <button
-                    onClick={handleRegNext}
-                    className="px-5 py-2 text-sm font-bold text-white bg-primary rounded-lg hover:bg-primary/90 shadow-sm"
-                  >
-                    Next<span className="material-symbols-outlined text-sm align-middle ml-1">arrow_forward</span>
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleRegSubmit}
-                    disabled={regSubmitting}
-                    className="px-5 py-2 text-sm font-bold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50 shadow-sm"
-                  >
-                    {regSubmitting ? 'Registering...' : 'Register & Select Patient'}
-                    <span className="material-symbols-outlined text-sm align-middle ml-1">check</span>
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {confirmingPatient && confirmAsOf && (
         <OpdAssignConfirmDialog

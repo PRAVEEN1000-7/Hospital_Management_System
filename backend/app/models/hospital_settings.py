@@ -28,6 +28,15 @@ class HospitalSettings(Base):
     appointment_slot_duration_minutes = Column(Integer, default=15)
     appointment_buffer_minutes = Column(Integer, default=5)
     max_daily_appointments_per_doctor = Column(Integer, default=40)
+    # OPD session timings (HH:MM, 24h) — the clinic's standard morning/evening
+    # sessions. Used to pre-fill the Doctor Schedule form (start = morning start,
+    # break = morning end → evening start, end = evening end) instead of the old
+    # hardcoded 09:00–17:00. Stored as strings to match the <input type="time">
+    # values the frontend sends and the string times the schedule form uses.
+    opd_morning_start_time = Column(String(5), default="10:00")
+    opd_morning_end_time = Column(String(5), default="14:00")
+    opd_evening_start_time = Column(String(5), default="17:00")
+    opd_evening_end_time = Column(String(5), default="20:30")
     allow_walk_in = Column(Boolean, default=True)
     allow_emergency_bypass = Column(Boolean, default=True)
     allow_opd_credit = Column(Boolean, default=True)

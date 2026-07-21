@@ -84,6 +84,11 @@ import NewOpticalSale from './pages/optical/NewOpticalSale';
 import OpticalStockAdjustments from './pages/optical/OpticalStockAdjustments';
 import OpticalQueue from './pages/optical/OpticalQueue';
 import OpticalPendingPrescriptions from './pages/optical/OpticalPendingPrescriptions';
+// Laboratory pages
+import LabDashboard from './pages/lab/LabDashboard';
+import LabTestCatalog from './pages/lab/LabTestCatalog';
+import LabQueue from './pages/lab/LabQueue';
+import LabOrderDetail from './pages/lab/LabOrderDetail';
 
 // Inventory pages
 import InventoryDashboard from './pages/inventory/InventoryDashboard';
@@ -594,6 +599,40 @@ const App: React.FC = () => {
                   requiredModule="optical"
                 >
                   <OpticalQueue />
+                </ProtectedRoute>
+              } />
+
+              {/* ── Laboratory module ── */}
+              <Route path="/lab" element={
+                <ProtectedRoute
+                  allowedRoles={['super_admin', 'admin', 'lab_technician']}
+                  requiredModule="lab"
+                >
+                  <LabDashboard />
+                </ProtectedRoute>
+              } />
+              <Route path="/lab/tests" element={
+                <ProtectedRoute
+                  allowedRoles={['super_admin', 'admin', 'lab_technician']}
+                  requiredModule="lab"
+                >
+                  <LabTestCatalog />
+                </ProtectedRoute>
+              } />
+              <Route path="/lab/queue" element={
+                <ProtectedRoute
+                  allowedRoles={['super_admin', 'admin', 'lab_technician']}
+                  requiredModule="lab"
+                >
+                  <LabQueue />
+                </ProtectedRoute>
+              } />
+              <Route path="/lab/orders/:orderId" element={
+                <ProtectedRoute
+                  allowedRoles={['super_admin', 'admin', 'lab_technician']}
+                  requiredModule="lab"
+                >
+                  <LabOrderDetail />
                 </ProtectedRoute>
               } />
 

@@ -87,6 +87,7 @@ def _next_hospital_wide_daily_token(
     from ..models.appointment import Appointment
     from ..models.pharmacy import PharmacyQueueEntry, PharmacySale
     from ..models.optical import OpticalSale
+    from ..models.lab import LabOrder
     from ..core.hospital_time import hospital_today_by_id
 
     target_date = visit_date or hospital_today_by_id(db, hospital_id)
@@ -126,6 +127,9 @@ def _next_hospital_wide_daily_token(
         _max_today(PharmacyQueueEntry, PharmacyQueueEntry.queue_token),
         _max_today(PharmacySale, PharmacySale.queue_token),
         _max_today(OpticalSale, OpticalSale.queue_token),
+        # Lab orders are always created same-day at finalize time (no
+        # pre-booking), so the standard created_at day-range filter suffices.
+        _max_today(LabOrder, LabOrder.queue_token),
     ]
     return max((m for m in maxes if m is not None), default=0) + 1
 

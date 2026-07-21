@@ -347,6 +347,11 @@ class HospitalSettingsUpdate(BaseModel):
     appointment_buffer_minutes: Optional[int] = Field(None, ge=0, le=60)
     max_daily_appointments_per_doctor: Optional[int] = Field(None, ge=1, le=100)
     consultation_fee_default: Optional[str] = Field(None, max_length=20)
+    # OPD session timings (HH:MM 24h) — see the model for how they're used.
+    opd_morning_start_time: Optional[str] = Field(None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    opd_morning_end_time: Optional[str] = Field(None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    opd_evening_start_time: Optional[str] = Field(None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    opd_evening_end_time: Optional[str] = Field(None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
     follow_up_validity_days: Optional[int] = Field(None, ge=1, le=365)
     allow_opd_credit: Optional[bool] = None
     # Legacy aliases (for backward compat)

@@ -207,10 +207,15 @@ async def delete_doctor_schedule(
 async def available_slots(
     doctor_id: str = Query(...),
     date: date = Query(...),
+    # Pre-booking passes this so slot times follow the hospital's configured
+    # OPD session timings rather than a doctor's generic weekly schedule.
+    use_opd_sessions: bool = Query(False),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    slots = get_available_slots(db, _resolve_doctor_id(doctor_id, db), date)
+    slots = get_available_slots(
+        db, _resolve_doctor_id(doctor_id, db), date, prefer_opd_sessions=use_opd_sessions,
+    )
     return AvailableSlotsResponse(doctor_id=doctor_id, date=date, slots=slots)
 
 

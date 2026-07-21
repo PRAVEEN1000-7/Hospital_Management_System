@@ -6,16 +6,17 @@ from typing import Optional, List
 from datetime import date, datetime
 from decimal import Decimal
 
-VALID_INVOICE_TYPES = ["opd", "pharmacy", "optical", "combined"]
+VALID_INVOICE_TYPES = ["opd", "pharmacy", "optical", "lab", "combined"]
 VALID_INVOICE_STATUSES = ["draft", "issued", "partially_paid", "paid", "overdue", "cancelled", "void"]
-VALID_ITEM_TYPES = ["consultation", "medicine", "optical_product", "service", "procedure", "registration"]
+VALID_ITEM_TYPES = ["consultation", "medicine", "optical_product", "lab_test", "service", "procedure", "registration"]
 
 # Mapping: invoice_type → allowed item_types
 INVOICE_TYPE_ITEM_MAPPING = {
     "opd": ["consultation", "service", "procedure", "registration"],
     "pharmacy": ["medicine"],
     "optical": ["optical_product", "service"],
-    "combined": ["consultation", "medicine", "optical_product", "service", "procedure", "registration"],
+    "lab": ["lab_test", "service"],
+    "combined": ["consultation", "medicine", "optical_product", "lab_test", "service", "procedure", "registration"],
 }
 
 

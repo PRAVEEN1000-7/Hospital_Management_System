@@ -10,8 +10,10 @@ import walkInService from '../services/walkInService';
 import scheduleService from '../services/scheduleService';
 import hospitalService, { type HospitalInstitutionOption } from '../services/hospitalService';
 import opticalService from '../services/opticalService';
+import labService from '../services/labService';
 import type { PrescriptionItemCreate, Medicine, PrescriptionTemplate, EyeSide } from '../types/prescription';
 import type { OpticalPrescriptionCreateData } from '../types/optical';
+import type { LabTest, PatientLabResult } from '../types/lab';
 import type { Patient } from '../types/patient';
 import type { DoctorOption } from '../types/appointment';
 import { genId } from '../utils/id';
@@ -137,6 +139,9 @@ const PrescriptionBuilder: React.FC = () => {
   const isEditMode = Boolean(editId);
   const pharmacyEnabled = isModuleEnabled('pharmacy');
   const opticalModuleEnabled = isModuleEnabled('optical');
+  // Lab tests apply to every hospital type (not eye-specific), so this card is
+  // gated by the module flag alone — unlike the optical card's isEyeHospital.
+  const labModuleEnabled = isModuleEnabled('lab');
 
   // Form state
   const [patientId, setPatientId] = useState(searchParams.get('patient_id') || '');
@@ -164,6 +169,15 @@ const PrescriptionBuilder: React.FC = () => {
     const value = e.target.value;
     setOpticalRx(prev => ({ ...prev, [field]: value === '' ? undefined : Number(value) }));
   };
+  // Optional Laboratory tests, ordered alongside the drug prescription in the
+  // same visit — any hospital type (gated by labModuleEnabled).
+  const [labTests, setLabTests] = useState<LabTest[]>([]);
+  const [selectedLabTestIds, setSelectedLabTestIds] = useState<string[]>([]);
+  const [labNotes, setLabNotes] = useState('');
+  // Completed/pending lab results for THIS patient — shown read-only in the
+  // consultation view so the doctor sees the tests they advised (and their
+  // results once done) without leaving the prescription screen.
+  const [pastLabResults, setPastLabResults] = useState<PatientLabResult[]>([]);
   const [blocks, setBlocks] = useState<DiagnosisBlock[]>([createBlock()]);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -181,6 +195,21 @@ const PrescriptionBuilder: React.FC = () => {
     if (!isEyeHospital) return;
     hospitalService.getInstitutions().then(setInstitutions).catch(() => {});
   }, [isEyeHospital]);
+
+  // Load the orderable lab test catalog once, when the module is on and we're
+  // creating (not editing) a prescription.
+  useEffect(() => {
+    if (!labModuleEnabled || isEditMode) return;
+    labService.getTests(1, 500).then(res => setLabTests(res.data)).catch(() => {});
+  }, [labModuleEnabled, isEditMode]);
+
+  // The patient's own lab results (all finalized orders) — refreshed whenever
+  // the selected patient changes, so a doctor consulting a returning patient
+  // immediately sees the outcome of tests advised on a previous visit.
+  useEffect(() => {
+    if (!labModuleEnabled || !patient?.id) { setPastLabResults([]); return; }
+    labService.getPatientResults(patient.id).then(setPastLabResults).catch(() => {});
+  }, [labModuleEnabled, patient?.id]);
 
   // Vitals state
   const [vitalsBp, setVitalsBp] = useState('');
@@ -705,10 +734,15 @@ const PrescriptionBuilder: React.FC = () => {
     );
     const hasOpticalFields = Object.values(opticalRx).some(v => v !== undefined && v !== '');
     const hasOptical = isEyeHospital && addOpticalRx && hasOpticalFields;
-    if (validItems.length === 0 && !hasOptical && !skipEmptyCheck) {
+    // A lab-only prescription (tests, no medicines/optical) is valid — the
+    // server-side finalize handles the empty-medicine case for lab orders.
+    const hasLab = labModuleEnabled && selectedLabTestIds.length > 0;
+    if (validItems.length === 0 && !hasOptical && !hasLab && !skipEmptyCheck) {
       showToast('error', isEyeHospital
-        ? 'Please add at least one medicine or fill out the optical prescription.'
-        : 'Add at least one medicine'
+        ? 'Please add at least one medicine, a lab test, or fill out the optical prescription.'
+        : labModuleEnabled
+          ? 'Add at least one medicine or lab test'
+          : 'Add at least one medicine'
       );
       return null;
     }
@@ -775,6 +809,28 @@ const PrescriptionBuilder: React.FC = () => {
               'error',
               `Prescription saved, but the optical prescription could not be created: ${
                 opticalErr?.response?.data?.detail || 'unknown error'
+              }`,
+            );
+          }
+        }
+
+        // Lab order — independent, non-blocking, same sequencing as optical:
+        // a failure here doesn't roll back the drug prescription. The
+        // server-side finalize_prescription links + queues it automatically.
+        if (hasLab) {
+          try {
+            await labService.createOrder({
+              patient_id: patient.id,
+              appointment_id: appointmentId || undefined,
+              prescription_id: rxId,
+              test_ids: selectedLabTestIds,
+              notes: labNotes || undefined,
+            });
+          } catch (labErr: any) {
+            showToast(
+              'error',
+              `Prescription saved, but the lab order could not be created: ${
+                labErr?.response?.data?.detail || 'unknown error'
               }`,
             );
           }
@@ -1541,6 +1597,127 @@ const PrescriptionBuilder: React.FC = () => {
             />
           </div>
 
+
+          {/* Lab Results (read-only) — the outcome of tests advised for this
+              patient, so the doctor reviews them in-consultation without leaving
+              the screen. Shown whenever there are any (create or edit mode). */}
+          {labModuleEnabled && pastLabResults.length > 0 && (
+            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+              <h3 className="font-semibold mb-4 flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-sm">biotech</span>
+                Lab Results
+              </h3>
+              <div className="space-y-3">
+                {pastLabResults.map(order => (
+                  <div key={order.id} className="border border-slate-200 rounded-lg overflow-hidden">
+                    <div className="flex items-center justify-between px-3 py-2 bg-slate-50 border-b border-slate-100">
+                      <span className="text-xs font-mono text-slate-600">
+                        {order.order_number}
+                        <span className={`ml-2 px-1.5 py-0.5 rounded-full text-[10px] font-medium capitalize ${
+                          order.status === 'completed' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                        }`}>{order.status.replace('_', ' ')}</span>
+                      </span>
+                      <span className="text-[11px] text-slate-400">
+                        {new Date(order.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <tbody className="divide-y divide-slate-100">
+                          {order.items.map(item => (
+                            <tr key={item.id}>
+                              <td className="px-3 py-1.5 text-slate-700">{item.test_name}</td>
+                              <td className="px-3 py-1.5 text-slate-900">
+                                {item.status === 'completed'
+                                  ? `${item.result_value ?? '—'}${item.result_unit ? ` ${item.result_unit}` : ''}`
+                                  : <span className="text-slate-400 italic">Pending</span>}
+                              </td>
+                              <td className="px-3 py-1.5 text-slate-400 text-xs">{item.reference_range || ''}</td>
+                              <td className="px-3 py-1.5">
+                                {item.result_flag && (
+                                  <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium capitalize ${
+                                    item.result_flag === 'normal' ? 'bg-emerald-50 text-emerald-700'
+                                      : item.result_flag === 'high' ? 'bg-red-50 text-red-600'
+                                      : item.result_flag === 'low' ? 'bg-amber-50 text-amber-700'
+                                      : 'bg-orange-50 text-orange-700'
+                                  }`}>{item.result_flag}</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Laboratory Tests — any hospital type (gated by the lab module),
+              create-mode only. Ordered as an independent record; the server-side
+              finalize links + queues it when the doctor finalizes this Rx. */}
+          {labModuleEnabled && !isEditMode && (
+            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold flex items-center gap-2">
+                  <span className="material-symbols-outlined text-primary text-sm">biotech</span>
+                  Laboratory Tests
+                </h3>
+                {selectedLabTestIds.length > 0 && (
+                  <span className="px-3 py-1 text-xs font-bold rounded-lg bg-primary/10 text-primary">
+                    {selectedLabTestIds.length} selected
+                  </span>
+                )}
+              </div>
+              {labTests.length === 0 ? (
+                <p className="text-sm text-slate-400">
+                  No active lab tests in the catalog yet. Add tests under Laboratory → Test Catalog.
+                </p>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-64 overflow-y-auto">
+                    {labTests.map(t => {
+                      const checked = selectedLabTestIds.includes(t.id);
+                      return (
+                        <label
+                          key={t.id}
+                          className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer text-sm transition-colors ${
+                            checked ? 'border-primary bg-primary/5' : 'border-slate-200 hover:border-primary/40'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => setSelectedLabTestIds(prev =>
+                              prev.includes(t.id) ? prev.filter(id => id !== t.id) : [...prev, t.id]
+                            )}
+                            className="accent-primary"
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span className="block font-medium text-slate-800 truncate">{t.name}</span>
+                            <span className="block text-xs text-slate-400">
+                              {t.code}{t.price ? ` · ₹${Number(t.price).toFixed(2)}` : ''}
+                            </span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Lab Notes</label>
+                    <textarea
+                      rows={2}
+                      value={labNotes}
+                      onChange={e => setLabNotes(e.target.value)}
+                      className="input-field"
+                      placeholder="Instructions for the lab (optional)..."
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Optical (Spectacle) Prescription — eye-hospital feature pack only,
               create-mode only (it's a separate record, not part of this edit).

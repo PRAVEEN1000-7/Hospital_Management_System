@@ -4,6 +4,7 @@ import { useDashboardRefresh } from '../contexts/DashboardRefreshContext';
 import scheduleService from '../services/scheduleService';
 import appointmentService from '../services/appointmentService';
 import patientService from '../services/patientService';
+import appointmentSettingsService from '../services/appointmentSettingsService';
 import TimeSlotPicker from '../components/appointments/TimeSlotPicker';
 import {
   TITLE_OPTIONS, GENDER_OPTIONS, BLOOD_GROUP_OPTIONS,
@@ -49,6 +50,10 @@ const AppointmentBooking: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState('');
   const [slots, setSlots] = useState<TimeSlot[]>([]);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
+  // OPD session boundaries (from Appointment Settings) — used to split the
+  // slot picker into Morning / Evening sessions so the configured timings are
+  // visible right where the slot is chosen.
+  const [sessionTimes, setSessionTimes] = useState<{ morningEnd: string; eveningStart: string } | null>(null);
   const [consultationType, setConsultationType] = useState('offline');
   const [reason, setReason] = useState('');
   const [slotsLoading, setSlotsLoading] = useState(false);
@@ -191,11 +196,24 @@ const AppointmentBooking: React.FC = () => {
       .finally(() => setScheduleCheckLoading(false));
   }, [selectedDoctor]);
 
+  // Load the configured OPD session timings once (non-fatal on failure).
+  useEffect(() => {
+    appointmentSettingsService.getSettings()
+      .then(s => setSessionTimes({
+        morningEnd: (s.opd_morning_end_time || '14:00').slice(0, 5),
+        eveningStart: (s.opd_evening_start_time || '17:00').slice(0, 5),
+      }))
+      .catch(() => {});
+  }, []);
+
   // Fetch slots when doctor+date selected
   useEffect(() => {
     if (!selectedDoctor || !selectedDate) return;
     setSlotsLoading(true);
-    scheduleService.getAvailableSlots(selectedDoctor.doctor_id, selectedDate)
+    // Pre-booking uses the hospital's configured OPD session timings for the
+    // slot times (Settings → OPD Session Timings), not a doctor's generic
+    // weekly schedule.
+    scheduleService.getAvailableSlots(selectedDoctor.doctor_id, selectedDate, true)
       .then((res: AvailableSlots) => setSlots(res.slots))
       .catch(() => setSlots([]))
       .finally(() => setSlotsLoading(false));
@@ -504,7 +522,13 @@ const AppointmentBooking: React.FC = () => {
                 <span className="material-symbols-outlined animate-spin text-3xl">progress_activity</span>
               </div>
             ) : (
-              <TimeSlotPicker slots={slots} selectedTime={selectedTime} onSelect={setSelectedTime} />
+              <TimeSlotPicker
+                slots={slots}
+                selectedTime={selectedTime}
+                onSelect={setSelectedTime}
+                morningEndTime={sessionTimes?.morningEnd}
+                eveningStartTime={sessionTimes?.eveningStart}
+              />
             )}
             <div>
               <label className="block text-xs font-bold text-slate-500 mt-4 mb-1">Reason for Visit (optional)</label>

@@ -40,9 +40,9 @@ const scheduleService = {
   },
 
   // ── Available slots ──────────────────────────────────────────────────
-  async getAvailableSlots(doctorId: string, date: string): Promise<AvailableSlots> {
+  async getAvailableSlots(doctorId: string, date: string, useOpdSessions = false): Promise<AvailableSlots> {
     const res = await api.get<AvailableSlots>('/schedules/available-slots', {
-      params: { doctor_id: doctorId, date },
+      params: { doctor_id: doctorId, date, use_opd_sessions: useOpdSessions },
     });
     return res.data;
   },

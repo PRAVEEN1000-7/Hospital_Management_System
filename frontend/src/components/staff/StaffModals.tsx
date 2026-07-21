@@ -134,7 +134,7 @@ type ResetFormData = z.infer<typeof resetPasswordSchema>;
 // holding it keep working — it just can't be assigned to anyone new.
 const ALL_ROLES = [
   'super_admin', 'admin', 'doctor', 'nurse', 'receptionist',
-  'pharmacist', 'optical_staff', 'cashier', 'inventory_manager',
+  'pharmacist', 'optical_staff', 'lab_technician', 'cashier', 'inventory_manager',
   'report_viewer',
 ] as const;
 
@@ -143,6 +143,7 @@ const ROLE_MODULE_REQUIREMENTS: Partial<Record<string, string[]>> = {
   cashier:           ['billing'],
   inventory_manager: ['inventory'],
   optical_staff:     ['optical'],
+  lab_technician:    ['lab'],
   report_viewer:     ['analytics'],
   // doctor, nurse, receptionist, admin — rely on CORE modules only, always available
 };

@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import scheduleService from '../services/scheduleService';
 import doctorService from '../services/doctorService';
+import appointmentSettingsService from '../services/appointmentSettingsService';
 import ScheduleMonthCalendar from '../components/appointments/ScheduleMonthCalendar';
 import type { DoctorSchedule, DoctorScheduleCreate, DoctorLeave, DoctorLeaveCreate, DoctorOption } from '../types/appointment';
 import { formatDateOnly, formatLocalDateISO } from '../utils/calendarDate';
@@ -31,17 +32,47 @@ const DoctorSchedulePage: React.FC = () => {
   const [showForm, setShowForm] = useState(false);
   const todayStr = new Date().toISOString().split('T')[0];
   const [formDate, setFormDate] = useState(todayStr);
-  const [formStartTime, setFormStartTime] = useState('09:00');
-  const [formEndTime, setFormEndTime] = useState('17:00');
+  // OPD session defaults come from hospital settings (Appointment Settings →
+  // OPD Session Timings) instead of hardcoded values. A new schedule pre-fills
+  // start = morning start, break = morning end → evening start, end = evening
+  // end, so one schedule row covers both sessions with the midday gap as a
+  // break. Fallbacks match the standard 10:00–14:00 / 17:00–20:30 clinic hours.
+  const [sessionDefaults, setSessionDefaults] = useState({
+    start: '10:00', breakStart: '14:00', breakEnd: '17:00', end: '20:30',
+  });
+  const [formStartTime, setFormStartTime] = useState('10:00');
+  const [formEndTime, setFormEndTime] = useState('20:30');
+  const [formBreakStart, setFormBreakStart] = useState('14:00');
+  const [formBreakEnd, setFormBreakEnd] = useState('17:00');
   const [formMaxPatients, setFormMaxPatients] = useState(20);
   const [formRepeat, setFormRepeat] = useState(false);
   const [formRepeatDays, setFormRepeatDays] = useState<Set<number>>(new Set());
   const [formEndDate, setFormEndDate] = useState('');
 
+  // Load the configured OPD session timings once and use them as the add-form
+  // defaults. Non-fatal on failure — the fallback values above still apply.
+  useEffect(() => {
+    appointmentSettingsService.getSettings().then(s => {
+      const d = {
+        start: (s.opd_morning_start_time || '10:00').slice(0, 5),
+        breakStart: (s.opd_morning_end_time || '14:00').slice(0, 5),
+        breakEnd: (s.opd_evening_start_time || '17:00').slice(0, 5),
+        end: (s.opd_evening_end_time || '20:30').slice(0, 5),
+      };
+      setSessionDefaults(d);
+      setFormStartTime(d.start);
+      setFormEndTime(d.end);
+      setFormBreakStart(d.breakStart);
+      setFormBreakEnd(d.breakEnd);
+    }).catch(() => {});
+  }, []);
+
   const resetAddForm = () => {
     setFormDate(todayStr);
-    setFormStartTime('09:00');
-    setFormEndTime('17:00');
+    setFormStartTime(sessionDefaults.start);
+    setFormEndTime(sessionDefaults.end);
+    setFormBreakStart(sessionDefaults.breakStart);
+    setFormBreakEnd(sessionDefaults.breakEnd);
     setFormMaxPatients(20);
     setFormRepeat(false);
     setFormRepeatDays(new Set());
@@ -137,6 +168,8 @@ const DoctorSchedulePage: React.FC = () => {
           day_of_week: day,
           start_time: formStartTime,
           end_time: formEndTime,
+          break_start_time: formBreakStart || undefined,
+          break_end_time: formBreakEnd || undefined,
           max_patients: formMaxPatients,
           effective_from: formDate,
           effective_to: formEndDate,
@@ -148,6 +181,8 @@ const DoctorSchedulePage: React.FC = () => {
           day_of_week: dayOfWeek,
           start_time: formStartTime,
           end_time: formEndTime,
+          break_start_time: formBreakStart || undefined,
+          break_end_time: formBreakEnd || undefined,
           max_patients: formMaxPatients,
           effective_from: formDate,
           effective_to: formDate,
@@ -521,6 +556,23 @@ const DoctorSchedulePage: React.FC = () => {
                 <div>
                   <label className="block text-xs font-bold text-slate-500 mb-1">End Time</label>
                   <input type="time" value={formEndTime} onChange={(e) => setFormEndTime(e.target.value)}
+                    onClick={(e) => e.currentTarget.showPicker?.()}
+                    className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
+                </div>
+              </div>
+              {/* Midday break (gap between the morning and evening OPD sessions).
+                  Pre-filled from Appointment Settings → OPD Session Timings.
+                  Clear both to run a single continuous session. */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">Break Start <span className="font-normal text-slate-400">(optional)</span></label>
+                  <input type="time" value={formBreakStart} onChange={(e) => setFormBreakStart(e.target.value)}
+                    onClick={(e) => e.currentTarget.showPicker?.()}
+                    className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 mb-1">Break End <span className="font-normal text-slate-400">(optional)</span></label>
+                  <input type="time" value={formBreakEnd} onChange={(e) => setFormBreakEnd(e.target.value)}
                     onClick={(e) => e.currentTarget.showPicker?.()}
                     className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
                 </div>

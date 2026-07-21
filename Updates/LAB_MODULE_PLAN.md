@@ -96,17 +96,17 @@ Status: this SQL file has been written and applied to the local dev DB.
 
 ## Implementation progress
 
-- [x] `database_hole/13_add_lab_module.sql` written and applied to local dev DB (4 tables + `saas_core.modules` row).
-- [ ] `backend/app/models/lab.py`
-- [ ] `backend/app/schemas/lab.py`, `invoice.py`/`user.py` extensions
-- [ ] `backend/app/services/lab_service.py`
-- [ ] `backend/app/routers/lab.py` + register in `main.py`
-- [ ] Wire into `billing_queue_service.py` / `prescription_service.py`
-- [ ] Backend syntax/import verification
-- [ ] `frontend/src/types/lab.ts`, `services/labService.ts`
-- [ ] `frontend/src/pages/lab/*` (Dashboard, TestCatalog, Queue, OrderDetail)
-- [ ] `PrescriptionBuilder.tsx` lab ordering card
-- [ ] `PatientDetail.tsx` Lab Results section
-- [ ] Nav/routes/roles wiring (`Layout.tsx`, `App.tsx`, `StaffModals.tsx`, `constants.ts`)
-- [ ] Frontend `tsc --noEmit` verification
-- [ ] End-to-end walkthrough
+- [x] `database_hole/13_add_lab_module.sql` written and applied to local dev DB (4 tables + `saas_core.modules` row). **Also added a guarded drop of the legacy `lab_orders` stub from `01_full_schema.sql:628` (different shape, no `hospital_id`) — without it, `CREATE TABLE IF NOT EXISTS lab_orders` silently no-ops against the stub on every fresh DB.**
+- [x] `backend/app/models/lab.py`
+- [x] `backend/app/schemas/lab.py`, `invoice.py`/`user.py` extensions
+- [x] `backend/app/services/lab_service.py`
+- [x] `backend/app/routers/lab.py` + register in `main.py`
+- [x] Wire into `billing_queue_service.py` / `prescription_service.py` (added `_find_linked_lab_order` helper; lab finalize/enqueue block is unconditional, not eye-hospital-gated)
+- [x] Backend syntax/import verification (ast + live venv import, all pass; models query-verified against the live DB)
+- [x] `frontend/src/types/lab.ts`, `services/labService.ts` (+ `types/billing.ts` `lab`/`lab_test` enum extensions)
+- [x] `frontend/src/pages/lab/*` (Dashboard, TestCatalog, Queue, OrderDetail)
+- [x] `PrescriptionBuilder.tsx` lab ordering card
+- [x] `PatientDetail.tsx` Lab Results section
+- [x] Nav/routes/roles wiring (`Layout.tsx`, `App.tsx`, `StaffModals.tsx`, `constants.ts`)
+- [x] Frontend `tsc --noEmit` verification (exit 0, no errors)
+- [ ] End-to-end walkthrough (manual — needs the running app; not yet driven)

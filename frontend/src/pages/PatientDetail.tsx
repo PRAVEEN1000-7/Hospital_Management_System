@@ -2,7 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { format, differenceInYears } from 'date-fns';
 import patientService from '../services/patientService';
+import labService from '../services/labService';
 import type { Patient } from '../types/patient';
+import type { PatientLabResult } from '../types/lab';
 import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
 import ImageCropModal from '../components/common/ImageCropModal';
@@ -16,8 +18,9 @@ const PatientDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const toast = useToast();
-  const { user } = useAuth();
+  const { user, isModuleEnabled } = useAuth();
   const canEdit = Boolean(user?.roles?.some(r => EDIT_ALLOWED_ROLES.includes(r)));
+  const [labResults, setLabResults] = useState<PatientLabResult[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [patient, setPatient] = useState<Patient | null>(null);
   const [loading, setLoading] = useState(true);
@@ -41,6 +44,12 @@ const PatientDetail: React.FC = () => {
     refreshPatient().finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  // Lab results — only when the lab module is enabled; non-fatal on failure.
+  useEffect(() => {
+    if (!id || !isModuleEnabled('lab')) return;
+    labService.getPatientResults(id).then(setLabResults).catch(() => {});
+  }, [id, isModuleEnabled]);
 
   // Reset the broken-image flag whenever the photo actually changes (e.g. after a new upload).
   useEffect(() => {
@@ -278,6 +287,68 @@ const PatientDetail: React.FC = () => {
             </p>
           </div>
         </div>
+
+        {/* Lab Results */}
+        {labResults.length > 0 && (
+          <div className="p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <span className="w-8 h-[2px] bg-primary/20 rounded-full"></span>
+              <h2 className="text-sm font-bold text-primary uppercase tracking-wider">Lab Results</h2>
+            </div>
+            <div className="space-y-4">
+              {labResults.map(order => (
+                <div key={order.id} className="border border-slate-200 rounded-lg overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border-b border-slate-100">
+                    <div className="text-sm">
+                      <span className="font-mono text-slate-600">{order.order_number}</span>
+                      {order.doctor_name && <span className="text-slate-400"> · {order.doctor_name}</span>}
+                    </div>
+                    <span className="text-xs text-slate-400">
+                      {(() => { try { return format(new Date(order.created_at), 'dd MMM yyyy'); } catch { return ''; } })()}
+                    </span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-xs text-slate-400 uppercase">
+                          <th className="px-4 py-2 font-medium">Test</th>
+                          <th className="px-4 py-2 font-medium">Result</th>
+                          <th className="px-4 py-2 font-medium">Reference</th>
+                          <th className="px-4 py-2 font-medium">Flag</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {order.items.map(item => (
+                          <tr key={item.id}>
+                            <td className="px-4 py-2 text-slate-800">{item.test_name}</td>
+                            <td className="px-4 py-2 text-slate-800">
+                              {item.status === 'completed'
+                                ? `${item.result_value ?? '—'}${item.result_unit ? ` ${item.result_unit}` : ''}`
+                                : <span className="text-slate-400 italic">Pending</span>}
+                            </td>
+                            <td className="px-4 py-2 text-slate-500">{item.reference_range || '—'}</td>
+                            <td className="px-4 py-2">
+                              {item.result_flag ? (
+                                <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium capitalize ${
+                                  item.result_flag === 'normal' ? 'bg-emerald-50 text-emerald-700'
+                                    : item.result_flag === 'high' ? 'bg-red-50 text-red-600'
+                                    : item.result_flag === 'low' ? 'bg-amber-50 text-amber-700'
+                                    : 'bg-orange-50 text-orange-700'
+                                }`}>
+                                  {item.result_flag}
+                                </span>
+                              ) : '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Emergency Contact */}
         {patient.emergency_contact_name && (

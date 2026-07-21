@@ -10,7 +10,7 @@ type SettingGroup = {
     key: keyof HospitalSettings;
     label: string;
     description: string;
-    type: 'number' | 'text' | 'boolean';
+    type: 'number' | 'text' | 'boolean' | 'time';
     suffix?: string;
   }[];
 };
@@ -24,6 +24,16 @@ const settingGroups: SettingGroup[] = [
       { key: 'appointment_buffer_minutes', label: 'Buffer Time', description: 'Buffer time between appointments (0-60)', type: 'number', suffix: 'min' },
       { key: 'max_daily_appointments_per_doctor', label: 'Max Daily Appointments', description: 'Maximum appointments per doctor per day (1-100)', type: 'number' },
       { key: 'follow_up_validity_days', label: 'Follow-up Validity', description: 'Days within which follow-up is valid (1-365)', type: 'number', suffix: 'days' },
+    ],
+  },
+  {
+    title: 'OPD Session Timings',
+    icon: 'schedule',
+    fields: [
+      { key: 'opd_morning_start_time', label: 'Morning Session Start', description: 'Start of the morning OPD session (e.g. 10:00)', type: 'time' },
+      { key: 'opd_morning_end_time', label: 'Morning Session End', description: 'End of the morning OPD session (e.g. 14:00)', type: 'time' },
+      { key: 'opd_evening_start_time', label: 'Evening Session Start', description: 'Start of the evening OPD session (e.g. 17:00)', type: 'time' },
+      { key: 'opd_evening_end_time', label: 'Evening Session End', description: 'End of the evening OPD session (e.g. 20:30)', type: 'time' },
     ],
   },
   {
@@ -235,7 +245,7 @@ const AppointmentSettings: React.FC = () => {
                               <span className="text-sm text-slate-500 font-medium">₹</span>
                             )}
                             <input
-                              type={field.type === 'number' ? 'number' : 'text'}
+                              type={field.type === 'number' ? 'number' : field.type === 'time' ? 'time' : 'text'}
                               value={value !== null && value !== undefined ? String(value) : ''}
                               onChange={(e) => handleChange(field.key, field.type === 'number' ? Number(e.target.value) : e.target.value)}
                               className={`px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none ${

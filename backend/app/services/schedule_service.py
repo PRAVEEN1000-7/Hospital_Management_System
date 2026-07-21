@@ -175,11 +175,73 @@ def _minutes_to_time(m: int) -> time:
     return time(hour=m // 60, minute=m % 60)
 
 
-def get_available_slots(db: Session, doctor_id: str | uuid.UUID, target_date: date) -> list[dict]:
-    """Get available time slots for a doctor on a specific date."""
+def _parse_hhmm(value, fallback: time) -> time:
+    """Parse a 'HH:MM' settings string into a time; fall back on bad/empty input."""
+    try:
+        parts = str(value).split(":")
+        return time(hour=int(parts[0]), minute=int(parts[1]))
+    except Exception:
+        return fallback
+
+
+def _opd_settings_schedule_source(db: Session, doctor_id: uuid.UUID) -> Optional[dict]:
+    """Build a single schedule source from the hospital's configured OPD
+    session timings (Settings → OPD Session Timings) so pre-booking still
+    offers the standard morning/evening slots when a doctor has no explicit
+    schedule for the date. Returns None if the hospital/settings can't be
+    resolved (caller then yields no slots, as before).
+
+    Represented as one source spanning morning start → evening end, with the
+    midday gap (morning end → evening start) as the break — so the slot
+    generator emits the morning slots and the evening slots with nothing in
+    between, matching how a two-session schedule row works.
+    """
+    from ..models.hospital_settings import HospitalSettings
+
+    doctor = db.query(Doctor).filter(Doctor.id == doctor_id).first()
+    if not doctor or not getattr(doctor, "hospital_id", None):
+        return None
+    settings = db.query(HospitalSettings).filter(
+        HospitalSettings.hospital_id == doctor.hospital_id
+    ).first()
+    if not settings:
+        return None
+
+    morning_start = _parse_hhmm(getattr(settings, "opd_morning_start_time", None), time(10, 0))
+    morning_end = _parse_hhmm(getattr(settings, "opd_morning_end_time", None), time(14, 0))
+    evening_start = _parse_hhmm(getattr(settings, "opd_evening_start_time", None), time(17, 0))
+    evening_end = _parse_hhmm(getattr(settings, "opd_evening_end_time", None), time(20, 30))
+
+    return {
+        "start_time": morning_start,
+        "end_time": evening_end,
+        "slot_duration_minutes": settings.appointment_slot_duration_minutes or 15,
+        # Daily capacity for a settings-driven day (also the per-slot ceiling,
+        # matching how DoctorSchedule.max_patients is used below).
+        "max_patients": settings.max_daily_appointments_per_doctor or 40,
+        "break_start_time": morning_end,
+        "break_end_time": evening_start,
+    }
+
+
+def get_available_slots(
+    db: Session,
+    doctor_id: str | uuid.UUID,
+    target_date: date,
+    prefer_opd_sessions: bool = False,
+) -> list[dict]:
+    """Get available time slots for a doctor on a specific date.
+
+    When `prefer_opd_sessions` is True (pre-booking), the hospital's configured
+    OPD session timings (Settings → OPD Session Timings) are used as the slot
+    source — so booking offers the standard morning/evening times regardless of
+    a doctor's generic weekly schedule. It falls through to the doctor's own
+    schedule when settings can't be resolved. Existing bookings and leaves are
+    always honoured either way.
+    """
     if isinstance(doctor_id, str):
         doctor_id = uuid.UUID(doctor_id)
-    
+
     # Check if doctor is on leave — a full-day leave blocks everything up
     # front; morning/afternoon leaves are applied per-slot further down so
     # only the covered half of the day is excluded.
@@ -187,38 +249,47 @@ def get_available_slots(db: Session, doctor_id: str | uuid.UUID, target_date: da
     if leave is not None and leave.leave_type == "full_day":
         return []
 
-    # Get doctor's schedules for this weekday
-    weekday = target_date.isoweekday() % 7  # 0=Sunday
-    schedules = db.query(DoctorSchedule).filter(
-        DoctorSchedule.doctor_id == doctor_id,
-        DoctorSchedule.day_of_week == weekday,
-        DoctorSchedule.is_active == True,
-    ).all()
-    
-    if not schedules:
-        return []
-    
-    # Build schedule sources
     schedule_sources = []
-    for sched in schedules:
-        # Check effective dates
-        if sched.effective_from and target_date < sched.effective_from:
-            continue
-        if sched.effective_to and target_date > sched.effective_to:
-            continue
-        
-        schedule_sources.append({
-            "start_time": sched.start_time,
-            "end_time": sched.end_time,
-            "slot_duration_minutes": sched.slot_duration_minutes,
-            "max_patients": sched.max_patients or 1,
-            "break_start_time": sched.break_start_time,
-            "break_end_time": sched.break_end_time,
-        })
-    
+
+    # Pre-booking: the configured OPD session windows drive the slot times.
+    if prefer_opd_sessions:
+        settings_source = _opd_settings_schedule_source(db, doctor_id)
+        if settings_source is not None:
+            schedule_sources = [settings_source]
+
     if not schedule_sources:
-        return []
-    
+        # Doctor's own recurring schedules for this weekday.
+        weekday = target_date.isoweekday() % 7  # 0=Sunday
+        schedules = db.query(DoctorSchedule).filter(
+            DoctorSchedule.doctor_id == doctor_id,
+            DoctorSchedule.day_of_week == weekday,
+            DoctorSchedule.is_active == True,
+        ).all()
+
+        for sched in schedules:
+            # Respect each row's effective-date range.
+            if sched.effective_from and target_date < sched.effective_from:
+                continue
+            if sched.effective_to and target_date > sched.effective_to:
+                continue
+
+            schedule_sources.append({
+                "start_time": sched.start_time,
+                "end_time": sched.end_time,
+                "slot_duration_minutes": sched.slot_duration_minutes,
+                "max_patients": sched.max_patients or 1,
+                "break_start_time": sched.break_start_time,
+                "break_end_time": sched.break_end_time,
+            })
+
+        # No schedule covering this date → fall back to the configured OPD
+        # session timings so slots still appear based on the settings.
+        if not schedule_sources:
+            settings_source = _opd_settings_schedule_source(db, doctor_id)
+            if settings_source is None:
+                return []
+            schedule_sources.append(settings_source)
+
     # Get existing appointments
     existing = db.query(Appointment).filter(
         Appointment.doctor_id == doctor_id,

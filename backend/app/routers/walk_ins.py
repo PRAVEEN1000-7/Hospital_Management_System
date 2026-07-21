@@ -498,6 +498,9 @@ async def get_queue_status(
             "doctor_id": doctor_id_str,
             "doctor_name": doctor_name,
             "chief_complaint": chief_complaint,
+            # Booked slot time for pre-booked/scheduled visits — the queue detail
+            # panel had no way to show what time the appointment was booked for.
+            "start_time": str(appt.start_time) if appt and appt.start_time else None,
             "check_in_at": check_in_time,
             "called_at": qe.called_at.isoformat() if qe.called_at else None,
             "consultation_start_at": appt.consultation_start_at.isoformat() if appt and appt.consultation_start_at else None,
@@ -1073,6 +1076,7 @@ async def get_upcoming_queue(
             "queue_number": qe.queue_number,
             "status": qe.status,
             "appointment_type": appt.appointment_type,
+            "start_time": str(appt.start_time) if appt.start_time else None,
             "priority": appt.priority or "normal",
             "patient_name": patient.full_name if patient else None,
             "patient_id": str(patient.id) if patient else None,

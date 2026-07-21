@@ -115,6 +115,7 @@ const walkInService = {
         queue_number: number;
         status: string;
         appointment_type: string;
+        start_time: string | null;
         priority: string;
         patient_name: string | null;
         patient_id: string | null;

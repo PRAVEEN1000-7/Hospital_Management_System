@@ -387,6 +387,8 @@ export const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => 
   const [usernameChecking, setUsernameChecking] = useState(false);
   const [emailError, setEmailError] = useState('');
   const [emailChecking, setEmailChecking] = useState(false);
+  const [generatedPassword, setGeneratedPassword] = useState('');
+  const [passwordCopied, setPasswordCopied] = useState(false);
   const passwordTriggerMounted = useRef(false);
 
   const { register, handleSubmit, watch, setValue, trigger, formState: { errors, isValid, isSubmitting } } = useForm<CreateFormData>({
@@ -526,13 +528,36 @@ export const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => 
     return pw.split('').sort(() => 0.5 - Math.random()).join('');
   };
 
+  // Generate the password the moment auto-generate is switched on (and show it
+  // in the field below) so the admin can actually read and copy it before
+  // saving — previously it was generated invisibly at submit time and no one
+  // ever saw what it was. Clear it when the toggle is turned back off.
+  useEffect(() => {
+    setPasswordCopied(false);
+    setGeneratedPassword(autoGenPassword ? generatePassword() : '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoGenPassword]);
+
+  const handleCopyPassword = async () => {
+    try {
+      await navigator.clipboard.writeText(generatedPassword);
+      setPasswordCopied(true);
+      setTimeout(() => setPasswordCopied(false), 2000);
+    } catch {
+      // Clipboard API unavailable (e.g. insecure context) — the admin can
+      // still select the text manually; nothing to surface here.
+    }
+  };
+
   const onSubmit = async (data: CreateFormData) => {
     if (usernameError || emailError) return;
     setIsSaving(true);
     setSubmitError('');
     try {
       let finalPassword = data.password || '';
-      if (data.auto_generate_password) finalPassword = generatePassword();
+      // Use exactly the password shown in the field so what the admin copied is
+      // what actually gets set (fall back to a fresh one only if somehow empty).
+      if (data.auto_generate_password) finalPassword = generatedPassword || generatePassword();
 
       const payload: UserCreateData = {
         username: data.username,
@@ -651,6 +676,39 @@ export const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => 
               </div>
             </label>
           </div>
+          {autoGenPassword && (
+            <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-slate-700">Generated Password</p>
+                <button
+                  type="button"
+                  onClick={() => { setGeneratedPassword(generatePassword()); setPasswordCopied(false); }}
+                  className="text-xs font-semibold text-primary hover:text-primary/80 inline-flex items-center gap-1"
+                >
+                  <span className="material-icons text-sm">refresh</span> Regenerate
+                </button>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  readOnly
+                  value={generatedPassword}
+                  onFocus={e => e.target.select()}
+                  className="input-field flex-1 font-mono text-sm bg-white"
+                />
+                <button
+                  type="button"
+                  onClick={handleCopyPassword}
+                  className="px-3 py-2 text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 inline-flex items-center gap-1 whitespace-nowrap"
+                >
+                  <span className="material-icons text-sm">{passwordCopied ? 'check' : 'content_copy'}</span>
+                  {passwordCopied ? 'Copied' : 'Copy'}
+                </button>
+              </div>
+              <p className="text-xs text-slate-500">
+                Copy this and share it with the staff member — it won't be shown again after saving.
+              </p>
+            </div>
+          )}
           {!autoGenPassword && (
             <>
               <Field label="Password *">

@@ -122,6 +122,22 @@ const DispensingBilling: React.FC = () => {
 
   const handlePaymentAndPrint = async () => {
     if (!dispensing) return;
+
+    // How much the customer is actually handing over right now. For cash, a
+    // "Cash Received" amount below the total is a genuine partial payment;
+    // anything at or above the total is a full payment (the surplus is change,
+    // not extra money owed to us). Card/UPI are always collected in full.
+    // Previously we always recorded the full grandTotal here, so a short cash
+    // payment still flipped the invoice and the Sales list to "Paid".
+    const isCash = paymentMode === 'cash';
+    const amountCollected = isCash && cashReceived !== ''
+      ? Math.min(Number(cashReceived), grandTotal)
+      : grandTotal;
+    if (amountCollected <= 0) {
+      showToast('error', 'Enter the amount received before confirming payment');
+      return;
+    }
+
     setProcessing(true);
     try {
       if (!dispensing.patient_id) {
@@ -186,11 +202,13 @@ const DispensingBilling: React.FC = () => {
       // Step 2: Issue the invoice so it can accept payments
       await invoiceService.issue(invoice.id);
 
-      // Step 3: Record payment for the full amount, including the folded-in consultation fee
+      // Step 3: Record the payment for what was actually collected. When it's
+      // short of grandTotal the backend flips the invoice to "partially_paid"
+      // and leaves the balance outstanding instead of marking it fully paid.
       await paymentService.record({
         invoice_id: invoice.id,
         patient_id: dispensing.patient_id,
-        amount: grandTotal,
+        amount: amountCollected,
         payment_mode: paymentMode,
         payment_reference: paymentRef.trim() || undefined,
       });
@@ -199,14 +217,26 @@ const DispensingBilling: React.FC = () => {
       // created above has no link back to it, so without this the Sales list
       // keeps showing this sale as "pending" even though it's now paid.
       // (Only the medicines portion — the consultation fee isn't part of the
-      // PharmacySale record.)
+      // PharmacySale record. The invoice bills the consultation fee first, so a
+      // partial payment covers it before any medicines: the medicines-paid
+      // amount is whatever's left after the fee, capped at the medicines total.)
+      const medicinesPaid = Math.max(
+        0,
+        Math.min(amountCollected - consultationFeeDue, Number(dispensing.net_amount)),
+      );
       try {
-        await pharmacyService.markDispensingPaid(dispensing.id, dispensing.net_amount, paymentMode);
+        await pharmacyService.markDispensingPaid(dispensing.id, medicinesPaid, paymentMode);
       } catch {
         // Non-fatal — the invoice/payment already succeeded; don't block the receipt.
       }
 
-      showToast('success', 'Payment recorded successfully');
+      const balanceDue = grandTotal - amountCollected;
+      showToast(
+        'success',
+        balanceDue > 0
+          ? `Partial payment of ₹${fmt(amountCollected)} recorded — ₹${fmt(balanceDue)} balance due`
+          : 'Payment recorded successfully',
+      );
       window.print();
       navigate('/pharmacy/pending-prescriptions', {
         state: { billingComplete: true, dispensingNumber: dispensing.dispensing_number, amount: grandTotal },

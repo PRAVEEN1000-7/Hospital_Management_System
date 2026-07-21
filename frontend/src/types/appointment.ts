@@ -168,6 +168,7 @@ export interface QueueItem {
   referring_doctor_name?: string | null;
   referral_notes?: string | null;
   chief_complaint: string | null;
+  start_time: string | null;
   check_in_at: string | null;
   called_at: string | null;
   consultation_start_at: string | null;

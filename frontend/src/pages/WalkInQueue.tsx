@@ -1117,6 +1117,7 @@ const WalkInQueue: React.FC = () => {
                         <thead>
                           <tr className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
                             <th className="px-5 py-2">#</th>
+                            <th className="px-4 py-2">Time</th>
                             <th className="px-4 py-2">Patient</th>
                             <th className="px-4 py-2">Doctor / Referral</th>
                             <th className="px-4 py-2">Type</th>
@@ -1139,6 +1140,12 @@ const WalkInQueue: React.FC = () => {
                             return (
                               <tr key={item.queue_id} className="hover:bg-slate-50/50">
                                 <td className="px-5 py-2.5 text-sm font-bold text-slate-400">{item.queue_number}</td>
+                                <td className="px-4 py-2.5">
+                                  <span className="inline-flex items-center gap-1 text-sm font-semibold text-slate-700">
+                                    <span className="material-symbols-outlined text-slate-400" style={{ fontSize: 14 }}>schedule</span>
+                                    {formatTime(item.start_time || undefined)}
+                                  </span>
+                                </td>
                                 <td className="px-4 py-2.5">
                                   <p className="text-sm font-semibold text-slate-900">{item.patient_name || 'Unknown'}</p>
                                   <div className="flex items-center gap-2 mt-0.5">
@@ -1638,6 +1645,7 @@ const WalkInQueue: React.FC = () => {
                         <thead>
                           <tr className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
                             <th className="px-5 py-2">#</th>
+                            <th className="px-4 py-2">Time</th>
                             <th className="px-4 py-2">Patient</th>
                             <th className="px-4 py-2">Doctor</th>
                             <th className="px-4 py-2">Type</th>
@@ -1660,6 +1668,12 @@ const WalkInQueue: React.FC = () => {
                             return (
                               <tr key={item.queue_id} className="hover:bg-slate-50/50">
                                 <td className="px-5 py-2.5 text-sm font-bold text-slate-400">{item.queue_number}</td>
+                                <td className="px-4 py-2.5">
+                                  <span className="inline-flex items-center gap-1 text-sm font-semibold text-slate-700">
+                                    <span className="material-symbols-outlined text-slate-400" style={{ fontSize: 14 }}>schedule</span>
+                                    {formatTime(item.start_time || undefined)}
+                                  </span>
+                                </td>
                                 <td className="px-4 py-2.5">
                                   <p className="text-sm font-semibold text-slate-900">{item.patient_name || 'Unknown'}</p>
                                   <div className="flex items-center gap-2 mt-0.5">
@@ -1854,6 +1868,10 @@ const WalkInQueue: React.FC = () => {
                 <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-3">
                   <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider mb-1">Assigned Doctor</p>
                   <p className="text-sm font-semibold text-indigo-900 truncate">{detailItem.doctor_name || '—'}</p>
+                </div>
+                <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-3">
+                  <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider mb-1">Time Slot</p>
+                  <p className="text-sm font-semibold text-indigo-900">{formatTime(detailItem.start_time || undefined)}</p>
                 </div>
                 <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-3">
                   <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider mb-1">Queue Date</p>

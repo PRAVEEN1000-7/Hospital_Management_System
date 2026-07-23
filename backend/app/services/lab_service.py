@@ -20,7 +20,7 @@ from sqlalchemy import func, or_
 from .pharmacy_service import _filter_model_data
 from .notification_service import notify_hospital_users
 from ..core.hospital_time import hospital_today_by_id, hospital_today_utc_range_by_id
-from ..models.lab import LabTest, LabOrder, LabOrderItem, LabSale
+from ..models.lab import LabTest, LabOrder, LabOrderItem, LabSale, LabReferral
 
 logger = logging.getLogger(__name__)
 
@@ -237,6 +237,7 @@ def enqueue_lab_queue_entry(db: Session, lab_order: LabOrder) -> None:
 
 def _enrich_order(db: Session, order: LabOrder) -> dict:
     """Serialize an order with items + billing summary for the response."""
+    from ..models.user import User
     from ..schemas.lab import LabOrderResponse, LabOrderItemResponse
 
     resp = LabOrderResponse.model_validate(order)
@@ -244,8 +245,17 @@ def _enrich_order(db: Session, order: LabOrder) -> dict:
     resp.doctor_name = (
         f"Dr. {order.doctor.user.full_name}" if getattr(order, "doctor", None) and order.doctor.user else None
     )
+    if order.finalized_by:
+        finalizer = db.query(User).filter(User.id == order.finalized_by).first()
+        resp.finalized_by_name = finalizer.full_name if finalizer else None
+
     items = order.items or []
-    resp.items = [LabOrderItemResponse.model_validate(i) for i in items]
+    item_resps = []
+    for i in items:
+        item_resp = LabOrderItemResponse.model_validate(i)
+        item_resp.report_template = (i.test.report_template or []) if getattr(i, "test", None) else []
+        item_resps.append(item_resp)
+    resp.items = item_resps
     resp.total_amount = sum((i.price or Decimal("0")) for i in items)
 
     sale = db.query(LabSale).filter(LabSale.lab_order_id == order.id).first()
@@ -390,6 +400,23 @@ def sync_lab_sale_payment_status(
 # Results
 # ══════════════════════════════════════════════════
 
+# Severity order used to roll a per-parameter flag list up into a single
+# item-level badge (worst flag wins) without the caller having to parse JSON.
+_FLAG_SEVERITY = {"abnormal": 3, "high": 2, "low": 2, "normal": 1}
+
+
+def _aggregate_flag(parameters: list[dict]) -> Optional[str]:
+    best = None
+    best_score = -1
+    for p in parameters:
+        flag = (p or {}).get("flag")
+        score = _FLAG_SEVERITY.get(flag, 0)
+        if score > best_score:
+            best_score = score
+            best = flag
+    return best
+
+
 def record_lab_result(
     db: Session,
     order_item_id: str | uuid.UUID,
@@ -412,23 +439,26 @@ def record_lab_result(
     if not item:
         return None
 
-    item.result_value = result.get("result_value")
-    item.result_unit = result.get("result_unit")
-    if result.get("reference_range"):
-        item.reference_range = result.get("reference_range")
-    item.result_flag = result.get("result_flag")
+    order = db.query(LabOrder).filter(LabOrder.id == item.lab_order_id).first()
+    if order and order.report_status == "finalized":
+        raise ValueError("Report already finalized; results are locked")
+
+    parameters = list(result.get("parameters") or [])
+    item.parameters = parameters
     item.result_notes = result.get("result_notes")
+    item.result_flag = _aggregate_flag(parameters)
     item.status = "completed"
     item.resulted_at = datetime.now(timezone.utc)
     item.resulted_by = resulted_by
 
     # If every item on the order is now completed, flip the order's overall
-    # status too.
-    order = db.query(LabOrder).filter(LabOrder.id == item.lab_order_id).first()
+    # status (and report_status, unless already finalized) too.
     if order:
         siblings = db.query(LabOrderItem).filter(LabOrderItem.lab_order_id == order.id).all()
         if siblings and all(s.status == "completed" for s in siblings):
             order.status = "completed"
+            if order.report_status == "pending":
+                order.report_status = "completed"
         elif order.status == "ordered":
             order.status = "in_progress"
 
@@ -437,8 +467,45 @@ def record_lab_result(
     return item
 
 
+def finalize_lab_report(
+    db: Session,
+    order_id: str | uuid.UUID,
+    hospital_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> LabOrder:
+    """Lock the report and make it visible on the patient page. Requires
+    every item to be resulted and payment to be collected — see
+    LabOrderDetail.tsx / PatientDetail.tsx for how report_status gates
+    doctor visibility."""
+    order = get_lab_order_by_id(db, order_id, hospital_id=hospital_id)
+    if not order:
+        raise ValueError("Lab order not found")
+    if order.report_status == "finalized":
+        raise ValueError("Report is already finalized")
+
+    items = order.items or []
+    if not items or any(i.status != "completed" for i in items):
+        raise ValueError("All test results must be entered before finalizing")
+
+    sale = db.query(LabSale).filter(LabSale.lab_order_id == order.id).first()
+    if not sale or sale.payment_status != "paid":
+        raise ValueError("Collect payment before finalizing the report")
+
+    order.report_status = "finalized"
+    order.status = "completed"
+    order.finalized_at = datetime.now(timezone.utc)
+    order.finalized_by = user_id
+    db.commit()
+    db.refresh(order)
+    return order
+
+
 def get_patient_lab_results(db: Session, patient_id: str | uuid.UUID, hospital_id: uuid.UUID) -> list[dict]:
-    """Finalized orders + their items for a patient — for PatientDetail.tsx."""
+    """Finalized reports + their items for a patient — for PatientDetail.tsx.
+    Gated on report_status (the lab explicitly finalizing the report), not
+    is_finalized (which only means the doctor finalized the prescription)."""
+    from ..models.user import User
+
     if isinstance(patient_id, str):
         try:
             patient_id = uuid.UUID(patient_id)
@@ -450,35 +517,137 @@ def get_patient_lab_results(db: Session, patient_id: str | uuid.UUID, hospital_i
         .filter(
             LabOrder.hospital_id == hospital_id,
             LabOrder.patient_id == patient_id,
-            LabOrder.is_finalized == True,
+            LabOrder.report_status == "finalized",
         )
         .order_by(LabOrder.created_at.desc())
         .all()
     )
     result = []
     for o in orders:
+        finalizer_name = None
+        if o.finalized_by:
+            finalizer = db.query(User).filter(User.id == o.finalized_by).first()
+            finalizer_name = finalizer.full_name if finalizer else None
+
+        items = []
+        for i in (o.items or []):
+            parameters = i.parameters or []
+            if not parameters and i.result_value:
+                # Fallback for rows entered before structured parameters
+                # existed — render the legacy single value as one row.
+                parameters = [{
+                    "name": i.test_name,
+                    "value": i.result_value,
+                    "unit": i.result_unit,
+                    "reference_range": i.reference_range,
+                    "flag": i.result_flag,
+                }]
+            items.append({
+                "id": str(i.id),
+                "test_name": i.test_name,
+                "status": i.status,
+                "parameters": parameters,
+                "result_notes": i.result_notes,
+                "resulted_at": i.resulted_at,
+            })
+
         result.append({
             "id": str(o.id),
             "order_number": o.order_number,
             "status": o.status,
             "created_at": o.created_at,
             "doctor_name": f"Dr. {o.doctor.user.full_name}" if getattr(o, "doctor", None) and o.doctor.user else None,
-            "items": [
-                {
-                    "id": str(i.id),
-                    "test_name": i.test_name,
-                    "status": i.status,
-                    "result_value": i.result_value,
-                    "result_unit": i.result_unit,
-                    "reference_range": i.reference_range,
-                    "result_flag": i.result_flag,
-                    "result_notes": i.result_notes,
-                    "resulted_at": i.resulted_at,
-                }
-                for i in (o.items or [])
-            ],
+            "finalized_at": o.finalized_at,
+            "finalized_by_name": finalizer_name,
+            "items": items,
         })
     return result
+
+
+# ══════════════════════════════════════════════════
+# Lab Referral (external referral letter)
+# ══════════════════════════════════════════════════
+
+def _generate_referral_number(db: Session, hospital_id: uuid.UUID) -> str:
+    # referral_number is database-wide UNIQUE — count globally, same reasoning
+    # as _generate_order_number/_generate_sale_number above.
+    year = datetime.now(timezone.utc).strftime("%y")
+    count = db.query(func.count(LabReferral.id)).scalar() or 0
+    return f"LAB-REF-{year}-{count + 1:04d}"
+
+
+def create_lab_referral(
+    db: Session,
+    hospital_id: uuid.UUID,
+    data: dict,
+    created_by: Optional[uuid.UUID] = None,
+) -> LabReferral:
+    from sqlalchemy.exc import IntegrityError
+
+    patient_id = uuid.UUID(data["patient_id"])
+
+    last_error: Exception | None = None
+    for _ in range(5):
+        referral = LabReferral(
+            hospital_id=hospital_id,
+            referral_number=_generate_referral_number(db, hospital_id),
+            patient_id=patient_id,
+            recipient_title=data["recipient_title"],
+            recipient_location=data.get("recipient_location"),
+            case_details=data.get("case_details"),
+            investigation=data["investigation"],
+            remarks=data.get("remarks"),
+            referring_doctor_name=data["referring_doctor_name"],
+            created_by=created_by,
+        )
+        db.add(referral)
+        try:
+            db.commit()
+        except IntegrityError as e:
+            db.rollback()
+            last_error = e
+            continue
+        db.refresh(referral)
+        return referral
+    raise last_error
+
+
+def get_lab_referral_by_id(
+    db: Session, referral_id: str | uuid.UUID, hospital_id: Optional[uuid.UUID] = None,
+) -> Optional[LabReferral]:
+    if isinstance(referral_id, str):
+        try:
+            referral_id = uuid.UUID(referral_id)
+        except ValueError:
+            return None
+    q = db.query(LabReferral).filter(LabReferral.id == referral_id)
+    if hospital_id is not None:
+        q = q.filter(LabReferral.hospital_id == hospital_id)
+    return q.first()
+
+
+def get_patient_lab_referrals(
+    db: Session, patient_id: str | uuid.UUID, hospital_id: uuid.UUID,
+) -> list[LabReferral]:
+    if isinstance(patient_id, str):
+        try:
+            patient_id = uuid.UUID(patient_id)
+        except ValueError:
+            return []
+    return (
+        db.query(LabReferral)
+        .filter(LabReferral.hospital_id == hospital_id, LabReferral.patient_id == patient_id)
+        .order_by(LabReferral.created_at.desc())
+        .all()
+    )
+
+
+def _enrich_referral(db: Session, referral: LabReferral) -> dict:
+    from ..schemas.lab import LabReferralResponse
+
+    resp = LabReferralResponse.model_validate(referral)
+    resp.patient_name = referral.patient.full_name if getattr(referral, "patient", None) else None
+    return resp
 
 
 # ══════════════════════════════════════════════════

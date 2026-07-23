@@ -142,3 +142,5 @@ HMS_Bug_Report_Package/*
 
 /Updates/*.jpeg
 /Updates/*.png
+/lab_template/*.html
+/lab_template/*.csv

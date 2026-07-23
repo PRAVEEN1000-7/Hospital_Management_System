@@ -3,7 +3,7 @@ import type {
   LabTest, LabTestCreateData, LabTestListResponse,
   LabOrder, LabOrderCreateData, LabResultEntryData,
   LabQueueEntry, LabQueueStatus, LabSale, LabDashboard,
-  PatientLabResult,
+  PatientLabResult, LabReferral, LabReferralCreateData,
 } from '../types/lab';
 
 export const labService = {
@@ -72,6 +72,11 @@ export const labService = {
     return res.data;
   },
 
+  async finalizeReport(orderId: string): Promise<LabOrder> {
+    const res = await api.post<LabOrder>(`/lab/orders/${orderId}/finalize`);
+    return res.data;
+  },
+
   // ═══ Queue ═══
   async getQueue(): Promise<LabQueueEntry[]> {
     const res = await api.get<LabQueueEntry[]>('/lab/queue');
@@ -81,6 +86,22 @@ export const labService = {
   // ═══ Patient results ═══
   async getPatientResults(patientId: string): Promise<PatientLabResult[]> {
     const res = await api.get<PatientLabResult[]>(`/lab/results/patient/${patientId}`);
+    return res.data;
+  },
+
+  // ═══ Referrals ═══
+  async createReferral(data: LabReferralCreateData): Promise<LabReferral> {
+    const res = await api.post<LabReferral>('/lab/referrals', data);
+    return res.data;
+  },
+
+  async getPatientReferrals(patientId: string): Promise<LabReferral[]> {
+    const res = await api.get<LabReferral[]>(`/lab/referrals/patient/${patientId}`);
+    return res.data;
+  },
+
+  async getReferral(id: string): Promise<LabReferral> {
+    const res = await api.get<LabReferral>(`/lab/referrals/${id}`);
     return res.data;
   },
 };

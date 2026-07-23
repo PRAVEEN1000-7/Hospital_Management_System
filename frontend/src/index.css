@@ -107,9 +107,18 @@
 }
 
 @media print {
+  /* Sane default for the common case — invoices, dispensing bills, referral
+     letters, lab reports, etc. all print as an ordinary A4 portrait page
+     with real margins. The one exception is the patient ID card (below,
+     `.print-area`), which needs the physical card laid out landscape with
+     zero margin — that page declares its own local `@page` override
+     (see PatientIdCard.tsx), which wins since it's declared later in the
+     document than this shared stylesheet. Any print flow that doesn't
+     declare its own override gets this portrait default instead of
+     silently inheriting the ID card's landscape/zero-margin setup. */
   @page {
-    size: A4 landscape;
-    margin: 0;
+    size: A4 portrait;
+    margin: 15mm;
   }
 
   html, body {

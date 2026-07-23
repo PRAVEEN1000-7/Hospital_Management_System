@@ -27,6 +27,18 @@ def _orm_to_dict(data: Any) -> Any:
 # ══════════════════════════════════════════════════
 # Lab Test (catalog)
 # ══════════════════════════════════════════════════
+class LabTestParameterTemplate(BaseModel):
+    """One row of a test's structured report layout — e.g. a CBC's
+    individual parameters (Hemoglobin, WBC, ...). Populated once real report
+    templates are supplied; result entry falls back to a single free-text
+    row when a test has none."""
+    name: str = Field(..., min_length=1, max_length=200)
+    unit: Optional[str] = Field(None, max_length=30)
+    reference_range: Optional[str] = Field(None, max_length=200)
+    section: Optional[str] = Field(None, max_length=100)
+    sequence: Optional[int] = None
+
+
 class LabTestCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     code: str = Field(..., min_length=1, max_length=30)
@@ -37,6 +49,7 @@ class LabTestCreate(BaseModel):
     reference_range: Optional[str] = Field(None, max_length=200)
     turnaround_hours: Optional[int] = Field(None, ge=0)
     is_active: bool = True
+    report_template: Optional[list[LabTestParameterTemplate]] = None
 
 
 class LabTestUpdate(BaseModel):
@@ -49,6 +62,7 @@ class LabTestUpdate(BaseModel):
     reference_range: Optional[str] = Field(None, max_length=200)
     turnaround_hours: Optional[int] = Field(None, ge=0)
     is_active: Optional[bool] = None
+    report_template: Optional[list[LabTestParameterTemplate]] = None
 
 
 class LabTestResponse(BaseModel):
@@ -63,6 +77,7 @@ class LabTestResponse(BaseModel):
     reference_range: Optional[str] = None
     turnaround_hours: Optional[int] = None
     is_active: bool = True
+    report_template: Optional[list[LabTestParameterTemplate]] = None
     created_at: datetime
     updated_at: datetime
 
@@ -96,11 +111,20 @@ class LabOrderCreate(BaseModel):
     notes: Optional[str] = None
 
 
-class LabResultEntry(BaseModel):
-    result_value: str = Field(..., min_length=1, max_length=200)
-    result_unit: Optional[str] = Field(None, max_length=30)
+class LabResultParameter(BaseModel):
+    """One structured result row, matching the shape of
+    LabTestParameterTemplate but carrying the entered value + flag."""
+    name: str = Field(..., min_length=1, max_length=200)
+    value: str = Field(..., max_length=200)
+    unit: Optional[str] = Field(None, max_length=30)
     reference_range: Optional[str] = Field(None, max_length=200)
-    result_flag: Optional[str] = Field(None, pattern="^(normal|high|low|abnormal)$")
+    section: Optional[str] = Field(None, max_length=100)
+    flag: Optional[str] = Field(None, pattern="^(normal|high|low|abnormal)$")
+    sequence: Optional[int] = None
+
+
+class LabResultEntry(BaseModel):
+    parameters: list[LabResultParameter] = Field(..., min_length=1)
     result_notes: Optional[str] = None
 
 
@@ -111,6 +135,10 @@ class LabOrderItemResponse(BaseModel):
     test_name: str
     price: Decimal
     status: str = "ordered"
+    parameters: list[LabResultParameter] = []
+    report_template: list[LabTestParameterTemplate] = []
+    # Legacy single-value fields — read-only fallback for rows entered before
+    # structured `parameters` existed; new saves no longer write these.
     result_value: Optional[str] = None
     result_unit: Optional[str] = None
     reference_range: Optional[str] = None
@@ -123,7 +151,14 @@ class LabOrderItemResponse(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def transform(cls, data: Any) -> Any:
-        return _orm_to_dict(data)
+        d = _orm_to_dict(data)
+        if isinstance(d, dict):
+            # JSONB columns are nullable — coerce NULL to an empty list so
+            # the non-Optional list fields validate.
+            if d.get("parameters") is None:
+                d["parameters"] = []
+            d.setdefault("report_template", [])
+        return d
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -139,6 +174,8 @@ class LabOrderResponse(BaseModel):
     notes: Optional[str] = None
     is_finalized: bool = False
     status: str = "ordered"
+    report_status: str = "pending"
+    finalized_at: Optional[datetime] = None
     queue_token: Optional[int] = None
     queue_status: Optional[str] = None
     queue_called_at: Optional[datetime] = None
@@ -147,6 +184,7 @@ class LabOrderResponse(BaseModel):
     # Enriched
     patient_name: Optional[str] = None
     doctor_name: Optional[str] = None
+    finalized_by_name: Optional[str] = None
     total_amount: Optional[Decimal] = None
     payment_status: Optional[str] = None
     sale_id: Optional[str] = None
@@ -215,6 +253,42 @@ class LabSaleResponse(BaseModel):
 class LabMarkPaidRequest(BaseModel):
     amount_paid: Decimal = Field(..., ge=0)
     payment_method: Optional[str] = None
+
+
+# ══════════════════════════════════════════════════
+# Lab Referral (external referral letter, e.g. to a consultant radiologist)
+# ══════════════════════════════════════════════════
+class LabReferralCreate(BaseModel):
+    patient_id: str
+    recipient_title: str = Field(..., min_length=1, max_length=200)
+    recipient_location: Optional[str] = Field(None, max_length=200)
+    case_details: Optional[str] = None
+    investigation: str = Field(..., min_length=1, max_length=200)
+    remarks: Optional[str] = None
+    referring_doctor_name: str = Field(..., min_length=1, max_length=200)
+
+
+class LabReferralResponse(BaseModel):
+    id: str
+    hospital_id: str
+    referral_number: str
+    patient_id: str
+    recipient_title: str
+    recipient_location: Optional[str] = None
+    case_details: Optional[str] = None
+    investigation: str
+    remarks: Optional[str] = None
+    referring_doctor_name: str
+    created_at: datetime
+    # Enriched
+    patient_name: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def transform(cls, data: Any) -> Any:
+        return _orm_to_dict(data)
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ══════════════════════════════════════════════════

@@ -174,6 +174,7 @@ const PrescriptionBuilder: React.FC = () => {
   const [labTests, setLabTests] = useState<LabTest[]>([]);
   const [selectedLabTestIds, setSelectedLabTestIds] = useState<string[]>([]);
   const [labNotes, setLabNotes] = useState('');
+  const [labTestSearch, setLabTestSearch] = useState('');
   // Completed/pending lab results for THIS patient — shown read-only in the
   // consultation view so the doctor sees the tests they advised (and their
   // results once done) without leaving the prescription screen.
@@ -257,6 +258,27 @@ const PrescriptionBuilder: React.FC = () => {
     () => referDoctors.find((d) => d.user_id === user?.id)?.doctor_id || null,
     [referDoctors, user?.id],
   );
+
+  // Lab test catalog can grow large (dozens of tests across several
+  // categories) — filter client-side by name/code/category, then group the
+  // filtered list under category subheadings so the checkbox grid stays
+  // scannable instead of one long unbroken list.
+  const labTestGroups = useMemo(() => {
+    const q = labTestSearch.trim().toLowerCase();
+    const filtered = q
+      ? labTests.filter((t) =>
+          t.name.toLowerCase().includes(q) ||
+          t.code.toLowerCase().includes(q) ||
+          (t.category || '').toLowerCase().includes(q))
+      : labTests;
+    const groups = new Map<string, LabTest[]>();
+    filtered.forEach((t) => {
+      const key = t.category || 'Other';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(t);
+    });
+    return Array.from(groups.entries()).map(([category, tests]) => ({ category, tests }));
+  }, [labTests, labTestSearch]);
 
   const {
     availabilityMap: referDateAvailability,
@@ -1624,26 +1646,31 @@ const PrescriptionBuilder: React.FC = () => {
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <tbody className="divide-y divide-slate-100">
-                          {order.items.map(item => (
-                            <tr key={item.id}>
-                              <td className="px-3 py-1.5 text-slate-700">{item.test_name}</td>
-                              <td className="px-3 py-1.5 text-slate-900">
-                                {item.status === 'completed'
-                                  ? `${item.result_value ?? '—'}${item.result_unit ? ` ${item.result_unit}` : ''}`
-                                  : <span className="text-slate-400 italic">Pending</span>}
-                              </td>
-                              <td className="px-3 py-1.5 text-slate-400 text-xs">{item.reference_range || ''}</td>
-                              <td className="px-3 py-1.5">
-                                {item.result_flag && (
-                                  <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium capitalize ${
-                                    item.result_flag === 'normal' ? 'bg-emerald-50 text-emerald-700'
-                                      : item.result_flag === 'high' ? 'bg-red-50 text-red-600'
-                                      : item.result_flag === 'low' ? 'bg-amber-50 text-amber-700'
-                                      : 'bg-orange-50 text-orange-700'
-                                  }`}>{item.result_flag}</span>
-                                )}
-                              </td>
-                            </tr>
+                          {order.items.flatMap(item => (
+                            item.parameters.length > 0 ? item.parameters.map((p, idx) => (
+                              <tr key={`${item.id}-${idx}`}>
+                                <td className="px-3 py-1.5 text-slate-700">{p.name}</td>
+                                <td className="px-3 py-1.5 text-slate-900">
+                                  {p.value}{p.unit ? ` ${p.unit}` : ''}
+                                </td>
+                                <td className="px-3 py-1.5 text-slate-400 text-xs">{p.reference_range || ''}</td>
+                                <td className="px-3 py-1.5">
+                                  {p.flag && (
+                                    <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium capitalize ${
+                                      p.flag === 'normal' ? 'bg-emerald-50 text-emerald-700'
+                                        : p.flag === 'high' ? 'bg-red-50 text-red-600'
+                                        : p.flag === 'low' ? 'bg-amber-50 text-amber-700'
+                                        : 'bg-orange-50 text-orange-700'
+                                    }`}>{p.flag}</span>
+                                  )}
+                                </td>
+                              </tr>
+                            )) : [(
+                              <tr key={item.id}>
+                                <td className="px-3 py-1.5 text-slate-700">{item.test_name}</td>
+                                <td className="px-3 py-1.5 text-slate-400 italic" colSpan={3}>Pending</td>
+                              </tr>
+                            )]
                           ))}
                         </tbody>
                       </table>
@@ -1676,33 +1703,55 @@ const PrescriptionBuilder: React.FC = () => {
                 </p>
               ) : (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-64 overflow-y-auto">
-                    {labTests.map(t => {
-                      const checked = selectedLabTestIds.includes(t.id);
-                      return (
-                        <label
-                          key={t.id}
-                          className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer text-sm transition-colors ${
-                            checked ? 'border-primary bg-primary/5' : 'border-slate-200 hover:border-primary/40'
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => setSelectedLabTestIds(prev =>
-                              prev.includes(t.id) ? prev.filter(id => id !== t.id) : [...prev, t.id]
-                            )}
-                            className="accent-primary"
-                          />
-                          <span className="min-w-0 flex-1">
-                            <span className="block font-medium text-slate-800 truncate">{t.name}</span>
-                            <span className="block text-xs text-slate-400">
-                              {t.code}{t.price ? ` · ₹${Number(t.price).toFixed(2)}` : ''}
-                            </span>
-                          </span>
-                        </label>
-                      );
-                    })}
+                  <div className="relative">
+                    <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-lg">search</span>
+                    <input
+                      value={labTestSearch}
+                      onChange={e => setLabTestSearch(e.target.value)}
+                      placeholder="Search tests by name, code, or category..."
+                      className="w-full pl-10 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                  </div>
+                  <div className="max-h-64 overflow-y-auto space-y-3">
+                    {labTestGroups.length === 0 ? (
+                      <p className="text-sm text-slate-400">No tests match "{labTestSearch}".</p>
+                    ) : (
+                      labTestGroups.map(({ category, tests }) => (
+                        <div key={category}>
+                          <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">
+                            {category}
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                            {tests.map(t => {
+                              const checked = selectedLabTestIds.includes(t.id);
+                              return (
+                                <label
+                                  key={t.id}
+                                  className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer text-sm transition-colors ${
+                                    checked ? 'border-primary bg-primary/5' : 'border-slate-200 hover:border-primary/40'
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => setSelectedLabTestIds(prev =>
+                                      prev.includes(t.id) ? prev.filter(id => id !== t.id) : [...prev, t.id]
+                                    )}
+                                    className="accent-primary"
+                                  />
+                                  <span className="min-w-0 flex-1">
+                                    <span className="block font-medium text-slate-800 truncate">{t.name}</span>
+                                    <span className="block text-xs text-slate-400">
+                                      {t.code}{t.price ? ` · ₹${Number(t.price).toFixed(2)}` : ''}
+                                    </span>
+                                  </span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Lab Notes</label>

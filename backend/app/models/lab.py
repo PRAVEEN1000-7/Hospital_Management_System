@@ -16,7 +16,7 @@ from sqlalchemy import (
     Column, String, Boolean, DateTime, Integer, Text,
     ForeignKey, UniqueConstraint, Numeric,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -38,6 +38,9 @@ class LabTest(Base):
     reference_range = Column(String(200))
     turnaround_hours = Column(Integer)
     is_active = Column(Boolean, default=True)
+    # Structured report layout — list of {name, unit, reference_range, sequence}.
+    # Null/empty means result entry falls back to a single free-text row.
+    report_template = Column(JSONB)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -63,6 +66,14 @@ class LabOrder(Base):
     notes = Column(Text)
     is_finalized = Column(Boolean, default=False)
     status = Column(String(20), default="ordered")  # 'ordered','in_progress','completed','cancelled'
+
+    # Report lifecycle — distinct from is_finalized (which is set when the
+    # doctor finalizes the parent Prescription, before any lab work happens).
+    # 'pending' -> 'completed' (every item resulted) -> 'finalized' (locked,
+    # visible to the doctor). See finalize_lab_report in lab_service.py.
+    report_status = Column(String(20), default="pending")
+    finalized_at = Column(DateTime(timezone=True))
+    finalized_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
 
     # Lab queue — token assigned at finalize time, shared shape with the
     # pharmacy/optical daily-token sequence (see billing_queue_service.py).
@@ -96,6 +107,10 @@ class LabOrderItem(Base):
     reference_range = Column(String(200))
     result_flag = Column(String(20))  # 'normal','high','low','abnormal'
     result_notes = Column(Text)
+    # Structured result rows — list of {name, value, unit, reference_range,
+    # flag, sequence}. The legacy single-value columns above are kept only as
+    # a read fallback for rows entered before this column existed.
+    parameters = Column(JSONB)
     resulted_at = Column(DateTime(timezone=True))
     resulted_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -137,3 +152,27 @@ class LabSale(Base):
     hospital = relationship("Hospital", foreign_keys=[hospital_id])
     patient = relationship("Patient", foreign_keys=[patient_id])
     order = relationship("LabOrder", foreign_keys=[lab_order_id])
+
+
+class LabReferral(Base):
+    """External referral letter — e.g. to a consultant radiologist for an
+    investigation this hospital doesn't perform in-house. Filled and printed
+    by lab staff; independent of LabOrder/LabTest since it's a printed
+    document, not a billable/orderable test."""
+    __tablename__ = "lab_referrals"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=False)
+    referral_number = Column(String(30), unique=True, nullable=False, index=True)
+    patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id"), nullable=False)
+    recipient_title = Column(String(200), nullable=False)       # e.g. "THE CONSULTANT RADIOLOGIST"
+    recipient_location = Column(String(200))                    # e.g. "GOBI - 638 452"
+    case_details = Column(Text)                                 # "A case of ..."
+    investigation = Column(String(200), nullable=False)         # e.g. "CT NECK/THYROID"
+    remarks = Column(Text)
+    referring_doctor_name = Column(String(200), nullable=False)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    hospital = relationship("Hospital", foreign_keys=[hospital_id])
+    patient = relationship("Patient", foreign_keys=[patient_id])

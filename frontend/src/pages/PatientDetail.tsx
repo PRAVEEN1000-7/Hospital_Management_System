@@ -14,6 +14,16 @@ import PhoneVerificationField from '../components/patients/PhoneVerificationFiel
 
 const EDIT_ALLOWED_ROLES = ['super_admin', 'admin', 'receptionist'];
 
+// Returns the section heading to render above rows[idx] (or undefined) — a
+// heading only appears when a row's non-empty section differs from the
+// previous row's, so items with no sections at all render with no headings.
+const sectionHeadingFor = (rows: { section?: string | null }[], idx: number): string | undefined => {
+  const section = rows[idx].section?.trim();
+  if (!section) return undefined;
+  const prevSection = idx > 0 ? rows[idx - 1].section?.trim() : '';
+  return section !== prevSection ? section : undefined;
+};
+
 const PatientDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -303,47 +313,78 @@ const PatientDetail: React.FC = () => {
                       <span className="font-mono text-slate-600">{order.order_number}</span>
                       {order.doctor_name && <span className="text-slate-400"> · {order.doctor_name}</span>}
                     </div>
-                    <span className="text-xs text-slate-400">
-                      {(() => { try { return format(new Date(order.created_at), 'dd MMM yyyy'); } catch { return ''; } })()}
-                    </span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-slate-400">
+                        {(() => { try { return format(new Date(order.created_at), 'dd MMM yyyy'); } catch { return ''; } })()}
+                      </span>
+                      <button
+                        onClick={() => navigate(`/lab/orders/${order.id}`)}
+                        className="text-xs font-semibold text-primary hover:underline"
+                      >
+                        View Full Report
+                      </button>
+                    </div>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="text-left text-xs text-slate-400 uppercase">
-                          <th className="px-4 py-2 font-medium">Test</th>
+                          <th className="px-4 py-2 font-medium">Parameter</th>
                           <th className="px-4 py-2 font-medium">Result</th>
                           <th className="px-4 py-2 font-medium">Reference</th>
                           <th className="px-4 py-2 font-medium">Flag</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {order.items.map(item => (
-                          <tr key={item.id}>
-                            <td className="px-4 py-2 text-slate-800">{item.test_name}</td>
-                            <td className="px-4 py-2 text-slate-800">
-                              {item.status === 'completed'
-                                ? `${item.result_value ?? '—'}${item.result_unit ? ` ${item.result_unit}` : ''}`
-                                : <span className="text-slate-400 italic">Pending</span>}
-                            </td>
-                            <td className="px-4 py-2 text-slate-500">{item.reference_range || '—'}</td>
-                            <td className="px-4 py-2">
-                              {item.result_flag ? (
-                                <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium capitalize ${
-                                  item.result_flag === 'normal' ? 'bg-emerald-50 text-emerald-700'
-                                    : item.result_flag === 'high' ? 'bg-red-50 text-red-600'
-                                    : item.result_flag === 'low' ? 'bg-amber-50 text-amber-700'
-                                    : 'bg-orange-50 text-orange-700'
-                                }`}>
-                                  {item.result_flag}
-                                </span>
-                              ) : '—'}
-                            </td>
-                          </tr>
+                        {order.items.flatMap(item => (
+                          item.parameters.length > 0 ? item.parameters.map((p, idx) => {
+                            const heading = sectionHeadingFor(item.parameters, idx);
+                            return (
+                            <React.Fragment key={`${item.id}-${idx}`}>
+                              {heading && (
+                                <tr>
+                                  <td colSpan={4} className="px-4 pt-3 pb-1 text-xs text-slate-600 uppercase font-bold">
+                                    {heading}
+                                  </td>
+                                </tr>
+                              )}
+                              <tr>
+                                <td className="px-4 py-2 text-slate-800">{p.name}</td>
+                                <td className="px-4 py-2 text-slate-800">
+                                  {p.value}{p.unit ? ` ${p.unit}` : ''}
+                                </td>
+                                <td className="px-4 py-2 text-slate-500">{p.reference_range || '—'}</td>
+                                <td className="px-4 py-2">
+                                  {p.flag ? (
+                                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium capitalize ${
+                                      p.flag === 'normal' ? 'bg-emerald-50 text-emerald-700'
+                                        : p.flag === 'high' ? 'bg-red-50 text-red-600'
+                                        : p.flag === 'low' ? 'bg-amber-50 text-amber-700'
+                                        : 'bg-orange-50 text-orange-700'
+                                    }`}>
+                                      {p.flag}
+                                    </span>
+                                  ) : '—'}
+                                </td>
+                              </tr>
+                            </React.Fragment>
+                            );
+                          }) : [(
+                            <tr key={item.id}>
+                              <td className="px-4 py-2 text-slate-800">{item.test_name}</td>
+                              <td className="px-4 py-2 text-slate-400 italic" colSpan={3}>Pending</td>
+                            </tr>
+                          )]
                         ))}
                       </tbody>
                     </table>
                   </div>
+                  {(order.finalized_by_name || order.finalized_at) && (
+                    <div className="px-4 py-2 bg-slate-50 border-t border-slate-100 text-xs text-slate-400">
+                      Finalized{order.finalized_by_name ? ` by ${order.finalized_by_name}` : ''}
+                      {order.finalized_at ? ` on ${(() => { try { return format(new Date(order.finalized_at as string), 'dd MMM yyyy, hh:mm a'); } catch { return ''; } })()}` : ''}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

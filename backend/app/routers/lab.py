@@ -21,6 +21,7 @@ from ..schemas.lab import (
     LabOrderCreate, LabOrderResponse, LabResultEntry,
     LabQueueEntryResponse, LabQueueStatusUpdate,
     LabSaleResponse, LabMarkPaidRequest,
+    LabReferralCreate, LabReferralResponse,
     LabDashboard,
 )
 from ..services import lab_service as svc
@@ -218,12 +219,34 @@ async def record_lab_result(
     order = svc.get_lab_order_by_id(db, order_id, hospital_id=current_user.hospital_id)
     if not order:
         raise HTTPException(status_code=404, detail="Lab order not found")
-    item = svc.record_lab_result(
-        db, item_id, current_user.hospital_id, data.model_dump(), resulted_by=current_user.id,
-    )
+    try:
+        item = svc.record_lab_result(
+            db, item_id, current_user.hospital_id, data.model_dump(), resulted_by=current_user.id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     if not item:
         raise HTTPException(status_code=404, detail="Lab order item not found")
     db.refresh(order)
+    return svc._enrich_order(db, order)
+
+
+@router.post("/orders/{order_id}/finalize", response_model=LabOrderResponse)
+async def finalize_lab_report(
+    order_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Lock the report and make it visible to the doctor on the patient page
+    — requires every item resulted and payment collected."""
+    _require(current_user, LAB_STAFF_ROLES)
+    order = svc.get_lab_order_by_id(db, order_id, hospital_id=current_user.hospital_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Lab order not found")
+    try:
+        order = svc.finalize_lab_report(db, order_id, current_user.hospital_id, current_user.id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     return svc._enrich_order(db, order)
 
 
@@ -246,3 +269,44 @@ async def get_patient_lab_results(
 ):
     _require(current_user, LAB_VIEW_ROLES)
     return svc.get_patient_lab_results(db, patient_id, current_user.hospital_id)
+
+
+# ═══ Referrals ═══
+@router.post("/referrals", response_model=LabReferralResponse, status_code=status.HTTP_201_CREATED)
+async def create_lab_referral(
+    data: LabReferralCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    _require(current_user, LAB_STAFF_ROLES)
+    try:
+        referral = svc.create_lab_referral(db, current_user.hospital_id, data.model_dump(), created_by=current_user.id)
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error creating lab referral: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail="Could not create referral")
+    return svc._enrich_referral(db, referral)
+
+
+@router.get("/referrals/patient/{patient_id}", response_model=list[LabReferralResponse])
+async def list_patient_lab_referrals(
+    patient_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    _require(current_user, LAB_STAFF_ROLES)
+    referrals = svc.get_patient_lab_referrals(db, patient_id, current_user.hospital_id)
+    return [svc._enrich_referral(db, r) for r in referrals]
+
+
+@router.get("/referrals/{referral_id}", response_model=LabReferralResponse)
+async def get_lab_referral(
+    referral_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    _require(current_user, LAB_STAFF_ROLES)
+    referral = svc.get_lab_referral_by_id(db, referral_id, hospital_id=current_user.hospital_id)
+    if not referral:
+        raise HTTPException(status_code=404, detail="Referral not found")
+    return svc._enrich_referral(db, referral)

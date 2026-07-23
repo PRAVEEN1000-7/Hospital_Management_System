@@ -89,6 +89,7 @@ import LabDashboard from './pages/lab/LabDashboard';
 import LabTestCatalog from './pages/lab/LabTestCatalog';
 import LabQueue from './pages/lab/LabQueue';
 import LabOrderDetail from './pages/lab/LabOrderDetail';
+import LabReferralForm from './pages/lab/LabReferralForm';
 
 // Inventory pages
 import InventoryDashboard from './pages/inventory/InventoryDashboard';
@@ -629,10 +630,18 @@ const App: React.FC = () => {
               } />
               <Route path="/lab/orders/:orderId" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'lab_technician']}
+                  allowedRoles={['super_admin', 'admin', 'lab_technician', 'doctor']}
                   requiredModule="lab"
                 >
                   <LabOrderDetail />
+                </ProtectedRoute>
+              } />
+              <Route path="/lab/referral-form" element={
+                <ProtectedRoute
+                  allowedRoles={['super_admin', 'admin', 'lab_technician']}
+                  requiredModule="lab"
+                >
+                  <LabReferralForm />
                 </ProtectedRoute>
               } />
 

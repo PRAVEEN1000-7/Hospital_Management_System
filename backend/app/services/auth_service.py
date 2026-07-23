@@ -98,7 +98,7 @@ def authenticate_user(db: Session, username: str, password: str) -> tuple:
       - 'account_locked' if account is temporarily locked
     """
     identifier = (username or "").strip().lower()
-    user = (
+    matches = (
         db.query(User)
         .options(
             joinedload(User.user_roles).joinedload(UserRole.role),
@@ -108,12 +108,30 @@ def authenticate_user(db: Session, username: str, password: str) -> tuple:
             or_(func.lower(User.username) == identifier, func.lower(User.email) == identifier),
             User.is_deleted == False,
         )
-        .first()
+        .order_by(User.created_at.asc())
+        .all()
     )
 
-    if not user:
+    if not matches:
         logger.warning(f"AUTH: No user found with username='{_mask_username(username)}'")
         return None, "invalid_username"
+
+    if len(matches) > 1:
+        # Username/email are meant to be globally unique (see routers/users.py
+        # and services/tenant_service.py) — the login form has no hospital to
+        # scope by, so an ambiguous match here means duplicate accounts exist
+        # across hospitals (pre-dating that check, or inserted outside the
+        # app). Whichever row Postgres returned first would silently eat the
+        # correct password for every account but one. Log it loudly so it's
+        # fixed at the data layer (see database_hole/17_enforce_global_
+        # username_email_uniqueness.sql) instead of surfacing as a mysterious
+        # "wrong password" for some other hospital's identical-username user.
+        logger.error(
+            "AUTH: AMBIGUOUS LOGIN — username/email '%s' matches %d users across hospitals %s. "
+            "Run database_hole/17_enforce_global_username_email_uniqueness.sql to find and resolve the duplicate.",
+            _mask_username(username), len(matches), [str(u.hospital_id) for u in matches],
+        )
+    user = matches[0]
 
     logger.info(f"AUTH: Found user '{_mask_username(username)}', is_active={user.is_active}, is_deleted={user.is_deleted}, locked_until={user.locked_until}")
 

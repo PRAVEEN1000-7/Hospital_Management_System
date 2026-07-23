@@ -171,6 +171,17 @@ const PatientIdCard: React.FC = () => {
 
   return (
     <div className="max-w-3xl mx-auto">
+      {/* Local print override — the shared print stylesheet (index.css)
+          defaults @page to A4 portrait (the common case for invoices,
+          referral letters, etc.), but the physical ID card needs A4
+          landscape with zero margin so the `.print-area:first-of-type` /
+          `:last-of-type` fixed-position rules there line up correctly. */}
+      <style>{`
+        @media print {
+          @page { size: A4 landscape; margin: 0; }
+        }
+      `}</style>
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div className="flex items-center gap-3">

@@ -62,6 +62,7 @@ const WalkInQueue: React.FC = () => {
   const [sendModalQueueId, setSendModalQueueId] = useState<string | null>(null);
   const [sendModalBookedDoctorId, setSendModalBookedDoctorId] = useState<string>('');
   const [sendModalPatientName, setSendModalPatientName] = useState<string>('');
+  const [sendModalLocked, setSendModalLocked] = useState(false);
   const [sendDoctorId, setSendDoctorId] = useState<string>('');
   const [doctorLoads, setDoctorLoads] = useState<Record<string, number>>({});
   const [sendingInProgress, setSendingInProgress] = useState(false);
@@ -434,6 +435,7 @@ const WalkInQueue: React.FC = () => {
       setSendModalBookedDoctorId('');
       setSendDoctorId('');
       setSendModalPatientName('');
+      setSendModalLocked(false);
       // Refresh doctor loads + queue + unassigned
       walkInService.getDoctorLoads().then(setDoctorLoads).catch(() => {});
       fetchQueue();
@@ -670,6 +672,12 @@ const WalkInQueue: React.FC = () => {
                               <span className="material-symbols-outlined" style={{ fontSize: 11 }}>{pri.icon}</span>
                               {pri.label}
                             </span>
+                            {currentPatient.is_specialist_assignment && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary/10 text-primary" title="Locked to this doctor — cannot be reassigned or referred">
+                                <span className="material-symbols-outlined" style={{ fontSize: 11 }}>lock</span>
+                                Specialist
+                              </span>
+                            )}
                           </div>
                           {currentPatient.chief_complaint && (
                             <p className="text-sm text-slate-600 mt-2 bg-white/60 rounded-lg px-3 py-1.5 inline-block">
@@ -710,11 +718,13 @@ const WalkInQueue: React.FC = () => {
                           <span className="material-symbols-outlined text-sm">event_upcoming</span>
                           Book Follow-up
                         </button>
-                        <button onClick={() => openReferModal(currentPatient)}
-                          className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-orange-700 bg-white border border-orange-200 rounded-lg hover:bg-orange-50 transition-colors">
-                          <span className="material-symbols-outlined text-sm">send</span>
-                          Refer to Doctor
-                        </button>
+                        {!currentPatient.is_specialist_assignment && (
+                          <button onClick={() => openReferModal(currentPatient)}
+                            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-orange-700 bg-white border border-orange-200 rounded-lg hover:bg-orange-50 transition-colors">
+                            <span className="material-symbols-outlined text-sm">send</span>
+                            Refer to Doctor
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -753,6 +763,12 @@ const WalkInQueue: React.FC = () => {
                             <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${pri.bg} ${pri.text}`}>
                               {pri.label}
                             </span>
+                            {calledPatient.is_specialist_assignment && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary/10 text-primary" title="Locked to this doctor — cannot be reassigned or referred">
+                                <span className="material-symbols-outlined" style={{ fontSize: 11 }}>lock</span>
+                                Specialist
+                              </span>
+                            )}
                           </div>
                           {calledPatient.chief_complaint && (
                             <p className="text-sm text-slate-600 mt-2">{calledPatient.chief_complaint}</p>
@@ -815,6 +831,12 @@ const WalkInQueue: React.FC = () => {
                             <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${pri.bg} ${pri.text}`}>
                               {pri.label}
                             </span>
+                            {nextPatient.is_specialist_assignment && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary/10 text-primary" title="Locked to this doctor — cannot be reassigned or referred">
+                                <span className="material-symbols-outlined" style={{ fontSize: 11 }}>lock</span>
+                                Specialist
+                              </span>
+                            )}
                             <span className="text-xs text-slate-400">• {timeAgo(nextPatient.check_in_at)}</span>
                           </div>
                           {nextPatient.chief_complaint && (
@@ -880,6 +902,12 @@ const WalkInQueue: React.FC = () => {
                                 )}
                                 {item.patient_reference_number && (
                                   <span className="text-xs font-mono text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">PRN: {item.patient_reference_number}</span>
+                                )}
+                                {item.is_specialist_assignment && (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-primary/10 text-primary" title="Locked to this doctor — cannot be reassigned or referred">
+                                    <span className="material-symbols-outlined" style={{ fontSize: 10 }}>lock</span>
+                                    Specialist
+                                  </span>
                                 )}
                               </div>
                               <div className="flex items-center gap-2 mt-0.5">
@@ -1062,6 +1090,7 @@ const WalkInQueue: React.FC = () => {
                         setSendModalBookedDoctorId('');
                         setSendDoctorId('');
                         setSendModalPatientName(item.patient_name || 'Patient');
+                        setSendModalLocked(false);
                       }}
                       className="w-8 h-8 flex items-center justify-center text-white bg-orange-500 hover:bg-orange-600 hover:scale-105 active:scale-95 rounded-lg transition-all shadow-sm"
                       title="Send to Doctor">
@@ -1290,6 +1319,9 @@ const WalkInQueue: React.FC = () => {
                               <div className="shrink-0 flex items-center gap-1.5 px-2 py-1 bg-slate-50 rounded-lg">
                                 <span className="material-symbols-outlined text-slate-400" style={{ fontSize: 14 }}>stethoscope</span>
                                 <span className="text-xs text-slate-600 font-medium">{item.doctor_name}</span>
+                                {item.is_specialist_assignment && (
+                                  <span className="material-symbols-outlined text-primary" style={{ fontSize: 14 }} title="Specialist Assignment — locked to this doctor">lock</span>
+                                )}
                               </div>
                             )}
                           </div>
@@ -1339,6 +1371,7 @@ const WalkInQueue: React.FC = () => {
                               setSendModalBookedDoctorId(item.doctor_id || '');
                               setSendDoctorId(item.doctor_id || '');
                               setSendModalPatientName(item.patient_name || 'Patient');
+                              setSendModalLocked(!!item.is_specialist_assignment);
                             }}
                               className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg hover:scale-105 active:scale-95 transition-all shadow-sm text-xs font-semibold ${
                                 isCalled 
@@ -1358,6 +1391,7 @@ const WalkInQueue: React.FC = () => {
                               setSendModalBookedDoctorId('');
                               setSendDoctorId('');
                               setSendModalPatientName(item.patient_name || 'Patient');
+                              setSendModalLocked(false);
                             }}
                               className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-orange-500 text-white hover:bg-orange-600 hover:scale-105 active:scale-95 transition-all shadow-sm text-xs font-semibold"
                               title="Assign & Send to Doctor">
@@ -1554,7 +1588,7 @@ const WalkInQueue: React.FC = () => {
                           <span className="material-symbols-outlined text-sm">person</span>
                           Patient Info
                         </button>
-                        {item.status === 'completed' && (
+                        {item.status === 'completed' && !item.is_specialist_assignment && (
                           <button onClick={() => openReferModal(item)}
                             className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded-lg hover:bg-orange-100 transition-colors">
                             <span className="material-symbols-outlined text-sm">send</span>
@@ -1738,6 +1772,7 @@ const WalkInQueue: React.FC = () => {
           setSendModalId(null);
           setSendModalQueueId(null);
           setSendModalBookedDoctorId('');
+          setSendModalLocked(false);
         }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-3 mb-5">
@@ -1750,13 +1785,25 @@ const WalkInQueue: React.FC = () => {
               </div>
             </div>
 
+            {sendModalLocked && (
+              <div className="flex items-start gap-2 bg-primary/5 border border-primary/20 rounded-lg px-3 py-2 mb-3">
+                <span className="material-symbols-outlined text-primary text-base mt-0.5">lock</span>
+                <p className="text-xs text-slate-600">
+                  <span className="font-semibold text-slate-700">Specialist Assignment —</span> this patient is locked to their assigned doctor and cannot be routed elsewhere.
+                </p>
+              </div>
+            )}
+
             <div className="space-y-1.5 max-h-64 overflow-y-auto">
               {doctors.map(d => {
                 const waitCount = doctorLoads[d.doctor_id] || 0;
                 const isSelected = sendDoctorId === d.doctor_id;
+                const isLockedOut = sendModalLocked && d.doctor_id !== sendModalBookedDoctorId;
                 return (
-                  <button key={d.doctor_id} onClick={() => setSendDoctorId(d.doctor_id)}
+                  <button key={d.doctor_id} onClick={() => { if (!isLockedOut) setSendDoctorId(d.doctor_id); }}
+                    disabled={isLockedOut}
                     className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl text-left transition-all border ${
+                      isLockedOut ? 'opacity-40 cursor-not-allowed border-slate-100' :
                       isSelected
                         ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
                         : 'border-slate-100 hover:border-slate-200 hover:bg-slate-50'
@@ -1793,6 +1840,7 @@ const WalkInQueue: React.FC = () => {
                 setSendModalId(null);
                 setSendModalQueueId(null);
                 setSendModalBookedDoctorId('');
+                setSendModalLocked(false);
               }} className="px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 rounded-lg">Cancel</button>
               <button onClick={handleSendToDoctor} disabled={!sendDoctorId || sendingInProgress}
                 className="inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 disabled:opacity-50 shadow-sm">
@@ -1990,6 +2038,14 @@ const WalkInQueue: React.FC = () => {
                 <div className="mt-3 bg-amber-50 rounded-xl p-3">
                   <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wider mb-1">Chief Complaint</p>
                   <p className="text-sm text-amber-900">{detailItem.chief_complaint}</p>
+                </div>
+              )}
+              {detailItem.is_specialist_assignment && (
+                <div className="mt-3 flex items-start gap-2 bg-primary/5 border border-primary/20 rounded-xl px-3 py-2">
+                  <span className="material-symbols-outlined text-primary text-base mt-0.5">lock</span>
+                  <p className="text-xs text-slate-600">
+                    <span className="font-semibold text-slate-700">Specialist Assignment —</span> locked to {detailItem.doctor_name || 'this doctor'}, cannot be reassigned or referred.
+                  </p>
                 </div>
               )}
             </div>

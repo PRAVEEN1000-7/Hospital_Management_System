@@ -22,6 +22,7 @@ const WalkInRegistration: React.FC = () => {
   const [doctors, setDoctors] = useState<DoctorOption[]>([]);
   const [selectedDoctorId, setSelectedDoctorId] = useState<string>('');
   const [doctorScheduleState, setDoctorScheduleState] = useState<'idle' | 'checking' | 'no_schedule' | 'all_full' | 'available'>('idle');
+  const [specialistAssignment, setSpecialistAssignment] = useState(false);
   const [urgencyLevel, setUrgencyLevel] = useState('normal');
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -101,7 +102,7 @@ const WalkInRegistration: React.FC = () => {
 
   const handleDoctorChange = async (doctorId: string) => {
     setSelectedDoctorId(doctorId);
-    if (!doctorId) { setDoctorScheduleState('idle'); return; }
+    if (!doctorId) { setDoctorScheduleState('idle'); setSpecialistAssignment(false); return; }
     setDoctorScheduleState('checking');
     try {
       const today = new Date().toISOString().split('T')[0];
@@ -144,6 +145,7 @@ const WalkInRegistration: React.FC = () => {
         doctor_id: selectedDoctorId,
         chief_complaint: reason || undefined,
         priority: urgencyLevel,
+        is_specialist_assignment: specialistAssignment,
       });
 
       // Check if patient was auto-waitlisted (all slots full)
@@ -175,6 +177,7 @@ const WalkInRegistration: React.FC = () => {
     setPatientSearch('');
     setSelectedDoctorId('');
     setDoctorScheduleState('idle');
+    setSpecialistAssignment(false);
     setUrgencyLevel('normal');
     setReason('');
     setSuccess(null);
@@ -417,6 +420,23 @@ const WalkInRegistration: React.FC = () => {
                 Doctor has slots available today
               </p>
             )}
+
+            <label className={`mt-3 flex items-start gap-2.5 px-3 py-2.5 rounded-lg border transition-colors ${
+              !selectedDoctorId ? 'opacity-50 cursor-not-allowed border-slate-200' :
+              specialistAssignment ? 'bg-primary/5 border-primary/30 cursor-pointer' : 'border-slate-200 hover:border-slate-300 cursor-pointer'
+            }`}>
+              <input
+                type="checkbox"
+                checked={specialistAssignment}
+                disabled={!selectedDoctorId}
+                onChange={(e) => setSpecialistAssignment(e.target.checked)}
+                className="mt-0.5 w-4 h-4 rounded border-slate-300 text-primary focus:ring-primary/30"
+              />
+              <span>
+                <span className="block text-xs font-bold text-slate-700">Specialist Assignment</span>
+                <span className="block text-[11px] text-slate-400 mt-0.5">Patient will be consulted by this doctor only — cannot be reassigned or referred to another doctor</span>
+              </span>
+            </label>
           </div>
 
           {/* Urgency */}

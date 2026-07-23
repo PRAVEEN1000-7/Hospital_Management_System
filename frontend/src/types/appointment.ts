@@ -137,6 +137,8 @@ export interface WalkInRegister {
   chief_complaint?: string;
   priority?: string;
   consultation_fee?: number | null;
+  /** Locks this walk-in to the chosen doctor — cannot be reassigned or referred later. */
+  is_specialist_assignment?: boolean;
 }
 
 export interface QueueItem {
@@ -164,6 +166,7 @@ export interface QueueItem {
   patient_emergency_contact_relation: string | null;
   doctor_id: string | null;
   doctor_name: string | null;
+  is_specialist_assignment?: boolean;
   appointment_type?: string | null;
   referring_doctor_name?: string | null;
   referral_notes?: string | null;

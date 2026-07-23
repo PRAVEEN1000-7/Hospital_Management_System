@@ -294,6 +294,9 @@ class WalkInRegister(BaseModel):
     chief_complaint: Optional[str] = None
     priority: str = Field(default="normal")
     consultation_fee: Optional[Decimal] = None
+    # When true, locks this walk-in to the chosen doctor — it cannot later be
+    # reassigned or referred to a different doctor (see walk_ins.py).
+    is_specialist_assignment: bool = False
 
     @field_validator("priority")
     @classmethod

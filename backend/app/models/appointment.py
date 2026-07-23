@@ -134,6 +134,10 @@ class Appointment(Base):
     # department they pass through that day (doctor queue, pharmacy,
     # optical), instead of each department minting its own daily counter.
     visit_token = Column(Integer)
+    # Locks this walk-in to the doctor chosen at registration — reception
+    # cannot reassign (assign-doctor) or refer this patient to a different
+    # doctor once set (see routers/walk_ins.py register_walk_in).
+    is_specialist_assignment = Column(Boolean, nullable=False, default=False)
     parent_appointment_id = Column(UUID(as_uuid=True), ForeignKey("appointments.id"))
     chief_complaint = Column(Text)
     cancel_reason = Column(String(255))

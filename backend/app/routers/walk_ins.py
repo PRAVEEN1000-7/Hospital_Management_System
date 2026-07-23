@@ -243,6 +243,7 @@ async def register_walk_in(
             consultation_fee=resolve_new_appointment_fee(doctor, data.consultation_fee),
             check_in_at=now,
             created_by=current_user.id,
+            is_specialist_assignment=bool(data.is_specialist_assignment),
         )
         db.add(appt)
         db.flush()
@@ -402,6 +403,7 @@ async def get_queue_status(
         chief_complaint = None
         check_in_time = None
         doctor_id_str = None
+        is_specialist_assignment = False
 
         patient_id_str = None
         patient_reference_number = None
@@ -423,6 +425,7 @@ async def get_queue_status(
             priority = appt.priority or "normal"
             chief_complaint = appt.chief_complaint
             check_in_time = appt.check_in_at.isoformat() if appt.check_in_at else None
+            is_specialist_assignment = bool(appt.is_specialist_assignment)
 
             patient = db.query(Patient).filter(Patient.id == appt.patient_id).first()
             if patient:
@@ -497,6 +500,7 @@ async def get_queue_status(
             "patient_emergency_contact_relation": patient_emergency_contact_relation,
             "doctor_id": doctor_id_str,
             "doctor_name": doctor_name,
+            "is_specialist_assignment": is_specialist_assignment,
             "chief_complaint": chief_complaint,
             # Booked slot time for pre-booked/scheduled visits — the queue detail
             # panel had no way to show what time the appointment was booked for.
@@ -812,6 +816,14 @@ async def assign_doctor_to_walkin(
         raise HTTPException(status_code=404, detail="Doctor not found")
     if getattr(current_user, "hospital_id", None) and str(doctor.hospital_id) != str(current_user.hospital_id):
         raise HTTPException(status_code=404, detail="Doctor not found")
+
+    # Specialist Assignment lock — this patient was registered as
+    # consult-this-doctor-only, so reassigning to anyone else is rejected.
+    if appt.is_specialist_assignment and appt.doctor_id and appt.doctor_id != doctor_uuid:
+        raise HTTPException(
+            status_code=400,
+            detail="This patient is locked to a specific doctor (Specialist Assignment) and cannot be reassigned to a different doctor.",
+        )
 
     appt.doctor_id = doctor_uuid
     db.flush()
@@ -1134,6 +1146,14 @@ async def refer_patient_to_doctor(
         original_appt = db.query(Appointment).filter(Appointment.id == qe.appointment_id).first()
         if not original_appt:
             raise HTTPException(status_code=404, detail="Original appointment not found")
+
+        # Specialist Assignment lock — this patient was registered as
+        # consult-this-doctor-only, so referring them onward is rejected.
+        if original_appt.is_specialist_assignment:
+            raise HTTPException(
+                status_code=400,
+                detail="This patient is locked to a specific doctor (Specialist Assignment) and cannot be referred to another doctor.",
+            )
 
         # ── Validate target doctor ──
         try:

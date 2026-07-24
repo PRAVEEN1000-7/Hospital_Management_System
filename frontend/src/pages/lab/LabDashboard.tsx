@@ -82,7 +82,7 @@ const LabDashboard: React.FC = () => {
         {[
           { label: 'Lab Queue', desc: "Today's orders awaiting collection & results", icon: 'queue', to: '/lab/queue' },
           { label: 'Test Catalog', desc: 'Browse & manage orderable tests', icon: 'biotech', to: '/lab/tests' },
-          { label: 'Referral Form', desc: 'Refer a patient to an external consultant', icon: 'forward_to_inbox', to: '/lab/referral-form' },
+          { label: 'Concern Form', desc: 'Refer a patient to an external consultant', icon: 'forward_to_inbox', to: '/lab/referral-form' },
         ].map((item) => (
           <button key={item.label} onClick={() => navigate(item.to)}
             className="flex items-center gap-4 p-4 bg-white rounded-xl border border-slate-200 hover:shadow-md hover:border-primary/30 transition-all text-left overflow-hidden">

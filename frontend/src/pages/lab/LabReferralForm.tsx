@@ -138,7 +138,7 @@ const LabReferralForm: React.FC = () => {
       `}</style>
 
       <div className="print:hidden">
-        <h1 className="text-2xl font-bold text-slate-900">Referral Form</h1>
+        <h1 className="text-2xl font-bold text-slate-900">Concern Form</h1>
         <p className="text-sm text-slate-500 mt-1">
           Refer a patient to an external consultant (e.g. for an investigation this lab doesn't perform in-house).
         </p>

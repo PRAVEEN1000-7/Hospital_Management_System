@@ -403,6 +403,51 @@ class CycleCountResponse(BaseModel):
         from_attributes = True
 
 
+# ─── PO Payments ────────────────────────────────────────────────────────────
+
+class PaymentModeCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=50)
+
+class PaymentModeResponse(BaseModel):
+    id: str
+    name: str
+    is_active: bool
+
+    class Config:
+        from_attributes = True
+
+class PurchaseOrderPaymentCreate(BaseModel):
+    invoice_number: Optional[str] = Field(None, max_length=50)
+    amount: float = Field(..., gt=0)
+    payment_mode_id: str
+    payment_date: Optional[date] = None
+    reference_note: Optional[str] = None
+
+class PurchaseOrderPaymentResponse(BaseModel):
+    id: str
+    purchase_order_id: str
+    po_number: Optional[str] = None
+    supplier_name: Optional[str] = None
+    payment_number: str
+    invoice_number: Optional[str] = None
+    amount: float
+    payment_mode_id: str
+    mode_name: Optional[str] = None
+    payment_date: date
+    reference_note: Optional[str] = None
+    recorded_by_name: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class PurchaseOrderPaymentSummary(BaseModel):
+    po_total: float
+    total_paid: float
+    balance: float
+    payments: List[PurchaseOrderPaymentResponse] = []
+
+
 # ─── Pagination ─────────────────────────────────────────────────────────────
 
 class PaginatedResponse(BaseModel):

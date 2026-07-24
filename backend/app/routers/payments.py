@@ -11,7 +11,7 @@ from ..dependencies import get_current_active_user
 from ..models.user import User
 from ..schemas.payment import PaymentCreate, PaymentResponse, PaginatedPaymentResponse
 from ..services.payment_service import (
-    record_payment, list_payments, get_payment_by_id
+    record_payment, list_payments, get_payment_by_id, list_collectors
 )
 
 logger = logging.getLogger(__name__)
@@ -100,6 +100,19 @@ async def list_invoice_payments(
     except Exception as e:
         logger.error(f"Error listing invoice payments: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to retrieve payments")
+
+
+@router.get("/collectors")
+async def list_payment_collectors(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Staff eligible to be selected as "who collected" a payment — used to
+    populate the Collected By dropdown at fee-collection time. Open to the
+    same billing-staff roles that can record payments (not admin-only) so
+    receptionists can populate it themselves."""
+    _require_billing_staff(current_user)
+    return list_collectors(db, current_user.hospital_id)
 
 
 @router.get("/{payment_id}", response_model=PaymentResponse)

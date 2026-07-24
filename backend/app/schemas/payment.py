@@ -18,6 +18,9 @@ class PaymentCreate(BaseModel):
     payment_reference: Optional[str] = Field(None, max_length=100)
     payment_date: Optional[date] = None   # defaults to today
     notes: Optional[str] = None
+    received_by: Optional[str] = Field(
+        None, description="User ID of who actually collected the payment; defaults to the logged-in user"
+    )
 
     @field_validator("payment_mode")
     @classmethod
@@ -62,6 +65,7 @@ class PaymentResponse(BaseModel):
     payment_time: Optional[time]
     status: str
     notes: Optional[str]
+    received_by_name: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -74,6 +78,8 @@ class PaymentResponse(BaseModel):
             if obj.patient:
                 patient_name = f"{obj.patient.first_name} {obj.patient.last_name}".strip()
             invoice_number = obj.invoice.invoice_number if obj.invoice else ""
+            receiver = getattr(obj, "receiver", None)
+            received_by_name = f"{receiver.first_name} {receiver.last_name}".strip() if receiver else None
             data = {
                 "id": str(obj.id),
                 "hospital_id": str(obj.hospital_id),
@@ -90,6 +96,7 @@ class PaymentResponse(BaseModel):
                 "payment_time": obj.payment_time,
                 "status": obj.status,
                 "notes": obj.notes,
+                "received_by_name": received_by_name,
                 "created_at": obj.created_at,
                 "updated_at": obj.updated_at,
             }

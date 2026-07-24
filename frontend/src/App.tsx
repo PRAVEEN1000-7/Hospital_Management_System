@@ -96,6 +96,7 @@ import InventoryDashboard from './pages/inventory/InventoryDashboard';
 import SuppliersPage from './pages/inventory/SuppliersPage';
 import PurchaseOrdersPage from './pages/inventory/PurchaseOrdersPage';
 import NewPurchaseOrderPage from './pages/inventory/NewPurchaseOrderPage';
+import PurchaseOrderPayments from './pages/inventory/PurchaseOrderPayments';
 import GRNsPage from './pages/inventory/GRNsPage';
 import AdjustmentsPage from './pages/inventory/AdjustmentsPage';
 // Cycle Counts is disabled application-wide — code kept intact, routes below
@@ -684,6 +685,14 @@ const App: React.FC = () => {
                   requiredModule="inventory"
                 >
                   <NewPurchaseOrderPage />
+                </ProtectedRoute>
+              } />
+              <Route path="/inventory/purchase-orders/:poId/payments" element={
+                <ProtectedRoute
+                  allowedRoles={['super_admin', 'admin']}
+                  requiredModule="inventory"
+                >
+                  <PurchaseOrderPayments />
                 </ProtectedRoute>
               } />
               <Route path="/inventory/grns" element={

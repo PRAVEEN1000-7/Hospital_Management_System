@@ -12,7 +12,7 @@ import AppointmentStatusBadge from '../components/appointments/AppointmentStatus
 import DateRangeFilter from '../components/common/DateRangeFilter';
 import { formatLocalDateISO, formatDateOnly, formatTimeOnly } from '../utils/calendarDate';
 import type { Appointment, DoctorOption, AppointmentStatus, AppointmentStats, TimeSlot } from '../types/appointment';
-import type { Invoice, PaymentMode } from '../types/billing';
+import type { Invoice, PaymentMode, PaymentCollector } from '../types/billing';
 import type { PrescriptionListItem } from '../types/prescription';
 import type { OpticalPrescription } from '../types/optical';
 
@@ -64,6 +64,8 @@ const AppointmentManagement: React.FC = () => {
   const [collectRef, setCollectRef] = useState('');
   const [collectNotes, setCollectNotes] = useState('');
   const [collectDate, setCollectDate] = useState(today);
+  const [collectors, setCollectors] = useState<PaymentCollector[]>([]);
+  const [collectCollectorId, setCollectCollectorId] = useState('');
   // Bumped on every open/close so a slow in-flight invoice fetch from a
   // dialog the user already closed (or reopened for another appointment)
   // can't land its response into state after the fact.
@@ -95,6 +97,12 @@ const AppointmentManagement: React.FC = () => {
   }, [dateFrom, dateTo, filterDoctor]);
 
   useEffect(() => { fetchStats(); }, [fetchStats]);
+
+  useEffect(() => {
+    if (!canCollectFee) return;
+    paymentService.getCollectors().then(setCollectors).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const fetchAppointments = useCallback(async () => {
     setLoading(true);
@@ -255,6 +263,7 @@ const AppointmentManagement: React.FC = () => {
       setCollectRef('');
       setCollectNotes('');
       setCollectDate(today);
+      setCollectCollectorId(user?.id || '');
     } catch (err: any) {
       if (collectRequestRef.current !== requestId) return;
       toast.error(err?.response?.data?.detail || 'Failed to prepare consultation invoice');
@@ -276,6 +285,7 @@ const AppointmentManagement: React.FC = () => {
     setCollectRef('');
     setCollectNotes('');
     setCollectDate(today);
+    setCollectCollectorId('');
   };
 
   const submitCollectFee = async () => {
@@ -305,6 +315,7 @@ const AppointmentManagement: React.FC = () => {
         payment_reference: collectRef || undefined,
         payment_date: collectDate,
         notes: collectNotes || undefined,
+        received_by: collectCollectorId || undefined,
       });
 
       const refreshed = await invoiceService.getById(collectInvoice.id);
@@ -967,6 +978,23 @@ const AppointmentManagement: React.FC = () => {
                       placeholder="Txn / UPI / Card ref"
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
                     />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Collected By</label>
+                    <select
+                      value={collectCollectorId}
+                      onChange={(e) => setCollectCollectorId(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                    >
+                      {collectors.length === 0 && user && (
+                        <option value={user.id}>{user.first_name} {user.last_name} (you)</option>
+                      )}
+                      {collectors.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.first_name} {c.last_name}{c.id === user?.id ? ' (you)' : ''}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 

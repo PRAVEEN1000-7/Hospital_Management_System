@@ -222,6 +222,13 @@ const PurchaseOrdersPage: React.FC = () => {
                           title="View full order details and line items">
                           <span className="material-symbols-outlined text-[15px]">visibility</span> View
                         </button>
+                        {isAdminUser && !['draft', 'cancelled'].includes(po.status) && (
+                          <button onClick={() => navigate(`/inventory/purchase-orders/${po.id}/payments`)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors"
+                            title="Record and view vendor payments for this order">
+                            <span className="material-symbols-outlined text-[15px]">payments</span> Payments
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

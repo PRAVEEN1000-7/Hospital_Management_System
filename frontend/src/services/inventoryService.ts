@@ -7,6 +7,7 @@ import type {
   CycleCount, CycleCountCreate,
   InventoryDashboardData, LowStockItem, ExpiringItem,
   PaginatedResponse,
+  PaymentMode, PurchaseOrderPaymentCreate, PurchaseOrderPaymentSummary,
 } from '../types/inventory';
 
 const inventoryService = {
@@ -81,6 +82,23 @@ const inventoryService = {
   async updatePurchaseOrder(id: string, data: { status?: string; notes?: string; expected_delivery_date?: string }): Promise<PurchaseOrder> {
     const res = await api.put<PurchaseOrder>(`/inventory/purchase-orders/${id}`, data);
     return res.data;
+  },
+
+  // ── Purchase Order Payments ────────────────────────────────────────────
+  async getPaymentModes(): Promise<PaymentMode[]> {
+    const res = await api.get<PaymentMode[]>('/inventory/payment-modes');
+    return res.data;
+  },
+  async createPaymentMode(name: string): Promise<PaymentMode> {
+    const res = await api.post<PaymentMode>('/inventory/payment-modes', { name });
+    return res.data;
+  },
+  async getPoPayments(poId: string): Promise<PurchaseOrderPaymentSummary> {
+    const res = await api.get<PurchaseOrderPaymentSummary>(`/inventory/purchase-orders/${poId}/payments`);
+    return res.data;
+  },
+  async createPoPayment(poId: string, data: PurchaseOrderPaymentCreate): Promise<void> {
+    await api.post(`/inventory/purchase-orders/${poId}/payments`, data);
   },
 
   // ── Goods Receipt Notes ────────────────────────────────────────────────

@@ -145,6 +145,197 @@ async def get_lab_order(
     return svc._enrich_order(db, order)
 
 
+@router.get("/orders/{order_id}/pdf")
+async def get_lab_order_pdf(
+    order_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Generate a downloadable/printable HTML document for this lab report.
+
+    Mirrors the prescription PDF pattern (backend/app/routers/prescriptions.py
+    get_prescription_pdf) — real embedded hospital logo/watermark, forced
+    light rendering, and the same letterhead/patient-box/signature layout —
+    so the lab report reads as the same family of document, not a
+    differently-styled one-off. Rendered identically whether opened in the
+    Print window or converted to PDF client-side via htmlStringToPdf.
+    """
+    import html as _html_mod
+    from datetime import datetime
+    from ..models.user import Hospital
+    from ..models.appointment import Doctor
+
+    _require(current_user, LAB_VIEW_ROLES)
+    order = svc.get_lab_order_by_id(db, order_id, hospital_id=current_user.hospital_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Lab order not found")
+    resp = svc._enrich_order(db, order)
+
+    hospital = db.query(Hospital).filter(Hospital.id == current_user.hospital_id).first()
+    patient = order.patient
+    doctor = db.query(Doctor).filter(Doctor.id == order.doctor_id).first()
+
+    def _esc(value) -> str:
+        if value is None or value == "":
+            return ""
+        return _html_mod.escape(str(value), quote=True)
+
+    def fmt_date(d) -> str:
+        return d.strftime("%B %d, %Y %I:%M %p") if d else "—"
+
+    hosp_name = _esc((hospital.name if hospital else "") or "Hospital")
+    hosp_address = _esc(hospital.address_line_1 if hospital else "")
+    hosp_city = _esc(hospital.city if hospital else "")
+    hosp_phone = _esc(hospital.phone if hospital else "")
+    hosp_email = _esc(hospital.email if hospital else "")
+    addr_line = ", ".join(p for p in (hosp_address, hosp_city) if p)
+    contact_bits = []
+    if hosp_phone:
+        contact_bits.append(f"Phone: {hosp_phone}")
+    if hosp_email:
+        contact_bits.append(f"Email: {hosp_email}")
+    contact_line = " | ".join(contact_bits)
+
+    # Hospital logo → embedded as a base64 data URI (same helper/rationale as
+    # get_prescription_pdf) so it renders in both the print window and the
+    # html2canvas PDF download — relative /uploads paths don't resolve there.
+    def _logo_data_uri(logo_url: str) -> str:
+        if not logo_url:
+            return ""
+        if logo_url.startswith("http://") or logo_url.startswith("https://"):
+            return logo_url
+        import os as _os, base64 as _b64, mimetypes as _mt
+        backend_root = _os.path.dirname(_os.path.dirname(_os.path.dirname(__file__)))
+        fpath = _os.path.join(backend_root, logo_url.lstrip("/").replace("/", _os.sep))
+        if not _os.path.exists(fpath):
+            return ""
+        mime = _mt.guess_type(fpath)[0] or "image/png"
+        try:
+            with open(fpath, "rb") as fh:
+                data = _b64.b64encode(fh.read()).decode("ascii")
+            return f"data:{mime};base64,{data}"
+        except Exception:
+            return ""
+    logo_uri = _logo_data_uri(hospital.logo_url if hospital else "")
+
+    doctor_name = _esc((doctor.user.full_name if doctor and doctor.user else "") or resp.doctor_name or "—")
+    doctor_display = doctor_name if doctor_name.startswith("Dr.") else f"Dr. {doctor_name}"
+
+    def _item_rows(item) -> str:
+        params = item.parameters or []
+        if not params:
+            return f"""<tr><td colspan="4" class="muted">No result entered yet</td></tr>"""
+        rows = []
+        last_section = None
+        for p in params:
+            if p.section and p.section != last_section:
+                rows.append(f'<tr><td colspan="4" class="section-row">{_esc(p.section)}</td></tr>')
+                last_section = p.section
+            flag_class = f"flag-{p.flag}" if p.flag and p.flag != "normal" else ""
+            rows.append(f"""<tr>
+                <td>{_esc(p.name)}</td>
+                <td class="right {flag_class}">{_esc(p.value)}</td>
+                <td>{_esc(p.unit)}</td>
+                <td>{_esc(p.reference_range)}</td>
+            </tr>""")
+        return "".join(rows)
+
+    tests_html = "".join(
+        f"""<p class="section-title">{_esc(item.test_name)}</p>
+        <table>
+            <thead><tr><th>Parameter</th><th class="right">Result</th><th>Unit</th><th>Reference Range</th></tr></thead>
+            <tbody>{_item_rows(item)}</tbody>
+        </table>"""
+        for item in resp.items
+    )
+
+    status_label = resp.report_status.replace("_", " ").title()
+
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="color-scheme" content="light only">
+<title>Lab Report - {_esc(resp.order_number)}</title>
+<style>
+:root {{ color-scheme: light only; }}
+html {{ background:#ffffff; }}
+body {{ font-family: 'Noto Sans', Arial, sans-serif; margin:0; padding:28px; color:#1e293b; background:#ffffff; position:relative; }}
+.watermark {{ position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:55%; max-width:420px; opacity:0.06; z-index:0; pointer-events:none; }}
+.content {{ position:relative; z-index:1; }}
+.header {{ text-align:center; margin-bottom:18px; padding-bottom:14px; border-bottom:3px solid #0284c7; }}
+.header-logo {{ height:60px; max-width:220px; object-fit:contain; margin-bottom:6px; }}
+.header h1 {{ margin:0; color:#0284c7; font-size:24px; }}
+.header p {{ margin:4px 0; color:#64748b; font-size:13px; }}
+.report-info {{ display:flex; justify-content:space-between; margin-bottom:14px; font-size:13px; }}
+.patient-box {{ background:#f1f5f9; padding:14px 16px; border-radius:8px; margin-bottom:14px; }}
+.patient-box p {{ margin:4px 0; font-size:13px; }}
+table {{ width:100%; border-collapse:collapse; margin:8px 0 20px; }}
+th, td {{ text-align:left; padding:8px 12px; border-bottom:1px solid #e2e8f0; font-size:13px; }}
+th {{ color:#64748b; font-weight:600; font-size:12px; }}
+.right {{ text-align:right; }}
+.muted {{ color:#94a3b8; font-size:12px; font-style:italic; }}
+.section-row {{ font-weight:700; color:#0284c7; font-size:12px; border-top:1px solid #e2e8f0; }}
+.flag-high, .flag-low {{ color:#b45309; font-weight:700; }}
+.flag-abnormal {{ color:#b91c1c; font-weight:700; }}
+.section-title {{ font-size:16px; font-weight:bold; color:#0284c7; margin:24px 0 4px; padding-bottom:4px; border-bottom:2px solid #e2e8f0; }}
+.status {{ font-size:12px; font-weight:bold; text-transform:uppercase; }}
+.status-finalized {{ color:#166534; }}
+.status-completed {{ color:#92400e; }}
+.status-pending {{ color:#475569; }}
+.footer {{ margin-top:24px; text-align:right; page-break-inside:avoid; }}
+.no-signature {{ font-size:13px; font-style:italic; color:#64748b; margin:0; }}
+.generated-note {{ text-align:center; margin-top:24px; font-size:11px; color:#94a3b8; }}
+@page {{ size: A4; margin: 12mm; }}
+@media print {{
+  html, body {{ margin:0; padding:0; height:auto; background:#ffffff; -webkit-print-color-adjust:exact; print-color-adjust:exact; }}
+  .footer {{ margin-top:20px; }}
+  table, tr, td, th {{ page-break-inside:avoid; }}
+  .patient-box {{ page-break-inside:avoid; }}
+}}
+</style>
+</head>
+<body>
+{f'<img class="watermark" src="{logo_uri}" alt="" />' if logo_uri else ''}
+<div class="content">
+<div class="header">
+    {f'<img class="header-logo" src="{logo_uri}" alt="{hosp_name}" />' if logo_uri else ''}
+    <h1>{hosp_name}</h1>
+    {f'<p>{addr_line}</p>' if addr_line else ''}
+    {f'<p style="white-space:nowrap;">{contact_line}</p>' if contact_line else ''}
+</div>
+
+<div class="report-info">
+    <div><strong>Report #:</strong> {_esc(resp.order_number)}<br/><strong>Date:</strong> {fmt_date(order.created_at)}<br/><strong>Ordered by:</strong> {doctor_display}</div>
+    <div style="text-align:right;"><strong>Status:</strong> <span class="status status-{resp.report_status}">{_esc(status_label)}</span></div>
+</div>
+
+<div class="patient-box">
+    <p><strong>Patient:</strong> {_esc(patient.full_name) if patient else '—'}</p>
+    {f'<p><strong>PRN:</strong> {_esc(patient.patient_reference_number)}</p>' if patient and patient.patient_reference_number else ''}
+</div>
+
+{tests_html}
+
+{f'<p class="generated-note">Finalized by {_esc(resp.finalized_by_name)} on {fmt_date(resp.finalized_at)}</p>' if resp.finalized_by_name else ''}
+
+<div class="footer">
+    <p class="no-signature">Signature not required</p>
+</div>
+
+<p class="generated-note">Generated on {datetime.now().strftime("%B %d, %Y at %I:%M %p")} | This is a computer-generated document.</p>
+</div>
+</body>
+</html>"""
+
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(
+        content=html,
+        media_type="text/html",
+        headers={"Content-Disposition": f'inline; filename="lab_report_{resp.order_number}.html"'},
+    )
+
+
 @router.put("/orders/{order_id}/queue-status", response_model=LabQueueEntryResponse)
 async def update_lab_queue_status(
     order_id: str,

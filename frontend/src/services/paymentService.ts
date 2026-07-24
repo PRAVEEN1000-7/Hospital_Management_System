@@ -1,7 +1,12 @@
 import api from './api';
-import type { Payment, PaymentListItem, PaymentCreateData, PaginatedResponse } from '../types/billing';
+import type { Payment, PaymentListItem, PaymentCreateData, PaymentCollector, PaginatedResponse } from '../types/billing';
 
 const paymentService = {
+  async getCollectors(): Promise<PaymentCollector[]> {
+    const response = await api.get<PaymentCollector[]>('/payments/collectors');
+    return response.data;
+  },
+
   async list(
     page = 1,
     limit = 10,

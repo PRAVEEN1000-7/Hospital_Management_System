@@ -8,6 +8,7 @@ import type { PaymentMode } from '../../types/billing';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatDateTime } from '../../utils/calendarDate';
+import { htmlStringToPdf } from '../../utils/pdf';
 
 const STAFF_ROLES = ['super_admin', 'admin', 'lab_technician'];
 
@@ -92,6 +93,7 @@ const LabOrderDetail: React.FC = () => {
   const [drafts, setDrafts] = useState<Record<string, ParamDraft[]>>({});
   const [notesDrafts, setNotesDrafts] = useState<Record<string, string>>({});
   const [savingItem, setSavingItem] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
 
   const load = useCallback(async () => {
     if (!orderId) return;
@@ -234,6 +236,35 @@ const LabOrderDetail: React.FC = () => {
     }
   };
 
+  const handlePrint = async () => {
+    if (!orderId) return;
+    try {
+      const html = await labService.getOrderPdfHtml(orderId);
+      const win = window.open('', '_blank');
+      if (win) {
+        win.document.write(html);
+        win.document.close();
+        setTimeout(() => win.print(), 500);
+      }
+    } catch {
+      showToast('error', 'Failed to generate print view');
+    }
+  };
+
+  const handleDownload = async () => {
+    if (!orderId || downloading) return;
+    setDownloading(true);
+    try {
+      const html = await labService.getOrderPdfHtml(orderId);
+      await htmlStringToPdf(html, `Lab_Report_${order?.order_number || orderId}.pdf`);
+      showToast('success', 'Lab report downloaded');
+    } catch {
+      showToast('error', 'Failed to download lab report');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -253,6 +284,21 @@ const LabOrderDetail: React.FC = () => {
           body * { visibility: hidden !important; }
           #lab-report-print-area, #lab-report-print-area * { visibility: visible !important; }
           #lab-report-print-area { position: absolute; inset: 0; padding: 24px; }
+
+          /* Icon-font glyphs (Material Symbols) don't reliably render on
+             print — instead of the icon, the raw ligature word (e.g.
+             "verified") can print as literal text. Drop them here; every
+             icon in the print area is purely decorative. */
+          #lab-report-print-area .material-symbols-outlined { display: none !important; }
+
+          /* Ink-heavy colored fills (status pills, the finalized banner,
+             flag badges) read as UI chrome, not a printed document — strip
+             the background/pill shape but keep text colors so the
+             clinical flag (high/low/abnormal) is still legible. */
+          #lab-report-print-area [class*="bg-"] { background-color: transparent !important; }
+          #lab-report-print-area .rounded-full { border-radius: 0 !important; }
+          #lab-report-print-area .border-emerald-100,
+          #lab-report-print-area .border-slate-200 { border-color: #cbd5e1 !important; }
         }
       `}</style>
 
@@ -280,10 +326,15 @@ const LabOrderDetail: React.FC = () => {
                 Mark Sample Collected
               </button>
             )}
-            <button onClick={() => window.print()}
+            <button onClick={handlePrint}
               className="px-3 py-1.5 text-sm font-medium text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200 flex items-center gap-1.5">
               <span className="material-symbols-outlined text-base">print</span>
               Print Report
+            </button>
+            <button onClick={handleDownload} disabled={downloading}
+              className="px-3 py-1.5 text-sm font-medium text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200 disabled:opacity-50 flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-base">download</span>
+              {downloading ? 'Preparing…' : 'Download PDF'}
             </button>
           </div>
         </div>

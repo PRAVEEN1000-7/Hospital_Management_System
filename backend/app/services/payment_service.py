@@ -18,11 +18,17 @@ from ..core.hospital_time import hospital_today_by_id
 from ..models.payment import Payment
 from ..models.invoice import Invoice
 from ..models.patient import Patient
+from ..models.user import User
 from ..schemas.payment import (
     PaymentCreate, PaymentResponse, PaymentListItem, PaginatedPaymentResponse
 )
 
 logger = logging.getLogger(__name__)
+
+# Roles allowed to be picked as "who actually collected" a payment — matches
+# the roles already permitted to record payments in the first place
+# (routers/payments.py: BILLING_STAFF_ROLES).
+COLLECTOR_ROLES = {"super_admin", "admin", "cashier", "pharmacist", "receptionist"}
 
 
 def generate_payment_number() -> str:
@@ -55,7 +61,7 @@ def _load_payment(db: Session, payment_id: str | uuid.UUID) -> Optional[Payment]
             return None
     return (
         db.query(Payment)
-        .options(joinedload(Payment.invoice), joinedload(Payment.patient))
+        .options(joinedload(Payment.invoice), joinedload(Payment.patient), joinedload(Payment.receiver))
         .filter(Payment.id == payment_id)
         .first()
     )
@@ -119,6 +125,22 @@ def record_payment(
             f"Payment amount ₹{data.amount} exceeds the outstanding balance ₹{current_balance}"
         )
 
+    collector_id = user_id
+    if data.received_by:
+        try:
+            received_by_uuid = uuid.UUID(data.received_by)
+        except ValueError:
+            raise ValueError("Invalid collected-by user ID")
+        collector = db.query(User).filter(
+            User.id == received_by_uuid, User.hospital_id == hospital_id,
+        ).first()
+        if not collector:
+            raise ValueError("Collected-by user not found in this hospital")
+        collector_roles = {str(r).strip().lower() for r in (collector.roles or [])}
+        if not (collector_roles & {r.lower() for r in COLLECTOR_ROLES}):
+            raise ValueError("Selected user is not eligible to collect payments")
+        collector_id = received_by_uuid
+
     payment = Payment(
         hospital_id=hospital_id,
         payment_number=generate_payment_number(),
@@ -129,7 +151,7 @@ def record_payment(
         payment_reference=data.payment_reference,
         payment_date=data.payment_date or hospital_today_by_id(db, hospital_id),
         status="completed",
-        received_by=user_id,
+        received_by=collector_id,
         notes=data.notes,
     )
     db.add(payment)
@@ -252,3 +274,21 @@ def list_payments(
 
 def get_payment_by_id(db: Session, payment_id: str | uuid.UUID) -> Optional[Payment]:
     return _load_payment(db, payment_id)
+
+
+def list_collectors(db: Session, hospital_id: uuid.UUID) -> list[dict]:
+    """Staff eligible to be picked as "who collected" a payment — used to
+    populate the Collected By dropdown (any billing-capable role, not just
+    the logged-in user)."""
+    users = (
+        db.query(User)
+        .filter(User.hospital_id == hospital_id, User.is_active == True, User.is_deleted == False)
+        .all()
+    )
+    eligible = {r.lower() for r in COLLECTOR_ROLES}
+    result = []
+    for u in users:
+        roles = {str(r).strip().lower() for r in (u.roles or [])}
+        if roles & eligible:
+            result.append({"id": str(u.id), "first_name": u.first_name, "last_name": u.last_name})
+    return sorted(result, key=lambda x: (x["first_name"], x["last_name"]))

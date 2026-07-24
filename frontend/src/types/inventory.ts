@@ -108,6 +108,45 @@ export interface PurchaseOrderCreate {
   items: PurchaseOrderItemCreate[];
 }
 
+/* ── PO Payments ───────────────────────────────────────────────────────── */
+
+export interface PaymentMode {
+  id: string;
+  name: string;
+  is_active: boolean;
+}
+
+export interface PurchaseOrderPayment {
+  id: string;
+  purchase_order_id: string;
+  po_number: string | null;
+  supplier_name: string | null;
+  payment_number: string;
+  invoice_number: string | null;
+  amount: number;
+  payment_mode_id: string;
+  mode_name: string | null;
+  payment_date: string;
+  reference_note: string | null;
+  recorded_by_name: string | null;
+  created_at: string;
+}
+
+export interface PurchaseOrderPaymentCreate {
+  invoice_number?: string;
+  amount: number;
+  payment_mode_id: string;
+  payment_date?: string;
+  reference_note?: string;
+}
+
+export interface PurchaseOrderPaymentSummary {
+  po_total: number;
+  total_paid: number;
+  balance: number;
+  payments: PurchaseOrderPayment[];
+}
+
 /* ── GRN ───────────────────────────────────────────────────────────────── */
 
 export interface GRNItem {

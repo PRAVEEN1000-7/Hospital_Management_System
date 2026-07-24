@@ -22,6 +22,8 @@ from ..schemas.inventory import (
     CycleCountCreate, CycleCountUpdate, CycleCountResponse,
     # Analytics
     StockStatusAnalytics, InventoryAgingAnalytics,
+    # PO Payments
+    PaymentModeCreate, PurchaseOrderPaymentCreate,
 )
 from ..services import inventory_service as svc
 from ..services.notification_service import notify_hospital_users
@@ -44,6 +46,10 @@ inventory_view_roles = require_any_role("super_admin", "admin", "inventory_manag
 # need the same write access as inventory_manager here, not just read access.
 inventory_manage_roles = require_any_role("super_admin", "admin", "inventory_manager", "pharmacist")
 grn_verify_roles = require_any_role("super_admin", "admin", "inventory_manager", "pharmacist")
+# PO vendor-payment submodule is admin-only by design — recording that the
+# hospital paid a supplier is a financial control action, distinct from the
+# inventory_manager/pharmacist roles that can merely raise/receive POs.
+po_payment_roles = require_any_role("super_admin", "admin")
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -288,6 +294,60 @@ async def update_purchase_order(
     except Exception:
         pass
     return svc._format_po_response(full_po, db)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  PURCHASE ORDER PAYMENTS
+# ═════════════════════════════════════════════════════════════════════════════
+
+@router.get("/payment-modes")
+async def list_payment_modes(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(po_payment_roles),
+):
+    """List the admin-managed directory of vendor payment transfer modes."""
+    modes = svc.list_payment_modes(db, current_user.hospital_id)
+    return [{"id": str(m.id), "name": m.name, "is_active": m.is_active} for m in modes]
+
+
+@router.post("/payment-modes", status_code=status.HTTP_201_CREATED)
+async def create_payment_mode(
+    payload: PaymentModeCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(po_payment_roles),
+):
+    """Add a new transfer mode to the directory (e.g. a supplier-specific wallet)."""
+    mode = svc.create_payment_mode(db, current_user.hospital_id, payload.name)
+    return {"id": str(mode.id), "name": mode.name, "is_active": mode.is_active}
+
+
+@po_router.get("/{po_id}/payments")
+async def list_po_payments(
+    po_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(po_payment_roles),
+):
+    """List payments recorded against a purchase order, with running total/balance."""
+    try:
+        return svc.list_po_payments(db, po_id, current_user.hospital_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@po_router.post("/{po_id}/payments", status_code=status.HTTP_201_CREATED)
+async def create_po_payment(
+    po_id: uuid.UUID,
+    payload: PurchaseOrderPaymentCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(po_payment_roles),
+):
+    """Record a vendor payment against a purchase order."""
+    try:
+        return svc.create_po_payment(db, po_id, current_user.hospital_id, payload, current_user.id)
+    except ValueError as e:
+        detail = str(e)
+        status_code = 404 if detail == "Purchase order not found" else 400
+        raise HTTPException(status_code=status_code, detail=detail)
 
 
 # ═════════════════════════════════════════════════════════════════════════════

@@ -179,8 +179,16 @@ export interface Payment {
   payment_time?: string;
   status: PaymentStatus;
   notes?: string;
+  received_by_name?: string;
   created_at: string;
   updated_at: string;
+}
+
+// Staff eligible to be selected as "who collected" a payment.
+export interface PaymentCollector {
+  id: string;
+  first_name: string;
+  last_name: string;
 }
 
 export interface PaymentListItem {
@@ -208,6 +216,7 @@ export interface PaymentCreateData {
   payment_reference?: string;
   payment_date?: string;
   notes?: string;
+  received_by?: string;
 }
 
 // ─── Refund ──────────────────────────────────────────────────────────────────

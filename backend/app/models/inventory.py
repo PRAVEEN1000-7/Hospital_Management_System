@@ -202,6 +202,45 @@ class CycleCount(Base):
     verifier = relationship("User", foreign_keys=[verified_by])
 
 
+class PaymentMode(Base):
+    """Admin-managed directory of vendor payment transfer modes (per hospital)."""
+    __tablename__ = "payment_modes"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=False)
+    name = Column(String(50), nullable=False)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    hospital = relationship("Hospital", foreign_keys=[hospital_id])
+
+    __table_args__ = (
+        UniqueConstraint("hospital_id", "name", name="uq_payment_mode_hospital_name"),
+    )
+
+
+class PurchaseOrderPayment(Base):
+    """A vendor payment recorded against a purchase order."""
+    __tablename__ = "purchase_order_payments"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=False)
+    purchase_order_id = Column(UUID(as_uuid=True), ForeignKey("purchase_orders.id"), nullable=False)
+    payment_number = Column(String(30), unique=True, nullable=False, index=True)
+    invoice_number = Column(String(50))
+    amount = Column(Numeric(12, 2), nullable=False)
+    payment_mode_id = Column(UUID(as_uuid=True), ForeignKey("payment_modes.id"), nullable=False)
+    payment_date = Column(Date, nullable=False)
+    reference_note = Column(Text)
+    recorded_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    hospital = relationship("Hospital", foreign_keys=[hospital_id])
+    purchase_order = relationship("PurchaseOrder")
+    payment_mode = relationship("PaymentMode")
+    recorder = relationship("User", foreign_keys=[recorded_by])
+
+
 class CycleCountItem(Base):
     """Line items in a cycle count — system vs. physical counts."""
     __tablename__ = "cycle_count_items"

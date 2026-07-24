@@ -50,6 +50,11 @@ export const labService = {
     return res.data;
   },
 
+  async getOrderPdfHtml(id: string): Promise<string> {
+    const res = await api.get(`/lab/orders/${id}/pdf`, { responseType: 'text' });
+    return res.data;
+  },
+
   async updateQueueStatus(orderId: string, queueStatus: LabQueueStatus): Promise<LabQueueEntry> {
     const res = await api.put<LabQueueEntry>(`/lab/orders/${orderId}/queue-status`, { queue_status: queueStatus });
     return res.data;

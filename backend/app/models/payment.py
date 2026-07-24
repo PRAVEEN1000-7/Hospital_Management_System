@@ -33,4 +33,5 @@ class Payment(Base):
     hospital = relationship("Hospital", foreign_keys=[hospital_id])
     invoice = relationship("Invoice", back_populates="payments")
     patient = relationship("Patient", foreign_keys=[patient_id])
+    receiver = relationship("User", foreign_keys=[received_by])
     refunds = relationship("Refund", back_populates="payment")

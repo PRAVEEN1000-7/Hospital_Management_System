@@ -15,6 +15,7 @@ from ..models.inventory import (
     Supplier, PurchaseOrder, PurchaseOrderItem,
     GoodsReceiptNote, GRNItem, StockMovement,
     StockAdjustment, CycleCount, CycleCountItem,
+    PaymentMode, PurchaseOrderPayment,
 )
 from ..models.prescription import Medicine
 from ..models.optical import OpticalProduct, OpticalBatch
@@ -27,6 +28,7 @@ from ..schemas.inventory import (
     GRNCreate, GRNUpdate, GRNItemBatchUpdate,
     StockAdjustmentCreate, StockAdjustmentUpdate,
     CycleCountCreate, CycleCountUpdate,
+    PurchaseOrderPaymentCreate,
 )
 
 logger = logging.getLogger(__name__)
@@ -708,6 +710,133 @@ def _format_po_response(po: PurchaseOrder, db: Session) -> dict:
         "approved_by_name": _user_name(po.approver) if hasattr(po, "approver") else None,
         "created_at": po.created_at,
         "updated_at": po.updated_at,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  PURCHASE ORDER PAYMENTS
+# ═══════════════════════════════════════════════════════════════════════════
+
+def list_payment_modes(db: Session, hospital_id: uuid.UUID) -> list:
+    return (
+        db.query(PaymentMode)
+        .filter(PaymentMode.hospital_id == hospital_id, PaymentMode.is_active == True)
+        .order_by(PaymentMode.name)
+        .all()
+    )
+
+
+def create_payment_mode(db: Session, hospital_id: uuid.UUID, name: str) -> PaymentMode:
+    name = name.strip()
+    existing = (
+        db.query(PaymentMode)
+        .filter(PaymentMode.hospital_id == hospital_id, func.lower(PaymentMode.name) == name.lower())
+        .first()
+    )
+    if existing:
+        if not existing.is_active:
+            existing.is_active = True
+            db.commit()
+            db.refresh(existing)
+        return existing
+    mode = PaymentMode(hospital_id=hospital_id, name=name)
+    db.add(mode)
+    db.commit()
+    db.refresh(mode)
+    return mode
+
+
+def _format_po_payment_response(payment: PurchaseOrderPayment) -> dict:
+    po = payment.purchase_order
+    return {
+        "id": str(payment.id),
+        "purchase_order_id": str(payment.purchase_order_id),
+        "po_number": po.po_number if po else None,
+        "supplier_name": po.supplier.name if po and po.supplier else None,
+        "payment_number": payment.payment_number,
+        "invoice_number": payment.invoice_number,
+        "amount": float(payment.amount or 0),
+        "payment_mode_id": str(payment.payment_mode_id),
+        "mode_name": payment.payment_mode.name if payment.payment_mode else None,
+        "payment_date": payment.payment_date,
+        "reference_note": payment.reference_note,
+        "recorded_by_name": _user_name(payment.recorder),
+        "created_at": payment.created_at,
+    }
+
+
+def create_po_payment(
+    db: Session, po_id: uuid.UUID, hospital_id: uuid.UUID,
+    data: PurchaseOrderPaymentCreate, user_id: uuid.UUID,
+) -> dict:
+    po = (
+        db.query(PurchaseOrder)
+        .options(joinedload(PurchaseOrder.supplier))
+        .filter(PurchaseOrder.id == po_id, PurchaseOrder.hospital_id == hospital_id)
+        .first()
+    )
+    if not po:
+        raise ValueError("Purchase order not found")
+
+    mode = (
+        db.query(PaymentMode)
+        .filter(PaymentMode.id == uuid.UUID(data.payment_mode_id), PaymentMode.hospital_id == hospital_id)
+        .first()
+    )
+    if not mode:
+        raise ValueError("Invalid payment mode")
+
+    already_paid = db.query(func.coalesce(func.sum(PurchaseOrderPayment.amount), 0)).filter(
+        PurchaseOrderPayment.purchase_order_id == po_id,
+    ).scalar() or 0
+    if float(already_paid) + float(data.amount) > float(po.total_amount or 0) + 0.01:
+        raise ValueError(
+            f"Payment of ₹{data.amount} would exceed the PO total of ₹{float(po.total_amount or 0):.2f} "
+            f"(already paid ₹{float(already_paid):.2f})"
+        )
+
+    payment_number = _generate_number(db, "POPAY", PurchaseOrderPayment, "payment_number")
+    payment = PurchaseOrderPayment(
+        hospital_id=hospital_id,
+        purchase_order_id=po_id,
+        payment_number=payment_number,
+        invoice_number=data.invoice_number,
+        amount=data.amount,
+        payment_mode_id=mode.id,
+        payment_date=data.payment_date or date.today(),
+        reference_note=data.reference_note,
+        recorded_by=user_id,
+    )
+    db.add(payment)
+    db.commit()
+    db.refresh(payment)
+    logger.info("PO payment recorded: %s against %s (amount=%.2f)", payment_number, po.po_number, float(data.amount))
+    return _format_po_payment_response(payment)
+
+
+def list_po_payments(db: Session, po_id: uuid.UUID, hospital_id: uuid.UUID) -> dict:
+    po = db.query(PurchaseOrder).filter(
+        PurchaseOrder.id == po_id, PurchaseOrder.hospital_id == hospital_id,
+    ).first()
+    if not po:
+        raise ValueError("Purchase order not found")
+
+    payments = (
+        db.query(PurchaseOrderPayment)
+        .options(joinedload(PurchaseOrderPayment.purchase_order).joinedload(PurchaseOrder.supplier),
+                 joinedload(PurchaseOrderPayment.payment_mode),
+                 joinedload(PurchaseOrderPayment.recorder))
+        .filter(PurchaseOrderPayment.purchase_order_id == po_id)
+        .order_by(PurchaseOrderPayment.created_at.desc())
+        .all()
+    )
+    total_paid = sum(float(p.amount or 0) for p in payments)
+    po_total = float(po.total_amount or 0)
+    return {
+        "po_total": po_total,
+        "total_paid": total_paid,
+        "balance": max(po_total - total_paid, 0),
+        "payments": [_format_po_payment_response(p) for p in payments],
     }
 
 

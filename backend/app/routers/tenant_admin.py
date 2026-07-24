@@ -16,6 +16,7 @@ from ..schemas.tenant import (
 )
 from ..services.tenant_service import TenantService
 from ..services.subscription_service import SubscriptionService
+from ..core.tenant_security import SubscriptionValidator
 
 router = APIRouter(prefix="/tenant", tags=["Tenant Admin"])
 
@@ -78,19 +79,30 @@ def get_available_modules(
     enabled = [m for m in modules if m.get('is_enabled')]
 
     # Ensure all active CORE modules appear regardless of TenantModule records
-    enabled_codes = {m['code'] for m in enabled}
-    core_modules = db.query(ModuleModel).filter(
-        ModuleModel.is_core == True,
-        ModuleModel.is_active == True
-    ).all()
-    for cm in core_modules:
-        if cm.code not in enabled_codes:
-            enabled.append({
-                'code': cm.code,
-                'name': cm.name,
-                'is_enabled': True,
-                'is_core': True,
-            })
+    # — but only while the tenant actually has an active subscription.
+    # SubscriptionValidator.is_module_enabled() (the real per-request gate
+    # every module-scoped endpoint uses, e.g. GET /prescriptions/*) returns
+    # False for every module, core or not, once the subscription isn't
+    # trialing/active/past_due. Unconditionally listing core modules as
+    # enabled here — regardless of subscription state — made this endpoint
+    # lie to the frontend: it would show prescriptions/patients/etc. as
+    # available and let the UI call their APIs, which then 403'd because the
+    # real gate disagreed. Checking the same active-subscription condition
+    # here keeps the two in sync.
+    if SubscriptionValidator.get_active_subscription(tenant, db):
+        enabled_codes = {m['code'] for m in enabled}
+        core_modules = db.query(ModuleModel).filter(
+            ModuleModel.is_core == True,
+            ModuleModel.is_active == True
+        ).all()
+        for cm in core_modules:
+            if cm.code not in enabled_codes:
+                enabled.append({
+                    'code': cm.code,
+                    'name': cm.name,
+                    'is_enabled': True,
+                    'is_core': True,
+                })
 
     return enabled
 

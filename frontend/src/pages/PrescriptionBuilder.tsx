@@ -20,7 +20,8 @@ import { genId } from '../utils/id';
 import AvailabilityCalendar from '../components/common/AvailabilityCalendar';
 import { useDoctorMonthAvailability } from '../hooks/useDoctorMonthAvailability';
 import { useListKeyboardNav } from '../hooks/useListKeyboardNav';
-import { formatLocalDateISO, formatMonthKey, formatDateTime } from '../utils/calendarDate';
+import { formatLocalDateISO, formatMonthKey } from '../utils/calendarDate';
+import PrescriptionHistoryGrid from '../components/patients/PrescriptionHistoryGrid';
 
 const FREQUENCY_OPTIONS = ['1-0-0', '0-1-0', '0-0-1', '1-0-1', '1-1-0', '0-1-1', '1-1-1', '1-1-1-1'];
 const DURATION_UNITS = ['days', 'weeks', 'months'];
@@ -1164,6 +1165,12 @@ const PrescriptionBuilder: React.FC = () => {
             </div>
           )}
 
+          {/* Prescription History — shown below patient details, not in the
+              sidebar, so the doctor sees it inline while reviewing the
+              patient before writing a new prescription. Renders nothing of
+              its own accord when the patient has no prior prescriptions. */}
+          {patient && <PrescriptionHistoryGrid patientId={patient.id} variant="card" />}
+
           {/* Vitals Section */}
           {patient && (
             <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
@@ -2044,11 +2051,6 @@ const PrescriptionBuilder: React.FC = () => {
             )}
             <p className="text-xs text-slate-400 mt-2">Search by name, generic name, strength (e.g. "500mg"), dosage form (e.g. "syrup"), or composition.</p>
           </div>
-
-          {/* Patient History (if patient selected) */}
-          {patient && (
-            <PatientRxHistory patientId={patient.id} />
-          )}
         </div>
       </div>
 
@@ -2225,56 +2227,6 @@ const PrescriptionBuilder: React.FC = () => {
           document.body
         )
       }
-    </div>
-  );
-};
-
-// Sub-component: Patient prescription history sidebar
-const PatientRxHistory: React.FC<{ patientId: string }> = ({ patientId }) => {
-  const navigate = useNavigate();
-  const [history, setHistory] = useState<any[]>([]);
-
-  useEffect(() => {
-    prescriptionService.getPatientPrescriptions(patientId, 1, 5)
-      .then(res => setHistory(res.data))
-      .catch(() => {});
-  }, [patientId]);
-
-  const statusColor: Record<string, string> = {
-    draft: 'bg-yellow-100 text-yellow-700',
-    finalized: 'bg-blue-100 text-blue-700',
-    dispensed: 'bg-green-100 text-green-700',
-  };
-
-  return (
-    <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-      <h4 className="text-sm font-semibold mb-3">Prescription History</h4>
-      {history.length > 0 ? (
-        <div className="space-y-2">
-          {history.map(rx => (
-            <button
-              key={rx.id}
-              onClick={() => navigate(`/prescriptions/${rx.id}`)}
-              className="w-full p-2 rounded-lg bg-slate-50 hover:bg-primary/5 hover:border-primary/20 border border-transparent flex justify-between items-center transition-colors group text-left"
-            >
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-medium text-slate-800">
-                  {formatDateTime(rx.created_at, 'MMM d, yyyy')}
-                </p>
-                <p className="text-[10px] text-slate-400 truncate">{rx.diagnosis || 'No diagnosis'}</p>
-              </div>
-              <div className="flex items-center gap-1 shrink-0 ml-2">
-                <span className={`text-[10px] px-1.5 py-0.5 rounded ${statusColor[rx.status] || 'bg-slate-100 text-slate-600'}`}>
-                  {rx.status}
-                </span>
-                <span className="material-symbols-outlined text-xs text-slate-300 group-hover:text-primary transition-colors">chevron_right</span>
-              </div>
-            </button>
-          ))}
-        </div>
-      ) : (
-        <p className="text-xs text-slate-400">No previous prescriptions.</p>
-      )}
     </div>
   );
 };

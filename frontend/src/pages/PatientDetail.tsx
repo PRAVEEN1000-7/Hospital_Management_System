@@ -11,6 +11,7 @@ import ImageCropModal from '../components/common/ImageCropModal';
 import VerifiedBadge from '../components/patients/VerifiedBadge';
 import EmailVerificationField from '../components/patients/EmailVerificationField';
 import PhoneVerificationField from '../components/patients/PhoneVerificationField';
+import PrescriptionHistoryGrid from '../components/patients/PrescriptionHistoryGrid';
 
 const EDIT_ALLOWED_ROLES = ['super_admin', 'admin', 'receptionist'];
 
@@ -297,6 +298,9 @@ const PatientDetail: React.FC = () => {
             </p>
           </div>
         </div>
+
+        {/* Prescription History */}
+        {isModuleEnabled('prescriptions') && <PrescriptionHistoryGrid patientId={patient.id} />}
 
         {/* Lab Results */}
         {labResults.length > 0 && (

@@ -191,20 +191,27 @@ async def login(
                     detail="Tenant is suspended or inactive",
                 )
 
-            # Enforce trial expiry: if subscription is still trialing but trial_ends_at
-            # has passed, block access and mark subscription as expired
+            # Enforce trial expiry: if subscription is still trialing but its
+            # current_period_end has passed, block access and mark subscription
+            # as expired. Gate on current_period_end, not trial_ends_at —
+            # subscription_service.create_subscription() sets trial_ends_at to
+            # now+trial_days but current_period_end to a fixed now+30 days, so
+            # trial_ends_at routinely passes well before the period the tenant
+            # was actually granted access through. Using trial_ends_at here cut
+            # tenants off up to ~2 weeks early, and permanently persisted the
+            # wrong 'expired' status even after realizing the mistake.
             from datetime import datetime, timezone
             from ..models.tenant import TenantSubscription
             active_sub = db.query(TenantSubscription).filter(
                 TenantSubscription.tenant_id == tenant.id,
                 TenantSubscription.status == 'trialing',
             ).first()
-            if active_sub and active_sub.trial_ends_at:
+            if active_sub and active_sub.current_period_end:
                 now = datetime.now(timezone.utc)
-                trial_end = active_sub.trial_ends_at
-                if trial_end.tzinfo is None:
-                    trial_end = trial_end.replace(tzinfo=timezone.utc)
-                if now > trial_end:
+                period_end = active_sub.current_period_end
+                if period_end.tzinfo is None:
+                    period_end = period_end.replace(tzinfo=timezone.utc)
+                if now > period_end:
                     active_sub.status = 'expired'
                     db.commit()
                     raise HTTPException(

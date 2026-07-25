@@ -18,12 +18,16 @@ from datetime import date
 from ..database import get_db
 from ..models.user import User
 from ..models.prescription import Medicine as MedicineModel, Prescription
-from ..dependencies import get_current_active_user
+from ..dependencies import get_current_active_user, require_any_role
+from ..core.module_roles import view_roles, edit_roles
 from ..services import dispensing_service as svc
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/pharmacy", tags=["Pharmacy Dispensing"])
+
+pharmacy_view_guard = require_any_role(*view_roles("pharmacy"))
+pharmacy_edit_guard = require_any_role(*edit_roles("pharmacy"))
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -38,7 +42,7 @@ async def get_pending_prescriptions(
     doctor_id: Optional[str] = None,
     search: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(pharmacy_view_guard),
 ):
     """
     Get prescriptions waiting to be dispensed.
@@ -74,7 +78,7 @@ async def get_pending_prescriptions(
 async def get_prescription_for_dispensing(
     prescription_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(pharmacy_view_guard),
 ):
     """
     Get prescription details needed for dispensing.
@@ -195,7 +199,7 @@ async def preview_dispensing_totals(
     prescription_id: str,
     request: PreviewRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(pharmacy_view_guard),
 ):
     """
     Preview dispensing totals before submission.
@@ -262,7 +266,7 @@ async def dispense_prescription(
     prescription_id: str,
     request: DispenseRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(pharmacy_edit_guard),
 ):
     """
     Dispense medicines from a prescription.
@@ -350,7 +354,7 @@ async def get_available_batches_for_medicine(
     medicine_id: str,
     min_quantity: int = Query(1, ge=1),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(pharmacy_view_guard),
 ):
     """
     Get available batches for a medicine (FEFO order).
@@ -392,7 +396,7 @@ async def get_available_batches_for_medicine(
 async def get_dispensing_record(
     dispensing_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(pharmacy_view_guard),
 ):
     """
     Get a specific dispensing record with items.
@@ -427,7 +431,7 @@ async def mark_dispensing_paid(
     dispensing_id: str,
     request: MarkPaidRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(pharmacy_edit_guard),
 ):
     """Sync a dispensing bill's payment_status after its invoice has been paid.
 

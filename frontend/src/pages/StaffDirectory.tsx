@@ -6,6 +6,8 @@ import type { UserData } from '../types/user';
 import { ROLE_TEXT_COLORS, ROLE_LABELS } from '../utils/constants';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../contexts/ConfirmContext';
+import { useAuth } from '../contexts/AuthContext';
+import { canEdit as canEditModule } from '../config/modulePermissions';
 import {
   useAssignableRoles, Drawer, SectionTitle,
   CreateStaffModal, EditStaffModal, ResetPasswordModal,
@@ -38,6 +40,11 @@ const getDepartment = (role: string, specialization?: string | null): string => 
 const StaffDirectory: React.FC = () => {
   const toast = useToast();
   const confirm = useConfirm();
+  const { user: currentUser } = useAuth();
+  // Nurse/receptionist/report_viewer newly reach this page as view-only per
+  // the shared "general.staff_directory" matrix — hide every mutating action
+  // for them (docs/security/ROLE_PERMISSIONS_DECISIONS_2026-07-25.md).
+  const canEdit = canEditModule('general.staff_directory', currentUser?.roles);
   // Staff Directory's own role FILTER list excludes super_admin (BUG-10) —
   // this page is for day-to-day staff management, not platform-admin
   // accounts. Scoped to this filter only: the Add/Edit Staff modal still
@@ -250,9 +257,11 @@ const StaffDirectory: React.FC = () => {
           <button onClick={handleExportCSV} disabled={users.length === 0} className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50">
             <span className="material-icons text-base">download</span> Export CSV
           </button>
-          <button onClick={() => setShowCreate(true)} className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-lg text-sm font-semibold transition-all shadow-sm">
-            <span className="material-icons text-base">add</span> Add Staff
-          </button>
+          {canEdit && (
+            <button onClick={() => setShowCreate(true)} className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-lg text-sm font-semibold transition-all shadow-sm">
+              <span className="material-icons text-base">add</span> Add Staff
+            </button>
+          )}
         </div>
       </header>
 
@@ -280,6 +289,7 @@ const StaffDirectory: React.FC = () => {
               <option value="asc">↑ Ascending</option>
               <option value="desc">↓ Descending</option>
             </select>
+            {canEdit && (
             <div className="relative" ref={bulkMenuRef}>
               <button onClick={() => setShowBulkMenu(!showBulkMenu)} disabled={selectedUsers.size === 0 || bulkActionLoading} className={`inline-flex items-center gap-2 px-4 py-2.5 border rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${selectedUsers.size > 0 ? 'bg-primary text-white hover:bg-primary/90 border-primary shadow-sm' : 'bg-white text-slate-700 hover:bg-slate-50 border-slate-200'}`}>
                 <span className="material-icons text-base">more_horiz</span> Bulk Actions {selectedUsers.size > 0 && `(${selectedUsers.size})`}
@@ -298,6 +308,7 @@ const StaffDirectory: React.FC = () => {
                 </div>
               )}
             </div>
+            )}
           </div>
 
           {/* Filter Row */}
@@ -406,12 +417,16 @@ const StaffDirectory: React.FC = () => {
                     </td>
                     <td className="px-3 py-4 sticky right-0 bg-white group-hover:bg-slate-50/50 z-10">
                       <div className="flex items-center justify-end gap-1">
+                        {canEdit && (
                         <button onClick={() => setEditUser(user)} className="p-1.5 hover:bg-slate-100 rounded transition-colors" title="Edit">
                           <span className="material-icons text-base text-slate-600">edit</span>
                         </button>
+                        )}
+                        {canEdit && (
                         <button onClick={() => setDeleteConfirm(user)} className="p-1.5 hover:bg-red-50 rounded transition-colors" title="Delete">
                           <span className="material-icons text-base text-red-500">delete</span>
                         </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -505,6 +520,7 @@ const StaffDirectory: React.FC = () => {
               <ProfileField icon="update" label="Updated" value={format(new Date(viewUser.updated_at), 'dd MMM yyyy')} />
             </section>
           </div>
+          {canEdit && (
           <div className="flex gap-3 mt-6 pt-4 border-t border-slate-200">
             <button onClick={() => { setViewUser(null); setEditUser(viewUser); }} className="flex-1 px-4 py-2.5 text-sm font-bold text-primary bg-primary/5 hover:bg-primary/10 rounded-lg transition-colors flex items-center justify-center gap-2">
               <span className="material-icons text-sm">edit</span> Edit Profile
@@ -513,6 +529,7 @@ const StaffDirectory: React.FC = () => {
               <span className="material-icons text-sm">key</span> Reset Password
             </button>
           </div>
+          )}
         </Drawer>
       )}
 

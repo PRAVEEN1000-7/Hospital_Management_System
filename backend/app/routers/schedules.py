@@ -10,7 +10,8 @@ from datetime import date
 
 from ..database import get_db
 from ..models.user import User
-from ..dependencies import get_current_active_user, require_admin_or_super_admin
+from ..dependencies import get_current_active_user, require_admin_or_super_admin, require_any_role
+from ..core.module_roles import view_roles, edit_roles
 from ..models.appointment import Doctor, DoctorSchedule, DoctorLeave
 from ..schemas.appointment import (
     DoctorScheduleCreate,
@@ -36,6 +37,9 @@ from ..services.schedule_service import (
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/schedules", tags=["Doctor Schedules"])
 
+schedule_view_guard = require_any_role(*view_roles("appt.doctor_schedule"))
+schedule_edit_guard = require_any_role(*edit_roles("appt.doctor_schedule"))
+
 
 def _has_admin_role(user: User) -> bool:
     """Check if user has admin or super_admin role."""
@@ -43,10 +47,12 @@ def _has_admin_role(user: User) -> bool:
 
 
 def _can_manage_schedule(user: User, doctor_id: str, db: Session) -> bool:
-    """Allow admin/super_admin for any doctor, or the doctor themselves."""
-    if _has_admin_role(user):
+    """Admin/super_admin/nurse/receptionist can manage any doctor's schedule
+    (general front-office/admin edit access per the shared permission matrix);
+    a doctor or visiting_doctor can only manage their own."""
+    if any(r in ("admin", "super_admin", "nurse", "receptionist") for r in user.roles):
         return True
-    if "doctor" in user.roles:
+    if any(r in ("doctor", "visiting_doctor") for r in user.roles):
         # Match by Doctor.id or by Doctor.user_id (in case frontend sends user_id)
         doc = db.query(Doctor).filter(
             (Doctor.id == doctor_id) | (Doctor.user_id == doctor_id),
@@ -78,7 +84,7 @@ def _resolve_doctor_id(doctor_id: str, db: Session) -> str:
 @router.get("/doctors")
 async def list_doctors(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(schedule_view_guard),
 ):
     """List all active doctors (for dropdown selection)."""
     doctors = get_doctors_list(db, hospital_id=current_user.hospital_id)
@@ -106,7 +112,7 @@ async def create_doctor_schedule(
     doctor_id: str,
     data: DoctorScheduleCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(schedule_edit_guard),
 ):
     """Create a schedule row for a doctor."""
     resolved_id = _resolve_doctor_id(doctor_id, db)
@@ -125,7 +131,7 @@ async def create_doctor_schedule(
 async def get_schedules(
     doctor_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(schedule_view_guard),
 ):
     resolved_id = _resolve_doctor_id(doctor_id, db)
     return get_doctor_schedules(db, resolved_id)
@@ -136,7 +142,7 @@ async def bulk_create_schedules(
     doctor_id: str,
     data: DoctorScheduleBulkCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(schedule_edit_guard),
 ):
     """Create multiple schedule entries at once."""
     resolved_id = _resolve_doctor_id(doctor_id, db)
@@ -159,7 +165,7 @@ async def update_doctor_schedule(
     schedule_id: str,
     data: DoctorScheduleUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(schedule_edit_guard),
 ):
     try:
         schedule_uuid = uuid_mod.UUID(schedule_id)
@@ -183,7 +189,7 @@ async def update_doctor_schedule(
 async def delete_doctor_schedule(
     schedule_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(schedule_edit_guard),
 ):
     try:
         schedule_uuid = uuid_mod.UUID(schedule_id)
@@ -211,7 +217,7 @@ async def available_slots(
     # OPD session timings rather than a doctor's generic weekly schedule.
     use_opd_sessions: bool = Query(False),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(schedule_view_guard),
 ):
     slots = get_available_slots(
         db, _resolve_doctor_id(doctor_id, db), date, prefer_opd_sessions=use_opd_sessions,
@@ -225,7 +231,7 @@ async def available_slots(
 async def create_leave(
     data: DoctorLeaveCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(schedule_edit_guard),
 ):
     leave = create_doctor_leave(db, data.model_dump(), current_user.id)
     return leave
@@ -235,7 +241,7 @@ async def create_leave(
 async def list_leaves(
     doctor_id: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(schedule_view_guard),
 ):
     resolved = _resolve_doctor_id(doctor_id, db) if doctor_id else None
     leaves_q = (
@@ -252,7 +258,7 @@ async def list_leaves(
 async def remove_leave(
     leave_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(schedule_edit_guard),
 ):
     try:
         leave_uuid = uuid_mod.UUID(leave_id)

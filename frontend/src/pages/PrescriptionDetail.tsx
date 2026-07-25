@@ -139,8 +139,12 @@ const PrescriptionDetail: React.FC = () => {
 
   const rx = prescription;
   const userRole = user?.roles?.[0];
-  const canEdit = !rx.is_finalized && (userRole === 'doctor' || userRole === 'super_admin' || userRole === 'admin');
-  const canFinalize = !rx.is_finalized && (userRole === 'doctor' || userRole === 'super_admin');
+  // Pharmacist gets real edit/finalize/delete rights on prescription records
+  // per the shared permission matrix (rx.all) — see
+  // docs/security/ROLE_PERMISSIONS_DECISIONS_2026-07-25.md. Nurse's rx.all
+  // access is view-only, so they deliberately stay excluded from both.
+  const canEdit = !rx.is_finalized && (userRole === 'doctor' || userRole === 'super_admin' || userRole === 'admin' || userRole === 'pharmacist');
+  const canFinalize = !rx.is_finalized && (userRole === 'doctor' || userRole === 'super_admin' || userRole === 'pharmacist');
 
   return (
     <div className="max-w-7xl mx-auto">

@@ -17,6 +17,7 @@ import {
   formatNotificationMessage,
   getRelativeTime,
 } from '../../utils/notificationUtils';
+import { hasAccess } from '../../config/modulePermissions';
 
 const Layout: React.FC = () => {
   const { user, logout, isModuleEnabled, isEyeHospitalFeatureEnabled } = useAuth();
@@ -82,32 +83,29 @@ const Layout: React.FC = () => {
     const allowedSet = new Set(allowed.map(a => String(a).trim().toLowerCase()));
     return effectiveRoles.some(r => allowedSet.has(r));
   };
-  const hasPendingPrescriptionAccess = hasRole('pharmacist', 'admin', 'super_admin', 'inventory_manager') && isModuleEnabled('pharmacy');
-  
-  // Module + role gating — every section requires BOTH the right role AND enabled module
-  const canAccessPatients      = hasRole('super_admin', 'admin', 'receptionist', 'nurse', 'pharmacist', 'doctor') && isModuleEnabled('patients');
-  const canAccessAppointments  = hasRole('super_admin', 'admin', 'receptionist', 'doctor', 'nurse') && isModuleEnabled('appointments');
-  const canAccessPrescriptions = hasRole('super_admin', 'admin', 'doctor', 'nurse', 'pharmacist') && isModuleEnabled('prescriptions');
-  const canAccessPharmacy      = hasRole('pharmacist', 'admin', 'super_admin', 'inventory_manager', 'cashier') && isModuleEnabled('pharmacy');
-  const canAccessInventory     = hasRole('super_admin', 'admin', 'inventory_manager', 'pharmacist') && isModuleEnabled('inventory');
-  // Receptionist can view invoices/payments at front desk — doctors don't handle billing.
-  const canAccessBilling       = hasRole('super_admin', 'admin', 'cashier', 'pharmacist', 'receptionist') && isModuleEnabled('billing');
-  // AnalyticsDashboard.tsx scopes its own panels per role (doctor→OPD only,
-  // cashier→revenue/financial only, etc.) — these are exactly the roles it
-  // already has panel logic for; report_viewer's sole job is reports/analytics.
-  // receptionist deliberately excluded (BUG-07) — front desk doesn't need
-  // hospital-wide revenue/OPD analytics, just the billing/queue screens it
-  // already has.
+  const hasPendingPrescriptionAccess = hasAccess('pharmacy', effectiveRoles) && isModuleEnabled('pharmacy');
+
+  // Module + role gating — every section requires BOTH the right role AND enabled module.
+  // Role sets are driven by the shared permission matrix (config/modulePermissions.ts —
+  // see docs/security/ROLE_PERMISSIONS_DECISIONS_2026-07-25.md), super_admin always included.
+  const canAccessPatients      = hasAccess('general.patients', effectiveRoles) && isModuleEnabled('patients');
+  const canAccessAppointments  = hasAccess('appt.manage', effectiveRoles) && isModuleEnabled('appointments');
+  const canAccessPrescriptions = hasAccess('rx.all', effectiveRoles) && isModuleEnabled('prescriptions');
+  const canAccessPharmacy      = hasAccess('pharmacy', effectiveRoles) && isModuleEnabled('pharmacy');
+  const canAccessInventory     = hasAccess('inventory', effectiveRoles) && isModuleEnabled('inventory');
+  const canAccessBilling       = hasAccess('billing', effectiveRoles) && isModuleEnabled('billing');
   // For doctors, additionally require their per-doctor analytics_enabled flag
   // (in-house vs guest doctor, BUG-16) — other roles are unaffected.
-  const canAccessAnalytics     = hasRole('super_admin', 'admin', 'doctor', 'pharmacist', 'cashier', 'inventory_manager', 'report_viewer')
+  const canAccessAnalytics     = hasAccess('general.analytics', effectiveRoles)
     && isModuleEnabled('analytics')
     && (!hasRole('doctor') || hasRole('super_admin', 'admin') || doctorAnalyticsEnabled);
   // Optical Store is a back-of-store retail/dispensing operation, not part of a doctor's
   // clinical workflow — only admin/super_admin (oversight) and optical_staff (the job) get it.
-  const canAccessOptical       = hasRole('super_admin', 'admin', 'optical_staff') && isModuleEnabled('optical') && isEyeHospitalFeatureEnabled;
+  const canAccessOptical       = hasAccess('optical', effectiveRoles) && isModuleEnabled('optical') && isEyeHospitalFeatureEnabled;
   // Laboratory applies to every hospital type (not eye-specific) — admin/
-  // super_admin (oversight) and lab_technician (the job) get it.
+  // super_admin (oversight) and lab_technician (the job) get it. Left untouched
+  // per the client's instruction to leave the Lab role as-is — not part of the
+  // shared matrix (its spreadsheet column is blank for every row).
   const canAccessLab           = hasRole('super_admin', 'admin', 'lab_technician') && isModuleEnabled('lab');
   // Report Viewer's whole job is the appointment reports export — no other role gets a
   // sidebar entry for it since admin/super_admin already reach it via the Appointments dropdown.

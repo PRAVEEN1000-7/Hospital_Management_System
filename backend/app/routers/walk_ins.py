@@ -13,7 +13,8 @@ from ..database import get_db
 from ..models.user import User
 from ..models.patient import Patient
 from ..models.appointment import Appointment, AppointmentQueue, Doctor
-from ..dependencies import get_current_active_user
+from ..dependencies import get_current_active_user, require_any_role
+from ..core.module_roles import view_roles, edit_roles
 from ..schemas.appointment import WalkInRegister, WalkInAssignDoctor
 from pydantic import BaseModel
 from ..services.appointment_service import (
@@ -33,6 +34,12 @@ from ..core.audit_logger import AuditLogger, AuditAction
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/walk-ins", tags=["Walk-in Registration"])
+
+# Covers both "OPD Assignment" and "Walk in queue" submodules — their edit
+# tiers are identical (admin/doctor/nurse/receptionist); walkin_queue's view
+# tier additionally includes visiting_doctor + report_viewer.
+walkin_view_guard = require_any_role(*view_roles("appt.walkin_queue"))
+walkin_edit_guard = require_any_role(*edit_roles("appt.walkin_queue"))
 
 
 class ConsultationNotesPayload(BaseModel):
@@ -125,7 +132,7 @@ def _ensure_today_queue_action(qe: "AppointmentQueue", hospital_timezone: Option
 async def register_walk_in(
     data: WalkInRegister,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(walkin_edit_guard),
 ):
     """Register a walk-in patient: create appointment + add to queue."""
     logger.info(
@@ -330,7 +337,7 @@ async def get_queue_status(
     doctor_id: Optional[str] = Query(None),
     queue_date: Optional[str] = Query(None, description="Date in YYYY-MM-DD format. Defaults to today."),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(walkin_view_guard),
 ):
     """
     Get the walk-in queue for a specific date.
@@ -529,7 +536,7 @@ async def get_queue_status(
 async def call_patient(
     queue_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(walkin_edit_guard),
 ):
     """Call the next patient — sets queue status to 'called'. Appointment stays 'scheduled'."""
     try:
@@ -559,7 +566,7 @@ async def call_patient(
 async def send_to_doctor_queue(
     queue_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(walkin_edit_guard),
 ):
     """
     Receptionist confirms sending a patient to the doctor.
@@ -597,7 +604,7 @@ async def send_to_doctor_queue(
 async def start_consultation(
     queue_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(walkin_edit_guard),
 ):
     """Start consultation — moves queue from 'waiting'/'called' to 'in_consultation'."""
     try:
@@ -630,7 +637,7 @@ async def start_consultation(
 async def complete_patient(
     queue_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(walkin_edit_guard),
 ):
     """Complete consultation — sets queue status to 'completed' and appointment to 'completed'."""
     try:
@@ -663,7 +670,7 @@ async def complete_patient(
 async def skip_patient(
     queue_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(walkin_edit_guard),
 ):
     """Skip a patient in the queue (no-show)."""
     try:
@@ -693,7 +700,7 @@ async def save_consultation_notes(
     queue_id: str,
     payload: ConsultationNotesPayload,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(walkin_edit_guard),
 ):
     """Save consultation notes, vitals, diagnosis, and prescription for a queue entry."""
     try:
@@ -754,7 +761,7 @@ async def save_consultation_notes(
 async def get_consultation_notes(
     queue_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(walkin_view_guard),
 ):
     """Retrieve consultation notes for a queue entry."""
     try:
@@ -791,7 +798,7 @@ async def assign_doctor_to_walkin(
     appointment_id: str,
     data: WalkInAssignDoctor,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(walkin_edit_guard),
 ):
     """Assign or re-assign a doctor to a walk-in appointment."""
     if not (_is_receptionist(current_user) or _is_admin_or_super(current_user)):
@@ -884,7 +891,7 @@ async def assign_doctor_to_walkin(
 async def get_today_walkins(
     doctor_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(walkin_view_guard),
 ):
     """List today's walk-in appointments."""
     today = hospital_today(current_user.hospital.timezone if current_user.hospital else None)
@@ -910,7 +917,7 @@ async def get_today_walkins(
 @router.get("/unassigned")
 async def get_unassigned_walkins(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(walkin_view_guard),
 ):
     """
     List today's walk-in appointments that have no doctor assigned.
@@ -965,7 +972,7 @@ async def get_unassigned_walkins(
 async def get_doctor_queue_loads(
     target_date: Optional[str] = Query(None, alias="date", description="Date in YYYY-MM-DD. Defaults to today."),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(walkin_view_guard),
 ):
     """Return queue load per doctor (count of patients still WAITING, not yet
     seen) for the Send-to-Doctor / referral modal — lets a receptionist see
@@ -1011,7 +1018,7 @@ async def get_doctor_queue_loads(
 async def get_upcoming_queue(
     days: int = Query(7, ge=1, le=30, description="Number of days ahead to look"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(walkin_view_guard),
 ):
     """
     Get upcoming queue entries for the logged-in doctor, grouped by date.
@@ -1122,7 +1129,7 @@ async def get_upcoming_queue(
 async def refer_patient_to_doctor(
     data: ReferralPayload,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(walkin_edit_guard),
 ):
     """
     Refer a patient to another doctor/specialist.

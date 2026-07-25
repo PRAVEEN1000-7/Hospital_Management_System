@@ -8,6 +8,7 @@ from typing import Optional
 
 from ..database import get_db
 from ..dependencies import get_current_active_user
+from ..core.module_roles import edit_roles
 from ..models.user import User
 from ..schemas.refund import (
     RefundCreate, RefundResponse, PaginatedRefundResponse,
@@ -22,8 +23,10 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/refunds", tags=["Billing — Refunds"])
 
+# Driven by the shared "billing" permission matrix — see the flagged
+# conflict in docs/security/ROLE_PERMISSIONS_DECISIONS_2026-07-25.md.
 BILLING_ADMIN_ROLES = {"super_admin", "admin"}
-BILLING_STAFF_ROLES = {"super_admin", "admin", "cashier", "pharmacist"}
+BILLING_STAFF_ROLES = set(edit_roles("billing"))
 
 
 def _has_any_role(current_user: User, allowed_roles: set[str]) -> bool:

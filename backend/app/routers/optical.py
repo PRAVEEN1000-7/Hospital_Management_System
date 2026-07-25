@@ -14,7 +14,8 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models.user import User
 from ..models.optical import OpticalProduct as OpticalProductModel, OpticalBatch
-from ..dependencies import get_current_active_user
+from ..dependencies import get_current_active_user, require_any_role
+from ..core.module_roles import view_roles, edit_roles
 from ..services.notification_service import notify_hospital_users
 from ..schemas.optical import (
     # Product
@@ -41,12 +42,15 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/optical", tags=["Optical"])
 
+optical_view_guard = require_any_role(*view_roles("optical"))
+optical_edit_guard = require_any_role(*edit_roles("optical"))
+
 
 # ═══ Dashboard ═══
 @router.get("/dashboard", response_model=OpticalDashboard)
 async def optical_dashboard(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(optical_view_guard),
 ):
     return svc.get_optical_dashboard(db, current_user.hospital_id)
 
@@ -56,7 +60,7 @@ async def optical_dashboard(
 async def optical_sales_trend(
     days: int = Query(30, ge=1, le=90),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(optical_view_guard),
 ):
     return svc.get_optical_sales_trend(db, current_user.hospital_id, days)
 
@@ -66,7 +70,7 @@ async def optical_top_products(
     days: int = Query(30, ge=1, le=90),
     limit: int = Query(10, ge=1, le=50),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(optical_view_guard),
 ):
     return svc.get_optical_top_products(db, current_user.hospital_id, days, limit)
 
@@ -80,7 +84,7 @@ async def list_optical_products(
     category: Optional[str] = None,
     active_only: bool = True,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(optical_view_guard),
 ):
     result = svc.list_optical_products(db, current_user.hospital_id, page, limit, search, category, active_only)
     stock_map = result.pop("stock_map", {})
@@ -97,7 +101,7 @@ async def list_optical_products(
 async def get_optical_product(
     product_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(optical_view_guard),
 ):
     product = svc.get_optical_product_by_id(db, product_id, hospital_id=current_user.hospital_id)
     if not product:
@@ -109,7 +113,7 @@ async def get_optical_product(
 async def create_optical_product(
     data: OpticalProductCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(optical_edit_guard),
 ):
     try:
         product = svc.create_optical_product(db, current_user.hospital_id, data.model_dump())
@@ -128,7 +132,7 @@ async def update_optical_product(
     product_id: str,
     data: OpticalProductUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(optical_edit_guard),
 ):
     try:
         try:
@@ -160,7 +164,7 @@ async def update_optical_product(
 async def deactivate_optical_product(
     product_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(optical_edit_guard),
 ):
     try:
         product_uuid = uuid_mod.UUID(product_id)
@@ -182,7 +186,7 @@ async def list_optical_batches(
     product_id: str,
     active_only: bool = True,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(optical_view_guard),
 ):
     try:
         product_uuid = uuid_mod.UUID(product_id)
@@ -202,7 +206,7 @@ async def list_optical_batches(
 async def create_optical_batch(
     data: OpticalBatchCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(optical_edit_guard),
 ):
     try:
         try:
@@ -236,7 +240,7 @@ async def update_optical_batch(
     batch_id: str,
     data: OpticalBatchUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(optical_edit_guard),
 ):
     try:
         try:
@@ -287,7 +291,7 @@ async def list_pending_optical_prescriptions(
     status: Optional[str] = Query(None, description="pending | dispensed"),
     search: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(optical_view_guard),
 ):
     """Finalized optical prescriptions queue — for optical counter staff."""
     return svc.list_pending_optical_prescriptions(
@@ -302,7 +306,7 @@ async def list_optical_prescriptions(
     patient_id: Optional[str] = None,
     doctor_id: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(optical_view_guard),
 ):
     result = svc.list_optical_prescriptions(db, current_user.hospital_id, page, limit, patient_id, doctor_id)
     # Bulk-check which prescriptions already have a linked sale so the UI
@@ -321,7 +325,7 @@ async def list_optical_prescriptions(
 async def get_optical_prescription(
     prescription_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(optical_view_guard),
 ):
     rx = svc.get_optical_prescription_by_id(db, prescription_id, hospital_id=current_user.hospital_id)
     if not rx:
@@ -335,7 +339,7 @@ async def get_optical_prescription(
 async def create_optical_prescription(
     data: OpticalPrescriptionCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(optical_edit_guard),
 ):
     try:
         rx = svc.create_optical_prescription(db, current_user.hospital_id, data.model_dump(), created_by=current_user.id)
@@ -356,7 +360,7 @@ async def update_optical_prescription(
     prescription_id: str,
     data: OpticalPrescriptionUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(optical_edit_guard),
 ):
     rx = svc.get_optical_prescription_by_id(db, prescription_id, hospital_id=current_user.hospital_id)
     if not rx:
@@ -369,7 +373,7 @@ async def update_optical_prescription(
 async def finalize_optical_prescription(
     prescription_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(optical_edit_guard),
 ):
     rx = svc.get_optical_prescription_by_id(db, prescription_id, hospital_id=current_user.hospital_id)
     if not rx:
@@ -382,7 +386,7 @@ async def finalize_optical_prescription(
 async def get_optical_prescription_pdf(
     prescription_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(optical_view_guard),
 ):
     """Generate the eye prescription as printable HTML, styled like the clinical Rx template."""
     from fastapi.responses import HTMLResponse
@@ -629,7 +633,7 @@ async def list_optical_sales(
     date_to: Optional[date] = None,
     sale_status: Optional[str] = Query(None, description="Filter by sale status"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(optical_view_guard),
 ):
     result = svc.list_sales(db, current_user.hospital_id, page, limit, search, date_from, date_to, sale_status)
     result["data"] = [OpticalSaleResponse.model_validate(s) for s in result["data"]]
@@ -640,7 +644,7 @@ async def list_optical_sales(
 async def get_optical_sale(
     sale_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(optical_view_guard),
 ):
     sale = svc.get_sale(db, sale_id)
     if not sale or str(sale.hospital_id) != str(current_user.hospital_id):
@@ -655,7 +659,7 @@ async def get_optical_sale(
 async def create_optical_sale(
     data: OpticalSaleCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(optical_edit_guard),
 ):
     try:
         sale = svc.create_sale(db, current_user.hospital_id, data.model_dump(), current_user.id)
@@ -696,7 +700,7 @@ async def record_optical_sale_payment_route(
     sale_id: str,
     data: RecordOpticalPaymentRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(optical_edit_guard),
 ):
     """Collect an additional payment against an existing optical sale — e.g.
     settling a partially-paid balance. See record_optical_sale_payment()."""
@@ -724,7 +728,7 @@ async def record_optical_sale_payment_route(
 @router.get("/queue", response_model=list[OpticalQueueEntryResponse])
 async def get_optical_queue(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(optical_view_guard),
 ):
     return svc.list_optical_queue(db, current_user.hospital_id)
 
@@ -734,7 +738,7 @@ async def update_optical_queue_status_route(
     sale_id: str,
     data: OpticalQueueStatusUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(optical_edit_guard),
 ):
     sale = svc.get_sale(db, sale_id)
     if not sale or str(sale.hospital_id) != str(current_user.hospital_id):
@@ -763,7 +767,7 @@ async def update_optical_queue_status_route(
 async def list_optical_stock_adjustments(
     product_id: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(optical_view_guard),
 ):
     adjs = svc.list_stock_adjustments(db, current_user.hospital_id, product_id)
     return [OpticalStockAdjustmentResponse.model_validate(a) for a in adjs]
@@ -773,7 +777,7 @@ async def list_optical_stock_adjustments(
 async def create_optical_stock_adjustment(
     data: OpticalStockAdjustmentCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(optical_edit_guard),
 ):
     try:
         adj = svc.create_stock_adjustment(db, current_user.hospital_id, data.model_dump(), current_user.id)

@@ -26,6 +26,7 @@ from ..schemas.patient import (
 from ..models.patient import Patient
 from ..models.user import User, Hospital
 from ..dependencies import get_current_active_user, require_any_role
+from ..core.module_roles import view_roles, edit_roles
 from ..core.tenant_security import is_eye_hospital_feature_enabled
 from ..core.audit_logger import AuditLogger, AuditAction
 from ..config import settings
@@ -51,11 +52,12 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/patients", tags=["Patients"])
 
-# Role guards aligned with project access policy.
-patient_create_role_guard = require_any_role("super_admin", "admin", "receptionist")
-patient_read_role_guard = require_any_role("super_admin", "admin", "receptionist", "doctor", "nurse", "pharmacist")
-patient_update_role_guard = require_any_role("super_admin", "admin", "receptionist")
-patient_delete_role_guard = require_any_role("super_admin", "admin")
+# Role guards driven by the shared "general.patients" permission matrix
+# (backend/app/core/module_roles.py — see docs/security/ROLE_PERMISSIONS_DECISIONS_2026-07-25.md).
+patient_create_role_guard = require_any_role(*edit_roles("general.patients"))
+patient_read_role_guard = require_any_role(*view_roles("general.patients"))
+patient_update_role_guard = require_any_role(*edit_roles("general.patients"))
+patient_delete_role_guard = require_any_role(*edit_roles("general.patients"))
 
 
 @router.post("", response_model=PatientResponse, status_code=status.HTTP_201_CREATED)

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..dependencies import get_current_active_user, require_any_role
+from ..core.module_roles import view_roles, edit_roles
 from ..models.user import User
 from ..schemas.inventory import (
     SupplierCreate, SupplierUpdate, SupplierResponse,
@@ -40,12 +41,13 @@ movements_router = APIRouter(prefix="/inventory/stock-movements", tags=["Invento
 adjustments_router = APIRouter(prefix="/inventory/adjustments", tags=["Inventory – Adjustments"])
 cycle_counts_router = APIRouter(prefix="/inventory/cycle-counts", tags=["Inventory – Cycle Counts"])
 
-inventory_view_roles = require_any_role("super_admin", "admin", "inventory_manager", "pharmacist")
-# Pharmacists manage pharmacy stock end-to-end (receiving goods via GRNs,
-# raising purchase orders, adjusting stock, maintaining suppliers) — they
-# need the same write access as inventory_manager here, not just read access.
-inventory_manage_roles = require_any_role("super_admin", "admin", "inventory_manager", "pharmacist")
-grn_verify_roles = require_any_role("super_admin", "admin", "inventory_manager", "pharmacist")
+# Driven by the shared "inventory" permission matrix — per the client's
+# spreadsheet, pharmacist has view-only access here (they get full edit
+# rights on their own Pharmacy module instead); only inventory_manager/admin
+# can create/edit POs, GRNs, suppliers, and adjustments.
+inventory_view_roles = require_any_role(*view_roles("inventory"))
+inventory_manage_roles = require_any_role(*edit_roles("inventory"))
+grn_verify_roles = require_any_role(*edit_roles("inventory"))
 # PO vendor-payment submodule is admin-only by design — recording that the
 # hospital paid a supplier is a financial control action, distinct from the
 # inventory_manager/pharmacist roles that can merely raise/receive POs.

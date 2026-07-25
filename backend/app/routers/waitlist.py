@@ -12,7 +12,8 @@ from ..database import get_db
 from ..models.user import User
 from ..models.patient import Patient
 from ..models.appointment import Doctor, Appointment, AppointmentQueue, Waitlist
-from ..dependencies import get_current_active_user
+from ..dependencies import get_current_active_user, require_any_role
+from ..core.module_roles import view_roles, edit_roles
 from ..schemas.appointment import (
     WaitlistCreate,
     WaitlistUpdate,
@@ -37,6 +38,9 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/waitlist", tags=["Waitlist"])
+
+waitlist_view_guard = require_any_role(*view_roles("appt.waitlist"))
+waitlist_edit_guard = require_any_role(*edit_roles("appt.waitlist"))
 
 
 class BookFromWaitlistPayload(BaseModel):
@@ -63,7 +67,7 @@ async def list_waitlist(
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=100),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(waitlist_view_guard),
 ):
     """List waitlist entries. Admin/receptionist see all; doctors see their own."""
     roles = _user_roles(current_user)
@@ -96,7 +100,7 @@ async def list_waitlist(
 async def create_waitlist_entry(
     data: WaitlistCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(waitlist_edit_guard),
 ):
     """Manually add a patient to the waitlist."""
     try:
@@ -157,7 +161,7 @@ async def create_waitlist_entry(
 async def get_single_waitlist_entry(
     entry_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(waitlist_view_guard),
 ):
     """Get a single waitlist entry by ID."""
     entry = get_waitlist_entry(db, entry_id, hospital_id=current_user.hospital_id)
@@ -173,7 +177,7 @@ async def update_entry(
     entry_id: str,
     data: WaitlistUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(waitlist_edit_guard),
 ):
     """Update a waitlist entry (status, priority, date, etc.)."""
     entry = get_waitlist_entry(db, entry_id, hospital_id=current_user.hospital_id)
@@ -194,7 +198,7 @@ async def update_entry(
 async def cancel_entry(
     entry_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(waitlist_edit_guard),
 ):
     """Cancel (soft-delete) a waitlist entry."""
     entry = get_waitlist_entry(db, entry_id, hospital_id=current_user.hospital_id)
@@ -216,7 +220,7 @@ async def book_from_waitlist(
     entry_id: str,
     payload: Optional[BookFromWaitlistPayload] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(waitlist_edit_guard),
 ):
     """
     Promote a waitlist entry to a real walk-in appointment + queue entry.
@@ -349,7 +353,7 @@ async def waitlist_stats(
     doctor_id: Optional[str] = Query(None),
     target_date: Optional[date] = Query(None, alias="date"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(waitlist_view_guard),
 ):
     """Get waitlist summary stats."""
     from sqlalchemy import func as sqlfunc

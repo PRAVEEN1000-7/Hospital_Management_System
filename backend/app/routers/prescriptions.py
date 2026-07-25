@@ -13,7 +13,8 @@ from ..database import get_db
 from ..models.user import User, Hospital
 from ..models.appointment import Doctor, Appointment, AppointmentQueue
 from ..models.prescription import Medicine as MedicineModel, PrescriptionTemplate
-from ..dependencies import get_current_active_user
+from ..dependencies import get_current_active_user, require_any_role
+from ..core.module_roles import view_roles, edit_roles
 from ..core.tenant_security import is_eye_hospital_feature_enabled
 from ..core.hospital_time import hospital_today
 from ..schemas.prescription import (
@@ -56,6 +57,14 @@ from ..services.appointment_service import create_appointment
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/prescriptions", tags=["Prescriptions"])
 
+# "All Prescription" (existing records) vs "New Prescription" (authoring) —
+# per the confirmed decision, pharmacist gets real edit rights on rx.all
+# (docs/security/ROLE_PERMISSIONS_DECISIONS_2026-07-25.md).
+rx_all_view_guard = require_any_role(*view_roles("rx.all"))
+rx_all_edit_guard = require_any_role(*edit_roles("rx.all"))
+rx_new_view_guard = require_any_role(*view_roles("rx.new"))
+rx_new_edit_guard = require_any_role(*edit_roles("rx.new"))
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Prescription Endpoints
@@ -65,7 +74,7 @@ router = APIRouter(prefix="/prescriptions", tags=["Prescriptions"])
 async def create_new_prescription(
     data: PrescriptionCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(rx_new_edit_guard),
 ):
     """Create a new prescription."""
     try:
@@ -93,7 +102,7 @@ async def list_all_prescriptions(
     sort_by: Optional[str] = None,
     sort_order: str = Query("desc", pattern="^(asc|desc)$"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(rx_all_view_guard),
 ):
     """List prescriptions with filtering and pagination."""
     total, pg, lim, tp, rows = list_prescriptions(
@@ -149,7 +158,7 @@ async def patient_prescriptions(
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(rx_all_view_guard),
 ):
     """Get all prescriptions for a patient."""
     total, pg, lim, tp, rows = list_prescriptions(
@@ -176,7 +185,7 @@ async def get_prescription_languages(
 async def get_prescription_detail(
     prescription_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(rx_all_view_guard),
 ):
     """Get full prescription detail including items."""
     rx = get_prescription(db, prescription_id, hospital_id=current_user.hospital_id)
@@ -190,7 +199,7 @@ async def update_rx(
     prescription_id: str,
     data: PrescriptionUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(rx_all_edit_guard),
 ):
     """Update prescription (only drafts)."""
     try:
@@ -214,7 +223,7 @@ async def update_rx(
 async def finalize_rx(
     prescription_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(rx_all_edit_guard),
 ):
     """Finalize a prescription (lock it for dispensing)."""
     try:
@@ -272,7 +281,7 @@ async def finalize_rx(
 async def finalize_and_complete_queue(
     prescription_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(rx_all_edit_guard),
 ):
     """Finalize a prescription AND complete the linked queue entry + appointment in one call.
     Used by the consultation flow: Save & Complete button."""
@@ -364,7 +373,7 @@ async def finalize_and_complete_queue(
 async def delete_rx(
     prescription_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(rx_all_edit_guard),
 ):
     """Soft-delete a prescription (only drafts)."""
     try:
@@ -382,7 +391,7 @@ async def delete_rx(
 async def get_rx_versions(
     prescription_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(rx_all_view_guard),
 ):
     """Get version history for a prescription."""
     rx_check = get_prescription(db, prescription_id, hospital_id=current_user.hospital_id)
@@ -397,7 +406,7 @@ async def get_prescription_pdf(
     prescription_id: str,
     lang: str = Query("en", description="Language code for print labels"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(rx_all_view_guard),
 ):
     """Generate prescription as printable HTML with multi-language support."""
     from ..models.patient import Patient
@@ -691,7 +700,7 @@ medicines_router = APIRouter(prefix="/medicines", tags=["Medicines"])
 async def create_new_medicine(
     data: MedicineCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(rx_new_edit_guard),
 ):
     """Add a new medicine to the formulary."""
     try:
@@ -710,7 +719,7 @@ async def list_all_medicines(
     search: Optional[str] = None,
     category: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(rx_new_view_guard),
 ):
     """List medicines with search and filtering."""
     total, pg, lim, tp, rows, stock_map = list_medicines(
@@ -734,7 +743,7 @@ async def update_med(
     medicine_id: str,
     data: MedicineUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(rx_new_edit_guard),
 ):
     """Update a medicine."""
     try:
@@ -764,7 +773,7 @@ templates_router = APIRouter(prefix="/prescription-templates", tags=["Prescripti
 async def create_new_template(
     data: PrescriptionTemplateCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(rx_new_edit_guard),
 ):
     """Create a reusable prescription template."""
     doctor = db.query(Doctor).filter(Doctor.user_id == current_user.id).first()
@@ -782,7 +791,7 @@ async def create_new_template(
 @templates_router.get("", response_model=list[PrescriptionTemplateResponse])
 async def list_my_templates(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(rx_new_view_guard),
 ):
     """List prescription templates for the current doctor."""
     doctor = db.query(Doctor).filter(Doctor.user_id == current_user.id).first()
@@ -796,7 +805,7 @@ async def update_tmpl(
     template_id: str,
     data: PrescriptionTemplateUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(rx_new_edit_guard),
 ):
     """Update a template."""
     try:
@@ -821,7 +830,7 @@ async def update_tmpl(
 async def delete_tmpl(
     template_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(rx_new_edit_guard),
 ):
     """Delete a template."""
     try:
@@ -844,7 +853,7 @@ async def delete_tmpl(
 async def use_template(
     template_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(rx_new_edit_guard),
 ):
     """Increment usage counter when template is used."""
     try:

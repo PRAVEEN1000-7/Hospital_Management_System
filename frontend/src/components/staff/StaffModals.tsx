@@ -133,7 +133,7 @@ type ResetFormData = z.infer<typeof resetPasswordSchema>;
 // beyond Dashboard and confused admins about what it was for. Existing users
 // holding it keep working — it just can't be assigned to anyone new.
 const ALL_ROLES = [
-  'super_admin', 'admin', 'doctor', 'nurse', 'receptionist',
+  'super_admin', 'admin', 'doctor', 'visiting_doctor', 'nurse', 'receptionist',
   'pharmacist', 'optical_staff', 'lab_technician', 'cashier', 'inventory_manager',
   'report_viewer',
 ] as const;

@@ -10,6 +10,7 @@ import uuid
 
 from ..database import get_db
 from ..dependencies import get_current_active_user
+from ..core.module_roles import view_roles, edit_roles
 from ..models.user import User
 from ..models.appointment import Appointment
 from ..schemas.invoice import (
@@ -27,9 +28,15 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/invoices", tags=["Billing — Invoices"])
 
+# Driven by the shared "billing" permission matrix — per the client's
+# spreadsheet, only Admin and Cashier have any billing access at all (doctor/
+# pharmacist/receptionist are "No access"). See the flagged conflict in
+# docs/security/ROLE_PERMISSIONS_DECISIONS_2026-07-25.md before assuming this
+# matches what other billing-adjacent features (e.g. consultation fee
+# "Collected By") expect.
 BILLING_ADMIN_ROLES = {"super_admin", "admin"}
-BILLING_STAFF_ROLES = {"super_admin", "admin", "cashier", "pharmacist", "receptionist"}
-BILLING_VIEW_ROLES  = {"super_admin", "admin", "cashier", "pharmacist", "receptionist", "doctor"}
+BILLING_STAFF_ROLES = set(edit_roles("billing"))
+BILLING_VIEW_ROLES = set(view_roles("billing"))
 
 
 def _has_any_role(current_user: User, allowed_roles: set[str]) -> bool:

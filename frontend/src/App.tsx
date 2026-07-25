@@ -125,6 +125,9 @@ import StockMovementsReportPage from './pages/inventory/StockMovementsReportPage
 // Analytics
 import AnalyticsDashboard from './pages/analytics/AnalyticsDashboard';
 
+// Shared role/module permission matrix (see docs/security/ROLE_PERMISSIONS_DECISIONS_2026-07-25.md)
+import { allowedRoles } from './config/modulePermissions';
+
 const DefaultRedirect: React.FC = () => {
   const { user } = useAuth();
   return <Navigate to={user?.roles?.includes('super_admin') ? '/superadmin' : '/dashboard'} replace />;
@@ -199,23 +202,27 @@ const App: React.FC = () => {
                 </ProtectedRoute>
               }
             >
-              {/* ── General (always accessible) ── */}
-              <Route path="/dashboard" element={<Dashboard />} />
+              {/* ── General ── */}
+              <Route path="/dashboard" element={
+                <ProtectedRoute allowedRoles={allowedRoles('general.dashboard')}>
+                  <Dashboard />
+                </ProtectedRoute>
+              } />
               <Route path="/profile" element={<Profile />} />
               <Route path="/subscription" element={
-                <ProtectedRoute allowedRoles={['super_admin', 'admin']}>
+                <ProtectedRoute allowedRoles={allowedRoles('system.subscription', 'edit')}>
                   <Subscription />
                 </ProtectedRoute>
               } />
 
-              {/* ── Admin / Super-admin only ── */}
+              {/* ── Staff / User Management / System ── */}
               <Route path="/staff" element={
-                <ProtectedRoute allowedRoles={['super_admin', 'admin']}>
+                <ProtectedRoute allowedRoles={allowedRoles('general.staff_directory')}>
                   <StaffDirectory />
                 </ProtectedRoute>
               } />
               <Route path="/user-management" element={
-                <ProtectedRoute allowedRoles={['super_admin', 'admin']}>
+                <ProtectedRoute allowedRoles={allowedRoles('system.user_management', 'edit')}>
                   <UserManagement />
                 </ProtectedRoute>
               } />
@@ -225,7 +232,7 @@ const App: React.FC = () => {
                 </ProtectedRoute>
               } />
               <Route path="/settings" element={
-                <ProtectedRoute allowedRoles={['super_admin', 'admin']}>
+                <ProtectedRoute allowedRoles={allowedRoles('system.settings', 'edit')}>
                   <HospitalSettings />
                 </ProtectedRoute>
               } />
@@ -233,7 +240,7 @@ const App: React.FC = () => {
               {/* ── Patients module ── */}
               <Route path="/patients" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'receptionist', 'nurse', 'pharmacist', 'doctor']}
+                  allowedRoles={allowedRoles('general.patients')}
                   requiredModule="patients"
                 >
                   <PatientList />
@@ -241,7 +248,7 @@ const App: React.FC = () => {
               } />
               <Route path="/patients/:id" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'receptionist', 'nurse', 'pharmacist', 'doctor']}
+                  allowedRoles={allowedRoles('general.patients')}
                   requiredModule="patients"
                 >
                   <PatientDetail />
@@ -249,7 +256,7 @@ const App: React.FC = () => {
               } />
               <Route path="/patients/:id/id-card" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'receptionist']}
+                  allowedRoles={allowedRoles('general.patients', 'edit')}
                   requiredModule="patients"
                 >
                   <PatientIdCard />
@@ -257,7 +264,7 @@ const App: React.FC = () => {
               } />
               <Route path="/patients/:id/edit" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'receptionist']}
+                  allowedRoles={allowedRoles('general.patients', 'edit')}
                   requiredModule="patients"
                 >
                   <Register />
@@ -265,7 +272,7 @@ const App: React.FC = () => {
               } />
               <Route path="/register" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'receptionist']}
+                  allowedRoles={allowedRoles('general.patients', 'edit')}
                   requiredModule="patients"
                 >
                   <Register />
@@ -275,7 +282,7 @@ const App: React.FC = () => {
               {/* ── Appointments module ── */}
               <Route path="/appointments/book" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'receptionist']}
+                  allowedRoles={allowedRoles('appt.opd_assignment', 'edit')}
                   requiredModule="appointments"
                 >
                   <AppointmentBooking />
@@ -283,7 +290,7 @@ const App: React.FC = () => {
               } />
               <Route path="/appointments/walk-in" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'receptionist']}
+                  allowedRoles={allowedRoles('appt.walkin_queue', 'edit')}
                   requiredModule="appointments"
                 >
                   <WalkInRegistration />
@@ -291,7 +298,7 @@ const App: React.FC = () => {
               } />
               <Route path="/appointments/queue" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'receptionist', 'doctor', 'nurse']}
+                  allowedRoles={allowedRoles('appt.queue_display')}
                   requiredModule="appointments"
                 >
                   <WalkInQueue />
@@ -299,7 +306,7 @@ const App: React.FC = () => {
               } />
               <Route path="/appointments/doctor-schedule" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'doctor', 'receptionist']}
+                  allowedRoles={allowedRoles('appt.doctor_schedule')}
                   requiredModule="appointments"
                 >
                   <DoctorSchedule />
@@ -323,7 +330,7 @@ const App: React.FC = () => {
               } />
               <Route path="/appointments/manage" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'receptionist', 'nurse']}
+                  allowedRoles={allowedRoles('appt.manage')}
                   requiredModule="appointments"
                 >
                   <AppointmentManagement />
@@ -331,7 +338,7 @@ const App: React.FC = () => {
               } />
               <Route path="/appointments/waitlist" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'doctor', 'receptionist']}
+                  allowedRoles={allowedRoles('appt.waitlist')}
                   requiredModule="appointments"
                 >
                   <WaitlistManagement />
@@ -339,7 +346,7 @@ const App: React.FC = () => {
               } />
               <Route path="/appointments/reports" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'report_viewer']}
+                  allowedRoles={allowedRoles('appt.reports')}
                   requiredModule="appointments"
                 >
                   <AppointmentReports />
@@ -347,7 +354,7 @@ const App: React.FC = () => {
               } />
               <Route path="/appointments/settings" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin']}
+                  allowedRoles={allowedRoles('appt.settings', 'edit')}
                   requiredModule="appointments"
                 >
                   <AppointmentSettings />
@@ -357,7 +364,7 @@ const App: React.FC = () => {
               {/* ── Prescriptions module ── */}
               <Route path="/prescriptions" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'doctor', 'nurse', 'pharmacist']}
+                  allowedRoles={allowedRoles('rx.all')}
                   requiredModule="prescriptions"
                 >
                   <PrescriptionList />
@@ -365,7 +372,7 @@ const App: React.FC = () => {
               } />
               <Route path="/prescriptions/new" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'doctor']}
+                  allowedRoles={allowedRoles('rx.new')}
                   requiredModule="prescriptions"
                 >
                   <PrescriptionBuilder />
@@ -373,7 +380,7 @@ const App: React.FC = () => {
               } />
               <Route path="/prescriptions/:id" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'doctor', 'nurse', 'pharmacist']}
+                  allowedRoles={allowedRoles('rx.all')}
                   requiredModule="prescriptions"
                 >
                   <PrescriptionDetail />
@@ -381,7 +388,7 @@ const App: React.FC = () => {
               } />
               <Route path="/prescriptions/:id/edit" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'doctor']}
+                  allowedRoles={allowedRoles('rx.all', 'edit')}
                   requiredModule="prescriptions"
                 >
                   <PrescriptionBuilder />
@@ -391,7 +398,7 @@ const App: React.FC = () => {
               {/* ── Pharmacy module ── */}
               <Route path="/pharmacy" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'pharmacist', 'inventory_manager']}
+                  allowedRoles={allowedRoles('pharmacy')}
                   requiredModule="pharmacy"
                 >
                   <PharmacyDashboard />
@@ -399,7 +406,7 @@ const App: React.FC = () => {
               } />
               <Route path="/pharmacy/medicines" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'pharmacist', 'inventory_manager']}
+                  allowedRoles={allowedRoles('pharmacy')}
                   requiredModule="pharmacy"
                 >
                   <MedicineList />
@@ -407,7 +414,7 @@ const App: React.FC = () => {
               } />
               <Route path="/pharmacy/medicines/new" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'pharmacist', 'inventory_manager']}
+                  allowedRoles={allowedRoles('pharmacy', 'edit')}
                   requiredModule="pharmacy"
                 >
                   <MedicineForm />
@@ -415,7 +422,7 @@ const App: React.FC = () => {
               } />
               <Route path="/pharmacy/medicines/:id" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'pharmacist', 'inventory_manager']}
+                  allowedRoles={allowedRoles('pharmacy')}
                   requiredModule="pharmacy"
                 >
                   <MedicineDetail />
@@ -423,7 +430,7 @@ const App: React.FC = () => {
               } />
               <Route path="/pharmacy/medicines/:id/edit" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'pharmacist', 'inventory_manager']}
+                  allowedRoles={allowedRoles('pharmacy', 'edit')}
                   requiredModule="pharmacy"
                 >
                   <MedicineForm />
@@ -431,7 +438,7 @@ const App: React.FC = () => {
               } />
               <Route path="/pharmacy/batches/new" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'pharmacist', 'inventory_manager']}
+                  allowedRoles={allowedRoles('pharmacy', 'edit')}
                   requiredModule="pharmacy"
                 >
                   <BatchForm />
@@ -439,7 +446,7 @@ const App: React.FC = () => {
               } />
               <Route path="/pharmacy/sales" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'pharmacist', 'cashier', 'inventory_manager']}
+                  allowedRoles={allowedRoles('pharmacy')}
                   requiredModule="pharmacy"
                 >
                   <SalesList />
@@ -447,7 +454,7 @@ const App: React.FC = () => {
               } />
               <Route path="/pharmacy/sales/new" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'pharmacist', 'cashier']}
+                  allowedRoles={allowedRoles('pharmacy', 'edit')}
                   requiredModule="pharmacy"
                 >
                   <NewSale />
@@ -455,7 +462,7 @@ const App: React.FC = () => {
               } />
               <Route path="/pharmacy/stock-adjustments" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'pharmacist', 'inventory_manager']}
+                  allowedRoles={allowedRoles('pharmacy')}
                   requiredModule="pharmacy"
                 >
                   <StockAdjustments />
@@ -463,7 +470,7 @@ const App: React.FC = () => {
               } />
               <Route path="/pharmacy/queue" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'pharmacist', 'cashier', 'inventory_manager']}
+                  allowedRoles={allowedRoles('pharmacy')}
                   requiredModule="pharmacy"
                   requireEyeHospitalFeature
                 >
@@ -472,7 +479,7 @@ const App: React.FC = () => {
               } />
               <Route path="/pharmacy/pending-prescriptions" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'pharmacist', 'inventory_manager']}
+                  allowedRoles={allowedRoles('pharmacy')}
                   requiredModule="pharmacy"
                 >
                   <PendingPrescriptions />
@@ -480,7 +487,7 @@ const App: React.FC = () => {
               } />
               <Route path="/pharmacy/dispense/:prescriptionId" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'pharmacist', 'inventory_manager']}
+                  allowedRoles={allowedRoles('pharmacy', 'edit')}
                   requiredModule="pharmacy"
                 >
                   <DispensingScreen />
@@ -488,7 +495,7 @@ const App: React.FC = () => {
               } />
               <Route path="/pharmacy/dispensing/:dispensingId/billing" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'pharmacist', 'cashier', 'inventory_manager']}
+                  allowedRoles={allowedRoles('pharmacy', 'edit')}
                   requiredModule="pharmacy"
                 >
                   <DispensingBilling />
@@ -498,7 +505,7 @@ const App: React.FC = () => {
               {/* ── Optical Store module ── */}
               <Route path="/optical" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'optical_staff']}
+                  allowedRoles={allowedRoles('optical')}
                   requiredModule="optical"
                 >
                   <OpticalDashboard />
@@ -506,7 +513,7 @@ const App: React.FC = () => {
               } />
               <Route path="/optical/products" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'optical_staff']}
+                  allowedRoles={allowedRoles('optical')}
                   requiredModule="optical"
                 >
                   <OpticalProductList />
@@ -514,7 +521,7 @@ const App: React.FC = () => {
               } />
               <Route path="/optical/products/new" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'optical_staff']}
+                  allowedRoles={allowedRoles('optical')}
                   requiredModule="optical"
                 >
                   <OpticalProductForm />
@@ -522,7 +529,7 @@ const App: React.FC = () => {
               } />
               <Route path="/optical/products/:id" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'optical_staff']}
+                  allowedRoles={allowedRoles('optical')}
                   requiredModule="optical"
                 >
                   <OpticalProductDetail />
@@ -530,7 +537,7 @@ const App: React.FC = () => {
               } />
               <Route path="/optical/products/:id/edit" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'optical_staff']}
+                  allowedRoles={allowedRoles('optical')}
                   requiredModule="optical"
                 >
                   <OpticalProductForm />
@@ -538,7 +545,7 @@ const App: React.FC = () => {
               } />
               <Route path="/optical/batches/new" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'optical_staff']}
+                  allowedRoles={allowedRoles('optical')}
                   requiredModule="optical"
                 >
                   <OpticalBatchForm />
@@ -546,7 +553,7 @@ const App: React.FC = () => {
               } />
               <Route path="/optical/prescriptions/pending" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'optical_staff']}
+                  allowedRoles={allowedRoles('optical')}
                   requiredModule="optical"
                 >
                   <OpticalPendingPrescriptions />
@@ -554,7 +561,7 @@ const App: React.FC = () => {
               } />
               <Route path="/optical/prescriptions" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'optical_staff']}
+                  allowedRoles={allowedRoles('optical')}
                   requiredModule="optical"
                 >
                   <OpticalPrescriptions />
@@ -563,17 +570,18 @@ const App: React.FC = () => {
               {/* Doctors reach this single-record view only via the post-save redirect after
                   creating an Opthal prescription (PrescriptionBuilder.tsx) — everything else
                   in Optical Store (dashboard, product/sales lists, dispensing, stock) stays
-                  restricted to admin/optical_staff. */}
+                  restricted to admin/optical_staff. Not part of the "optical" matrix key —
+                  doctor access here is a one-off, kept as a literal addition. */}
               <Route path="/optical/prescriptions/:id" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'doctor', 'optical_staff']}
+                  allowedRoles={[...allowedRoles('optical'), 'doctor']}
                 >
                   <OpticalPrescriptionDetail />
                 </ProtectedRoute>
               } />
               <Route path="/optical/sales" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'optical_staff']}
+                  allowedRoles={allowedRoles('optical')}
                   requiredModule="optical"
                 >
                   <OpticalSales />
@@ -581,7 +589,7 @@ const App: React.FC = () => {
               } />
               <Route path="/optical/sales/new" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'optical_staff']}
+                  allowedRoles={allowedRoles('optical')}
                   requiredModule="optical"
                 >
                   <NewOpticalSale />
@@ -589,7 +597,7 @@ const App: React.FC = () => {
               } />
               <Route path="/optical/stock-adjustments" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'optical_staff']}
+                  allowedRoles={allowedRoles('optical')}
                   requiredModule="optical"
                 >
                   <OpticalStockAdjustments />
@@ -597,7 +605,7 @@ const App: React.FC = () => {
               } />
               <Route path="/optical/queue" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'optical_staff']}
+                  allowedRoles={allowedRoles('optical')}
                   requiredModule="optical"
                 >
                   <OpticalQueue />
@@ -649,7 +657,7 @@ const App: React.FC = () => {
               {/* ── Inventory module ── */}
               <Route path="/inventory" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'inventory_manager', 'pharmacist']}
+                  allowedRoles={allowedRoles('inventory')}
                   requiredModule="inventory"
                 >
                   <InventoryDashboard />
@@ -657,7 +665,7 @@ const App: React.FC = () => {
               } />
               <Route path="/inventory/low-stock" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'inventory_manager', 'pharmacist']}
+                  allowedRoles={allowedRoles('inventory')}
                   requiredModule="inventory"
                 >
                   <LowStockAlertsPage />
@@ -665,7 +673,7 @@ const App: React.FC = () => {
               } />
               <Route path="/inventory/suppliers" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'inventory_manager', 'pharmacist']}
+                  allowedRoles={allowedRoles('inventory')}
                   requiredModule="inventory"
                 >
                   <SuppliersPage />
@@ -673,7 +681,7 @@ const App: React.FC = () => {
               } />
               <Route path="/inventory/purchase-orders" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'inventory_manager', 'pharmacist']}
+                  allowedRoles={allowedRoles('inventory')}
                   requiredModule="inventory"
                 >
                   <PurchaseOrdersPage />
@@ -681,7 +689,7 @@ const App: React.FC = () => {
               } />
               <Route path="/inventory/purchase-orders/new" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'inventory_manager', 'pharmacist']}
+                  allowedRoles={allowedRoles('inventory', 'edit')}
                   requiredModule="inventory"
                 >
                   <NewPurchaseOrderPage />
@@ -697,7 +705,7 @@ const App: React.FC = () => {
               } />
               <Route path="/inventory/grns" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'inventory_manager', 'pharmacist']}
+                  allowedRoles={allowedRoles('inventory')}
                   requiredModule="inventory"
                 >
                   <GRNsPage />
@@ -705,7 +713,7 @@ const App: React.FC = () => {
               } />
               <Route path="/inventory/grns/new" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'inventory_manager', 'pharmacist']}
+                  allowedRoles={allowedRoles('inventory', 'edit')}
                   requiredModule="inventory"
                 >
                   <GRNReceiptForm />
@@ -713,7 +721,7 @@ const App: React.FC = () => {
               } />
               <Route path="/inventory/grns/:grnId" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'inventory_manager', 'pharmacist']}
+                  allowedRoles={allowedRoles('inventory', 'edit')}
                   requiredModule="inventory"
                 >
                   <GRNReceiptForm />
@@ -721,7 +729,7 @@ const App: React.FC = () => {
               } />
               <Route path="/inventory/stock-movements" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'inventory_manager', 'pharmacist']}
+                  allowedRoles={allowedRoles('inventory')}
                   requiredModule="inventory"
                 >
                   <StockMovementsReportPage />
@@ -729,7 +737,7 @@ const App: React.FC = () => {
               } />
               <Route path="/inventory/adjustments" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'inventory_manager', 'pharmacist']}
+                  allowedRoles={allowedRoles('inventory')}
                   requiredModule="inventory"
                 >
                   <AdjustmentsPage />
@@ -765,7 +773,7 @@ const App: React.FC = () => {
               {/* ── Billing module ── */}
               <Route path="/billing/invoices" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'cashier', 'pharmacist', 'receptionist']}
+                  allowedRoles={allowedRoles('billing')}
                   requiredModule="billing"
                 >
                   <InvoiceList />
@@ -773,7 +781,7 @@ const App: React.FC = () => {
               } />
               <Route path="/billing/invoices/new" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'cashier', 'pharmacist', 'receptionist']}
+                  allowedRoles={allowedRoles('billing')}
                   requiredModule="billing"
                 >
                   <InvoiceCreate />
@@ -781,7 +789,7 @@ const App: React.FC = () => {
               } />
               <Route path="/billing/invoices/:id" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'cashier', 'pharmacist', 'receptionist']}
+                  allowedRoles={allowedRoles('billing')}
                   requiredModule="billing"
                 >
                   <InvoiceDetail />
@@ -789,7 +797,7 @@ const App: React.FC = () => {
               } />
               <Route path="/billing/payments" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'cashier', 'pharmacist', 'receptionist']}
+                  allowedRoles={allowedRoles('billing')}
                   requiredModule="billing"
                 >
                   <PaymentList />
@@ -797,7 +805,7 @@ const App: React.FC = () => {
               } />
               <Route path="/billing/refunds" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'cashier', 'pharmacist']}
+                  allowedRoles={allowedRoles('billing')}
                   requiredModule="billing"
                 >
                   <RefundList />
@@ -805,7 +813,7 @@ const App: React.FC = () => {
               } />
               <Route path="/billing/settlements" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'cashier', 'pharmacist']}
+                  allowedRoles={allowedRoles('billing')}
                   requiredModule="billing"
                 >
                   <SettlementList />
@@ -839,7 +847,7 @@ const App: React.FC = () => {
               {/* ── Analytics module ── */}
               <Route path="/analytics" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'doctor', 'pharmacist', 'cashier', 'inventory_manager', 'report_viewer']}
+                  allowedRoles={allowedRoles('general.analytics')}
                   requiredModule="analytics"
                 >
                   <AnalyticsDashboard />

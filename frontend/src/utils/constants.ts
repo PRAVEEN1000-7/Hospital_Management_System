@@ -20,7 +20,7 @@ export const RELATIONSHIP_OPTIONS = [
 ];
 
 export const USER_ROLES = [
-  'super_admin', 'admin', 'doctor', 'nurse', 'staff',
+  'super_admin', 'admin', 'doctor', 'visiting_doctor', 'nurse', 'staff',
   'receptionist', 'pharmacist', 'cashier', 'inventory_manager'
 ];
 
@@ -28,6 +28,7 @@ export const ROLE_LABELS: Record<string, string> = {
   super_admin: 'Super Admin',
   admin: 'Admin',
   doctor: 'Doctor',
+  visiting_doctor: 'Special Doctor / Visiting Doctor',
   nurse: 'Nurse',
   staff: 'Staff',
   receptionist: 'Receptionist',
@@ -43,6 +44,7 @@ export const ROLE_COLORS: Record<string, string> = {
   super_admin: 'bg-red-100 text-red-700',
   admin: 'bg-orange-100 text-orange-700',
   doctor: 'bg-blue-100 text-blue-700',
+  visiting_doctor: 'bg-sky-100 text-sky-700',
   nurse: 'bg-teal-100 text-teal-700',
   staff: 'bg-gray-100 text-gray-700',
   receptionist: 'bg-purple-100 text-purple-700',
@@ -58,6 +60,7 @@ export const ROLE_ICONS: Record<string, string> = {
   super_admin: 'admin_panel_settings',
   admin: 'manage_accounts',
   doctor: 'stethoscope',
+  visiting_doctor: 'emergency',
   nurse: 'medical_services',
   staff: 'badge',
   receptionist: 'support_agent',
@@ -73,6 +76,7 @@ export const ROLE_TEXT_COLORS: Record<string, string> = {
   super_admin: 'text-red-700',
   admin: 'text-orange-700',
   doctor: 'text-blue-700',
+  visiting_doctor: 'text-sky-700',
   nurse: 'text-teal-700',
   staff: 'text-gray-700',
   receptionist: 'text-purple-700',

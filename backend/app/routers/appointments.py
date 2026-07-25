@@ -10,7 +10,8 @@ from datetime import date, datetime
 from ..database import get_db
 from ..models.user import User, Hospital
 from ..models.appointment import Doctor
-from ..dependencies import get_current_active_user
+from ..dependencies import get_current_active_user, require_any_role
+from ..core.module_roles import view_roles, edit_roles
 from ..schemas.appointment import (
     AppointmentCreate,
     AppointmentUpdate,
@@ -40,13 +41,18 @@ from ..core.hospital_time import hospital_today
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/appointments", tags=["Appointments"])
 
+# "OPD Assignment" and "Manage Appointments" share this same booking/CRUD
+# surface and have identical role rows in the matrix, so both map to appt.manage.
+appt_view_guard = require_any_role(*view_roles("appt.manage"))
+appt_edit_guard = require_any_role(*edit_roles("appt.manage"))
+
 
 @router.post("", response_model=AppointmentResponse, status_code=status.HTTP_201_CREATED)
 async def book_appointment(
     data: AppointmentCreate,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(appt_edit_guard),
 ):
     """Book a new scheduled appointment."""
     try:
@@ -133,7 +139,7 @@ async def list_all_appointments(
     date_to: Optional[date] = None,
     search: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(appt_view_guard),
 ):
     total, pg, lim, tp, rows = list_appointments(
         db, page, limit,
@@ -265,7 +271,7 @@ async def doctor_today_summary(
 async def get_appointment_detail(
     appointment_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(appt_view_guard),
 ):
     appt = get_appointment(db, appointment_id, hospital_id=current_user.hospital_id)
     if not appt:
@@ -278,7 +284,7 @@ async def update_appt(
     appointment_id: str,
     data: AppointmentUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(appt_edit_guard),
 ):
     existing = get_appointment(db, appointment_id, hospital_id=current_user.hospital_id)
     if not existing:
@@ -298,7 +304,7 @@ async def cancel_appt(
     background_tasks: BackgroundTasks,
     reason: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(appt_edit_guard),
 ):
     try:
         existing = get_appointment(db, appointment_id, hospital_id=current_user.hospital_id)
@@ -343,7 +349,7 @@ async def reschedule_appt(
     data: AppointmentReschedule,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(appt_edit_guard),
 ):
     existing = get_appointment(db, appointment_id, hospital_id=current_user.hospital_id)
     if not existing:
@@ -416,7 +422,7 @@ async def change_status(
     appointment_id: str,
     data: AppointmentStatusUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(appt_edit_guard),
 ):
     existing = get_appointment(db, appointment_id, hospital_id=current_user.hospital_id)
     if not existing:
@@ -431,7 +437,7 @@ async def change_status(
 async def get_appointment_pdf(
     appointment_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(appt_view_guard),
 ):
     """Generate and return appointment details as a downloadable HTML document (printable as PDF)."""
     from ..models.patient import Patient

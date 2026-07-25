@@ -15,7 +15,8 @@ from ..database import get_db
 from ..models.user import User
 from ..models.prescription import Medicine as MedicineModel
 from ..models.pharmacy import MedicineBatch
-from ..dependencies import get_current_active_user, require_admin_or_super_admin
+from ..dependencies import get_current_active_user, require_admin_or_super_admin, require_any_role
+from ..core.module_roles import view_roles, edit_roles
 from ..core.tenant_security import is_eye_hospital_feature_enabled
 from ..schemas.pharmacy import (
     # Medicine
@@ -44,12 +45,15 @@ logger = logging.getLogger(__name__)
 # ──────────────────────────────────────────────────
 router = APIRouter(prefix="/pharmacy", tags=["Pharmacy"])
 
+pharmacy_view_guard = require_any_role(*view_roles("pharmacy"))
+pharmacy_edit_guard = require_any_role(*edit_roles("pharmacy"))
+
 
 # ═══ Dashboard ═══
 @router.get("/dashboard", response_model=PharmacyDashboard)
 async def pharmacy_dashboard(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(pharmacy_view_guard),
 ):
     """Get pharmacy dashboard statistics."""
     return svc.get_pharmacy_dashboard(db, current_user.hospital_id)
@@ -60,7 +64,7 @@ async def pharmacy_dashboard(
 async def pharmacy_sales_trend(
     days: int = Query(30, ge=1, le=90, description="Number of days to retrieve"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(pharmacy_view_guard),
 ):
     """Get pharmacy sales trend for the last N days."""
     return svc.get_pharmacy_sales_trend(db, current_user.hospital_id, days)
@@ -71,7 +75,7 @@ async def pharmacy_top_medicines(
     days: int = Query(30, ge=1, le=90, description="Number of days to analyze"),
     limit: int = Query(10, ge=1, le=50, description="Number of top medicines to return"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(pharmacy_view_guard),
 ):
     """Get top selling medicines by quantity and revenue."""
     return svc.get_pharmacy_top_medicines(db, current_user.hospital_id, days, limit)
@@ -86,7 +90,7 @@ async def list_medicines(
     category: Optional[str] = None,
     active_only: bool = True,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(pharmacy_view_guard),
 ):
     result = svc.list_medicines(db, current_user.hospital_id, page, limit, search, category, active_only)
     stock_map = result.pop("stock_map", {})
@@ -110,7 +114,7 @@ async def list_medicines(
 async def get_medicine(
     medicine_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(pharmacy_view_guard),
 ):
     med = svc.get_medicine_by_id(db, medicine_id, hospital_id=current_user.hospital_id)
     if not med:
@@ -122,7 +126,7 @@ async def get_medicine(
 async def create_medicine(
     data: MedicineCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(pharmacy_edit_guard),
 ):
     try:
         med = svc.create_medicine(db, current_user.hospital_id, data.model_dump(), current_user.id)
@@ -141,7 +145,7 @@ async def update_medicine(
     medicine_id: str,
     data: MedicineUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(pharmacy_edit_guard),
 ):
     try:
         try:
@@ -173,7 +177,7 @@ async def update_medicine(
 async def deactivate_medicine(
     medicine_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(pharmacy_edit_guard),
 ):
     try:
         med_uuid = uuid_mod.UUID(medicine_id)
@@ -195,7 +199,7 @@ async def list_batches(
     medicine_id: str,
     active_only: bool = True,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(pharmacy_view_guard),
 ):
     try:
         med_uuid = uuid_mod.UUID(medicine_id)
@@ -215,7 +219,7 @@ async def list_batches(
 async def create_batch(
     data: BatchCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(pharmacy_edit_guard),
 ):
     try:
         try:
@@ -249,7 +253,7 @@ async def update_batch(
     batch_id: str,
     data: BatchUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(pharmacy_edit_guard),
 ):
     try:
         try:
@@ -306,7 +310,7 @@ async def list_sales(
     sort_by: str = Query("sale_date", pattern="^(sale_date|total_amount|invoice_number|created_at)$"),
     sort_order: str = Query("desc", pattern="^(asc|desc)$"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(pharmacy_view_guard),
 ):
     result = svc.list_sales(
         db,
@@ -330,7 +334,7 @@ async def list_sales(
 async def get_sale(
     sale_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(pharmacy_view_guard),
 ):
     sale = svc.get_sale(db, sale_id)
     if not sale:
@@ -347,7 +351,7 @@ async def get_sale(
 async def create_sale(
     data: SaleCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(pharmacy_edit_guard),
 ):
     try:
         sale = svc.create_sale(db, current_user.hospital_id, data.model_dump(), current_user.id)
@@ -379,7 +383,7 @@ def _require_eye_hospital_queue(current_user: User) -> None:
 @router.get("/queue", response_model=list[PharmacyQueueEntryResponse])
 async def get_pharmacy_queue(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(pharmacy_view_guard),
 ):
     _require_eye_hospital_queue(current_user)
     return queue_svc.list_pharmacy_queue_entries(db, current_user.hospital_id)
@@ -389,7 +393,7 @@ async def get_pharmacy_queue(
 async def add_manual_pharmacy_queue_entry(
     data: PharmacyQueueManualAdd,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(pharmacy_edit_guard),
 ):
     """Manually add a walk-in pharmacy patient to the queue (BRD PQ-03)."""
     _require_eye_hospital_queue(current_user)
@@ -416,7 +420,7 @@ async def update_pharmacy_queue_status(
     entry_id: str,
     data: PharmacyQueueStatusUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(pharmacy_edit_guard),
 ):
     _require_eye_hospital_queue(current_user)
     try:
@@ -435,7 +439,7 @@ async def update_pharmacy_queue_status(
 async def list_stock_adjustments(
     medicine_id: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(pharmacy_view_guard),
 ):
     adjs = svc.list_stock_adjustments(db, current_user.hospital_id, medicine_id)
     return [StockAdjustmentResponse.model_validate(a) for a in adjs]
@@ -445,7 +449,7 @@ async def list_stock_adjustments(
 async def create_stock_adjustment(
     data: StockAdjustmentCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(pharmacy_edit_guard),
 ):
     try:
         adj = svc.create_stock_adjustment(db, current_user.hospital_id, data.model_dump(), current_user.id)

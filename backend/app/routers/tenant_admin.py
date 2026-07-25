@@ -8,8 +8,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..dependencies import require_authenticated_tenant
+from ..dependencies import require_authenticated_tenant, require_any_role
+from ..core.module_roles import edit_roles
 from ..models.tenant import Tenant
+from ..models.user import User
 from ..schemas.tenant import (
     TenantResponse, TenantUpdate,
     UsageQuotaResponse,
@@ -19,6 +21,12 @@ from ..services.subscription_service import SubscriptionService
 from ..core.tenant_security import SubscriptionValidator
 
 router = APIRouter(prefix="/tenant", tags=["Tenant Admin"])
+
+# Only gates GET /tenant/subscription — the one endpoint uniquely used by the
+# admin-only "Subscription" page (system.subscription in the shared matrix).
+# /tenant/modules, /profile, /usage, /check-limit are load-bearing plumbing
+# used by every authenticated role (e.g. isModuleEnabled()) and stay ungated.
+subscription_role_guard = require_any_role(*edit_roles("system.subscription"))
 
 
 @router.get("/profile", response_model=TenantResponse)
@@ -110,6 +118,7 @@ def get_available_modules(
 @router.get("/subscription", response_model=dict)
 def get_subscription_details(
     tenant: Tenant = Depends(require_authenticated_tenant),
+    current_user: User = Depends(subscription_role_guard),
     db: Session = Depends(get_db)
 ):
     """Get current subscription details (read-only)"""

@@ -8,6 +8,7 @@ from typing import Optional
 
 from ..database import get_db
 from ..dependencies import get_current_active_user
+from ..core.module_roles import view_roles, edit_roles
 from ..models.user import User
 from ..schemas.payment import PaymentCreate, PaymentResponse, PaginatedPaymentResponse
 from ..services.payment_service import (
@@ -18,8 +19,10 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/payments", tags=["Billing — Payments"])
 
-BILLING_STAFF_ROLES = {"super_admin", "admin", "cashier", "pharmacist", "receptionist"}
-BILLING_VIEW_ROLES  = {"super_admin", "admin", "cashier", "pharmacist", "receptionist", "doctor"}
+# Driven by the shared "billing" permission matrix — see the flagged
+# conflict in docs/security/ROLE_PERMISSIONS_DECISIONS_2026-07-25.md.
+BILLING_STAFF_ROLES = set(edit_roles("billing"))
+BILLING_VIEW_ROLES = set(view_roles("billing"))
 
 
 def _has_any_role(current_user: User, allowed_roles: set[str]) -> bool:

@@ -80,8 +80,10 @@ def list_lab_tests(
     }
 
 
-def update_lab_test(db: Session, test_id: str | uuid.UUID, data: dict) -> Optional[LabTest]:
-    test = get_lab_test_by_id(db, test_id)
+def update_lab_test(
+    db: Session, test_id: str | uuid.UUID, data: dict, hospital_id: Optional[uuid.UUID] = None,
+) -> Optional[LabTest]:
+    test = get_lab_test_by_id(db, test_id, hospital_id=hospital_id)
     if not test:
         return None
     for key, value in data.items():
@@ -92,8 +94,8 @@ def update_lab_test(db: Session, test_id: str | uuid.UUID, data: dict) -> Option
     return test
 
 
-def deactivate_lab_test(db: Session, test_id: str | uuid.UUID) -> bool:
-    test = get_lab_test_by_id(db, test_id)
+def deactivate_lab_test(db: Session, test_id: str | uuid.UUID, hospital_id: Optional[uuid.UUID] = None) -> bool:
+    test = get_lab_test_by_id(db, test_id, hospital_id=hospital_id)
     if not test:
         return False
     test.is_active = False
@@ -130,10 +132,17 @@ def create_lab_order(
     test_ids = data.get("test_ids") or []
     notes = data.get("notes")
 
+    # Scoped to this hospital — an unchecked patient_id would let this order
+    # (and its enrichment, which surfaces the patient's name) reference a
+    # patient from a different hospital entirely.
+    patient_check = db.query(Patient).filter(Patient.id == patient_id, Patient.hospital_id == hospital_id).first()
+    if not patient_check:
+        raise ValueError("Patient not found")
+
     # Resolve doctor: explicit doctor_id, else fall back to logged-in doctor
     # (matches create_optical_prescription).
     if data.get("doctor_id"):
-        doctor = db.query(Doctor).filter(Doctor.id == uuid.UUID(data["doctor_id"])).first()
+        doctor = db.query(Doctor).filter(Doctor.id == uuid.UUID(data["doctor_id"]), Doctor.hospital_id == hospital_id).first()
         if not doctor:
             raise ValueError("Doctor not found")
     else:
@@ -304,12 +313,14 @@ def list_lab_queue(db: Session, hospital_id: uuid.UUID) -> list[dict]:
 LAB_QUEUE_STATUSES = ("waiting", "being_served", "collected")
 
 
-def advance_lab_queue_status(db: Session, order_id: str | uuid.UUID, new_status: str) -> Optional[LabOrder]:
+def advance_lab_queue_status(
+    db: Session, order_id: str | uuid.UUID, new_status: str, hospital_id: Optional[uuid.UUID] = None,
+) -> Optional[LabOrder]:
     if new_status not in LAB_QUEUE_STATUSES:
         raise ValueError(
             f"Invalid queue status '{new_status}'. Must be one of: {', '.join(LAB_QUEUE_STATUSES)}"
         )
-    order = get_lab_order_by_id(db, order_id)
+    order = get_lab_order_by_id(db, order_id, hospital_id=hospital_id)
     if not order:
         return None
     order.queue_status = new_status
@@ -583,8 +594,16 @@ def create_lab_referral(
     created_by: Optional[uuid.UUID] = None,
 ) -> LabReferral:
     from sqlalchemy.exc import IntegrityError
+    from ..models.patient import Patient
 
     patient_id = uuid.UUID(data["patient_id"])
+
+    # Scoped to this hospital — an unchecked patient_id would let this
+    # referral (and its enrichment, which surfaces the patient's name)
+    # reference a patient from a different hospital entirely.
+    patient_check = db.query(Patient).filter(Patient.id == patient_id, Patient.hospital_id == hospital_id).first()
+    if not patient_check:
+        raise ValueError("Patient not found")
 
     last_error: Exception | None = None
     for _ in range(5):

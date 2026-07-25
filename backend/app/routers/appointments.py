@@ -284,7 +284,7 @@ async def update_appt(
     if not existing:
         raise HTTPException(status_code=404, detail="Appointment not found")
     try:
-        appt = update_appointment(db, appointment_id, data.model_dump(exclude_unset=True), current_user.id)
+        appt = update_appointment(db, appointment_id, data.model_dump(exclude_unset=True), current_user.id, hospital_id=current_user.hospital_id)
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
     if not appt:
@@ -304,7 +304,7 @@ async def cancel_appt(
         existing = get_appointment(db, appointment_id, hospital_id=current_user.hospital_id)
         if not existing:
             raise HTTPException(status_code=404, detail="Appointment not found")
-        appt = cancel_appointment(db, appointment_id, current_user.id, reason)
+        appt = cancel_appointment(db, appointment_id, current_user.id, reason, hospital_id=current_user.hospital_id)
         if not appt:
             raise HTTPException(status_code=404, detail="Appointment not found")
 
@@ -355,6 +355,7 @@ async def reschedule_appt(
 
     appt = reschedule_appointment(
         db, appointment_id, data.new_date, data.new_time, current_user.id, data.reason,
+        hospital_id=current_user.hospital_id,
     )
     if not appt:
         raise HTTPException(status_code=404, detail="Appointment not found")
@@ -420,7 +421,7 @@ async def change_status(
     existing = get_appointment(db, appointment_id, hospital_id=current_user.hospital_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Appointment not found")
-    appt = update_status(db, appointment_id, data.status, current_user.id)
+    appt = update_status(db, appointment_id, data.status, current_user.id, hospital_id=current_user.hospital_id)
     if not appt:
         raise HTTPException(status_code=404, detail="Appointment not found")
     return enrich_appointment(db, appt)

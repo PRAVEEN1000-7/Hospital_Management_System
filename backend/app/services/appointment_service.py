@@ -121,7 +121,18 @@ def create_appointment(
     patient_id = data.get("patient_id")
     if isinstance(patient_id, str):
         patient_id = uuid.UUID(patient_id)
-    
+    if not patient_id:
+        raise ValueError("Patient selection is required")
+
+    # Scoped to this hospital for the same reason as the doctor check below —
+    # an unchecked patient_id from another hospital would let the appointment
+    # (and its enriched patient_name) silently reference a foreign patient's
+    # record, leaking their PII to anyone who can view this hospital's
+    # appointment.
+    patient = db.query(Patient).filter(Patient.id == patient_id, Patient.hospital_id == hospital_id).first()
+    if not patient:
+        raise ValueError("Patient not found")
+
     doctor_id = data.get("doctor_id")
     if isinstance(doctor_id, str):
         doctor_id = uuid.UUID(doctor_id)
@@ -314,9 +325,10 @@ def update_appointment(
     appointment_id: str | uuid.UUID,
     data: dict,
     performed_by: uuid.UUID,
+    hospital_id: Optional[uuid.UUID] = None,
 ) -> Optional[Appointment]:
     """Update appointment fields."""
-    appt = get_appointment(db, appointment_id)
+    appt = get_appointment(db, appointment_id, hospital_id=hospital_id)
     if not appt:
         return None
 
@@ -375,9 +387,10 @@ def update_status(
     new_status: str,
     performed_by: uuid.UUID,
     notes: Optional[str] = None,
+    hospital_id: Optional[uuid.UUID] = None,
 ) -> Optional[Appointment]:
     """Update appointment status."""
-    appt = get_appointment(db, appointment_id)
+    appt = get_appointment(db, appointment_id, hospital_id=hospital_id)
     if not appt:
         return None
     
@@ -402,9 +415,10 @@ def cancel_appointment(
     appointment_id: str | uuid.UUID,
     cancelled_by: uuid.UUID,
     reason: Optional[str] = None,
+    hospital_id: Optional[uuid.UUID] = None,
 ) -> Optional[Appointment]:
     """Cancel an appointment."""
-    appt = get_appointment(db, appointment_id)
+    appt = get_appointment(db, appointment_id, hospital_id=hospital_id)
     if not appt:
         return None
     
@@ -449,9 +463,10 @@ def reschedule_appointment(
     new_time: time,
     performed_by: uuid.UUID,
     reason: Optional[str] = None,
+    hospital_id: Optional[uuid.UUID] = None,
 ) -> Optional[Appointment]:
     """Reschedule an appointment."""
-    appt = get_appointment(db, appointment_id)
+    appt = get_appointment(db, appointment_id, hospital_id=hospital_id)
     if not appt:
         return None
     

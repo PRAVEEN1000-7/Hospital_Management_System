@@ -483,6 +483,13 @@ async def upload_user_photo(
 ):
     """Upload user profile photo (Admin or Super Admin)"""
     try:
+        target_user = get_user_by_id(db, user_id, hospital_id=current_user.hospital_id)
+        if not target_user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found",
+            )
+
         result = save_user_photo(db, user_id, file)
         return result
     except HTTPException:

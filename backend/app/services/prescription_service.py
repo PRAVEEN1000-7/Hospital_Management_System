@@ -219,6 +219,17 @@ def create_prescription(
     if isinstance(patient_id, str):
         patient_id = uuid.UUID(patient_id)
 
+    # Validate patient belongs to the same hospital (multi-tenant guard) — an
+    # unchecked patient_id would let this prescription (and its enrichment,
+    # which surfaces the patient's name, PRN, gender, DOB, phone, email,
+    # allergies, and chronic conditions) reference a patient from a
+    # different hospital entirely.
+    if not patient_id:
+        raise ValueError("patient_id is required")
+    patient = db.query(Patient).filter(Patient.id == patient_id).first()
+    if not patient or str(patient.hospital_id) != str(hospital_id):
+        raise ValueError("Patient not found")
+
     doctor_id = data.get("doctor_id")
     if isinstance(doctor_id, str):
         doctor_id = uuid.UUID(doctor_id)
@@ -242,6 +253,13 @@ def create_prescription(
             doctor_id = doctor.id
         else:
             raise ValueError("No doctor_id provided and current user is not a doctor")
+    else:
+        # Client explicitly supplied a doctor_id — validate it the same way
+        # appointment_id already is above, matching the doctor_id check
+        # already done for appointments (appointment_service.py:138).
+        doctor = db.query(Doctor).filter(Doctor.id == doctor_id, Doctor.hospital_id == hospital_id).first()
+        if not doctor:
+            raise ValueError("Doctor not found or belongs to a different hospital")
 
     rx = Prescription(
         hospital_id=hospital_id,
@@ -461,9 +479,10 @@ def update_prescription(
     prescription_id: str | uuid.UUID,
     data: dict,
     performed_by: uuid.UUID,
+    hospital_id: Optional[uuid.UUID] = None,
 ) -> Optional[Prescription]:
     """Update prescription fields and optionally replace items."""
-    rx = get_prescription(db, prescription_id)
+    rx = get_prescription(db, prescription_id, hospital_id=hospital_id)
     if not rx:
         return None
 
@@ -542,6 +561,7 @@ def finalize_prescription(
     db: Session,
     prescription_id: str | uuid.UUID,
     performed_by: uuid.UUID,
+    hospital_id: Optional[uuid.UUID] = None,
 ) -> Optional[Prescription]:
     """Finalize a prescription (lock it).
 
@@ -549,7 +569,7 @@ def finalize_prescription(
     time. This allows doctors to finalize and complete consultation even when one
     or more medicines are out of stock.
     """
-    rx = get_prescription(db, prescription_id)
+    rx = get_prescription(db, prescription_id, hospital_id=hospital_id)
     if not rx:
         return None
 
@@ -714,9 +734,10 @@ def delete_prescription(
     db: Session,
     prescription_id: str | uuid.UUID,
     deleted_by: uuid.UUID,
+    hospital_id: Optional[uuid.UUID] = None,
 ) -> Optional[Prescription]:
     """Soft-delete a prescription."""
-    rx = get_prescription(db, prescription_id)
+    rx = get_prescription(db, prescription_id, hospital_id=hospital_id)
     if not rx:
         return None
 

@@ -271,8 +271,34 @@ async def get_current_user_tenant(
 ):
     """Get tenant for current user (via hospital relationship)"""
     from .models.tenant import Tenant
-    
+
     tenant = TenantValidator.get_tenant_for_user(current_user, db)
+    return tenant
+
+
+async def require_authenticated_tenant(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """Resolve the tenant strictly from the authenticated caller's own
+    hospital via TenantValidator.get_tenant_for_user() — never from a
+    client-supplied X-Tenant-ID header or Host subdomain.
+
+    Use this (not core.tenant.require_tenant) for any endpoint that reads or
+    writes tenant-level data (profile, subscription, usage, modules). That
+    other dependency resolves the tenant from an unauthenticated header/
+    subdomain fallback when no valid JWT is present — it exists only as a
+    best-effort context for the tenant-resolution middleware, not as an
+    access-control boundary, and using it directly on a router previously
+    let anyone read/write another tenant's profile/subscription with zero
+    credentials by just sending that tenant's UUID in a header.
+    """
+    tenant = TenantValidator.get_tenant_for_user(current_user, db)
+    if not tenant:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No tenant is associated with this account",
+        )
     return tenant
 
 
@@ -284,49 +310,6 @@ async def require_tenant_subscription(
     tenant = TenantValidator.get_tenant_for_user(current_user, db)
     SubscriptionValidator.validate_subscription_active(tenant, db)
     return tenant
-
-
-def require_module_access(module_name: str):
-    """
-    Dependency factory to ensure user's tenant has access to a module.
-    
-    Usage:
-        @router.get("/pharmacy/medications")
-        async def list_medications(
-            current_user: User = Depends(get_current_active_user),
-            _: None = Depends(require_module_access("pharmacy")),
-            db: Session = Depends(get_db)
-        ):
-            # Code here only executes if pharmacy module is enabled
-            pass
-    """
-    async def _check(
-        current_user: User = Depends(get_current_active_user),
-        db: Session = Depends(get_db)
-    ):
-        tenant = TenantValidator.get_tenant_for_user(current_user, db)
-        
-        if not SubscriptionValidator.is_module_enabled(tenant, module_name, db):
-            logger.warning(
-                f"Module access denied: user={current_user.id}, "
-                f"module={module_name}, tenant={tenant.id}"
-            )
-            
-            AuditLogger.log_permission_denied(
-                current_user=current_user,
-                tenant=tenant,
-                resource_type=f"module:{module_name}",
-                reason=f"Module '{module_name}' not available for subscription plan"
-            )
-            
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Module '{module_name}' is not available for your subscription plan"
-            )
-        
-        return True
-    
-    return _check
 
 
 async def validate_resource_access(

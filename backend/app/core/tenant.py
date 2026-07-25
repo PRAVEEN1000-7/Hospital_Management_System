@@ -93,7 +93,7 @@ async def get_current_tenant(
             if tenant_id:
                 tenant = db.query(Tenant).filter(
                     Tenant.id == uuid.UUID(tenant_id),
-                    Tenant.status == 'active'
+                    Tenant.status.in_(['active', 'trialing'])
                 ).first()
         except (JWTError, ValueError):
             pass
@@ -105,7 +105,7 @@ async def get_current_tenant(
             try:
                 tenant = db.query(Tenant).filter(
                     Tenant.id == uuid.UUID(tenant_id_header),
-                    Tenant.status == 'active'
+                    Tenant.status.in_(['active', 'trialing'])
                 ).first()
             except ValueError:
                 pass
@@ -119,7 +119,7 @@ async def get_current_tenant(
             if subdomain not in ('www', 'app', 'api', 'admin'):
                 tenant = db.query(Tenant).filter(
                     Tenant.slug == subdomain,
-                    Tenant.status == 'active'
+                    Tenant.status.in_(['active', 'trialing'])
                 ).first()
     
     return tenant

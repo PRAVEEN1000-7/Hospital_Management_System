@@ -201,6 +201,7 @@ async def update_rx(
             db, prescription_id,
             data.model_dump(exclude_unset=True),
             current_user.id,
+            hospital_id=current_user.hospital_id,
         )
         if not rx:
             raise HTTPException(status_code=404, detail="Prescription not found")
@@ -220,7 +221,7 @@ async def finalize_rx(
         rx_check = get_prescription(db, prescription_id, hospital_id=current_user.hospital_id)
         if not rx_check:
             raise HTTPException(status_code=404, detail="Prescription not found")
-        rx = finalize_prescription(db, prescription_id, current_user.id)
+        rx = finalize_prescription(db, prescription_id, current_user.id, hospital_id=current_user.hospital_id)
         if not rx:
             raise HTTPException(status_code=404, detail="Prescription not found")
 
@@ -280,7 +281,7 @@ async def finalize_and_complete_queue(
         if not rx_check:
             raise HTTPException(status_code=404, detail="Prescription not found")
         # 1. Finalize the prescription
-        rx = finalize_prescription(db, prescription_id, current_user.id)
+        rx = finalize_prescription(db, prescription_id, current_user.id, hospital_id=current_user.hospital_id)
         if not rx:
             raise HTTPException(status_code=404, detail="Prescription not found")
 
@@ -370,7 +371,7 @@ async def delete_rx(
         rx_check = get_prescription(db, prescription_id, hospital_id=current_user.hospital_id)
         if not rx_check:
             raise HTTPException(status_code=404, detail="Prescription not found")
-        rx = delete_prescription(db, prescription_id, current_user.id)
+        rx = delete_prescription(db, prescription_id, current_user.id, hospital_id=current_user.hospital_id)
         if not rx:
             raise HTTPException(status_code=404, detail="Prescription not found")
     except ValueError as ve:

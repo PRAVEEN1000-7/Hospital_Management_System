@@ -212,9 +212,10 @@ def list_patients(
 
 
 def update_patient(
-    db: Session, patient_id: str | uuid.UUID, patient_data: PatientUpdate, user_id: uuid.UUID
+    db: Session, patient_id: str | uuid.UUID, patient_data: PatientUpdate, user_id: uuid.UUID,
+    hospital_id: Optional[uuid.UUID] = None,
 ) -> Optional[Patient]:
-    db_patient = get_patient_by_id(db, patient_id)
+    db_patient = get_patient_by_id(db, patient_id, hospital_id=hospital_id)
     if not db_patient:
         return None
     update_fields = patient_data.model_dump(exclude_unset=True)
@@ -377,8 +378,11 @@ def get_patient_last_visit(db: Session, patient_id: str | uuid.UUID, hospital_id
     return query.scalar()
 
 
-def soft_delete_patient(db: Session, patient_id: str | uuid.UUID, user_id: uuid.UUID) -> Optional[Patient]:
-    patient = get_patient_by_id(db, patient_id)
+def soft_delete_patient(
+    db: Session, patient_id: str | uuid.UUID, user_id: uuid.UUID,
+    hospital_id: Optional[uuid.UUID] = None,
+) -> Optional[Patient]:
+    patient = get_patient_by_id(db, patient_id, hospital_id=hospital_id)
     if not patient:
         return None
     patient.is_deleted = True

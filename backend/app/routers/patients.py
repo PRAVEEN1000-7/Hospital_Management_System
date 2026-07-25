@@ -221,7 +221,7 @@ async def update_existing_patient(
             patient_data.blood_sugar_value = None
             patient_data.blood_sugar_unit = None
 
-        updated = update_patient(db, patient_id, patient_data, current_user.id)
+        updated = update_patient(db, patient_id, patient_data, current_user.id, hospital_id=current_user.hospital_id)
         return PatientResponse.model_validate(updated)
     except HTTPException:
         raise
@@ -332,7 +332,7 @@ async def delete_patient(
                 detail="Patient not found",
             )
 
-        soft_delete_patient(db, patient_id, current_user.id)
+        soft_delete_patient(db, patient_id, current_user.id, hospital_id=current_user.hospital_id)
         return None
     except HTTPException:
         raise

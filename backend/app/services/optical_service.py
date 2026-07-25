@@ -217,6 +217,16 @@ def create_optical_prescription(
             payload[fk] = uuid.UUID(payload[fk])
 
     from ..models.appointment import Doctor
+    from ..models.patient import Patient
+
+    # Scoped to this hospital — an unchecked patient_id would let this
+    # prescription (and its enrichment, which surfaces the patient's name)
+    # reference a patient from a different hospital entirely.
+    if not payload.get("patient_id"):
+        raise ValueError("patient_id is required")
+    patient = db.query(Patient).filter(Patient.id == payload["patient_id"], Patient.hospital_id == hospital_id).first()
+    if not patient:
+        raise ValueError("Patient not found")
 
     # No doctor_id provided (e.g. the Prescription Builder's "also create
     # optical prescription" option) — resolve from the logged-in doctor,
@@ -229,7 +239,7 @@ def create_optical_prescription(
             raise ValueError("No doctor_id provided and current user is not a doctor")
         payload["doctor_id"] = doctor.id
     else:
-        doctor = db.query(Doctor).filter(Doctor.id == payload.get("doctor_id")).first()
+        doctor = db.query(Doctor).filter(Doctor.id == payload.get("doctor_id"), Doctor.hospital_id == hospital_id).first()
         if not doctor:
             raise ValueError("Doctor not found")
     # Any registered doctor in the hospital may write an optical prescription.
@@ -465,8 +475,19 @@ def _generate_order_number(db: Session, hospital_id: uuid.UUID) -> str:
 
 
 def create_sale(db: Session, hospital_id: uuid.UUID, data: dict, user_id: uuid.UUID) -> OpticalSale:
+    from ..models.patient import Patient
+
     items_data = data.pop("items", [])
     prescription_id = data.get("prescription_id")
+
+    # Scoped to this hospital — an unchecked patient_id would let this sale
+    # (and its enrichment, which surfaces the patient's name) reference a
+    # patient from a different hospital entirely.
+    patient_check = db.query(Patient).filter(
+        Patient.id == uuid.UUID(data["patient_id"]), Patient.hospital_id == hospital_id,
+    ).first()
+    if not patient_check:
+        raise ValueError("Patient not found")
 
     # An eye prescription is required when any line item is a power lens or
     # contact lens — frames/solutions/accessories can be sold without one.
@@ -498,8 +519,13 @@ def create_sale(db: Session, hospital_id: uuid.UUID, data: dict, user_id: uuid.U
     # any appointment.
     sale_appointment_id = None
     if prescription_id:
-        rx = db.query(OpticalPrescription).filter(OpticalPrescription.id == uuid.UUID(prescription_id)).first()
-        sale_appointment_id = rx.appointment_id if rx else None
+        rx = db.query(OpticalPrescription).filter(
+            OpticalPrescription.id == uuid.UUID(prescription_id),
+            OpticalPrescription.hospital_id == hospital_id,
+        ).first()
+        if not rx:
+            raise ValueError("Prescription not found")
+        sale_appointment_id = rx.appointment_id
 
     sale = OpticalSale(
         hospital_id=hospital_id,

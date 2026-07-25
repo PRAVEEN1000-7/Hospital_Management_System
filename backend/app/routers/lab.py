@@ -95,7 +95,7 @@ async def update_lab_test(
     existing = svc.get_lab_test_by_id(db, test_id, hospital_id=current_user.hospital_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Lab test not found")
-    test = svc.update_lab_test(db, test_id, data.model_dump(exclude_unset=True))
+    test = svc.update_lab_test(db, test_id, data.model_dump(exclude_unset=True), hospital_id=current_user.hospital_id)
     return LabTestResponse.model_validate(test)
 
 
@@ -109,7 +109,7 @@ async def deactivate_lab_test(
     existing = svc.get_lab_test_by_id(db, test_id, hospital_id=current_user.hospital_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Lab test not found")
-    svc.deactivate_lab_test(db, test_id)
+    svc.deactivate_lab_test(db, test_id, hospital_id=current_user.hospital_id)
 
 
 # ═══ Orders ═══
@@ -348,7 +348,7 @@ async def update_lab_queue_status(
     if not order:
         raise HTTPException(status_code=404, detail="Lab order not found")
     try:
-        order = svc.advance_lab_queue_status(db, order_id, data.queue_status)
+        order = svc.advance_lab_queue_status(db, order_id, data.queue_status, hospital_id=current_user.hospital_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     total = sum((i.price or Decimal("0")) for i in (order.items or []))

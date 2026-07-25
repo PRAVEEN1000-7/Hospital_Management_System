@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..core.tenant import require_tenant, TenantContext
+from ..dependencies import require_authenticated_tenant
 from ..models.tenant import Tenant
 from ..schemas.tenant import (
     TenantResponse, TenantUpdate,
@@ -23,7 +23,7 @@ router = APIRouter(prefix="/tenant", tags=["Tenant Admin"])
 
 @router.get("/profile", response_model=TenantResponse)
 def get_tenant_profile(
-    tenant: Tenant = Depends(require_tenant),
+    tenant: Tenant = Depends(require_authenticated_tenant),
     db: Session = Depends(get_db)
 ):
     """Get current tenant profile"""
@@ -41,7 +41,7 @@ def get_tenant_profile(
 @router.put("/profile", response_model=TenantResponse)
 def update_tenant_profile(
     request: TenantUpdate,
-    tenant: Tenant = Depends(require_tenant),
+    tenant: Tenant = Depends(require_authenticated_tenant),
     db: Session = Depends(get_db)
 ):
     """Update tenant profile"""
@@ -61,7 +61,7 @@ def update_tenant_profile(
 
 @router.get("/modules")
 def get_available_modules(
-    tenant: Tenant = Depends(require_tenant),
+    tenant: Tenant = Depends(require_authenticated_tenant),
     db: Session = Depends(get_db)
 ):
     """Get enabled modules for this tenant.
@@ -109,7 +109,7 @@ def get_available_modules(
 
 @router.get("/subscription", response_model=dict)
 def get_subscription_details(
-    tenant: Tenant = Depends(require_tenant),
+    tenant: Tenant = Depends(require_authenticated_tenant),
     db: Session = Depends(get_db)
 ):
     """Get current subscription details (read-only)"""
@@ -139,7 +139,7 @@ def get_subscription_details(
 
 @router.get("/usage", response_model=List[UsageQuotaResponse])
 def get_usage_quotas(
-    tenant: Tenant = Depends(require_tenant),
+    tenant: Tenant = Depends(require_authenticated_tenant),
     db: Session = Depends(get_db)
 ):
     """Get current usage vs limits"""
@@ -151,7 +151,7 @@ def get_usage_quotas(
 def request_upgrade(
     requested_plan: str,
     reason: str,
-    tenant: Tenant = Depends(require_tenant),
+    tenant: Tenant = Depends(require_authenticated_tenant),
     db: Session = Depends(get_db)
 ):
     """Legacy: submit a plain text upgrade request (no payment tracking)"""
@@ -171,7 +171,7 @@ def request_upgrade(
 @router.get("/check-limit/{resource_type}")
 def check_resource_limit(
     resource_type: str,
-    tenant: Tenant = Depends(require_tenant),
+    tenant: Tenant = Depends(require_authenticated_tenant),
     db: Session = Depends(get_db)
 ):
     """Check if tenant has hit their limit for a resource"""

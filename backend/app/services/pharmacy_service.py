@@ -679,6 +679,14 @@ def create_sale(
     patient_id = data.get("patient_id")
     if patient_id:
         patient_id = uuid.UUID(patient_id)
+        # Scoped to this hospital — an unchecked patient_id would let this
+        # sale (and its enrichment, which surfaces the patient's name)
+        # reference a patient from a different hospital entirely. A pure
+        # walk-in counter sale with no patient at all remains allowed above.
+        from ..models.patient import Patient
+        patient_check = db.query(Patient).filter(Patient.id == patient_id, Patient.hospital_id == hospital_id).first()
+        if not patient_check:
+            raise ValueError("Patient not found")
 
     # Eye-hospital feature pack: if this patient has an open Pharmacy Queue
     # entry (auto-enqueued at prescription finalize, or manually added — see

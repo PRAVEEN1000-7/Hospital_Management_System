@@ -6,6 +6,7 @@ import inventoryService from '../../services/inventoryService';
 import type { PurchaseOrder, Supplier } from '../../types/inventory';
 import DateRangeFilter from '../../components/common/DateRangeFilter';
 import { formatDateOnly } from '../../utils/calendarDate';
+import { htmlStringToPdf } from '../../utils/pdf';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-slate-100 text-slate-600',
@@ -88,6 +89,71 @@ const PurchaseOrdersPage: React.FC = () => {
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 2 }).format(amount);
 
+  const [exportingPdf, setExportingPdf] = useState(false);
+
+  // BRD-002: export the currently-filtered/visible Purchase Orders list as a
+  // PDF (PO Number, Supplier, Date, Item, Quantity, Unit Price, Total, Status,
+  // Created By) — one row per line item, PO-level fields repeated per row.
+  // Built entirely client-side from data already loaded for this page (no new
+  // backend endpoint needed), fed through the same htmlStringToPdf() every
+  // other "Download PDF" feature in this app already uses.
+  const handleExportPdf = async () => {
+    if (orders.length === 0) {
+      toast.error('No purchase orders to export');
+      return;
+    }
+    setExportingPdf(true);
+    try {
+      const esc = (v: unknown) =>
+        String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+
+      const rows = orders.flatMap(po =>
+        (po.items.length > 0 ? po.items : [null]).map(item => `
+          <tr>
+            <td>${esc(po.po_number)}</td>
+            <td>${esc(po.supplier_name || '—')}</td>
+            <td>${esc(formatDateOnly(po.order_date))}</td>
+            <td>${esc(item?.item_name || '—')}</td>
+            <td style="text-align:right;">${item ? esc(item.quantity_ordered) : '—'}</td>
+            <td style="text-align:right;">${item ? esc(formatCurrency(item.unit_price)) : '—'}</td>
+            <td style="text-align:right;">${item ? esc(formatCurrency(item.total_price)) : esc(formatCurrency(po.total_amount))}</td>
+            <td style="text-transform:capitalize;">${esc(po.status.replace('_', ' '))}</td>
+            <td>${esc(po.created_by_name || '—')}</td>
+          </tr>`).join('')
+      ).join('');
+
+      const html = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<title>Purchase Orders Export</title>
+<style>
+body { font-family: Arial, sans-serif; margin: 0; padding: 24px; color: #1e293b; }
+h1 { font-size: 18px; color: #137fec; margin: 0 0 4px; }
+p.meta { font-size: 11px; color: #64748b; margin: 0 0 16px; }
+table { width: 100%; border-collapse: collapse; font-size: 11px; }
+th { background: #f1f5f9; text-align: left; padding: 6px 8px; border-bottom: 2px solid #e2e8f0; white-space: nowrap; }
+td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
+</style></head>
+<body>
+<h1>${esc(user?.hospital_name || 'Hospital')} — Purchase Orders</h1>
+<p class="meta">Generated ${esc(new Date().toLocaleString())} — ${orders.length} order(s)${statusFilter ? `, status: ${esc(statusFilter.replace('_', ' '))}` : ''}${supplierFilter ? `, supplier filtered` : ''}</p>
+<table>
+<thead><tr>
+  <th>PO Number</th><th>Supplier</th><th>Date</th><th>Item</th>
+  <th style="text-align:right;">Quantity</th><th style="text-align:right;">Unit Price</th>
+  <th style="text-align:right;">Total</th><th>Status</th><th>Created By</th>
+</tr></thead>
+<tbody>${rows}</tbody>
+</table>
+</body></html>`;
+
+      await htmlStringToPdf(html, `Purchase_Orders_${new Date().toISOString().split('T')[0]}.pdf`);
+    } catch {
+      toast.error('Failed to export PDF');
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -95,10 +161,19 @@ const PurchaseOrdersPage: React.FC = () => {
           <h1 className="text-2xl font-bold text-slate-900">Purchase Orders</h1>
           <p className="text-sm text-slate-500 mt-1">Create and manage purchase orders ({total} total)</p>
         </div>
-        <button onClick={() => navigate('/inventory/purchase-orders/new')} className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors">
-          <span className="material-symbols-outlined text-lg">add</span>
-          New Purchase Order
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={handleExportPdf} disabled={exportingPdf || orders.length === 0}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50">
+            <span className={`material-symbols-outlined text-lg ${exportingPdf ? 'animate-spin' : ''}`}>
+              {exportingPdf ? 'progress_activity' : 'picture_as_pdf'}
+            </span>
+            {exportingPdf ? 'Exporting…' : 'Export PDF'}
+          </button>
+          <button onClick={() => navigate('/inventory/purchase-orders/new')} className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors">
+            <span className="material-symbols-outlined text-lg">add</span>
+            New Purchase Order
+          </button>
+        </div>
       </header>
 
       {/* Workflow legend — the Actions column changes with status, so spell out the
@@ -162,13 +237,13 @@ const PurchaseOrdersPage: React.FC = () => {
             <table className="w-full">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">PO Number</th>
-                  <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Supplier</th>
-                  <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Order Date</th>
-                  <th className="px-4 py-3.5 text-left text-xs font-bold text-slate-600 uppercase tracking-wider">Expected</th>
-                  <th className="px-4 py-3.5 text-right text-xs font-bold text-slate-600 uppercase tracking-wider">Total</th>
+                  <th className="px-4 py-3.5 text-center text-xs font-bold text-slate-600 uppercase tracking-wider">PO Number</th>
+                  <th className="px-4 py-3.5 text-center text-xs font-bold text-slate-600 uppercase tracking-wider">Supplier</th>
+                  <th className="px-4 py-3.5 text-center text-xs font-bold text-slate-600 uppercase tracking-wider">Order Date</th>
+                  <th className="px-4 py-3.5 text-center text-xs font-bold text-slate-600 uppercase tracking-wider">Expected</th>
+                  <th className="px-4 py-3.5 text-center text-xs font-bold text-slate-600 uppercase tracking-wider">Total</th>
                   <th className="px-4 py-3.5 text-center text-xs font-bold text-slate-600 uppercase tracking-wider">Status</th>
-                  <th className="px-4 py-3.5 text-right text-xs font-bold text-slate-600 uppercase tracking-wider">Actions</th>
+                  <th className="px-4 py-3.5 text-center text-xs font-bold text-slate-600 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -218,9 +293,9 @@ const PurchaseOrdersPage: React.FC = () => {
                           </button>
                         )}
                         <button onClick={() => setDetailPO(po)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                          className="inline-flex items-center gap-1 p-1.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
                           title="View full order details and line items">
-                          <span className="material-symbols-outlined text-[15px]">visibility</span> View
+                          <span className="material-symbols-outlined text-[15px]">visibility</span>
                         </button>
                         {isAdminUser && !['draft', 'cancelled'].includes(po.status) && (
                           <button onClick={() => navigate(`/inventory/purchase-orders/${po.id}/payments`)}

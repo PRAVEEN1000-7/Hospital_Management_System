@@ -6,6 +6,7 @@ import invoiceService from '../services/invoiceService';
 import type { InvoiceListItem, InvoiceStatus } from '../types/billing';
 import DateRangeFilter from '../components/common/DateRangeFilter';
 import { formatDateOnly } from '../utils/calendarDate';
+import { PAYMENT_STATUS_LABELS, PAYMENT_STATUS_COLORS, PAYMENT_STATUS_OPTIONS } from '../utils/paymentStatus';
 
 const STATUS_COLORS: Record<InvoiceStatus, string> = {
   draft: 'bg-slate-100 text-slate-600',
@@ -43,6 +44,7 @@ const InvoiceList: React.FC = () => {
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -56,6 +58,7 @@ const InvoiceList: React.FC = () => {
       const res = await invoiceService.list(page, 10, {
         search: search || undefined,
         status: statusFilter || undefined,
+        payment_status: paymentStatusFilter || undefined,
         invoice_type: typeFilter || undefined,
         date_from: dateFrom || undefined,
         date_to: dateTo || undefined,
@@ -68,7 +71,7 @@ const InvoiceList: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [page, search, statusFilter, typeFilter, dateFrom, dateTo, showToast]);
+  }, [page, search, statusFilter, paymentStatusFilter, typeFilter, dateFrom, dateTo, showToast]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -124,6 +127,15 @@ const InvoiceList: React.FC = () => {
             <option value="partially_paid">Partially Paid</option>
             <option value="paid">Paid</option>
             <option value="overdue">Overdue</option>
+          </select>
+          <select
+            value={paymentStatusFilter}
+            onChange={e => { setPaymentStatusFilter(e.target.value); setPage(1); }}
+            className="px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary/30"
+            title="Filter by the simplified 3-state payment status (BRD-001)"
+          >
+            <option value="">All Payment Status</option>
+            {PAYMENT_STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
           <select
             value={typeFilter}
@@ -202,9 +214,15 @@ const InvoiceList: React.FC = () => {
                       ₹{fmt(inv.balance_amount)}
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold ${STATUS_COLORS[inv.status]}`}>
-                        {STATUS_LABELS[inv.status]}
-                      </span>
+                      {inv.payment_status ? (
+                        <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold ${PAYMENT_STATUS_COLORS[inv.payment_status]}`}>
+                          {PAYMENT_STATUS_LABELS[inv.payment_status]}
+                        </span>
+                      ) : (
+                        <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold ${STATUS_COLORS[inv.status]}`}>
+                          {STATUS_LABELS[inv.status]}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <button

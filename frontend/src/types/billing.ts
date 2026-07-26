@@ -25,6 +25,10 @@ export type PaymentMode = 'cash' | 'upi' | 'debit_card' | 'credit_card';
 
 export type PaymentStatus = 'pending' | 'completed' | 'failed' | 'reversed';
 
+// BRD-001: derived 3-state payment-status bucket (see backend/app/core/billing_status.py) —
+// null/undefined for cancelled/void invoices, which are excluded from this model.
+export type PaymentStatusBucket = 'not_paid' | 'partially_paid' | 'paid';
+
 export type RefundReasonCode =
   | 'service_not_provided'
   | 'billing_error'
@@ -119,6 +123,7 @@ export interface Invoice {
   balance_amount: number;
   currency: string;
   status: InvoiceStatus;
+  payment_status?: PaymentStatusBucket;
   notes?: string;
   items: InvoiceItem[];
   created_at: string;
@@ -137,6 +142,7 @@ export interface InvoiceListItem {
   paid_amount: number;
   balance_amount: number;
   status: InvoiceStatus;
+  payment_status?: PaymentStatusBucket;
   created_at: string;
 }
 
@@ -203,6 +209,7 @@ export interface PaymentListItem {
   payment_reference?: string;
   payment_date: string;
   status: PaymentStatus;
+  invoice_payment_status?: PaymentStatusBucket;
   refunded_amount: number;
   net_amount: number;
   created_at: string;

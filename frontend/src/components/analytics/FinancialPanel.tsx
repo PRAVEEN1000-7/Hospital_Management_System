@@ -16,7 +16,9 @@ import {
   useCollectionReport,
   useOutstandingDues,
   useTaxSummary,
+  usePaymentStatusSummary,
 } from '../../hooks/useAnalyticsQueries';
+import { PAYMENT_STATUS_LABELS, PAYMENT_STATUS_COLORS } from '../../utils/paymentStatus';
 
 // ── Currency ─────────────────────────────────────────────────────────────
 
@@ -56,12 +58,37 @@ const FinancialPanel: React.FC = () => {
   const collections = useCollectionReport();
   const outstanding = useOutstandingDues();
   const tax = useTaxSummary();
+  const paymentStatus = usePaymentStatusSummary();
 
   const isLoading =
     collections.isLoading || outstanding.isLoading || tax.isLoading;
 
   return (
     <PanelCard title="Financial Overview" status="development" isLoading={isLoading}>
+      {/* BRD-001 — real data (not mocked), unlike the rest of this panel */}
+      {paymentStatus.data && (
+        <div className="mb-6">
+          <h4 className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300">
+            Payment Status Summary
+            <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">Live</span>
+          </h4>
+          <div className="grid grid-cols-3 gap-3">
+            {(['not_paid', 'partially_paid', 'paid'] as const).map((bucket) => {
+              const b = paymentStatus.data[bucket];
+              return (
+                <div key={bucket} className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+                  <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold ${PAYMENT_STATUS_COLORS[bucket]}`}>
+                    {PAYMENT_STATUS_LABELS[bucket]}
+                  </span>
+                  <p className="mt-2 text-lg font-bold text-slate-800 dark:text-slate-100">{b.count}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">{inr.format(b.total_amount)}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="grid gap-6 md:grid-cols-3">
         {/* ── Column 1: Collection Pie ── */}
         <div>

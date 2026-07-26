@@ -10,7 +10,7 @@ const paymentService = {
   async list(
     page = 1,
     limit = 10,
-    params: { search?: string; payment_mode?: string; invoice_id?: string; date_from?: string; date_to?: string; date_range?: string } = {}
+    params: { search?: string; payment_mode?: string; invoice_id?: string; payment_status?: string; date_from?: string; date_to?: string; date_range?: string } = {}
   ): Promise<PaginatedResponse<PaymentListItem>> {
     const response = await api.get<PaginatedResponse<PaymentListItem>>('/payments', {
       params: { page, limit, ...params },

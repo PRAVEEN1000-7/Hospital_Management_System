@@ -42,6 +42,7 @@ class PaymentListItem(BaseModel):
     payment_reference: Optional[str] = None
     payment_date: date
     status: str
+    invoice_payment_status: Optional[str] = None
     refunded_amount: Decimal = Decimal("0")
     net_amount: Decimal
     created_at: datetime

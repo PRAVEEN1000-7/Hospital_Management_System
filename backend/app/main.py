@@ -19,6 +19,7 @@ from .routers import (
     auth, hospital, users, patients,
     appointments, schedules, appointment_settings, appointment_reports,
     departments, doctors, hospital_settings as hospital_settings_router,
+    queue_screens,
     walk_ins, waitlist, prescriptions, pharmacy, pharmacy_dispensing,
     inventory, notifications, optical, lab,
     # Billing & Invoice module
@@ -245,6 +246,7 @@ app.include_router(appointment_reports.router, prefix="/api/v1")
 app.include_router(departments.router, prefix="/api/v1")
 app.include_router(doctors.router, prefix="/api/v1")
 app.include_router(hospital_settings_router.router, prefix="/api/v1")
+app.include_router(queue_screens.router, prefix="/api/v1")
 app.include_router(walk_ins.router, prefix="/api/v1")
 app.include_router(waitlist.router, prefix="/api/v1")
 _require_prescriptions = [Depends(SubscriptionValidator.require_module_access('prescriptions'))]

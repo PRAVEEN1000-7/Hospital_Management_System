@@ -166,6 +166,7 @@ class InvoiceListItem(BaseModel):
     paid_amount: Decimal
     balance_amount: Decimal
     status: str
+    payment_status: Optional[str] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -190,6 +191,7 @@ class InvoiceResponse(BaseModel):
     balance_amount: Decimal
     currency: str
     status: str
+    payment_status: Optional[str] = None
     notes: Optional[str]
     items: List[InvoiceItemResponse]
     created_at: datetime
@@ -200,6 +202,7 @@ class InvoiceResponse(BaseModel):
     @classmethod
     def model_validate(cls, obj, **kwargs):
         if hasattr(obj, "__dict__"):
+            from ..core.billing_status import payment_status_bucket
             patient_name = ""
             if obj.patient:
                 patient_name = f"{obj.patient.first_name} {obj.patient.last_name}".strip()
@@ -224,6 +227,7 @@ class InvoiceResponse(BaseModel):
                 "balance_amount": obj.balance_amount or Decimal("0"),
                 "currency": obj.currency or "INR",
                 "status": obj.status,
+                "payment_status": payment_status_bucket(obj.status),
                 "notes": obj.notes,
                 "items": [InvoiceItemResponse.model_validate(i) for i in (obj.items or [])],
                 "created_at": obj.created_at,
@@ -231,6 +235,20 @@ class InvoiceResponse(BaseModel):
             }
             return cls(**data)
         return super().model_validate(obj, **kwargs)
+
+
+class PaymentStatusBucketSummary(BaseModel):
+    count: int
+    total_amount: Decimal
+
+
+class PaymentStatusSummaryResponse(BaseModel):
+    """BRD-001 — counts + total amounts per payment-status bucket, for the
+    Reports/Analytics dashboard. cancelled/void invoices are excluded (see
+    core/billing_status.py)."""
+    not_paid: PaymentStatusBucketSummary
+    partially_paid: PaymentStatusBucketSummary
+    paid: PaymentStatusBucketSummary
 
 
 class PaginatedInvoiceResponse(BaseModel):

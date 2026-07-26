@@ -28,6 +28,7 @@ import type {
   ScheduledReport,
   PharmacyDashboard,
   InventoryDashboard,
+  PaymentStatusSummary,
 } from '../types/analytics.types';
 import { genId } from '../utils/id';
 import {
@@ -280,6 +281,13 @@ async function getTaxSummary(): Promise<TaxSummary[]> {
   return mockTaxSummary;
 }
 
+// ── LIVE: Payment Status Summary (BRD-001) ────────────────────────────────
+
+async function getPaymentStatusSummary(): Promise<PaymentStatusSummary> {
+  const response = await api.get<PaymentStatusSummary>('/invoices/stats/payment-status-summary');
+  return response.data;
+}
+
 // ── DEV: Export & Schedule ───────────────────────────────────────────────
 
 async function exportReport(_payload: ExportPayload): Promise<Blob> {
@@ -342,6 +350,8 @@ const reportsApi = {
   getCollectionReport,
   getOutstandingDues,
   getTaxSummary,
+  // LIVE – Financial (BRD-001)
+  getPaymentStatusSummary,
   // DEV – Export / Schedule
   exportReport,
   getScheduledReports,

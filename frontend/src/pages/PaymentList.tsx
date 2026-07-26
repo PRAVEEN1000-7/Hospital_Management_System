@@ -5,6 +5,7 @@ import paymentService from '../services/paymentService';
 import type { PaymentListItem, PaymentMode } from '../types/billing';
 import DateRangeFilter from '../components/common/DateRangeFilter';
 import { formatDateOnly } from '../utils/calendarDate';
+import { PAYMENT_STATUS_LABELS, PAYMENT_STATUS_COLORS, PAYMENT_STATUS_OPTIONS } from '../utils/paymentStatus';
 
 const MODE_LABELS: Record<string, string> = {
   cash: 'Cash',
@@ -56,6 +57,7 @@ const PaymentList: React.FC = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [modeFilter, setModeFilter] = useState('');
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState('');
   const [dateFrom, setDateFrom] = useState(today);
   const [dateTo, setDateTo] = useState(today);
 
@@ -74,6 +76,7 @@ const PaymentList: React.FC = () => {
       } else {
         res = await paymentService.list(page, 15, {
           payment_mode: modeFilter || undefined,
+          payment_status: paymentStatusFilter || undefined,
           date_from: dateFrom || undefined,
           date_to: dateTo || undefined,
         });
@@ -86,7 +89,7 @@ const PaymentList: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [page, modeFilter, dateFrom, dateTo, invoiceId, showToast]);
+  }, [page, modeFilter, paymentStatusFilter, dateFrom, dateTo, invoiceId, showToast]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -160,6 +163,15 @@ const PaymentList: React.FC = () => {
                 Clear Mode
               </button>
             )}
+            <select
+              value={paymentStatusFilter}
+              onChange={e => { setPaymentStatusFilter(e.target.value); setPage(1); }}
+              className="px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary/30"
+              title="Filter by the linked invoice's payment status (BRD-001)"
+            >
+              <option value="">All Payment Status</option>
+              {PAYMENT_STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
           </div>
           <DateRangeFilter
             dateFrom={dateFrom}
@@ -194,6 +206,7 @@ const PaymentList: React.FC = () => {
                   <th className="text-right px-4 py-3 font-semibold text-slate-600">Refunded</th>
                   <th className="text-right px-4 py-3 font-semibold text-slate-600">Net</th>
                   <th className="text-center px-4 py-3 font-semibold text-slate-600">Status</th>
+                  <th className="text-center px-4 py-3 font-semibold text-slate-600">Payment Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -216,6 +229,13 @@ const PaymentList: React.FC = () => {
                       <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${p.status === 'completed' ? 'bg-green-100 text-green-700' : p.status === 'reversed' ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-500'}`}>
                         {p.status}
                       </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {p.invoice_payment_status && (
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${PAYMENT_STATUS_COLORS[p.invoice_payment_status]}`}>
+                          {PAYMENT_STATUS_LABELS[p.invoice_payment_status]}
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}

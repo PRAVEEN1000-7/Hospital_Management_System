@@ -11,6 +11,7 @@ const invoiceService = {
     params: {
       search?: string;
       status?: string;
+      payment_status?: string;
       invoice_type?: string;
       patient_id?: string;
       date_from?: string;

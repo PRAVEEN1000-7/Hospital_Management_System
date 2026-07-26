@@ -257,11 +257,18 @@ const WalkInRegistration: React.FC = () => {
             <p className="text-4xl font-black text-primary">{success.queueNumber}</p>
             <p className="text-sm text-slate-500 mt-1.5">Estimated wait: <span className="font-semibold text-slate-700">~{success.estimatedWait} min</span></p>
           </div>
-          <button onClick={handleReset}
-            className="px-6 py-2.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors shadow-sm flex items-center gap-2 mx-auto">
-            <span className="material-symbols-outlined text-base">add</span>
-            Register Another
-          </button>
+          <div className="flex gap-3 justify-center">
+            <button onClick={handleReset}
+              className="px-5 py-2.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors shadow-sm flex items-center gap-2">
+              <span className="material-symbols-outlined text-base">add</span>
+              Register Another
+            </button>
+            <button onClick={() => navigate('/appointments/queue')}
+              className="px-5 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-lg text-sm font-semibold hover:bg-slate-50 transition-colors flex items-center gap-2">
+              <span className="material-symbols-outlined text-base">groups</span>
+              View in Consultation Queue
+            </button>
+          </div>
         </div>
       </div>
     );

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
 import { hospitalService } from '../services/hospitalService';
@@ -452,6 +453,7 @@ const ProfileTab: React.FC = () => {
 
 const SystemSettingsTab: React.FC = () => {
   const toast = useToast();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const isEyeHospital = user?.hospital_specialty === 'eye_hospital' || user?.hospital_specialty === 'multi_specialty';
   const [settings, setSettings] = useState<HospitalSettingsType | null>(null);
@@ -729,6 +731,31 @@ const SystemSettingsTab: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Queue Display Screens (BRD-005) — multi-screen config, additive
+          alongside the single legacy config above; not eye-hospital gated,
+          since named-screen queue displays are generically useful. */}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="flex items-center gap-3 px-5 py-4 bg-slate-50/50 border-b border-slate-100">
+          <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+            <span className="material-symbols-outlined text-primary text-lg">dashboard_customize</span>
+          </div>
+          <h2 className="font-bold text-slate-900">Queue Display Screens</h2>
+        </div>
+        <div className="px-5 py-4 flex items-center justify-between gap-4">
+          <p className="text-xs text-slate-500">
+            Configure multiple named public queue displays — each with its own department, doctor,
+            and token format, each with its own URL. Enabled only once all its mandatory settings are set.
+          </p>
+          <button
+            onClick={() => navigate('/settings/queue-screens')}
+            className="flex-shrink-0 inline-flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors"
+          >
+            <span className="material-symbols-outlined text-base">tune</span>
+            Manage Screens
+          </button>
+        </div>
+      </div>
 
       {/* Read-only counters */}
       <div className="bg-slate-50 rounded-xl border border-slate-200 p-5">

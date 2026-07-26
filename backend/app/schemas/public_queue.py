@@ -23,3 +23,8 @@ class PublicQueueDisplayResponse(BaseModel):
     logo_url: Optional[str] = None
     refresh_seconds: int = 10
     columns: list[PublicQueueColumn] = []
+    # BRD-005 — only meaningful for the per-screen endpoint; always True on
+    # the legacy hospital-wide endpoint (which has no "configured" concept).
+    configured: bool = True
+    display_name: Optional[str] = None
+    token_format: Optional[str] = None

@@ -174,6 +174,19 @@ export interface TaxSummary {
   total: number;
 }
 
+// BRD-001 — real (not mocked) payment-status summary, from
+// GET /invoices/stats/payment-status-summary.
+export interface PaymentStatusBucketSummary {
+  count: number;
+  total_amount: number;
+}
+
+export interface PaymentStatusSummary {
+  not_paid: PaymentStatusBucketSummary;
+  partially_paid: PaymentStatusBucketSummary;
+  paid: PaymentStatusBucketSummary;
+}
+
 // ── Export / Scheduling ──────────────────────────────────────────────────
 
 export type ExportFormat = 'pdf' | 'csv' | 'xlsx';

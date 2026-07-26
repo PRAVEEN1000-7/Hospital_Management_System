@@ -69,6 +69,7 @@ async def list_all_payments(
     search: Optional[str] = None,
     payment_mode: Optional[str] = None,
     invoice_id: Optional[str] = None,
+    payment_status: Optional[str] = Query(None, description="not_paid | partially_paid | paid — filters by the linked invoice's payment status"),
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     date_range: Optional[str] = Query(None, description="24h | 7d | 30d | 1y"),
@@ -81,6 +82,7 @@ async def list_all_payments(
         return list_payments(
             db, current_user.hospital_id, page, limit,
             search=search, payment_mode=payment_mode, invoice_id=invoice_id,
+            payment_status=payment_status,
             date_from=date_from, date_to=date_to, date_range=date_range,
         )
     except Exception as e:

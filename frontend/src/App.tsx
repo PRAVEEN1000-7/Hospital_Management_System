@@ -37,6 +37,7 @@ import StaffDirectory from './pages/StaffDirectory';
 import Profile from './pages/Profile';
 import HospitalSetup from './pages/HospitalSetup';
 import HospitalSettings from './pages/HospitalSettings';
+import QueueDisplayScreens from './pages/QueueDisplayScreens';
 import Subscription from './pages/Subscription';
 
 // Appointment pages
@@ -44,6 +45,7 @@ import AppointmentBooking from './pages/AppointmentBooking';
 import WalkInRegistration from './pages/WalkInRegistration';
 import WalkInQueue from './pages/WalkInQueue';
 import PublicQueueDisplay from './pages/PublicQueueDisplay';
+import PublicQueueDisplayScreen from './pages/PublicQueueDisplayScreen';
 import DoctorSchedule from './pages/DoctorSchedule';
 import DoctorAppointments from './pages/DoctorAppointments';
 import MyAppointments from './pages/MyAppointments';
@@ -169,6 +171,7 @@ const App: React.FC = () => {
             {/* Public Queue Display kiosk — no auth, no Layout/sidebar. Scoped to one
                 hospital by its public code (BRD v1.1 §3). */}
             <Route path="/public/queue/:hospitalCode" element={<PublicQueueDisplay />} />
+            <Route path="/public/queue/:hospitalCode/:screenSlug" element={<PublicQueueDisplayScreen />} />
 
             {/* Super Admin routes — separate layout, no module gating */}
             <Route
@@ -234,6 +237,11 @@ const App: React.FC = () => {
               <Route path="/settings" element={
                 <ProtectedRoute allowedRoles={allowedRoles('system.settings', 'edit')}>
                   <HospitalSettings />
+                </ProtectedRoute>
+              } />
+              <Route path="/settings/queue-screens" element={
+                <ProtectedRoute allowedRoles={allowedRoles('system.settings', 'edit')}>
+                  <QueueDisplayScreens />
                 </ProtectedRoute>
               } />
 

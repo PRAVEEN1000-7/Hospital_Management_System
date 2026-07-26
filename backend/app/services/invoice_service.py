@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_, func
 
 from ..core.hospital_time import hospital_today_by_id
+from ..core.billing_status import payment_status_bucket, invoice_statuses_for_payment_status
 
 from ..models.pharmacy import MedicineBatch
 from ..models.prescription import Medicine
@@ -288,6 +289,7 @@ def list_invoices(
     limit: int = 10,
     search: Optional[str] = None,
     status: Optional[str] = None,
+    payment_status: Optional[str] = None,
     invoice_type: Optional[str] = None,
     patient_id: Optional[str] = None,
     date_from: Optional[date] = None,
@@ -300,6 +302,13 @@ def list_invoices(
     )
     if status:
         query = query.filter(Invoice.status == status)
+    if payment_status:
+        # BRD-001: derived 3-state filter (not_paid/partially_paid/paid),
+        # layered on top of the granular `status` filter above — see
+        # core/billing_status.py for the mapping.
+        statuses = invoice_statuses_for_payment_status(payment_status)
+        if statuses:
+            query = query.filter(Invoice.status.in_(statuses))
     if invoice_type:
         query = query.filter(Invoice.invoice_type == invoice_type)
     if patient_id:
@@ -341,6 +350,7 @@ def list_invoices(
             paid_amount=inv.paid_amount or Decimal("0"),
             balance_amount=inv.balance_amount or Decimal("0"),
             status=inv.status,
+            payment_status=payment_status_bucket(inv.status),
             created_at=inv.created_at,
         ))
 
@@ -351,6 +361,28 @@ def list_invoices(
         limit=limit,
         pages=ceil(total / limit) if total else 1,
     )
+
+
+def get_payment_status_summary(db: Session, hospital_id: uuid.UUID) -> dict:
+    """BRD-001 — counts + total amounts per payment-status bucket
+    (not_paid/partially_paid/paid), hospital-scoped, for the Reports panel."""
+    rows = (
+        db.query(Invoice.status, func.count(Invoice.id), func.coalesce(func.sum(Invoice.total_amount), 0))
+        .filter(Invoice.hospital_id == hospital_id, Invoice.is_deleted == False)
+        .group_by(Invoice.status)
+        .all()
+    )
+    summary = {
+        "not_paid": {"count": 0, "total_amount": Decimal("0")},
+        "partially_paid": {"count": 0, "total_amount": Decimal("0")},
+        "paid": {"count": 0, "total_amount": Decimal("0")},
+    }
+    for inv_status, count, total in rows:
+        bucket = payment_status_bucket(inv_status)
+        if bucket:
+            summary[bucket]["count"] += count
+            summary[bucket]["total_amount"] += (total or Decimal("0"))
+    return summary
 
 
 def update_invoice(db: Session, invoice: Invoice, data: InvoiceUpdate) -> Invoice:

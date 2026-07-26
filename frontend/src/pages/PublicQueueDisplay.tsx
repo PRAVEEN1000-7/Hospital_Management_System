@@ -4,7 +4,10 @@ import publicQueueService, { type PublicQueueDisplayResponse, type PublicQueueCo
 import HospitalLogo from '../components/common/HospitalLogo';
 
 // ── Department colour palette ────────────────────────────────────────────────
-const COLUMN_THEME: Record<string, {
+// Exported so PublicQueueDisplayScreen.tsx (BRD-005 multi-screen variant) can
+// reuse the exact same column rendering — guarantees the two displays never
+// visually drift apart.
+export const COLUMN_THEME: Record<string, {
   accent: string;
   glow: string;
   badge: string;
@@ -52,7 +55,7 @@ function resolveTheme(columnId: string) {
 }
 
 // ── Single column card ───────────────────────────────────────────────────────
-const QueueColumn: React.FC<{ column: PublicQueueColumn; animKey: number }> = ({ column, animKey }) => {
+export const QueueColumn: React.FC<{ column: PublicQueueColumn; animKey: number }> = ({ column, animKey }) => {
   const theme = resolveTheme(column.id);
 
   const activeTokens = column.tokens.filter(t => !['completed', 'collected', 'skipped'].includes(t.status));
@@ -162,7 +165,7 @@ const QueueColumn: React.FC<{ column: PublicQueueColumn; animKey: number }> = ({
 };
 
 // ── Grid column count ────────────────────────────────────────────────────────
-const GRID: Record<number, string> = {
+export const GRID: Record<number, string> = {
   1: 'lg:grid-cols-1', 2: 'lg:grid-cols-2', 3: 'lg:grid-cols-3', 4: 'lg:grid-cols-4',
 };
 

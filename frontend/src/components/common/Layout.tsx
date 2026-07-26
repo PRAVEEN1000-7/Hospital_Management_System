@@ -454,16 +454,17 @@ const Layout: React.FC = () => {
         { to: '/appointments/walk-in', label: 'OPD Assignment', icon: 'directions_walk' },
         { to: '/appointments/queue', label: 'Walk-in Queue', icon: 'queue' },
       );
-      // Queue Display (BRD v1.1 §3) — positioned below Walk-in Queue, above Doctor
-      // Schedule, eye-hospital feature pack only. Public, unauthenticated kiosk
-      // page (no sidebar/login) — opens in a new tab so the admin doesn't lose
-      // their own session view.
+      appointmentItems.push(
+        { to: '/appointments/manage', label: 'Manage Appointments', icon: 'event_note' },
+        { to: '/appointments/doctor-schedule', label: 'Doctor Schedule', icon: 'calendar_month' },
+      );
+      // Queue Display (BRD v1.1 §3) — eye-hospital feature pack only. Public,
+      // unauthenticated kiosk page (no sidebar/login) — opens in a new tab so
+      // the admin doesn't lose their own session view.
       if (isEyeHospitalFeatureEnabled && user?.hospital_code) {
         appointmentItems.push({ to: `/public/queue/${user.hospital_code}`, label: 'Queue Display', icon: 'tv', external: true });
       }
       appointmentItems.push(
-        { to: '/appointments/doctor-schedule', label: 'Doctor Schedule', icon: 'calendar_month' },
-        { to: '/appointments/manage', label: 'Manage Appointments', icon: 'event_note' },
         { to: '/appointments/waitlist', label: 'Waitlist', icon: 'playlist_add' },
         { to: '/appointments/reports', label: 'Reports', icon: 'analytics' },
         { to: '/appointments/settings', label: 'Settings', icon: 'tune' },
@@ -485,6 +486,9 @@ const Layout: React.FC = () => {
         { to: '/appointments/walk-in', label: 'OPD Assignment', icon: 'directions_walk' },
         { to: '/appointments/queue', label: 'Walk-in Queue', icon: 'queue' },
       );
+      appointmentItems.push(
+        { to: '/appointments/manage', label: 'Manage Appointments', icon: 'event_note' },
+      );
       // Queue Display for the front desk too (BUG-19) — the receptionist is the
       // person who actually runs the waiting-room TV. Link only appears inside
       // an authenticated receptionist session (that session IS the security
@@ -494,7 +498,6 @@ const Layout: React.FC = () => {
         appointmentItems.push({ to: `/public/queue/${user.hospital_code}`, label: 'Queue Display', icon: 'tv', external: true });
       }
       appointmentItems.push(
-        { to: '/appointments/manage', label: 'Manage Appointments', icon: 'event_note' },
         // Manage Doctor Schedule now reachable from the front desk (BUG-17).
         { to: '/appointments/doctor-schedule', label: 'Manage Doctor Schedule', icon: 'calendar_month' },
         { to: '/appointments/waitlist', label: 'Waitlist', icon: 'playlist_add' },

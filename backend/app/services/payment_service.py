@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_, func
 
 from ..core.hospital_time import hospital_today_by_id
+from ..core.billing_status import payment_status_bucket, invoice_statuses_for_payment_status
 
 from ..models.payment import Payment
 from ..models.invoice import Invoice
@@ -173,6 +174,7 @@ def list_payments(
     search: Optional[str] = None,
     payment_mode: Optional[str] = None,
     invoice_id: Optional[str] = None,
+    payment_status: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     date_range: Optional[str] = None,
@@ -188,6 +190,12 @@ def list_payments(
     )
     if payment_mode:
         query = query.filter(Payment.payment_mode == payment_mode)
+    if payment_status:
+        # BRD-001: filter Payment History by the linked invoice's derived
+        # payment status (not_paid/partially_paid/paid) — see core/billing_status.py.
+        statuses = invoice_statuses_for_payment_status(payment_status)
+        if statuses:
+            query = query.join(Invoice, Payment.invoice_id == Invoice.id).filter(Invoice.status.in_(statuses))
     if invoice_id:
         try:
             query = query.filter(Payment.invoice_id == uuid.UUID(invoice_id))
@@ -258,6 +266,7 @@ def list_payments(
             payment_reference=p.payment_reference,
             payment_date=p.payment_date,
             status=p.status,
+            invoice_payment_status=payment_status_bucket(p.invoice.status) if p.invoice else None,
             refunded_amount=refunded_amount,
             net_amount=net_amount,
             created_at=p.created_at,

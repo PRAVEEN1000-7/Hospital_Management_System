@@ -12,6 +12,7 @@ import VerifiedBadge from '../components/patients/VerifiedBadge';
 import EmailVerificationField from '../components/patients/EmailVerificationField';
 import PhoneVerificationField from '../components/patients/PhoneVerificationField';
 import PrescriptionHistoryGrid from '../components/patients/PrescriptionHistoryGrid';
+import PatientBillingSection from '../components/patients/PatientBillingSection';
 
 const EDIT_ALLOWED_ROLES = ['super_admin', 'admin', 'receptionist'];
 
@@ -301,6 +302,9 @@ const PatientDetail: React.FC = () => {
 
         {/* Prescription History */}
         {isModuleEnabled('prescriptions') && <PrescriptionHistoryGrid patientId={patient.id} />}
+
+        {/* Billing History (BRD-001) */}
+        {isModuleEnabled('billing') && <PatientBillingSection patientId={patient.id} />}
 
         {/* Lab Results */}
         {labResults.length > 0 && (

@@ -5,7 +5,7 @@ from .user import (
 from .patient import Patient, PatientEmailVerificationToken
 from .patient_id_sequence import IdSequence
 from .department import Department
-from .hospital_settings import HospitalSettings
+from .hospital_settings import HospitalSettings, QueueDisplayScreen
 from .appointment import (
     Doctor, DoctorSchedule, DoctorLeave, DoctorFee,
     Appointment, AppointmentStatusLog, AppointmentQueue,

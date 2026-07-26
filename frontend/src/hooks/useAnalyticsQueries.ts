@@ -29,6 +29,7 @@ export const analyticsKeys = {
   outstandingDues: () => [...analyticsKeys.all, 'outstanding-dues'] as const,
   taxSummary: () => [...analyticsKeys.all, 'tax-summary'] as const,
   scheduledReports: () => [...analyticsKeys.all, 'scheduled-reports'] as const,
+  paymentStatusSummary: () => [...analyticsKeys.all, 'payment-status-summary'] as const,
 };
 
 // ── LIVE hooks ───────────────────────────────────────────────────────────
@@ -146,6 +147,15 @@ export function useDepartmentRevenue() {
 }
 
 // ── DEV: Financial ───────────────────────────────────────────────────────
+
+// BRD-001 — real (not mocked) payment-status summary.
+export function usePaymentStatusSummary() {
+  return useQuery({
+    queryKey: analyticsKeys.paymentStatusSummary(),
+    queryFn: reportsApi.getPaymentStatusSummary,
+    staleTime: STALE,
+  });
+}
 
 export function useCollectionReport() {
   return useQuery({

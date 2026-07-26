@@ -63,3 +63,44 @@ class HospitalSettings(Base):
     # Relationships
     from sqlalchemy.orm import relationship
     hospital = relationship("Hospital", foreign_keys=[hospital_id])
+
+
+class QueueDisplayScreen(Base):
+    """BRD-005 — one named public queue-display screen per row. Purely
+    additive alongside HospitalSettings' single legacy queue_display_*
+    columns above; a hospital can have any number of these."""
+    __tablename__ = "queue_display_screens"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=False)
+    slug = Column(String(50), nullable=False)
+    display_name = Column(String(150), nullable=False)
+    department_id = Column(UUID(as_uuid=True), ForeignKey("departments.id"))
+    doctor_id = Column(UUID(as_uuid=True), ForeignKey("doctors.id"))
+    show_doctor2 = Column(Boolean, nullable=False, default=False)
+    doctor2_id = Column(UUID(as_uuid=True), ForeignKey("doctors.id"))
+    show_pharmacy = Column(Boolean, nullable=False, default=False)
+    show_opthal = Column(Boolean, nullable=False, default=False)
+    token_format = Column(String(50), nullable=False, default="#{n}")
+    refresh_seconds = Column(Integer, nullable=False, default=10)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    from sqlalchemy.orm import relationship as _relationship
+    department = _relationship("Department", foreign_keys=[department_id])
+    doctor = _relationship("Doctor", foreign_keys=[doctor_id])
+    doctor2 = _relationship("Doctor", foreign_keys=[doctor2_id])
+
+    @property
+    def is_configured(self) -> bool:
+        """BRD-005 'validate mandatory settings' — all 5 mandatory fields
+        (Display Name, Department, Doctor, Screen/slug, Token Format) must be
+        set for this screen to be considered ready for public display."""
+        return bool(
+            self.display_name and self.display_name.strip()
+            and self.department_id
+            and self.doctor_id
+            and self.slug and self.slug.strip()
+            and self.token_format and self.token_format.strip()
+        )

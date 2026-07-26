@@ -29,6 +29,7 @@ from ..core.tenant_security import is_eye_hospital_feature_enabled
 from ..core.hospital_time import hospital_today
 from ..services.settings_service import get_hospital_settings
 from ..services import billing_queue_service, optical_service
+from ..services.queue_screen_service import get_screen_by_slug
 from ..schemas.public_queue import PublicQueueDisplayResponse, PublicQueueColumn, PublicQueueToken
 
 logger = logging.getLogger(__name__)
@@ -60,6 +61,93 @@ def _doctor_label(db: Session, doctor_id: Optional[uuid.UUID], fallback: str) ->
     return f"Dr. {doc.user.full_name}" if doc and doc.user else fallback
 
 
+def _build_queue_columns(
+    db: Session,
+    hospital_id: uuid.UUID,
+    today: date,
+    doctor1_id: Optional[uuid.UUID],
+    doctor2_id: Optional[uuid.UUID],
+    show_doctor2: bool,
+    show_pharmacy: bool,
+    show_opthal: bool,
+) -> list[PublicQueueColumn]:
+    """Shared column-building logic — used by both the legacy hospital-wide
+    endpoint and the new per-screen endpoint (BRD-005) so the two never drift
+    out of sync with each other."""
+    active_doctor_ids = (
+        db.query(AppointmentQueue.doctor_id)
+        .join(Appointment, Appointment.id == AppointmentQueue.appointment_id)
+        .filter(
+            AppointmentQueue.queue_date == today,
+            Appointment.appointment_date == today,
+            Appointment.hospital_id == hospital_id,
+            AppointmentQueue.doctor_id.isnot(None),
+            AppointmentQueue.status.in_(["waiting", "called", "being_served", "in_consultation"]),
+        )
+        .distinct()
+        .all()
+    )
+    active_doctor_ids = [d[0] for d in active_doctor_ids]
+
+    columns: list[PublicQueueColumn] = []
+
+    if active_doctor_ids:
+        # Create a column for each active doctor
+        for doc_id in active_doctor_ids:
+            doc = db.query(Doctor).filter(Doctor.id == doc_id).first()
+            doc_name = f"Dr. {doc.user.full_name}" if doc and doc.user else "Doctor"
+            columns.append(
+                PublicQueueColumn(
+                    id=f"doctor_{doc_id}",
+                    name=doc_name,
+                    tokens=[PublicQueueToken(**t) for t in _doctor_walk_in_tokens(db, hospital_id, doc_id, today)],
+                )
+            )
+    else:
+        # Fallback to defaults when no active queue entries exist today
+        columns.append(PublicQueueColumn(
+            id="doctor1",
+            name=_doctor_label(db, doctor1_id, "Doctor 1"),
+            tokens=[PublicQueueToken(**t) for t in _doctor_walk_in_tokens(db, hospital_id, doctor1_id, today)] if doctor1_id else [],
+        ))
+        if show_doctor2:
+            columns.append(PublicQueueColumn(
+                id="doctor2",
+                name=_doctor_label(db, doctor2_id, "Doctor 2"),
+                tokens=[PublicQueueToken(**t) for t in _doctor_walk_in_tokens(db, hospital_id, doctor2_id, today)] if doctor2_id else [],
+            ))
+
+    if show_pharmacy:
+        pharmacy_entries = billing_queue_service.list_pharmacy_queue_entries(db, hospital_id)
+        # Filter for active tokens only (waiting, being_served, ready)
+        active_pharmacy_tokens = [
+            PublicQueueToken(token=e["queue_token"], status=e["status"])
+            for e in pharmacy_entries
+            if e["status"] in ["waiting", "being_served", "ready"]
+        ]
+        columns.append(PublicQueueColumn(
+            id="pharmacy",
+            name="Pharmacy",
+            tokens=active_pharmacy_tokens,
+        ))
+
+    if show_opthal:
+        optical_entries = optical_service.list_optical_queue(db, hospital_id)
+        # Filter for active tokens only (placed, fitting, ready)
+        active_optical_tokens = [
+            PublicQueueToken(token=e["queue_token"], status=e["queue_status"])
+            for e in optical_entries
+            if e["queue_status"] in ["placed", "fitting", "ready"]
+        ]
+        columns.append(PublicQueueColumn(
+            id="opthal",
+            name="Opthal",
+            tokens=active_optical_tokens,
+        ))
+
+    return columns
+
+
 @router.get("/queue-display/{hospital_code}", response_model=PublicQueueDisplayResponse)
 async def get_public_queue_display(
     hospital_code: str,
@@ -81,82 +169,68 @@ async def get_public_queue_display(
     doctor1_id = getattr(settings, "queue_display_doctor1_id", None) if settings else None
     doctor2_id = getattr(settings, "queue_display_doctor2_id", None) if settings else None
 
-    # Resolve active doctors in the queue dynamically (only doctors with active tokens today)
     today = hospital_today(hospital.timezone)
-    active_doctor_ids = (
-        db.query(AppointmentQueue.doctor_id)
-        .join(Appointment, Appointment.id == AppointmentQueue.appointment_id)
-        .filter(
-            AppointmentQueue.queue_date == today,
-            Appointment.appointment_date == today,
-            Appointment.hospital_id == hospital.id,
-            AppointmentQueue.doctor_id.isnot(None),
-            AppointmentQueue.status.in_(["waiting", "called", "being_served", "in_consultation"]),
-        )
-        .distinct()
-        .all()
+    columns = _build_queue_columns(
+        db, hospital.id, today, doctor1_id, doctor2_id, show_doctor2, show_pharmacy, show_opthal,
     )
-    active_doctor_ids = [d[0] for d in active_doctor_ids]
-
-    columns: list[PublicQueueColumn] = []
-
-    if active_doctor_ids:
-        # Create a column for each active doctor
-        for doc_id in active_doctor_ids:
-            doc = db.query(Doctor).filter(Doctor.id == doc_id).first()
-            doc_name = f"Dr. {doc.user.full_name}" if doc and doc.user else "Doctor"
-            columns.append(
-                PublicQueueColumn(
-                    id=f"doctor_{doc_id}",
-                    name=doc_name,
-                    tokens=[PublicQueueToken(**t) for t in _doctor_walk_in_tokens(db, hospital.id, doc_id, today)],
-                )
-            )
-    else:
-        # Fallback to defaults when no active queue entries exist today
-        columns.append(PublicQueueColumn(
-            id="doctor1",
-            name=_doctor_label(db, doctor1_id, "Doctor 1"),
-            tokens=[PublicQueueToken(**t) for t in _doctor_walk_in_tokens(db, hospital.id, doctor1_id, today)] if doctor1_id else [],
-        ))
-        if show_doctor2:
-            columns.append(PublicQueueColumn(
-                id="doctor2",
-                name=_doctor_label(db, doctor2_id, "Doctor 2"),
-                tokens=[PublicQueueToken(**t) for t in _doctor_walk_in_tokens(db, hospital.id, doctor2_id, today)] if doctor2_id else [],
-            ))
-
-    if show_pharmacy:
-        pharmacy_entries = billing_queue_service.list_pharmacy_queue_entries(db, hospital.id)
-        # Filter for active tokens only (waiting, being_served, ready)
-        active_pharmacy_tokens = [
-            PublicQueueToken(token=e["queue_token"], status=e["status"]) 
-            for e in pharmacy_entries 
-            if e["status"] in ["waiting", "being_served", "ready"]
-        ]
-        columns.append(PublicQueueColumn(
-            id="pharmacy",
-            name="Pharmacy",
-            tokens=active_pharmacy_tokens,
-        ))
-
-    if show_opthal:
-        optical_entries = optical_service.list_optical_queue(db, hospital.id)
-        # Filter for active tokens only (placed, fitting, ready)
-        active_optical_tokens = [
-            PublicQueueToken(token=e["queue_token"], status=e["queue_status"]) 
-            for e in optical_entries 
-            if e["queue_status"] in ["placed", "fitting", "ready"]
-        ]
-        columns.append(PublicQueueColumn(
-            id="opthal",
-            name="Opthal",
-            tokens=active_optical_tokens,
-        ))
 
     return PublicQueueDisplayResponse(
         hospital_name=hospital.name,
         logo_url=hospital.logo_url,
         refresh_seconds=refresh_seconds,
         columns=columns,
+    )
+
+
+@router.get("/queue-display/{hospital_code}/{screen_slug}", response_model=PublicQueueDisplayResponse)
+async def get_public_queue_display_screen(
+    hospital_code: str,
+    screen_slug: str,
+    db: Session = Depends(get_db),
+):
+    """BRD-005 — per-screen queue display. Returns configured=false (empty
+    columns) rather than 404 when the screen exists but its mandatory fields
+    aren't all set, so the kiosk can show a friendly "not configured yet"
+    message instead of a generic not-found page."""
+    hospital = (
+        db.query(Hospital)
+        .filter(Hospital.code == hospital_code.upper(), Hospital.is_active == True)
+        .first()
+    )
+    if not hospital:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Queue display not found")
+
+    screen = get_screen_by_slug(db, hospital.id, screen_slug)
+    if not screen:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Queue display not found")
+
+    if not screen.is_configured:
+        return PublicQueueDisplayResponse(
+            hospital_name=hospital.name,
+            logo_url=hospital.logo_url,
+            refresh_seconds=screen.refresh_seconds,
+            columns=[],
+            configured=False,
+            display_name=screen.display_name,
+            token_format=screen.token_format,
+        )
+
+    today = hospital_today(hospital.timezone)
+    columns = _build_queue_columns(
+        db, hospital.id, today,
+        screen.doctor_id, screen.doctor2_id,
+        screen.show_doctor2, screen.show_pharmacy, screen.show_opthal,
+    )
+    # token_format ("#{n}" etc.) is applied client-side for display — tokens
+    # stay raw ints here so the response shape matches the legacy endpoint
+    # exactly; the frontend substitutes {n} using the token_format field above.
+
+    return PublicQueueDisplayResponse(
+        hospital_name=hospital.name,
+        logo_url=hospital.logo_url,
+        refresh_seconds=screen.refresh_seconds,
+        columns=columns,
+        configured=True,
+        display_name=screen.display_name,
+        token_format=screen.token_format,
     )

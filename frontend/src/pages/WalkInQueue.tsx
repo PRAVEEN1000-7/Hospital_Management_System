@@ -536,6 +536,16 @@ const WalkInQueue: React.FC = () => {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {/* BRD-004: direct link into OPD Assignment from the Walk-in Queue
+              page, instead of only being reachable via the sidebar — cuts the
+              navigation gap between the two screens. Reception-only; doctors
+              don't register walk-ins. */}
+          {!isDoctor && (
+            <button onClick={() => navigate('/appointments/walk-in')}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors">
+              <span className="material-symbols-outlined text-lg">person_add</span> New Walk-in
+            </button>
+          )}
           {/* Date Picker — browse queue for any date */}
           <div className="relative">
             <input

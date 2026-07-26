@@ -16,12 +16,13 @@ from ..models.appointment import Appointment
 from ..schemas.invoice import (
     InvoiceCreate, InvoiceUpdate, InvoiceResponse,
     PaginatedInvoiceResponse, InvoiceItemCreate, InvoiceItemResponse,
-    INVOICE_TYPE_ITEM_MAPPING,
+    INVOICE_TYPE_ITEM_MAPPING, PaymentStatusSummaryResponse,
 )
 from ..services.invoice_service import (
     create_invoice, get_invoice_by_id, list_invoices,
     update_invoice, issue_invoice, void_invoice,
     add_invoice_item, remove_invoice_item, get_or_create_consultation_invoice_for_appointment,
+    get_payment_status_summary,
 )
 
 logger = logging.getLogger(__name__)
@@ -184,6 +185,7 @@ async def list_all_invoices(
     limit: int = Query(10, ge=1, le=100),
     search: Optional[str] = None,
     status: Optional[str] = None,
+    payment_status: Optional[str] = None,
     invoice_type: Optional[str] = None,
     patient_id: Optional[str] = None,
     date_from: Optional[date] = None,
@@ -196,7 +198,7 @@ async def list_all_invoices(
     try:
         return list_invoices(
             db, current_user.hospital_id, page, limit,
-            search=search, status=status,
+            search=search, status=status, payment_status=payment_status,
             invoice_type=invoice_type, patient_id=patient_id,
             date_from=date_from, date_to=date_to,
         )
@@ -220,6 +222,17 @@ async def list_patient_invoices(
     except Exception as e:
         logger.error(f"Error listing patient invoices: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to retrieve patient invoices")
+
+
+@router.get("/stats/payment-status-summary", response_model=PaymentStatusSummaryResponse)
+async def payment_status_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """BRD-001 — counts + totals per payment-status bucket, for the Reports/
+    Analytics dashboard's Financial panel."""
+    _require_billing_view(current_user)
+    return get_payment_status_summary(db, current_user.hospital_id)
 
 
 @router.get("/{invoice_id}", response_model=InvoiceResponse)

@@ -1,43 +1,96 @@
 -- ==============================================================================
--- 18 — SEED STANDARD LAB TEST CATALOG
+-- 06 — SEED / REFERENCE DATA (real, production-safe seed rows — NOT the
+-- fictional dev/demo data in 03_seed_data.sql)
 --
+-- Every statement here is a data INSERT (never a schema change) that
+-- populates catalog/reference/lookup rows needed for the tables created in
+-- 05_schema_structure.sql. Run AFTER that file — every INSERT below assumes
+-- its target table/column already exists.
+--
+-- Safe to run against an existing DB — every statement is idempotent
+-- (INSERT ... ON CONFLICT DO NOTHING, or an explicit NOT EXISTS guard where
+-- ON CONFLICT can't apply — see §1's comment). Re-running inserts nothing new
+-- and changes nothing.
+--
+-- Sections:
+--   1. Optical Store — opening stock batch backfill (one-time data migration
+--      tied to optical_batches, created in 05_schema_structure.sql §3.1).
+--   2. Laboratory — module registration row + the 18-test standard catalog.
+--   3. Inventory — default purchase-order payment modes per hospital.
+--   4. Roles — the visiting_doctor ("Special Doctor / Visiting Doctor") role.
+-- ==============================================================================
+
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- 1. OPTICAL STORE — opening stock batch backfill
+-- ══════════════════════════════════════════════════════════════════════════
+
+-- One opening batch per existing product with stock on hand, so seeded
+-- optical_products rows keep their current_stock instead of silently going
+-- to zero once optical_batches becomes the source of truth. Null expiry =
+-- "never expires" under the FEFO rule used by the service layer. Guarded on
+-- "product has no batches yet at all" rather than ON CONFLICT on
+-- batch_number — the batch_number embeds today's date, so re-running this on
+-- a later day would otherwise insert a second opening batch (and silently
+-- double stock) instead of being a no-op.
+INSERT INTO optical_batches (optical_product_id, batch_number, expiry_date, initial_quantity, current_quantity, purchase_price, selling_price)
+SELECT
+    op.id,
+    'OPENING-' || to_char(NOW(), 'YYYYMMDD'),
+    NULL,
+    COALESCE(op.current_stock, 0),
+    COALESCE(op.current_stock, 0),
+    op.purchase_price,
+    op.selling_price
+FROM optical_products op
+WHERE COALESCE(op.current_stock, 0) > 0
+  AND NOT EXISTS (SELECT 1 FROM optical_batches ob WHERE ob.optical_product_id = op.id);
+
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- 2. LABORATORY — module registration + standard test catalog
+-- ══════════════════════════════════════════════════════════════════════════
+
+-- Module registration — makes 'lab' appear in the existing generic
+-- super-admin per-tenant module toggle UI (SuperAdminHospitalDetail.tsx)
+-- once this row exists; no frontend change needed for that to work.
+-- required_modules includes 'prescriptions' (unlike optical, which was
+-- deliberately trimmed to not require it) because lab's only order entry
+-- point is the Prescription Builder.
+INSERT INTO saas_core.modules (code, name, description, category, frontend_route_prefix, api_prefix, icon, is_core, required_modules) VALUES
+('lab', 'Laboratory', 'Lab test catalog, ordering, sample tracking, and results', 'clinical', '/lab', '/api/v1/lab', 'flask', false, '{"patients","prescriptions"}')
+ON CONFLICT (code) DO NOTHING;
+
 -- Seeds 18 standard lab tests (CBC, LFT, Thyroid Profile, Widal, etc.) into
 -- lab_tests for every hospital, sourced from real report-template HTML
 -- supplied by the customer. Each test's structured layout lives in
--- report_template (see 16_add_lab_report_finalization.sql), now carrying a
--- `section` key per parameter (see backend/app/schemas/lab.py's
+-- report_template (05_schema_structure.sql §5.5), carrying a `section` key
+-- per parameter (see backend/app/schemas/lab.py's
 -- LabTestParameterTemplate.section) so multi-section reports like CBC can
 -- group "Complete Blood Count" / "Differential Count" / "Other Parameters" /
 -- "Blood Grouping" under one test instead of being modelled as four.
 --
 -- Inserted unconditionally for every row in `hospitals`, regardless of
--- whether that hospital has the 'lab' module enabled — matching the
--- precedent in 02_eye_hospital_updates.sql's header comment that additive,
--- harmless rows/columns are seeded for all hospitals and simply go unused
--- until the module is turned on. ON CONFLICT (hospital_id, code) DO NOTHING
--- makes every INSERT idempotent; note the (hospital_id, code) uniqueness on
--- lab_tests is declared as an inline, unnamed `UNIQUE (hospital_id, code)` in
--- 13_add_lab_module.sql (so Postgres auto-names it
--- lab_tests_hospital_id_code_key) — the column-list conflict target below is
--- used instead of a constraint name for that reason.
+-- whether that hospital has the 'lab' module enabled — additive, harmless
+-- rows simply go unused until the module is turned on. ON CONFLICT
+-- (hospital_id, code) DO NOTHING makes every INSERT idempotent; the
+-- (hospital_id, code) uniqueness on lab_tests is an inline, unnamed
+-- `UNIQUE (hospital_id, code)` (05_schema_structure.sql §5.1), so the
+-- column-list conflict target is used instead of a constraint name.
 --
 -- Top-level price is intentionally 0 and unit/reference_range/turnaround_hours
 -- are intentionally NULL on every row: those concepts now live per-parameter
--- inside report_template, not on the test as a whole. The source templates
--- did not include pricing — LAB ADMINS MUST SET REAL PRICES for each of these
--- tests via the Lab Test Catalog UI after running this seed.
+-- inside report_template, not on the test as a whole. LAB ADMINS MUST SET
+-- REAL PRICES for each of these tests via the Lab Test Catalog UI after
+-- running this seed.
 --
--- A handful of values in the source templates were corrected in transcription
--- (see inline notes below): ELEC_RENAL's Blood Urea/Serum Creatinine/Uric
--- Acid units (source had implausible ng/ml, ug/dl, Uiu/ml — clear copy-paste
--- errors, corrected to mg/dl), and URINE_C's pH/Specific Gravity reference
--- ranges (source had them swapped/mismatched). A 19th source template
--- ("C/S Urine" microbiology) was skipped entirely — it was a duplicate of the
--- electrolytes report, not a distinct test.
---
--- Safe to run against an existing DB — every statement is idempotent
--- (ON CONFLICT DO NOTHING); no destructive operations.
--- ==============================================================================
+-- A handful of values in the source templates were corrected in transcription:
+-- ELEC_RENAL's Blood Urea/Serum Creatinine/Uric Acid units (source had
+-- implausible ng/ml, ug/dl, Uiu/ml — clear copy-paste errors, corrected to
+-- mg/dl), and URINE_C's pH/Specific Gravity reference ranges (source had them
+-- swapped/mismatched). A 19th source template ("C/S Urine" microbiology) was
+-- skipped entirely — it was a duplicate of the electrolytes report, not a
+-- distinct test.
 
 -- 1. CBC — Complete Blood Count (Haematology / Blood)
 INSERT INTO lab_tests (id, hospital_id, name, code, category, sample_type, price, unit, reference_range, turnaround_hours, is_active, report_template, created_at, updated_at)
@@ -258,3 +311,39 @@ SELECT gen_random_uuid(), h.id, 'Dengue NS1 Antigen', 'DENGUE_NS1', 'Serology', 
 ]'::jsonb, NOW(), NOW()
 FROM hospitals h
 ON CONFLICT (hospital_id, code) DO NOTHING;
+
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- 3. INVENTORY — default purchase-order payment modes
+-- ══════════════════════════════════════════════════════════════════════════
+
+-- Seed default modes for every existing hospital (payment_modes table
+-- created in 05_schema_structure.sql §7).
+INSERT INTO payment_modes (hospital_id, name)
+SELECT h.id, m.name
+FROM hospitals h
+CROSS JOIN (VALUES ('Cash'), ('Cheque'), ('Bank Transfer'), ('UPI'), ('NEFT/RTGS'), ('Card'), ('Online')) AS m(name)
+ON CONFLICT (hospital_id, name) DO NOTHING;
+
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- 4. ROLES — Special Doctor / Visiting Doctor
+-- ══════════════════════════════════════════════════════════════════════════
+
+-- Adds the "visiting_doctor" system role introduced by the client's role
+-- permission matrix (see docs/security/ROLE_PERMISSIONS_DECISIONS_2026-07-25.md).
+-- A visiting/guest doctor gets a narrower slice of the Doctor role: they can
+-- view the walk-in queue, view+edit their own doctor schedule, and create new
+-- prescriptions — but no access to patient directory management, staff
+-- directory, analytics, appointment management, or anything outside clinical
+-- consultation. Enforced in backend/app/core/module_roles.py and mirrored in
+-- frontend/src/config/modulePermissions.ts.
+INSERT INTO roles (id, hospital_id, name, display_name, description, is_system, is_active)
+SELECT
+    'e0000000-0000-0000-0000-000000000012', NULL, 'visiting_doctor',
+    'Special Doctor / Visiting Doctor',
+    'Guest/visiting doctor with limited clinical access (walk-in queue view, own schedule, new prescriptions only)',
+    true, true
+WHERE NOT EXISTS (
+    SELECT 1 FROM roles WHERE name = 'visiting_doctor' AND hospital_id IS NULL
+);

@@ -212,7 +212,16 @@ DEBUG=false
 | `02_eye_hospital_updates.sql` | BRD v1.1 eye-hospital feature pack — additive, gated by `hospitals.specialty`. | ✅ Yes, for eye/multi-specialty hospitals (harmless on others) |
 | `03_seed_data.sql` | Fictional sample hospitals/users/inventory for dev & demo only. | ❌ No |
 | `04_reference_queries.sql` | Categorized library of common queries — documentation only, never executed. | ❌ No (reference only) |
+| `05_schema_structure.sql` | All post-base-schema DDL, grouped into 7 numbered sections: appointments/queue/doctor settings, patient verification, pharmacy/optical integrity, billing refund link, laboratory module, auth global uniqueness, inventory PO payments. Schema only — no seed rows. | ✅ Yes |
+| `06_seed_reference_data.sql` | All production-safe seed/reference data for the tables `05` creates: optical opening-batch backfill, lab module registration + 18-test standard catalog, default PO payment modes, the `visiting_doctor` role. Run **after** `05`. | ✅ Yes |
 | `99_drop_database.sql` | **Destructive.** Terminates connections, drops `hms_db` and the `hms_user` role entirely. Only for a clean local re-deploy. Run as the `postgres` superuser, never inside `hms_db`. | ❌ No |
+
+`05` and `06` are each idempotent (`IF NOT EXISTS` / `ON CONFLICT DO NOTHING` / guarded
+`ALTER`/`ADD CONSTRAINT`) and safe to run in that order after `01`-`03`, including re-running
+against a database that already has one or both applied. Every section inside them is clearly
+banner-commented (`-- N. SECTION NAME --`) with the same "why" reasoning the original per-feature
+files carried, so nothing was lost by consolidating — see the header comment of each file for a
+full section index.
 
 ### Schema highlights
 
@@ -288,7 +297,11 @@ psql -U hms_user -d hms_db -f database_hole/02_eye_hospital_updates.sql
 # 4. Dev/demo only — sample data
 psql -U hms_user -d hms_db -f database_hole/03_seed_data.sql
 
-# 5. Verify
+# 5. Feature/fix schema + seed data — run in order, each is safe to re-run
+psql -U hms_user -d hms_db -f database_hole/05_schema_structure.sql
+psql -U hms_user -d hms_db -f database_hole/06_seed_reference_data.sql
+
+# 6. Verify
 psql -U hms_user -d hms_db -c "SELECT name, specialty, tenant_id FROM hospitals;"
 ```
 

@@ -7,9 +7,13 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
+  PieChart,
+  Pie,
+  Cell,
 } from 'recharts';
 import PanelCard from './shared/PanelCard';
 import { useStockStatus, useInventoryAging } from '../../hooks/useAnalyticsQueries';
+import { downloadCsvSections } from '../../utils/csv';
 
 // ── Currency ─────────────────────────────────────────────────────────────
 
@@ -25,29 +29,20 @@ const shortInr = (v: number) => {
   return `₹${v}`;
 };
 
-// ── Status badge colors ──────────────────────────────────────────────────
-
-const statusStyles: Record<string, string> = {
-  ok: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
-  low: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
-  critical: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
-  overstock: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
-};
+// ── Stock status labels/colors (for the distribution chart) ──────────────
 
 const statusLabels: Record<string, string> = {
-  ok: 'OK',
-  low: 'Low',
+  ok: 'Healthy',
+  low: 'Low Stock',
   critical: 'Critical',
   overstock: 'Overstock',
 };
 
-// ── Progress bar fill colors ─────────────────────────────────────────────
-
-const barColor: Record<string, string> = {
-  ok: 'bg-emerald-500',
-  low: 'bg-amber-500',
-  critical: 'bg-red-500',
-  overstock: 'bg-blue-500',
+const statusChartColors: Record<string, string> = {
+  ok: '#10b981',
+  low: '#f59e0b',
+  critical: '#ef4444',
+  overstock: '#3b82f6',
 };
 
 // ── Tooltip ──────────────────────────────────────────────────────────────
@@ -72,19 +67,45 @@ const InventoryPanel: React.FC = () => {
   const stock = useStockStatus();
   const aging = useInventoryAging();
   const isLoading = stock.isLoading || aging.isLoading;
+  const error = stock.error || aging.error;
 
-  // Summary counts
+  // Summary counts — aggregate only, no per-item breakdown shown in this panel.
   const summary = stock.data
     ? {
         total: stock.data.length,
         ok: stock.data.filter((s) => s.status === 'ok').length,
         low: stock.data.filter((s) => s.status === 'low').length,
         critical: stock.data.filter((s) => s.status === 'critical').length,
+        overstock: stock.data.filter((s) => s.status === 'overstock').length,
       }
     : null;
 
+  const distribution = summary
+    ? (['ok', 'low', 'critical', 'overstock'] as const)
+        .map((status) => ({ status, label: statusLabels[status], count: summary[status], color: statusChartColors[status] }))
+        .filter((d) => d.count > 0)
+    : [];
+
   return (
-    <PanelCard title="Inventory Health" status="live" isLoading={isLoading}>
+    <PanelCard
+      title="Inventory Health"
+      status="live"
+      isLoading={isLoading}
+      error={error ? 'Failed to load inventory data' : null}
+      onRetry={() => { stock.refetch(); aging.refetch(); }}
+      onExport={
+        (summary || distribution.length > 0 || aging.data?.length)
+          ? () => downloadCsvSections('inventory-health', [
+              {
+                title: 'Summary',
+                rows: summary ? [summary as unknown as Record<string, unknown>] : [],
+              },
+              { title: 'Stock Status Distribution', rows: distribution as unknown as Record<string, unknown>[] },
+              { title: 'Inventory Aging', rows: (aging.data ?? []) as unknown as Record<string, unknown>[] },
+            ])
+          : undefined
+      }
+    >
       {/* Summary cards */}
       {summary && (
         <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -106,67 +127,47 @@ const InventoryPanel: React.FC = () => {
       )}
 
       <div className="grid gap-6 md:grid-cols-5">
-        {/* ── Stock Status Table (60%) ── */}
-        <div className="md:col-span-3 overflow-x-auto">
+        {/* ── Stock Status Distribution (aggregate — no per-item list) ── */}
+        <div className="md:col-span-3">
           <h4 className="mb-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
-            Stock Status
+            Stock Status Distribution
           </h4>
-          {stock.data && (
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="sticky top-0 border-b border-slate-200 bg-white text-left text-slate-500 dark:border-slate-700 dark:bg-slate-900">
-                  <th className="pb-2 font-medium">Item</th>
-                  <th className="pb-2 font-medium">Category</th>
-                  <th className="pb-2 text-center font-medium">Stock Level</th>
-                  <th className="pb-2 text-center font-medium">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {stock.data.map((s, i) => {
-                  const pct = Math.min(
-                    (s.current_stock / s.max_stock) * 100,
-                    100,
-                  );
-                  return (
-                    <tr
-                      key={s.item_name}
-                      className={`border-b border-slate-50 transition hover:bg-blue-50/50 dark:border-slate-800 dark:hover:bg-slate-800/50 ${
-                        i % 2 === 0 ? '' : 'bg-slate-50/40 dark:bg-slate-800/20'
-                      }`}
-                    >
-                      <td className="py-2 font-medium text-slate-700 dark:text-slate-200">
-                        {s.item_name}
-                      </td>
-                      <td className="py-2 text-slate-500 dark:text-slate-400">
-                        {s.category}
-                      </td>
-                      <td className="py-2">
-                        <div className="flex items-center gap-2">
-                          <div className="h-1.5 flex-1 rounded-full bg-slate-200 dark:bg-slate-700">
-                            <div
-                              className={`h-full rounded-full ${barColor[s.status] || 'bg-slate-400'}`}
-                              style={{ width: `${pct}%` }}
-                            />
-                          </div>
-                          <span className="w-10 text-right text-[10px] text-slate-500">
-                            {s.current_stock.toLocaleString()}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="py-2 text-center">
-                        <span
-                          className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                            statusStyles[s.status] || ''
-                          }`}
-                        >
-                          {statusLabels[s.status]}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          {stock.data && stock.data.length === 0 && (
+            <p className="py-10 text-center text-xs text-slate-400">No inventory items yet.</p>
+          )}
+          {distribution.length > 0 && (
+            <div className="flex flex-col items-center gap-4 sm:flex-row">
+              <ResponsiveContainer width="100%" height={220} className="max-w-xs">
+                <PieChart>
+                  <Pie
+                    data={distribution}
+                    dataKey="count"
+                    nameKey="label"
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={80}
+                    innerRadius={45}
+                    paddingAngle={2}
+                  >
+                    {distribution.map((d, i) => (
+                      <Cell key={i} fill={d.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip content={<ChartTooltip />} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="flex flex-1 flex-col gap-2">
+                {distribution.map((d) => (
+                  <div key={d.status} className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-800/50">
+                    <span className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+                      <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: d.color }} />
+                      {d.label}
+                    </span>
+                    <span className="text-sm font-bold text-slate-800 dark:text-slate-100">{d.count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </div>
 

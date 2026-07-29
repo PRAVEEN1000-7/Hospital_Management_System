@@ -12,7 +12,6 @@ const OPDPanel = React.lazy(() => import('../../components/analytics/OPDPanel'))
 const PharmacyPanel = React.lazy(() => import('../../components/analytics/PharmacyPanel'));
 const FinancialPanel = React.lazy(() => import('../../components/analytics/FinancialPanel'));
 const InventoryPanel = React.lazy(() => import('../../components/analytics/InventoryPanel'));
-const ScheduleExportPanel = React.lazy(() => import('../../components/analytics/ScheduleExportPanel'));
 
 // ── Query client (scoped to analytics) ───────────────────────────────────
 
@@ -45,26 +44,23 @@ const PanelSkeleton = () => (
 );
 
 // ── Role → visible panels ────────────────────────────────────────────────
+// Only admin/doctor/report_viewer can ever reach this component at all —
+// MODULE_ROLES['general.analytics'] (frontend/src/config/modulePermissions.ts)
+// grants no other role access, so ProtectedRoute blocks everyone else before
+// AnalyticsDashboard ever mounts. Cases for other roles used to live here as
+// dead code (receptionist/pharmacist/cashier/inventory_manager can never
+// actually see this).
 
-type Panel = 'kpi' | 'revenue' | 'opd' | 'pharmacy' | 'financial' | 'inventory' | 'schedule';
+type Panel = 'kpi' | 'revenue' | 'opd' | 'pharmacy' | 'financial' | 'inventory';
 
 function getVisiblePanels(role: string): Panel[] {
   switch (role) {
     case 'super_admin':
     case 'admin':
-      return ['kpi', 'revenue', 'opd', 'pharmacy', 'financial', 'inventory', 'schedule'];
+    case 'report_viewer':
+      return ['kpi', 'revenue', 'opd', 'pharmacy', 'financial', 'inventory'];
     case 'doctor':
       return ['kpi', 'opd'];
-    case 'receptionist':
-      return ['kpi', 'opd', 'schedule'];
-    case 'pharmacist':
-      return ['kpi', 'pharmacy', 'inventory'];
-    case 'cashier':
-      return ['kpi', 'revenue', 'financial'];
-    case 'inventory_manager':
-      return ['kpi', 'inventory'];
-    case 'report_viewer':
-      return ['kpi', 'revenue', 'opd', 'pharmacy', 'financial', 'inventory', 'schedule'];
     default:
       return ['kpi'];
   }
@@ -171,26 +167,6 @@ const AnalyticsDashboardInner: React.FC = () => {
         )}
       </div>
 
-      {/* ── Schedule & Export ── */}
-      {show('schedule') && (
-        <Suspense fallback={<PanelSkeleton />}>
-          <ScheduleExportPanel />
-        </Suspense>
-      )}
-
-      {/* ─────────────────────────────────────────────────────────────────
-       * GAP REPORT:
-       * The following panels / features are NOT yet implemented.
-       * They will be added as the corresponding backend modules ship.
-       *
-       * • Billing Module     → Real revenue data, invoice breakdown
-       * • Pharmacy Module    → Real sales, stock, prescription fill rates
-       * • Optical Module     → Real sales tracking, frame/lens inventory
-       * • Inventory Module   → Real stock levels, purchase orders, aging
-       * • Lab / Diagnostics  → Test volume, turnaround, revenue
-       * • Insurance Module   → Claim status, TPA breakdown, settlement lag
-       * • HR / Payroll       → Staff cost, attendance, overtime
-       * ────────────────────────────────────────────────────────────────── */}
     </div>
   );
 };

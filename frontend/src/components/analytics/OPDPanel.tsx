@@ -11,6 +11,7 @@ import {
 import PanelCard from './shared/PanelCard';
 import { useOPDSummary, useDoctorWiseReport } from '../../hooks/useAnalyticsQueries';
 import { useAnalyticsStore } from '../../stores/analyticsStore';
+import { downloadCsvSections } from '../../utils/csv';
 
 // ── Currency ─────────────────────────────────────────────────────────────
 
@@ -38,20 +39,6 @@ const MiniStat: React.FC<MiniStatProps> = ({ label, value, icon, color }) => (
     </div>
   </div>
 );
-
-// ── Star rating ──────────────────────────────────────────────────────────
-
-const Stars: React.FC<{ rating: number }> = ({ rating }) => {
-  const full = Math.floor(rating);
-  const half = rating - full >= 0.5;
-  return (
-    <span className="inline-flex text-amber-400">
-      {'★'.repeat(full)}
-      {half && '½'}
-      {'☆'.repeat(5 - full - (half ? 1 : 0))}
-    </span>
-  );
-};
 
 // ── Chart tooltip ────────────────────────────────────────────────────────
 
@@ -89,6 +76,14 @@ const OPDPanel: React.FC = () => {
         opd.refetch();
         doctors.refetch();
       }}
+      onExport={
+        (opd.data || doctors.data?.length)
+          ? () => downloadCsvSections('opd-statistics', [
+              { title: 'OPD Summary', rows: opd.data ? [opd.data as unknown as Record<string, unknown>] : [] },
+              { title: 'Doctor-wise Report', rows: (doctors.data ?? []) as unknown as Record<string, unknown>[] },
+            ])
+          : undefined
+      }
     >
       {/* Mini stats grid */}
       {opd.data && (
@@ -129,7 +124,7 @@ const OPDPanel: React.FC = () => {
       )}
 
       {/* Doctor table */}
-      {doctors.data && doctors.data.length > 0 && (
+      {doctors.data && doctors.data.length > 0 ? (
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
@@ -138,7 +133,6 @@ const OPDPanel: React.FC = () => {
                 <th className="pb-2 font-medium">Department</th>
                 <th className="pb-2 text-center font-medium">Patients</th>
                 <th className="pb-2 text-center font-medium">Avg Time</th>
-                <th className="pb-2 text-center font-medium">Rating</th>
                 <th className="pb-2 text-right font-medium">Revenue</th>
               </tr>
             </thead>
@@ -154,13 +148,11 @@ const OPDPanel: React.FC = () => {
                     {d.doctor_name}
                   </td>
                   <td className="py-2 text-slate-500 dark:text-slate-400">
-                    {d.department || '—'}
+                    {d.department || d.specialization || '—'}
                   </td>
                   <td className="py-2 text-center font-semibold">{d.patients_seen}</td>
-                  <td className="py-2 text-center">{d.avg_consultation_time} min</td>
                   <td className="py-2 text-center">
-                    <Stars rating={d.rating} />
-                    <span className="ml-1 text-slate-400">{d.rating}</span>
+                    {d.avg_consultation_time > 0 ? `${d.avg_consultation_time} min` : '—'}
                   </td>
                   <td className="py-2 text-right font-medium text-slate-700 dark:text-slate-200">
                     {inr.format(d.revenue)}
@@ -170,6 +162,8 @@ const OPDPanel: React.FC = () => {
             </tbody>
           </table>
         </div>
+      ) : !isLoading && !error && (
+        <p className="py-6 text-center text-xs text-slate-400">No doctor activity for this period.</p>
       )}
     </PanelCard>
   );

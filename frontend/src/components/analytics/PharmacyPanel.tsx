@@ -9,7 +9,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
 } from 'recharts';
 import PanelCard from './shared/PanelCard';
 import {
@@ -17,6 +16,7 @@ import {
   useTopMedicines,
   useOpticalSales,
 } from '../../hooks/useAnalyticsQueries';
+import { downloadCsvSections } from '../../utils/csv';
 
 // ── Currency ─────────────────────────────────────────────────────────────
 
@@ -56,9 +56,25 @@ const PharmacyPanel: React.FC = () => {
   const optical = useOpticalSales();
 
   const isLoading = sales.isLoading || meds.isLoading || optical.isLoading;
+  const error = sales.error || meds.error || optical.error;
 
   return (
-    <PanelCard title="Pharmacy & Optical" status="live" isLoading={isLoading}>
+    <PanelCard
+      title="Pharmacy & Optical"
+      status="live"
+      isLoading={isLoading}
+      error={error ? 'Failed to load pharmacy data' : null}
+      onRetry={() => { sales.refetch(); meds.refetch(); optical.refetch(); }}
+      onExport={
+        (sales.data?.length || meds.data?.length || optical.data?.length)
+          ? () => downloadCsvSections('pharmacy-and-optical', [
+              { title: 'Pharmacy Sales Trend', rows: (sales.data ?? []) as unknown as Record<string, unknown>[] },
+              { title: 'Top Selling Medicines', rows: (meds.data ?? []) as unknown as Record<string, unknown>[] },
+              { title: 'Optical Sales Trend', rows: (optical.data ?? []) as unknown as Record<string, unknown>[] },
+            ])
+          : undefined
+      }
+    >
       <div className="grid gap-6 md:grid-cols-5">
         {/* ── Left 60%: Pharmacy ── */}
         <div className="md:col-span-3 space-y-5">
@@ -67,7 +83,10 @@ const PharmacyPanel: React.FC = () => {
             <h4 className="mb-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
               Pharmacy Sales Trend
             </h4>
-            {sales.data && (
+            {sales.data && sales.data.length === 0 && (
+              <p className="py-8 text-center text-xs text-slate-400">No pharmacy sales for this period.</p>
+            )}
+            {sales.data && sales.data.length > 0 && (
               <ResponsiveContainer width="100%" height={220}>
                 <LineChart data={sales.data}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -92,7 +111,10 @@ const PharmacyPanel: React.FC = () => {
           </div>
 
           {/* Top medicines table */}
-          {meds.data && (
+          {meds.data && meds.data.length === 0 && (
+            <p className="py-4 text-center text-xs text-slate-400">No pharmacy sales for this period.</p>
+          )}
+          {meds.data && meds.data.length > 0 && (
             <div>
               <h4 className="mb-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
                 Top Selling Medicines
@@ -137,9 +159,12 @@ const PharmacyPanel: React.FC = () => {
         {/* ── Right 40%: Optical ── */}
         <div className="md:col-span-2">
           <h4 className="mb-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
-            Optical Sales Breakdown
+            Optical Sales Trend
           </h4>
-          {optical.data && (
+          {optical.data && optical.data.length === 0 && (
+            <p className="py-10 text-center text-xs text-slate-400">No optical sales for this period.</p>
+          )}
+          {optical.data && optical.data.length > 0 && (
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={optical.data}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -150,16 +175,7 @@ const PharmacyPanel: React.FC = () => {
                 />
                 <YAxis tick={{ fontSize: 10 }} tickFormatter={shortInr} />
                 <Tooltip content={<ChartTooltip />} />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="frames" name="Frames" stackId="a" fill="#137fec" />
-                <Bar dataKey="lenses" name="Lenses" stackId="a" fill="#10b981" />
-                <Bar
-                  dataKey="contact_lenses"
-                  name="Contacts"
-                  stackId="a"
-                  fill="#f59e0b"
-                  radius={[3, 3, 0, 0]}
-                />
+                <Bar dataKey="total_sales" name="Sales" fill="#8b5cf6" radius={[3, 3, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           )}

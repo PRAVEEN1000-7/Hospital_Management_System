@@ -11,10 +11,6 @@ const cfg: Record<ModuleStatus, { label: string; classes: string }> = {
     classes:
       'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 animate-pulse',
   },
-  coming_soon: {
-    label: 'Coming Soon',
-    classes: 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
-  },
 };
 
 interface Props {

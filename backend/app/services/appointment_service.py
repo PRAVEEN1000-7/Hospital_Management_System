@@ -767,17 +767,87 @@ def get_enhanced_stats(
     scheduled_type = sum(1 for a in appointments if a.appointment_type == "scheduled")
     walk_in_type = sum(1 for a in appointments if a.appointment_type == "walk-in")
 
-    # Doctor stats
-    doctor_map = {}
+    # Doctor stats — enriched below into `doctor_utilization` with real name/
+    # department/specialization, real revenue (via Invoice→Payment), and real
+    # avg consultation time (consultation_start_at/end_at). Unassigned
+    # appointments (no doctor_id) are excluded — a per-doctor performance
+    # table has no meaningful row for "no doctor."
+    doctor_map: dict = {}
     for a in appointments:
-        did = str(a.doctor_id) if a.doctor_id else "unassigned"
+        if not a.doctor_id:
+            continue
+        did = str(a.doctor_id)
         if did not in doctor_map:
-            doctor_map[did] = {"doctor_id": did, "total": 0, "completed": 0, "cancelled": 0}
-        doctor_map[did]["total"] += 1
+            doctor_map[did] = {
+                "total": 0, "completed": 0, "cancelled": 0, "no_shows": 0,
+                "consultation_minutes": [], "appointment_ids": [],
+            }
+        entry = doctor_map[did]
+        entry["total"] += 1
+        entry["appointment_ids"].append(a.id)
         if a.status == "completed":
-            doctor_map[did]["completed"] += 1
+            entry["completed"] += 1
         elif a.status == "cancelled":
-            doctor_map[did]["cancelled"] += 1
+            entry["cancelled"] += 1
+        elif a.status == "no-show":
+            entry["no_shows"] += 1
+        if a.consultation_start_at and a.consultation_end_at:
+            minutes = (a.consultation_end_at - a.consultation_start_at).total_seconds() / 60
+            if minutes > 0:
+                entry["consultation_minutes"].append(minutes)
+
+    doctor_utilization: list = []
+    if doctor_map:
+        from ..models.department import Department
+
+        doctor_records = (
+            db.query(Doctor)
+            .options(joinedload(Doctor.user))
+            .filter(Doctor.id.in_([uuid.UUID(did) for did in doctor_map.keys()]))
+            .all()
+        )
+        doctors_by_id = {str(d.id): d for d in doctor_records}
+
+        dept_ids = {d.department_id for d in doctor_records if d.department_id}
+        departments_by_id = {}
+        if dept_ids:
+            departments_by_id = {
+                d.id: d.name for d in db.query(Department).filter(Department.id.in_(dept_ids)).all()
+            }
+
+        # Real revenue per doctor = money actually collected (Payment.amount)
+        # against invoices linked to that doctor's appointments — same
+        # "revenue = collected, not invoiced" principle used in
+        # invoice_service.py's analytics functions.
+        all_appt_ids = [aid for entry in doctor_map.values() for aid in entry["appointment_ids"]]
+        revenue_by_appt: dict = {}
+        if all_appt_ids:
+            pay_rows = (
+                db.query(Invoice.appointment_id, sqlfunc.coalesce(sqlfunc.sum(Payment.amount), 0))
+                .join(Payment, Payment.invoice_id == Invoice.id)
+                .filter(Invoice.appointment_id.in_(all_appt_ids), Payment.status == "completed")
+                .group_by(Invoice.appointment_id)
+                .all()
+            )
+            revenue_by_appt = {aid: float(amt or 0) for aid, amt in pay_rows}
+
+        for did, entry in doctor_map.items():
+            doc = doctors_by_id.get(did)
+            revenue = sum(revenue_by_appt.get(aid, 0.0) for aid in entry["appointment_ids"])
+            consult_minutes = entry["consultation_minutes"]
+            doctor_utilization.append({
+                "doctor_id": did,
+                "doctor_name": doc.user.full_name if doc and doc.user else "Unknown",
+                "department": departments_by_id.get(doc.department_id) if doc else None,
+                "specialization": doc.specialization if doc else None,
+                "total_appointments": entry["total"],
+                "completed": entry["completed"],
+                "cancelled": entry["cancelled"],
+                "no_shows": entry["no_shows"],
+                "utilization_rate": round(entry["completed"] / entry["total"] * 100, 1) if entry["total"] else 0.0,
+                "revenue": revenue,
+                "avg_consultation_minutes": round(sum(consult_minutes) / len(consult_minutes), 1) if consult_minutes else 0.0,
+            })
 
     # Department stats
     dept_map = {}
@@ -831,7 +901,7 @@ def get_enhanced_stats(
         "cancellation_rate": round(cancelled / total * 100, 1) if total else 0.0,
         "no_show_rate": round(no_shows / total * 100, 1) if total else 0.0,
         "average_wait_time": 0.0,
-        "doctor_stats": list(doctor_map.values()),
+        "doctor_utilization": doctor_utilization,
         "department_stats": list(dept_map.values()),
         "daily_trends": sorted(daily_map.values(), key=lambda x: x["date"]),
         "peak_hours": sorted(hour_map.values(), key=lambda x: x["hour"]),

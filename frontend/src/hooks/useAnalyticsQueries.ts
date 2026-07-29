@@ -15,20 +15,19 @@ export const analyticsKeys = {
   summary: (f: DashboardFilters) => [...analyticsKeys.all, 'summary', f] as const,
   opdSummary: (f: DashboardFilters) => [...analyticsKeys.all, 'opd-summary', f] as const,
   doctorWise: (f: DashboardFilters) => [...analyticsKeys.all, 'doctor-wise', f] as const,
-  dailyRevenue: () => [...analyticsKeys.all, 'daily-revenue'] as const,
-  monthlyRevenue: () => [...analyticsKeys.all, 'monthly-revenue'] as const,
-  departmentRevenue: () => [...analyticsKeys.all, 'department-revenue'] as const,
+  dailyRevenue: (f: DashboardFilters) => [...analyticsKeys.all, 'daily-revenue', f] as const,
+  monthlyRevenue: (f: DashboardFilters) => [...analyticsKeys.all, 'monthly-revenue', f] as const,
+  departmentRevenue: (f: DashboardFilters) => [...analyticsKeys.all, 'department-revenue', f] as const,
   pharmacySales: (days: number) => [...analyticsKeys.all, 'pharmacy-sales', days] as const,
   topMedicines: (days: number, limit: number) => [...analyticsKeys.all, 'top-medicines', days, limit] as const,
   pharmacyDashboard: () => [...analyticsKeys.all, 'pharmacy-dashboard'] as const,
   stockStatus: (limit: number) => [...analyticsKeys.all, 'stock-status', limit] as const,
   inventoryAging: () => [...analyticsKeys.all, 'inventory-aging'] as const,
   inventoryDashboard: () => [...analyticsKeys.all, 'inventory-dashboard'] as const,
-  opticalSales: () => [...analyticsKeys.all, 'optical-sales'] as const,
-  collectionReport: () => [...analyticsKeys.all, 'collection-report'] as const,
+  opticalSales: (days: number) => [...analyticsKeys.all, 'optical-sales', days] as const,
+  collectionReport: (f: DashboardFilters) => [...analyticsKeys.all, 'collection-report', f] as const,
   outstandingDues: () => [...analyticsKeys.all, 'outstanding-dues'] as const,
-  taxSummary: () => [...analyticsKeys.all, 'tax-summary'] as const,
-  scheduledReports: () => [...analyticsKeys.all, 'scheduled-reports'] as const,
+  taxSummary: (f: DashboardFilters) => [...analyticsKeys.all, 'tax-summary', f] as const,
   paymentStatusSummary: () => [...analyticsKeys.all, 'payment-status-summary'] as const,
 };
 
@@ -110,45 +109,46 @@ export function useInventoryDashboard() {
   });
 }
 
-// ── DEV: Optical ─────────────────────────────────────────────────────────
+// ── Optical (real endpoint — fixed 30-day window, matches Pharmacy Sales/Top
+// Medicines above, which also ignore the dashboard's period pills today) ───
 
-export function useOpticalSales() {
+export function useOpticalSales(days = 30) {
   return useQuery({
-    queryKey: analyticsKeys.opticalSales(),
-    queryFn: reportsApi.getOpticalSales,
+    queryKey: analyticsKeys.opticalSales(days),
+    queryFn: () => reportsApi.getOpticalSales(days),
     staleTime: STALE,
   });
 }
 
-// ── DEV: Revenue ─────────────────────────────────────────────────────────
+// ── Revenue (real, period-scoped by the dashboard's filters) ───────────────
 
-export function useDailyRevenue() {
+export function useDailyRevenue(filters: DashboardFilters) {
   return useQuery({
-    queryKey: analyticsKeys.dailyRevenue(),
-    queryFn: reportsApi.getDailyRevenue,
+    queryKey: analyticsKeys.dailyRevenue(filters),
+    queryFn: () => reportsApi.getDailyRevenue(filters),
     staleTime: STALE,
   });
 }
 
-export function useMonthlyRevenue() {
+export function useMonthlyRevenue(filters: DashboardFilters) {
   return useQuery({
-    queryKey: analyticsKeys.monthlyRevenue(),
-    queryFn: reportsApi.getMonthlyRevenue,
+    queryKey: analyticsKeys.monthlyRevenue(filters),
+    queryFn: () => reportsApi.getMonthlyRevenue(filters),
     staleTime: STALE,
   });
 }
 
-export function useDepartmentRevenue() {
+export function useDepartmentRevenue(filters: DashboardFilters) {
   return useQuery({
-    queryKey: analyticsKeys.departmentRevenue(),
-    queryFn: reportsApi.getDepartmentRevenue,
+    queryKey: analyticsKeys.departmentRevenue(filters),
+    queryFn: () => reportsApi.getDepartmentRevenue(filters),
     staleTime: STALE,
   });
 }
 
-// ── DEV: Financial ───────────────────────────────────────────────────────
+// ── Financial (real, period-scoped except Outstanding Dues, a snapshot) ────
 
-// BRD-001 — real (not mocked) payment-status summary.
+// BRD-001 — real payment-status summary.
 export function usePaymentStatusSummary() {
   return useQuery({
     queryKey: analyticsKeys.paymentStatusSummary(),
@@ -157,10 +157,10 @@ export function usePaymentStatusSummary() {
   });
 }
 
-export function useCollectionReport() {
+export function useCollectionReport(filters: DashboardFilters) {
   return useQuery({
-    queryKey: analyticsKeys.collectionReport(),
-    queryFn: reportsApi.getCollectionReport,
+    queryKey: analyticsKeys.collectionReport(filters),
+    queryFn: () => reportsApi.getCollectionReport(filters),
     staleTime: STALE,
   });
 }
@@ -173,18 +173,10 @@ export function useOutstandingDues() {
   });
 }
 
-export function useTaxSummary() {
+export function useTaxSummary(filters: DashboardFilters) {
   return useQuery({
-    queryKey: analyticsKeys.taxSummary(),
-    queryFn: reportsApi.getTaxSummary,
-    staleTime: STALE,
-  });
-}
-
-export function useScheduledReports() {
-  return useQuery({
-    queryKey: analyticsKeys.scheduledReports(),
-    queryFn: reportsApi.getScheduledReports,
+    queryKey: analyticsKeys.taxSummary(filters),
+    queryFn: () => reportsApi.getTaxSummary(filters),
     staleTime: STALE,
   });
 }

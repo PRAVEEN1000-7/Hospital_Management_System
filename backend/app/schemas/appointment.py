@@ -432,7 +432,11 @@ class AppointmentStats(BaseModel):
 
 class EnhancedAppointmentStats(AppointmentStats):
     """Extended stats with per-doctor and per-department breakdowns."""
-    doctor_stats: list[dict] = []
+    # Field name matches what the frontend (types/appointment.ts's
+    # EnhancedAppointmentStats.doctor_utilization) has always expected — the
+    # previous `doctor_stats` name meant this was never actually readable by
+    # the Analytics dashboard's doctor-wise table (silently fell back to []).
+    doctor_utilization: list[dict] = []
     department_stats: list[dict] = []
     daily_trends: list[dict] = []
     peak_hours: list[dict] = []

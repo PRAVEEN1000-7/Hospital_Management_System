@@ -248,11 +248,14 @@ export interface DoctorUtilization {
   doctor_id: string;
   doctor_name: string;
   department: string | null;
+  specialization: string | null;
   total_appointments: number;
   completed: number;
   cancelled: number;
   no_shows: number;
   utilization_rate: number;
+  revenue: number;                  // collected payments against this doctor's appointments
+  avg_consultation_minutes: number; // from consultation_start_at/end_at
 }
 
 export interface DepartmentBreakdown {

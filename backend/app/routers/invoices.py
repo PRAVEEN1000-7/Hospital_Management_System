@@ -2,7 +2,7 @@
 Invoices router — /api/v1/invoices
 """
 import logging
-from datetime import date
+from datetime import date, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -11,6 +11,7 @@ import uuid
 from ..database import get_db
 from ..dependencies import get_current_active_user
 from ..core.module_roles import check_permission
+from ..core.hospital_time import hospital_today_by_id
 from ..models.user import User
 from ..models.appointment import Appointment
 from ..schemas.invoice import (
@@ -23,6 +24,8 @@ from ..services.invoice_service import (
     update_invoice, issue_invoice, void_invoice,
     add_invoice_item, remove_invoice_item, get_or_create_consultation_invoice_for_appointment,
     get_payment_status_summary,
+    get_revenue_summary, get_revenue_trend, get_revenue_by_module,
+    get_collections_by_mode, get_outstanding_aging, get_tax_summary,
 )
 
 logger = logging.getLogger(__name__)
@@ -231,6 +234,98 @@ async def payment_status_summary(
     Analytics dashboard's Financial panel."""
     _require_billing_view(db, current_user)
     return get_payment_status_summary(db, current_user.hospital_id)
+
+
+# ── Analytics: Revenue / Financial (Reports & Analytics dashboard) ─────────
+# Every endpoint below defaults to the trailing 30 days when no range is
+# given, matching the dashboard's default period pill.
+
+@router.get("/stats/revenue-summary")
+async def revenue_summary(
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Total revenue collected + current outstanding dues, for KPIStrip."""
+    _require_billing_view(db, current_user)
+    today = hospital_today_by_id(db, current_user.hospital_id)
+    d_to = date_to or today
+    d_from = date_from or (d_to - timedelta(days=29))
+    return get_revenue_summary(db, current_user.hospital_id, d_from, d_to)
+
+
+@router.get("/stats/revenue-trend")
+async def revenue_trend(
+    granularity: str = Query("daily", pattern="^(daily|monthly)$"),
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Revenue collected per day/month, by module — RevenuePanel's Daily/Monthly tabs."""
+    _require_billing_view(db, current_user)
+    today = hospital_today_by_id(db, current_user.hospital_id)
+    d_to = date_to or today
+    d_from = date_from or (d_to - timedelta(days=29 if granularity == "daily" else 364))
+    return get_revenue_trend(db, current_user.hospital_id, granularity, d_from, d_to)
+
+
+@router.get("/stats/revenue-by-module")
+async def revenue_by_module(
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Revenue totals by module for the period — RevenuePanel's By Module pie chart."""
+    _require_billing_view(db, current_user)
+    today = hospital_today_by_id(db, current_user.hospital_id)
+    d_to = date_to or today
+    d_from = date_from or (d_to - timedelta(days=29))
+    return get_revenue_by_module(db, current_user.hospital_id, d_from, d_to)
+
+
+@router.get("/stats/collections-by-mode")
+async def collections_by_mode(
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Collected amount by payment mode — FinancialPanel's Collections chart."""
+    _require_billing_view(db, current_user)
+    today = hospital_today_by_id(db, current_user.hospital_id)
+    d_to = date_to or today
+    d_from = date_from or (d_to - timedelta(days=29))
+    return get_collections_by_mode(db, current_user.hospital_id, d_from, d_to)
+
+
+@router.get("/stats/outstanding-aging")
+async def outstanding_aging(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Unpaid invoice balances bucketed by age — FinancialPanel's Outstanding Dues chart.
+    A running snapshot, not scoped to the dashboard's period filter (see
+    get_outstanding_aging's docstring)."""
+    _require_billing_view(db, current_user)
+    return get_outstanding_aging(db, current_user.hospital_id)
+
+
+@router.get("/stats/tax-summary")
+async def tax_summary(
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Taxable/tax/total for the period — FinancialPanel's Tax Summary."""
+    _require_billing_view(db, current_user)
+    today = hospital_today_by_id(db, current_user.hospital_id)
+    d_to = date_to or today
+    d_from = date_from or (d_to - timedelta(days=29))
+    return get_tax_summary(db, current_user.hospital_id, d_from, d_to)
 
 
 @router.get("/{invoice_id}", response_model=InvoiceResponse)

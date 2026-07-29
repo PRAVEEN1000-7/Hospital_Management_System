@@ -1,8 +1,7 @@
 /**
- * Reports / Analytics API service.
- *
- * LIVE endpoints   → real API calls (Patient, Appointments, OPD, Pharmacy, Inventory modules)
- * DEV  endpoints   → mock data with 600 ms simulated latency
+ * Reports / Analytics API service — every function here now calls a real
+ * backend endpoint. (Previously some panels rendered mock/random data behind
+ * a "development" banner; see the 29-Jul-2026 Analytics cleanup.)
  */
 import api from './api';
 import appointmentService from './appointmentService';
@@ -23,68 +22,52 @@ import type {
   CollectionReport,
   OutstandingDues,
   TaxSummary,
-  ExportPayload,
-  SchedulePayload,
-  ScheduledReport,
   PharmacyDashboard,
   InventoryDashboard,
   PaymentStatusSummary,
 } from '../types/analytics.types';
-import { genId } from '../utils/id';
-import {
-  mockDashboardSummary,
-  mockDailyRevenue,
-  mockMonthlyRevenue,
-  mockDepartmentRevenue,
-  mockPharmacySales,
-  mockTopMedicines,
-  mockOpticalSales,
-  mockStockStatus,
-  mockInventoryAging,
-  mockCollectionReport,
-  mockOutstandingDues,
-  mockTaxSummary,
-  mockScheduledReports,
-} from '../mocks/analyticsMocks';
-
-// ── Helpers ──────────────────────────────────────────────────────────────
-
-const DEV_DELAY = 600; // ms
-
-/** Simulate network latency for mock endpoints */
-const delay = (ms = DEV_DELAY) => new Promise((r) => setTimeout(r, ms));
 
 const warn = (panel: string) =>
-  console.warn(`[HMS Analytics] ${panel} using mock data`);
+  console.warn(`[HMS Analytics] ${panel}: API unreachable, showing empty state`);
 
 // ── LIVE: Dashboard Summary (built from real endpoints) ──────────────────
 
 async function getDashboardSummary(
   filters: DashboardFilters,
 ): Promise<DashboardSummary> {
-  try {
-    // Pull real stats from the appointment reports endpoint
-    const stats: AppointmentStats = await appointmentService.getStats(
-      filters.dateFrom,
-      filters.dateTo,
-      filters.doctorId || undefined,
-    );
+  const [stats, revenue] = await Promise.all([
+    appointmentService.getStats(filters.dateFrom, filters.dateTo, filters.doctorId || undefined)
+      .catch((): AppointmentStats => ({
+        total_appointments: 0, total_scheduled: 0, total_walk_ins: 0, total_completed: 0,
+        total_cancelled: 0, total_no_shows: 0, total_pending: 0, completion_rate: 0,
+        cancellation_rate: 0, no_show_rate: 0, average_wait_time: 0,
+      })),
+    api.get('/invoices/stats/revenue-summary', {
+      params: { date_from: filters.dateFrom, date_to: filters.dateTo },
+    }).then((r) => r.data).catch(() => {
+      warn('DashboardSummary (revenue)');
+      return { total_revenue: 0, revenue_change_pct: 0, outstanding_dues: 0, dues_change_pct: 0 };
+    }),
+  ]);
 
-    // For the analytics dashboard we overlay real appointment data onto KPIs.
-    // Revenue / pharmacy / inventory KPIs are still mocked until those modules ship.
-    return {
-      ...mockDashboardSummary,
-      opd_patients_today: stats.total_completed + stats.total_pending,
-      opd_change_pct:
-        stats.total_appointments > 0
-          ? Number(((stats.completion_rate - 80) / 80 * 100).toFixed(1))
-          : 0,
-    };
-  } catch {
-    // Fallback to full mock if API is unreachable
-    warn('DashboardSummary (fallback)');
-    return mockDashboardSummary;
-  }
+  return {
+    total_revenue: revenue.total_revenue,
+    revenue_change_pct: revenue.revenue_change_pct,
+    opd_patients_today: stats.total_completed + stats.total_pending,
+    opd_change_pct:
+      stats.total_appointments > 0
+        ? Number(((stats.completion_rate - 80) / 80 * 100).toFixed(1))
+        : 0,
+    // Pending Rx / Low Stock are read directly from usePharmacyDashboard /
+    // useInventoryDashboard by KPIStrip, not from this object — left at 0
+    // here since nothing reads them from DashboardSummary anymore.
+    pending_prescriptions: 0,
+    prescriptions_change_pct: 0,
+    low_stock_items: 0,
+    stock_change_pct: 0,
+    outstanding_dues: revenue.outstanding_dues,
+    dues_change_pct: revenue.dues_change_pct,
+  };
 }
 
 // ── LIVE: OPD Summary ────────────────────────────────────────────────────
@@ -134,11 +117,10 @@ async function getDoctorWiseReport(
       doctor_id: d.doctor_id,
       doctor_name: d.doctor_name,
       department: d.department,
-      specialization: null,
+      specialization: d.specialization,
       patients_seen: d.completed,
-      avg_consultation_time: 15,  // not available from current API
-      rating: Number((3.5 + Math.random() * 1.5).toFixed(1)),
-      revenue: d.completed * 500, // estimate until billing module
+      avg_consultation_time: d.avg_consultation_minutes,
+      revenue: d.revenue,
     }));
   } catch {
     warn('DoctorWiseReport (fallback)');
@@ -146,50 +128,43 @@ async function getDoctorWiseReport(
   }
 }
 
-// ── DEV: Revenue ─────────────────────────────────────────────────────────
+// ── LIVE: Revenue (RevenuePanel — real, period-scoped) ──────────────────────
 
-async function getDailyRevenue(): Promise<DailyRevenue[]> {
-  warn('RevenuePanel (daily)');
-  await delay();
-  return mockDailyRevenue;
+async function getDailyRevenue(filters: DashboardFilters): Promise<DailyRevenue[]> {
+  const res = await api.get<DailyRevenue[]>('/invoices/stats/revenue-trend', {
+    params: { granularity: 'daily', date_from: filters.dateFrom, date_to: filters.dateTo },
+  });
+  return res.data;
 }
 
-async function getMonthlyRevenue(): Promise<MonthlyRevenue[]> {
-  warn('RevenuePanel (monthly)');
-  await delay();
-  return mockMonthlyRevenue;
+async function getMonthlyRevenue(filters: DashboardFilters): Promise<MonthlyRevenue[]> {
+  const res = await api.get<MonthlyRevenue[]>('/invoices/stats/revenue-trend', {
+    params: { granularity: 'monthly', date_from: filters.dateFrom, date_to: filters.dateTo },
+  });
+  return res.data;
 }
 
-async function getDepartmentRevenue(): Promise<DepartmentRevenue[]> {
-  warn('RevenuePanel (department)');
-  await delay();
-  return mockDepartmentRevenue;
+async function getDepartmentRevenue(filters: DashboardFilters): Promise<DepartmentRevenue[]> {
+  const res = await api.get<DepartmentRevenue[]>('/invoices/stats/revenue-by-module', {
+    params: { date_from: filters.dateFrom, date_to: filters.dateTo },
+  });
+  return res.data;
 }
 
 // ── LIVE: Pharmacy & Optical ──────────────────────────────────────────────
 
 async function getPharmacySales(days = 30): Promise<PharmacySales[]> {
-  try {
-    const res = await api.get<PharmacySales[]>(`/pharmacy/analytics/sales-trend`, {
-      params: { days },
-    });
-    return res.data;
-  } catch {
-    warn('PharmacyPanel (sales fallback)');
-    return mockPharmacySales;
-  }
+  const res = await api.get<PharmacySales[]>(`/pharmacy/analytics/sales-trend`, {
+    params: { days },
+  });
+  return res.data;
 }
 
 async function getTopMedicines(days = 30, limit = 10): Promise<TopSellingMedicine[]> {
-  try {
-    const res = await api.get<TopSellingMedicine[]>(`/pharmacy/analytics/top-medicines`, {
-      params: { days, limit },
-    });
-    return res.data;
-  } catch {
-    warn('PharmacyPanel (top medicines fallback)');
-    return mockTopMedicines;
-  }
+  const res = await api.get<TopSellingMedicine[]>(`/pharmacy/analytics/top-medicines`, {
+    params: { days, limit },
+  });
+  return res.data;
 }
 
 async function getPharmacyDashboard(): Promise<PharmacyDashboard> {
@@ -213,25 +188,15 @@ async function getPharmacyDashboard(): Promise<PharmacyDashboard> {
 // ── LIVE: Inventory ──────────────────────────────────────────────────────
 
 async function getStockStatus(limit = 50): Promise<StockStatus[]> {
-  try {
-    const res = await api.get<StockStatus[]>(`/inventory/analytics/stock-status`, {
-      params: { limit },
-    });
-    return res.data;
-  } catch {
-    warn('InventoryPanel (stock fallback)');
-    return mockStockStatus;
-  }
+  const res = await api.get<StockStatus[]>(`/inventory/analytics/stock-status`, {
+    params: { limit },
+  });
+  return res.data;
 }
 
 async function getInventoryAging(): Promise<InventoryAging[]> {
-  try {
-    const res = await api.get<InventoryAging[]>(`/inventory/analytics/aging`);
-    return res.data;
-  } catch {
-    warn('InventoryPanel (aging fallback)');
-    return mockInventoryAging;
-  }
+  const res = await api.get<InventoryAging[]>(`/inventory/analytics/aging`);
+  return res.data;
 }
 
 async function getInventoryDashboard(): Promise<InventoryDashboard> {
@@ -253,32 +218,35 @@ async function getInventoryDashboard(): Promise<InventoryDashboard> {
   }
 }
 
-// ── DEV: Optical (still mock) ────────────────────────────────────────────
+// ── LIVE: Optical (already-real endpoint, just never wired) ────────────────
 
-async function getOpticalSales(): Promise<OpticalSales[]> {
-  warn('PharmacyPanel (optical)');
-  await delay();
-  return mockOpticalSales;
+async function getOpticalSales(days = 30): Promise<OpticalSales[]> {
+  const res = await api.get<OpticalSales[]>('/optical/analytics/sales-trend', {
+    params: { days },
+  });
+  return res.data;
 }
 
-// ── DEV: Financial (still mock) ──────────────────────────────────────────
+// ── LIVE: Financial (FinancialPanel — real, period-scoped) ─────────────────
 
-async function getCollectionReport(): Promise<CollectionReport[]> {
-  warn('FinancialPanel (collections)');
-  await delay();
-  return mockCollectionReport;
+async function getCollectionReport(filters: DashboardFilters): Promise<CollectionReport[]> {
+  const res = await api.get<CollectionReport[]>('/invoices/stats/collections-by-mode', {
+    params: { date_from: filters.dateFrom, date_to: filters.dateTo },
+  });
+  return res.data;
 }
 
 async function getOutstandingDues(): Promise<OutstandingDues[]> {
-  warn('FinancialPanel (outstanding)');
-  await delay();
-  return mockOutstandingDues;
+  // A running snapshot (see backend get_outstanding_aging) — not period-scoped.
+  const res = await api.get<OutstandingDues[]>('/invoices/stats/outstanding-aging');
+  return res.data;
 }
 
-async function getTaxSummary(): Promise<TaxSummary[]> {
-  warn('FinancialPanel (tax)');
-  await delay();
-  return mockTaxSummary;
+async function getTaxSummary(filters: DashboardFilters): Promise<TaxSummary[]> {
+  const res = await api.get<TaxSummary[]>('/invoices/stats/tax-summary', {
+    params: { date_from: filters.dateFrom, date_to: filters.dateTo },
+  });
+  return res.data;
 }
 
 // ── LIVE: Payment Status Summary (BRD-001) ────────────────────────────────
@@ -288,75 +256,31 @@ async function getPaymentStatusSummary(): Promise<PaymentStatusSummary> {
   return response.data;
 }
 
-// ── DEV: Export & Schedule ───────────────────────────────────────────────
-
-async function exportReport(_payload: ExportPayload): Promise<Blob> {
-  warn('Export');
-  await delay();
-  // Return stub CSV blob
-  return new Blob(['report_type,date\nstub,data'], { type: 'text/csv' });
-}
-
-async function getScheduledReports(): Promise<ScheduledReport[]> {
-  warn('ScheduleExportPanel');
-  await delay();
-  return mockScheduledReports;
-}
-
-async function createScheduledReport(
-  _payload: SchedulePayload,
-): Promise<ScheduledReport> {
-  warn('ScheduleExportPanel (create)');
-  await delay();
-  return {
-    id: genId(),
-    report_type: _payload.report_type,
-    format: _payload.format,
-    frequency: _payload.frequency,
-    email: _payload.email,
-    next_run: new Date().toISOString(),
-    is_active: true,
-    created_at: new Date().toISOString(),
-  };
-}
-
-async function deleteScheduledReport(_id: string): Promise<void> {
-  warn('ScheduleExportPanel (delete)');
-  await delay();
-}
-
 // ── Exported service object ──────────────────────────────────────────────
 
 const reportsApi = {
-  // LIVE
   getDashboardSummary,
   getOPDSummary,
   getDoctorWiseReport,
-  // LIVE – Pharmacy
+  // Pharmacy
   getPharmacySales,
   getTopMedicines,
   getPharmacyDashboard,
-  // LIVE – Inventory
+  // Inventory
   getStockStatus,
   getInventoryAging,
   getInventoryDashboard,
-  // DEV – Revenue
+  // Revenue
   getDailyRevenue,
   getMonthlyRevenue,
   getDepartmentRevenue,
-  // DEV – Optical
+  // Optical
   getOpticalSales,
-  // DEV – Financial
+  // Financial
   getCollectionReport,
   getOutstandingDues,
   getTaxSummary,
-  // LIVE – Financial (BRD-001)
   getPaymentStatusSummary,
-  // DEV – Export / Schedule
-  exportReport,
-  getScheduledReports,
-  createScheduledReport,
-  deleteScheduledReport,
 };
 
 export default reportsApi;

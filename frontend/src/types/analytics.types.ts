@@ -14,7 +14,8 @@ export interface DashboardFilters {
 
 // ── Module Status ────────────────────────────────────────────────────────
 
-export type ModuleStatus = 'live' | 'development' | 'coming_soon';
+// 'coming_soon' was defined but never actually used by any panel — dropped.
+export type ModuleStatus = 'live' | 'development';
 
 export interface ModuleConfig {
   key: string;
@@ -81,9 +82,8 @@ export interface DoctorWiseReport {
   department: string | null;
   specialization: string | null;
   patients_seen: number;
-  avg_consultation_time: number;   // minutes
-  rating: number;                  // 0-5
-  revenue: number;
+  avg_consultation_time: number;   // minutes — real, from consultation_start_at/end_at
+  revenue: number;                 // real — collected payments against this doctor's appointments
 }
 
 // ── Pharmacy ─────────────────────────────────────────────────────────────
@@ -113,13 +113,15 @@ export interface PharmacyDashboard {
 }
 
 // ── Optical ──────────────────────────────────────────────────────────────
+// Matches the real GET /optical/analytics/sales-trend response exactly —
+// this endpoint doesn't break sales down by frames/lenses/contact-lenses
+// (that granularity isn't tracked anywhere), so this is a total, not a
+// per-category series.
 
 export interface OpticalSales {
   date: string;
-  frames: number;
-  lenses: number;
-  contact_lenses: number;
-  total: number;
+  total_sales: number;
+  orders_count: number;
 }
 
 // ── Inventory ────────────────────────────────────────────────────────────
@@ -185,35 +187,6 @@ export interface PaymentStatusSummary {
   not_paid: PaymentStatusBucketSummary;
   partially_paid: PaymentStatusBucketSummary;
   paid: PaymentStatusBucketSummary;
-}
-
-// ── Export / Scheduling ──────────────────────────────────────────────────
-
-export type ExportFormat = 'pdf' | 'csv' | 'xlsx';
-
-export interface ExportPayload {
-  report_type: string;
-  format: ExportFormat;
-  filters: DashboardFilters;
-}
-
-export interface SchedulePayload {
-  report_type: string;
-  format: ExportFormat;
-  frequency: 'daily' | 'weekly' | 'monthly';
-  email: string;
-  filters: DashboardFilters;
-}
-
-export interface ScheduledReport {
-  id: string;
-  report_type: string;
-  format: ExportFormat;
-  frequency: 'daily' | 'weekly' | 'monthly';
-  email: string;
-  next_run: string;     // ISO datetime
-  is_active: boolean;
-  created_at: string;
 }
 
 // ── Generic API response wrapper ─────────────────────────────────────────

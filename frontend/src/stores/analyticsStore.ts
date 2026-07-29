@@ -42,11 +42,16 @@ export const useAnalyticsStore = create<AnalyticsStore>((set) => ({
   filters: { ...defaultFilters },
 
   setPeriod: (preset) =>
-    set(() => ({
+    set((s) => ({
+      // Preserve the existing filters (department/doctor selections,
+      // whatever custom range was last entered) rather than resetting to
+      // `defaultFilters` on every click — switching to "Custom" no longer
+      // wipes out a range the user had already typed in, and switching
+      // presets no longer silently clears an active department/doctor filter.
       filters: {
-        ...defaultFilters,
+        ...s.filters,
         period: preset,
-        ...datesForPreset(preset),
+        ...(preset === 'custom' ? {} : datesForPreset(preset)),
       },
     })),
 

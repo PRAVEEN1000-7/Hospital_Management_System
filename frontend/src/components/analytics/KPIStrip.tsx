@@ -82,7 +82,10 @@ const KPIStrip: React.FC = () => {
   // Combine data from multiple sources
   const revenue = useCountUp(dashboardData?.total_revenue ?? 0);
   const opd = useCountUp(dashboardData?.opd_patients_today ?? 0);
-  const rx = useCountUp(dashboardData?.pending_prescriptions ?? 0);
+  // Real pending-orders count from the pharmacy dashboard, already fetched
+  // here for Low Stock below — not from DashboardSummary, which no longer
+  // carries a real value for this field.
+  const rx = useCountUp(pharmacyData?.pending_orders ?? 0);
   const lowStock = useCountUp(pharmacyData?.low_stock_count ?? inventoryData?.low_stock_count ?? 0);
   const dues = useCountUp(dashboardData?.outstanding_dues ?? 0);
 

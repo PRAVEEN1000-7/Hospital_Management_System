@@ -8,7 +8,7 @@ import string
 import logging
 from decimal import Decimal
 from math import ceil
-from datetime import date
+from datetime import date, timedelta
 from typing import Optional
 
 from sqlalchemy.orm import Session, joinedload
@@ -20,6 +20,7 @@ from ..core.billing_status import payment_status_bucket, invoice_statuses_for_pa
 from ..models.pharmacy import MedicineBatch
 from ..models.prescription import Medicine
 from ..models.invoice import Invoice, InvoiceItem
+from ..models.payment import Payment
 from ..models.inventory import StockMovement
 from ..models.hospital_settings import HospitalSettings
 from ..models.patient import Patient
@@ -383,6 +384,229 @@ def get_payment_status_summary(db: Session, hospital_id: uuid.UUID) -> dict:
             summary[bucket]["count"] += count
             summary[bucket]["total_amount"] += (total or Decimal("0"))
     return summary
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Analytics — Reports & Analytics dashboard (real data, replacing the
+# frontend's previously-mocked Revenue/Financial panels). "Revenue" is always
+# measured from `Payment.amount`/`payment_date` (money actually collected in
+# the period), not `Invoice.paid_amount`/`invoice_date` — an invoice raised
+# weeks ago can still be paid today, and the dashboard's period filter is
+# about when money moved, not when the invoice was created.
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _pct_change(current: float, previous: float) -> float:
+    if previous <= 0:
+        return 0.0
+    return round((current - previous) / previous * 100, 1)
+
+
+def get_revenue_summary(db: Session, hospital_id, date_from: date, date_to: date) -> dict:
+    """Total revenue collected in the period (+ %-change vs the immediately
+    preceding period of equal length), and current outstanding dues.
+
+    Outstanding dues is a running snapshot (like "Low Stock Items" elsewhere
+    on this dashboard), not scoped to the period — an unpaid invoice from
+    3 months ago is still owed today regardless of which period is selected.
+    """
+    period_days = (date_to - date_from).days + 1
+    prev_to = date_from - timedelta(days=1)
+    prev_from = prev_to - timedelta(days=period_days - 1)
+
+    def _collected(d_from: date, d_to: date) -> float:
+        val = db.query(func.coalesce(func.sum(Payment.amount), 0)).filter(
+            Payment.hospital_id == hospital_id,
+            Payment.status == "completed",
+            Payment.payment_date >= d_from,
+            Payment.payment_date <= d_to,
+        ).scalar()
+        return float(val or 0)
+
+    revenue = _collected(date_from, date_to)
+    prev_revenue = _collected(prev_from, prev_to)
+
+    dues = float(db.query(func.coalesce(func.sum(Invoice.balance_amount), 0)).filter(
+        Invoice.hospital_id == hospital_id,
+        Invoice.is_deleted == False,
+        Invoice.status.notin_(["void", "cancelled", "draft"]),
+        Invoice.balance_amount > 0,
+    ).scalar() or 0)
+
+    return {
+        "total_revenue": revenue,
+        "revenue_change_pct": _pct_change(revenue, prev_revenue),
+        "outstanding_dues": dues,
+        # Not period-comparable — see docstring. Matches KPIStrip's existing
+        # "Low Stock Items" precedent of change=0 for snapshot metrics.
+        "dues_change_pct": 0.0,
+    }
+
+
+_REVENUE_MODULES = ("opd", "pharmacy", "optical")
+_REVENUE_MODULE_COLORS = {"opd": "#137fec", "pharmacy": "#10b981", "optical": "#8b5cf6"}
+
+
+def get_revenue_trend(
+    db: Session, hospital_id, granularity: str, date_from: date, date_to: date,
+) -> list[dict]:
+    """Revenue collected per day/month, broken down by module (Invoice.invoice_type).
+
+    `invoice_type='combined'` spans more than one module, so it's folded into
+    each period's `total` only, never attributed to a single opd/pharmacy/
+    optical bucket.
+    """
+    period_col = (
+        func.date(Payment.payment_date) if granularity == "daily"
+        else func.date_trunc("month", Payment.payment_date)
+    )
+    rows = (
+        db.query(period_col.label("period"), Invoice.invoice_type, func.coalesce(func.sum(Payment.amount), 0))
+        .join(Invoice, Invoice.id == Payment.invoice_id)
+        .filter(
+            Payment.hospital_id == hospital_id,
+            Payment.status == "completed",
+            Payment.payment_date >= date_from,
+            Payment.payment_date <= date_to,
+        )
+        .group_by("period", Invoice.invoice_type)
+        .order_by("period")
+        .all()
+    )
+
+    buckets: dict = {}
+    for period, inv_type, amount in rows:
+        key = period if isinstance(period, date) else period.date()
+        b = buckets.setdefault(key, {"opd": 0.0, "pharmacy": 0.0, "optical": 0.0, "total": 0.0})
+        amt = float(amount or 0)
+        if inv_type in _REVENUE_MODULES:
+            b[inv_type] += amt
+        b["total"] += amt
+
+    result = []
+    for key in sorted(buckets.keys()):
+        b = buckets[key]
+        if granularity == "daily":
+            result.append({"date": key.isoformat(), **b})
+        else:
+            result.append({"month": key.strftime("%b"), **b})
+    return result
+
+
+def get_revenue_by_module(db: Session, hospital_id, date_from: date, date_to: date) -> list[dict]:
+    """Single-period revenue totals per module, for the Revenue-by-Module pie chart."""
+    rows = (
+        db.query(Invoice.invoice_type, func.coalesce(func.sum(Payment.amount), 0))
+        .join(Invoice, Invoice.id == Payment.invoice_id)
+        .filter(
+            Payment.hospital_id == hospital_id,
+            Payment.status == "completed",
+            Payment.payment_date >= date_from,
+            Payment.payment_date <= date_to,
+        )
+        .group_by(Invoice.invoice_type)
+        .all()
+    )
+    totals = {m: 0.0 for m in _REVENUE_MODULES}
+    grand_total = 0.0
+    for inv_type, amount in rows:
+        amt = float(amount or 0)
+        if inv_type in totals:
+            totals[inv_type] += amt
+        grand_total += amt  # 'combined' counts toward the denominator, no single bucket
+
+    return [
+        {
+            "department": module.capitalize(),
+            "revenue": amt,
+            "percentage": round(amt / grand_total * 100, 1) if grand_total > 0 else 0.0,
+            "color": _REVENUE_MODULE_COLORS[module],
+        }
+        for module, amt in totals.items()
+    ]
+
+
+_COLLECTION_MODE_LABELS = {
+    "cash": "Cash", "upi": "UPI", "debit_card": "Debit Card",
+    "credit_card": "Credit Card", "insurance": "Insurance",
+}
+_COLLECTION_MODE_COLORS = {
+    "cash": "#10b981", "upi": "#8b5cf6", "debit_card": "#137fec",
+    "credit_card": "#6366f1", "insurance": "#f59e0b",
+}
+
+
+def get_collections_by_mode(db: Session, hospital_id, date_from: date, date_to: date) -> list[dict]:
+    """Collected amount grouped by Payment.payment_mode, for the Financial panel."""
+    rows = (
+        db.query(Payment.payment_mode, func.coalesce(func.sum(Payment.amount), 0))
+        .filter(
+            Payment.hospital_id == hospital_id,
+            Payment.status == "completed",
+            Payment.payment_date >= date_from,
+            Payment.payment_date <= date_to,
+        )
+        .group_by(Payment.payment_mode)
+        .all()
+    )
+    total = sum(float(a or 0) for _, a in rows)
+    result = [
+        {
+            "method": _COLLECTION_MODE_LABELS.get(mode, mode.replace("_", " ").title()),
+            "amount": float(amount or 0),
+            "percentage": round(float(amount or 0) / total * 100, 1) if total > 0 else 0.0,
+            "color": _COLLECTION_MODE_COLORS.get(mode, "#94a3b8"),
+        }
+        for mode, amount in rows
+    ]
+    return sorted(result, key=lambda r: -r["amount"])
+
+
+def get_outstanding_aging(db: Session, hospital_id) -> list[dict]:
+    """Unpaid invoice balances bucketed by days-since-invoice-date — a running
+    snapshot as of today, not scoped to the dashboard's period filter."""
+    today = hospital_today_by_id(db, hospital_id)
+    rows = db.query(Invoice.invoice_date, Invoice.balance_amount).filter(
+        Invoice.hospital_id == hospital_id,
+        Invoice.is_deleted == False,
+        Invoice.status.notin_(["void", "cancelled", "draft"]),
+        Invoice.balance_amount > 0,
+    ).all()
+
+    brackets = ["0-30 days", "31-60 days", "61-90 days", "90+ days"]
+    buckets = {b: {"count": 0, "amount": 0.0} for b in brackets}
+    for inv_date, balance in rows:
+        age = (today - inv_date).days
+        bracket = brackets[3] if age > 90 else brackets[min(age // 31, 2)]
+        buckets[bracket]["count"] += 1
+        buckets[bracket]["amount"] += float(balance or 0)
+
+    return [{"age_bracket": b, **buckets[b]} for b in brackets]
+
+
+def get_tax_summary(db: Session, hospital_id, date_from: date, date_to: date) -> list[dict]:
+    """Taxable/tax/total for the period. `InvoiceItem.tax_config_id` exists in
+    the schema for a per-tax-type (CGST/SGST/IGST) breakdown, but no invoice
+    item in this system actually sets it today (billing flows only populate
+    the flat `tax_rate`/`tax_amount` fields) — so a real per-type split would
+    just be one giant "uncategorized" bucket. Returning the one real total
+    here instead of fabricating a type split that doesn't exist in the data.
+    """
+    row = db.query(
+        func.coalesce(func.sum(Invoice.subtotal), 0),
+        func.coalesce(func.sum(Invoice.tax_amount), 0),
+        func.coalesce(func.sum(Invoice.total_amount), 0),
+    ).filter(
+        Invoice.hospital_id == hospital_id,
+        Invoice.is_deleted == False,
+        Invoice.invoice_date >= date_from,
+        Invoice.invoice_date <= date_to,
+    ).first()
+    return [{
+        "tax_type": "All Taxes",
+        "taxable_amount": float(row[0] or 0),
+        "tax_amount": float(row[1] or 0),
+        "total": float(row[2] or 0),
+    }]
 
 
 def update_invoice(db: Session, invoice: Invoice, data: InvoiceUpdate) -> Invoice:

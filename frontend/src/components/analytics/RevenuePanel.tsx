@@ -19,6 +19,8 @@ import {
   useMonthlyRevenue,
   useDepartmentRevenue,
 } from '../../hooks/useAnalyticsQueries';
+import { useAnalyticsStore } from '../../stores/analyticsStore';
+import { downloadCsvSections } from '../../utils/csv';
 
 // ── Currency ─────────────────────────────────────────────────────────────
 
@@ -57,25 +59,43 @@ type Tab = 'daily' | 'monthly' | 'department';
 const tabs: { key: Tab; label: string }[] = [
   { key: 'daily', label: 'Daily' },
   { key: 'monthly', label: 'Monthly' },
-  { key: 'department', label: 'By Department' },
+  { key: 'department', label: 'By Module' },
 ];
 
 // ── Panel ────────────────────────────────────────────────────────────────
 
 const RevenuePanel: React.FC = () => {
   const [tab, setTab] = useState<Tab>('daily');
+  const filters = useAnalyticsStore((s) => s.filters);
 
-  const daily = useDailyRevenue();
-  const monthly = useMonthlyRevenue();
-  const dept = useDepartmentRevenue();
+  const daily = useDailyRevenue(filters);
+  const monthly = useMonthlyRevenue(filters);
+  const dept = useDepartmentRevenue(filters);
 
   const isLoading =
     (tab === 'daily' && daily.isLoading) ||
     (tab === 'monthly' && monthly.isLoading) ||
     (tab === 'department' && dept.isLoading);
 
+  const activeQuery = tab === 'daily' ? daily : tab === 'monthly' ? monthly : dept;
+
   return (
-    <PanelCard title="Revenue Overview" status="development" isLoading={isLoading}>
+    <PanelCard
+      title="Revenue Overview"
+      status="live"
+      isLoading={isLoading}
+      error={activeQuery.error ? 'Failed to load revenue data' : null}
+      onRetry={() => activeQuery.refetch()}
+      onExport={
+        (daily.data?.length || monthly.data?.length || dept.data?.length)
+          ? () => downloadCsvSections('revenue-overview', [
+              { title: 'Daily Revenue', rows: (daily.data ?? []) as unknown as Record<string, unknown>[] },
+              { title: 'Monthly Revenue', rows: (monthly.data ?? []) as unknown as Record<string, unknown>[] },
+              { title: 'Revenue by Module', rows: (dept.data ?? []) as unknown as Record<string, unknown>[] },
+            ])
+          : undefined
+      }
+    >
       {/* Tab bar */}
       <div className="mb-4 flex gap-1 rounded-lg bg-slate-100 p-1 dark:bg-slate-800">
         {tabs.map((t) => (
@@ -94,7 +114,17 @@ const RevenuePanel: React.FC = () => {
       </div>
 
       {/* Charts */}
-      {tab === 'daily' && daily.data && (
+      {tab === 'daily' && daily.data?.length === 0 && (
+        <p className="py-10 text-center text-xs text-slate-400">No revenue collected for this period.</p>
+      )}
+      {tab === 'monthly' && monthly.data?.length === 0 && (
+        <p className="py-10 text-center text-xs text-slate-400">No revenue collected for this period.</p>
+      )}
+      {tab === 'department' && dept.data?.every((d) => d.revenue === 0) && (
+        <p className="py-10 text-center text-xs text-slate-400">No revenue collected for this period.</p>
+      )}
+
+      {tab === 'daily' && daily.data && daily.data.length > 0 && (
         <ResponsiveContainer width="100%" height={300}>
           <ComposedChart data={daily.data}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -120,7 +150,7 @@ const RevenuePanel: React.FC = () => {
         </ResponsiveContainer>
       )}
 
-      {tab === 'monthly' && monthly.data && (
+      {tab === 'monthly' && monthly.data && monthly.data.length > 0 && (
         <ResponsiveContainer width="100%" height={300}>
           <ComposedChart data={monthly.data}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -142,7 +172,7 @@ const RevenuePanel: React.FC = () => {
         </ResponsiveContainer>
       )}
 
-      {tab === 'department' && dept.data && (
+      {tab === 'department' && dept.data && dept.data.some((d) => d.revenue > 0) && (
         <div className="flex flex-col items-center gap-4 md:flex-row">
           <ResponsiveContainer width="100%" height={300} className="max-w-xs">
             <PieChart>

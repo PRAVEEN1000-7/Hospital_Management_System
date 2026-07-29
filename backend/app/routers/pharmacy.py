@@ -16,7 +16,7 @@ from ..models.user import User
 from ..models.prescription import Medicine as MedicineModel
 from ..models.pharmacy import MedicineBatch
 from ..dependencies import get_current_active_user, require_admin_or_super_admin, require_any_role
-from ..core.module_roles import view_roles, edit_roles
+from ..core.module_roles import require_permission
 from ..core.tenant_security import is_eye_hospital_feature_enabled
 from ..schemas.pharmacy import (
     # Medicine
@@ -45,8 +45,8 @@ logger = logging.getLogger(__name__)
 # ──────────────────────────────────────────────────
 router = APIRouter(prefix="/pharmacy", tags=["Pharmacy"])
 
-pharmacy_view_guard = require_any_role(*view_roles("pharmacy"))
-pharmacy_edit_guard = require_any_role(*edit_roles("pharmacy"))
+pharmacy_view_guard = require_permission("pharmacy", "view")
+pharmacy_edit_guard = require_permission("pharmacy", "edit")
 
 
 # ═══ Dashboard ═══

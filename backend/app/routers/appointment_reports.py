@@ -10,14 +10,14 @@ from datetime import date
 from ..database import get_db
 from ..models.user import User
 from ..dependencies import get_current_active_user, require_any_role
-from ..core.module_roles import view_roles
+from ..core.module_roles import require_permission
 from ..schemas.appointment import AppointmentStats, EnhancedAppointmentStats
 from ..services.appointment_service import get_appointment_stats, get_enhanced_stats
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/reports/appointments", tags=["Appointment Reports"])
 
-reports_view_guard = require_any_role(*view_roles("appt.reports"))
+reports_view_guard = require_permission("appt.reports", "view")
 
 
 @router.get("/statistics", response_model=AppointmentStats)

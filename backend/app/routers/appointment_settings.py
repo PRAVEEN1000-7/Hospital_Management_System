@@ -9,15 +9,15 @@ from typing import Optional
 from ..database import get_db
 from ..models.user import User
 from ..dependencies import get_current_active_user, require_admin_or_super_admin, require_any_role
-from ..core.module_roles import view_roles, edit_roles
+from ..core.module_roles import require_permission
 from ..schemas.appointment import AppointmentSettingResponse, AppointmentSettingUpdate
 from ..services.settings_service import get_all_settings, update_setting
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/appointment-settings", tags=["Appointment Settings"])
 
-settings_view_guard = require_any_role(*view_roles("appt.settings"))
-settings_edit_guard = require_any_role(*edit_roles("appt.settings"))
+settings_view_guard = require_permission("appt.settings", "view")
+settings_edit_guard = require_permission("appt.settings", "edit")
 
 
 @router.get("", response_model=list[AppointmentSettingResponse])

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..dependencies import require_authenticated_tenant, require_any_role
-from ..core.module_roles import edit_roles
+from ..core.module_roles import require_permission
 from ..models.tenant import Tenant
 from ..models.user import User
 from ..schemas.tenant import (
@@ -26,7 +26,7 @@ router = APIRouter(prefix="/tenant", tags=["Tenant Admin"])
 # admin-only "Subscription" page (system.subscription in the shared matrix).
 # /tenant/modules, /profile, /usage, /check-limit are load-bearing plumbing
 # used by every authenticated role (e.g. isModuleEnabled()) and stay ungated.
-subscription_role_guard = require_any_role(*edit_roles("system.subscription"))
+subscription_role_guard = require_permission("system.subscription", "edit")
 
 
 @router.get("/profile", response_model=TenantResponse)
@@ -50,7 +50,8 @@ def get_tenant_profile(
 def update_tenant_profile(
     request: TenantUpdate,
     tenant: Tenant = Depends(require_authenticated_tenant),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    _guard: User = Depends(require_permission("system.settings", "edit")),
 ):
     """Update tenant profile"""
     update_data = request.model_dump(exclude_unset=True)

@@ -5,6 +5,7 @@ import { useToast } from '../contexts/ToastContext';
 import refundService from '../services/refundService';
 import type { RefundListItem, RefundStatus } from '../types/billing';
 import { formatDateTime } from '../utils/calendarDate';
+import { canEdit } from '../config/modulePermissions';
 
 const STATUS_COLORS: Record<RefundStatus, string> = {
   pending: 'bg-amber-100 text-amber-700',
@@ -49,8 +50,16 @@ const RefundList: React.FC = () => {
   const [processRef, setProcessRef] = useState('');
 
   const role = user?.roles?.[0];
+  // Approve/Reject is a deliberately narrower, hardcoded admin-only tier —
+  // matches the backend's separate _require_billing_admin check on those two
+  // endpoints (see docs/security/ROLE_PERMISSIONS_DECISIONS_2026-07-25.md),
+  // which does NOT consult the billing permission matrix at all. Every other
+  // action here (Process/Receipt, and the Actions column itself) maps to the
+  // backend's _require_billing_staff, i.e. actual "billing: edit" access —
+  // using canEdit() instead of a hardcoded role list means it stays correct
+  // if a hospital admin grants/revokes billing edit for any role.
   const isAdmin = ['super_admin', 'admin'].includes(role || '');
-  const isBillingStaff = ['super_admin', 'admin', 'cashier', 'pharmacist'].includes(role || '');
+  const isBillingStaff = canEdit('billing', user?.roles);
 
   const load = useCallback(async () => {
     setLoading(true);

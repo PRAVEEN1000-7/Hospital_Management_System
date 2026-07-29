@@ -8,7 +8,7 @@ from typing import Optional
 
 from ..database import get_db
 from ..dependencies import get_current_active_user
-from ..core.module_roles import edit_roles
+from ..core.module_roles import check_permission
 from ..models.user import User
 from ..schemas.refund import (
     RefundCreate, RefundResponse, PaginatedRefundResponse,
@@ -26,7 +26,6 @@ router = APIRouter(prefix="/refunds", tags=["Billing — Refunds"])
 # Driven by the shared "billing" permission matrix — see the flagged
 # conflict in docs/security/ROLE_PERMISSIONS_DECISIONS_2026-07-25.md.
 BILLING_ADMIN_ROLES = {"super_admin", "admin"}
-BILLING_STAFF_ROLES = set(edit_roles("billing"))
 
 
 def _has_any_role(current_user: User, allowed_roles: set[str]) -> bool:
@@ -34,10 +33,16 @@ def _has_any_role(current_user: User, allowed_roles: set[str]) -> bool:
     return bool(roles & {r.lower() for r in allowed_roles})
 
 
-def _require_billing_staff(current_user: User) -> None:
-    if not _has_any_role(current_user, BILLING_STAFF_ROLES):
+def _require_billing_staff(db: Session, current_user: User) -> None:
+    if not check_permission(db, current_user, "billing", "edit"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Billing staff access required")
+
+
+def _require_billing_view(db: Session, current_user: User) -> None:
+    if not check_permission(db, current_user, "billing", "view"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Access denied")
 
 
 def _require_billing_admin(current_user: User) -> None:
@@ -53,7 +58,7 @@ async def request_new_refund(
     current_user: User = Depends(get_current_active_user),
 ):
     """Request a refund for a completed payment."""
-    _require_billing_staff(current_user)
+    _require_billing_staff(db, current_user)
     try:
         refund = request_refund(db, data, current_user.id, current_user.hospital_id)
         db.refresh(refund)
@@ -77,7 +82,7 @@ async def list_all_refunds(
     current_user: User = Depends(get_current_active_user),
 ):
     """List all refunds with optional status, invoice, and patient filters."""
-    _require_billing_staff(current_user)
+    _require_billing_view(db, current_user)
     try:
         return list_refunds(
             db, current_user.hospital_id, page, limit,
@@ -95,7 +100,7 @@ async def get_refund(
     current_user: User = Depends(get_current_active_user),
 ):
     """Get refund details."""
-    _require_billing_staff(current_user)
+    _require_billing_view(db, current_user)
     refund = get_refund_by_id(db, refund_id)
     if not refund or str(refund.hospital_id) != str(current_user.hospital_id):
         raise HTTPException(status_code=404, detail="Refund not found")
@@ -115,7 +120,7 @@ async def get_refund_pdf(
     from datetime import datetime
     from ..models.user import Hospital
 
-    _require_billing_staff(current_user)
+    _require_billing_view(db, current_user)
     refund = get_refund_by_id(db, refund_id)
     if not refund or str(refund.hospital_id) != str(current_user.hospital_id):
         raise HTTPException(status_code=404, detail="Refund not found")
@@ -266,7 +271,7 @@ async def process_refund_endpoint(
     current_user: User = Depends(get_current_active_user),
 ):
     """Mark an approved refund as processed (money returned to patient)."""
-    _require_billing_staff(current_user)
+    _require_billing_staff(db, current_user)
     refund = get_refund_by_id(db, refund_id)
     if not refund or str(refund.hospital_id) != str(current_user.hospital_id):
         raise HTTPException(status_code=404, detail="Refund not found")

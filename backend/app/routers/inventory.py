@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..dependencies import get_current_active_user, require_any_role
-from ..core.module_roles import view_roles, edit_roles
+from ..core.module_roles import require_permission
 from ..models.user import User
 from ..schemas.inventory import (
     SupplierCreate, SupplierUpdate, SupplierResponse,
@@ -45,9 +45,9 @@ cycle_counts_router = APIRouter(prefix="/inventory/cycle-counts", tags=["Invento
 # spreadsheet, pharmacist has view-only access here (they get full edit
 # rights on their own Pharmacy module instead); only inventory_manager/admin
 # can create/edit POs, GRNs, suppliers, and adjustments.
-inventory_view_roles = require_any_role(*view_roles("inventory"))
-inventory_manage_roles = require_any_role(*edit_roles("inventory"))
-grn_verify_roles = require_any_role(*edit_roles("inventory"))
+inventory_view_roles = require_permission("inventory", "view")
+inventory_manage_roles = require_permission("inventory", "edit")
+grn_verify_roles = require_permission("inventory", "edit")
 # PO vendor-payment submodule is admin-only by design — recording that the
 # hospital paid a supplier is a financial control action, distinct from the
 # inventory_manager/pharmacist roles that can merely raise/receive POs.
@@ -142,7 +142,7 @@ async def list_suppliers(
     search: Optional[str] = None,
     is_active: Optional[bool] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(inventory_manage_roles),
+    current_user: User = Depends(inventory_view_roles),
 ):
     """List suppliers with pagination and search."""
     result = svc.list_suppliers(db, current_user.hospital_id, page, limit, search, is_active)
@@ -170,7 +170,7 @@ async def create_supplier(
 async def get_supplier(
     supplier_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(inventory_manage_roles),
+    current_user: User = Depends(inventory_view_roles),
 ):
     """Get supplier by ID."""
     supplier = svc.get_supplier(db, supplier_id)
@@ -224,7 +224,7 @@ async def list_purchase_orders(
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(inventory_manage_roles),
+    current_user: User = Depends(inventory_view_roles),
 ):
     """List purchase orders with pagination."""
     result = svc.list_purchase_orders(
@@ -254,7 +254,7 @@ async def create_purchase_order(
 async def get_purchase_order(
     po_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(inventory_manage_roles),
+    current_user: User = Depends(inventory_view_roles),
 ):
     """Get purchase order by ID."""
     po = svc.get_purchase_order(db, po_id)
@@ -382,7 +382,7 @@ async def list_grns(
 async def create_grn(
     payload: GRNCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(inventory_view_roles),
+    current_user: User = Depends(grn_verify_roles),
 ):
     """Create a new goods receipt note."""
     grn = svc.create_grn(db, payload, current_user.hospital_id, current_user.id)
@@ -514,7 +514,7 @@ async def list_adjustments(
     limit: int = Query(10, ge=1, le=100),
     status_filter: Optional[str] = Query(None, alias="status"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(inventory_manage_roles),
+    current_user: User = Depends(inventory_view_roles),
 ):
     """List stock adjustments."""
     result = svc.list_stock_adjustments(
@@ -565,7 +565,7 @@ async def list_cycle_counts(
     limit: int = Query(10, ge=1, le=100),
     status_filter: Optional[str] = Query(None, alias="status"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(inventory_manage_roles),
+    current_user: User = Depends(inventory_view_roles),
 ):
     """List cycle counts."""
     result = svc.list_cycle_counts(
@@ -591,7 +591,7 @@ async def create_cycle_count(
 async def get_cycle_count(
     cc_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(inventory_manage_roles),
+    current_user: User = Depends(inventory_view_roles),
 ):
     """Get cycle count by ID."""
     cc = svc.get_cycle_count(db, cc_id)

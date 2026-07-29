@@ -177,6 +177,30 @@ class RolePermission(Base):
 
 
 # ──────────────────────────────────────────────────
+# HospitalPermissionOverride
+# ──────────────────────────────────────────────────
+# Sparse per-hospital deltas on top of the static MODULE_ROLES matrix
+# (backend/app/core/module_roles.py). Absence of a row for a given
+# (hospital_id, permission_key, role_name) means "use the static default" —
+# see module_roles.get_effective_matrix().
+class HospitalPermissionOverride(Base):
+    __tablename__ = "hospital_permission_overrides"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=False)
+    permission_key = Column(String(60), nullable=False)
+    role_name = Column(String(50), nullable=False)
+    access_level = Column(String(10), nullable=False, default="none")  # 'none' | 'view' | 'edit'
+    updated_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("hospital_id", "permission_key", "role_name", name="uq_hospital_perm_override"),
+    )
+
+
+# ──────────────────────────────────────────────────
 # RefreshToken
 # ──────────────────────────────────────────────────
 class RefreshToken(Base):

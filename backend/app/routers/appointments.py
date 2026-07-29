@@ -11,7 +11,7 @@ from ..database import get_db
 from ..models.user import User, Hospital
 from ..models.appointment import Doctor
 from ..dependencies import get_current_active_user, require_any_role
-from ..core.module_roles import view_roles, edit_roles
+from ..core.module_roles import require_permission
 from ..schemas.appointment import (
     AppointmentCreate,
     AppointmentUpdate,
@@ -43,8 +43,8 @@ router = APIRouter(prefix="/appointments", tags=["Appointments"])
 
 # "OPD Assignment" and "Manage Appointments" share this same booking/CRUD
 # surface and have identical role rows in the matrix, so both map to appt.manage.
-appt_view_guard = require_any_role(*view_roles("appt.manage"))
-appt_edit_guard = require_any_role(*edit_roles("appt.manage"))
+appt_view_guard = require_permission("appt.manage", "view")
+appt_edit_guard = require_permission("appt.manage", "edit")
 
 
 @router.post("", response_model=AppointmentResponse, status_code=status.HTTP_201_CREATED)

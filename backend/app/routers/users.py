@@ -12,7 +12,7 @@ from ..database import get_db
 from ..models.user import User, UserRole, Role, Hospital
 from ..models.appointment import Doctor
 from ..dependencies import get_current_active_user, require_any_role
-from ..core.module_roles import view_roles, edit_roles
+from ..core.module_roles import require_permission
 
 # StaffDirectory.tsx ("general.staff_directory": admin+doctor edit, nurse/
 # receptionist/report_viewer view) and UserManagement.tsx ("system.user_management":
@@ -21,8 +21,8 @@ from ..core.module_roles import view_roles, edit_roles
 # the union (the wider "general.staff_directory" edit tier) — the frontend
 # route guard on /user-management itself stays admin-only (system.user_management)
 # so only StaffDirectory.tsx actually exposes those actions to a doctor.
-staff_directory_view_guard = require_any_role(*view_roles("general.staff_directory"))
-staff_directory_edit_guard = require_any_role(*edit_roles("general.staff_directory"))
+staff_directory_view_guard = require_permission("general.staff_directory", "view")
+staff_directory_edit_guard = require_permission("general.staff_directory", "edit")
 from ..schemas.user import (
     UserCreate,
     UserUpdate,
@@ -225,7 +225,7 @@ async def suggest_username_endpoint(
     first_name: str = Query(..., min_length=1),
     last_name: str = Query(..., min_length=1),
     db: Session = Depends(get_db),
-    current_user: User = Depends(staff_directory_edit_guard),
+    current_user: User = Depends(staff_directory_view_guard),
 ):
     """Suggest the next username in the hospital's standard template:
     HospitalCode + First2(first name) + First2(last name) + _ + 3-digit sequence."""
@@ -237,7 +237,7 @@ async def suggest_username_endpoint(
 async def check_username_exists(
     username: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(staff_directory_edit_guard),
+    current_user: User = Depends(staff_directory_view_guard),
 ):
     """Check if a username already exists within the current hospital."""
     existing = (
@@ -256,7 +256,7 @@ async def check_username_exists(
 async def check_email_exists(
     email: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(staff_directory_edit_guard),
+    current_user: User = Depends(staff_directory_view_guard),
 ):
     """Check if an email already exists within the current hospital (case-insensitive)."""
     existing = (

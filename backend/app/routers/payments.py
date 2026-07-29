@@ -8,7 +8,7 @@ from typing import Optional
 
 from ..database import get_db
 from ..dependencies import get_current_active_user
-from ..core.module_roles import view_roles, edit_roles
+from ..core.module_roles import check_permission
 from ..models.user import User
 from ..schemas.payment import PaymentCreate, PaymentResponse, PaginatedPaymentResponse
 from ..services.payment_service import (
@@ -21,23 +21,14 @@ router = APIRouter(prefix="/payments", tags=["Billing — Payments"])
 
 # Driven by the shared "billing" permission matrix — see the flagged
 # conflict in docs/security/ROLE_PERMISSIONS_DECISIONS_2026-07-25.md.
-BILLING_STAFF_ROLES = set(edit_roles("billing"))
-BILLING_VIEW_ROLES = set(view_roles("billing"))
-
-
-def _has_any_role(current_user: User, allowed_roles: set[str]) -> bool:
-    roles = {str(r).strip().lower() for r in (current_user.roles or [])}
-    return bool(roles & {r.lower() for r in allowed_roles})
-
-
-def _require_billing_staff(current_user: User) -> None:
-    if not _has_any_role(current_user, BILLING_STAFF_ROLES):
+def _require_billing_staff(db: Session, current_user: User) -> None:
+    if not check_permission(db, current_user, "billing", "edit"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Billing staff access required")
 
 
-def _require_billing_view(current_user: User) -> None:
-    if not _has_any_role(current_user, BILLING_VIEW_ROLES):
+def _require_billing_view(db: Session, current_user: User) -> None:
+    if not check_permission(db, current_user, "billing", "view"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Access denied")
 
@@ -49,7 +40,7 @@ async def record_new_payment(
     current_user: User = Depends(get_current_active_user),
 ):
     """Record a payment against an invoice."""
-    _require_billing_staff(current_user)
+    _require_billing_staff(db, current_user)
     try:
         payment = record_payment(db, data, current_user.id, current_user.hospital_id)
         db.refresh(payment)
@@ -77,7 +68,7 @@ async def list_all_payments(
     current_user: User = Depends(get_current_active_user),
 ):
     """List all payments with filters and pagination."""
-    _require_billing_view(current_user)
+    _require_billing_view(db, current_user)
     try:
         return list_payments(
             db, current_user.hospital_id, page, limit,
@@ -99,7 +90,7 @@ async def list_invoice_payments(
     current_user: User = Depends(get_current_active_user),
 ):
     """Get all payments for a specific invoice."""
-    _require_billing_view(current_user)
+    _require_billing_view(db, current_user)
     try:
         return list_payments(db, current_user.hospital_id, page, limit, invoice_id=invoice_id)
     except Exception as e:
@@ -116,7 +107,7 @@ async def list_payment_collectors(
     populate the Collected By dropdown at fee-collection time. Open to the
     same billing-staff roles that can record payments (not admin-only) so
     receptionists can populate it themselves."""
-    _require_billing_staff(current_user)
+    _require_billing_staff(db, current_user)
     return list_collectors(db, current_user.hospital_id)
 
 
@@ -127,7 +118,7 @@ async def get_payment(
     current_user: User = Depends(get_current_active_user),
 ):
     """Get payment details."""
-    _require_billing_view(current_user)
+    _require_billing_view(db, current_user)
     payment = get_payment_by_id(db, payment_id)
     if not payment or str(payment.hospital_id) != str(current_user.hospital_id):
         raise HTTPException(status_code=404, detail="Payment not found")

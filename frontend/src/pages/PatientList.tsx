@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import type { Patient } from '../types/patient';
 import { format } from 'date-fns';
 import VerifiedBadge from '../components/patients/VerifiedBadge';
+import { canEdit } from '../config/modulePermissions';
 
 const PatientList: React.FC = () => {
   const navigate = useNavigate();
@@ -27,9 +28,8 @@ const PatientList: React.FC = () => {
   const [isDeleting, setIsDeleting] = useState(false);
   const limit = 10;
   const searchTimeoutRef = useRef<number | null>(null);
-  const role = user?.roles?.[0] || '';
-  const canRegister = ['super_admin', 'admin', 'receptionist'].includes(role);
-  const canDelete = ['super_admin', 'admin'].includes(role);
+  const canRegister = canEdit('general.patients', user?.roles);
+  const canDelete = canEdit('general.patients', user?.roles);
 
   const fetchPatients = useCallback(async () => {
     setLoading(true);

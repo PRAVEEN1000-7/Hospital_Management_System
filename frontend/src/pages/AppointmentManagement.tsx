@@ -15,6 +15,7 @@ import type { Appointment, DoctorOption, AppointmentStatus, AppointmentStats, Ti
 import type { Invoice, PaymentMode, PaymentCollector } from '../types/billing';
 import type { PrescriptionListItem } from '../types/prescription';
 import type { OpticalPrescription } from '../types/optical';
+import { canEdit } from '../config/modulePermissions';
 
 const PAYMENT_MODES: { value: PaymentMode; label: string }[] = [
   { value: 'cash', label: 'Cash' },
@@ -79,8 +80,18 @@ const AppointmentManagement: React.FC = () => {
 
   const limit = 15;
 
+  // Collecting a fee ultimately calls paymentService.record() → POST
+  // /payments, which the backend gates on "billing: edit" (see
+  // docs/security/ROLE_PERMISSIONS_DECISIONS_2026-07-25.md — the client's
+  // matrix gives only admin/cashier billing access by default, which
+  // conflicts with receptionist previously being a valid fee collector).
+  // Using canEdit() instead of the old hardcoded role list means the button
+  // only shows when the click would actually succeed — no more "receptionist
+  // clicks Collect Fee, hits a 403" — and it re-appears automatically if a
+  // hospital admin grants billing edit to receptionist/pharmacist via Roles
+  // & Permissions.
+  const canCollectFee = canEdit('billing', user?.roles);
   const role = user?.roles?.[0] || '';
-  const canCollectFee = ['receptionist', 'cashier', 'admin', 'super_admin'].includes(role);
   const canProgressConsultation = role !== 'receptionist';
 
   const fetchStats = useCallback(async () => {

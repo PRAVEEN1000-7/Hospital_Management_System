@@ -38,6 +38,7 @@ import Profile from './pages/Profile';
 import HospitalSetup from './pages/HospitalSetup';
 import HospitalSettings from './pages/HospitalSettings';
 import QueueDisplayScreens from './pages/QueueDisplayScreens';
+import RolesPermissions from './pages/RolesPermissions';
 import Subscription from './pages/Subscription';
 
 // Appointment pages
@@ -135,8 +136,19 @@ const DefaultRedirect: React.FC = () => {
   return <Navigate to={user?.roles?.includes('super_admin') ? '/superadmin' : '/dashboard'} replace />;
 };
 
-// Wrapper component to get auth context values for NotificationProvider
-const AppWithNotifications: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+// Renders the actual route tree. Calling useAuth() here (not just for `user`)
+// is load-bearing: App() below has no state/props/context subscriptions of
+// its own, so it only ever renders ONCE at mount. If the allowedRoles(...)
+// calls below lived in App's own render instead, they'd be frozen forever at
+// whatever the per-hospital permission matrix looked like at that single
+// initial render (the static default, before AuthContext's permission-matrix
+// fetch even resolves) — a hospital admin granting a role access via Roles &
+// Permissions would never actually take effect client-side, no matter what
+// they saved. This component DOES re-render whenever AuthContext's value
+// changes (enabled-modules refresh, permission-matrix refresh, login/logout),
+// so allowedRoles()/hasAccess() are recomputed against the current effective
+// matrix every time.
+const AppWithNotifications: React.FC = () => {
   const { user } = useAuth();
 
   return (
@@ -145,22 +157,9 @@ const AppWithNotifications: React.FC<{ children: React.ReactNode }> = ({ childre
       userRole={user?.roles?.[0]}
       userRoles={user?.roles}
     >
-      {children}
-    </NotificationProvider>
-  );
-};
-
-const App: React.FC = () => {
-  return (
-    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-      <AuthProvider>
-        <ToastProvider>
-          <ConfirmProvider>
-            <DashboardRefreshProvider>
-              <AppWithNotifications>
-                <ToastContainer />
-                <NotificationContainer />
-                <Routes>
+      <ToastContainer />
+      <NotificationContainer />
+      <Routes>
             {/* Public */}
             <Route path="/login" element={<Login />} />
             <Route path="/reset-password" element={<ResetPassword />} />
@@ -242,6 +241,11 @@ const App: React.FC = () => {
               <Route path="/settings/queue-screens" element={
                 <ProtectedRoute allowedRoles={allowedRoles('system.settings', 'edit')}>
                   <QueueDisplayScreens />
+                </ProtectedRoute>
+              } />
+              <Route path="/roles-permissions" element={
+                <ProtectedRoute allowedRoles={allowedRoles('system.user_management', 'edit')}>
+                  <RolesPermissions />
                 </ProtectedRoute>
               } />
 
@@ -868,8 +872,19 @@ const App: React.FC = () => {
             <Route path="/" element={<DefaultRedirect />} />
             <Route path="/change-password" element={<Navigate to="/profile" replace />} />
             <Route path="*" element={<DefaultRedirect />} />
-            </Routes>
-              </AppWithNotifications>
+      </Routes>
+    </NotificationProvider>
+  );
+};
+
+const App: React.FC = () => {
+  return (
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <AuthProvider>
+        <ToastProvider>
+          <ConfirmProvider>
+            <DashboardRefreshProvider>
+              <AppWithNotifications />
             </DashboardRefreshProvider>
           </ConfirmProvider>
         </ToastProvider>

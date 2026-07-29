@@ -14,7 +14,7 @@ from ..models.user import User
 from ..models.patient import Patient
 from ..models.appointment import Appointment, AppointmentQueue, Doctor
 from ..dependencies import get_current_active_user, require_any_role
-from ..core.module_roles import view_roles, edit_roles
+from ..core.module_roles import require_permission
 from ..schemas.appointment import WalkInRegister, WalkInAssignDoctor
 from pydantic import BaseModel
 from ..services.appointment_service import (
@@ -38,8 +38,8 @@ router = APIRouter(prefix="/walk-ins", tags=["Walk-in Registration"])
 # Covers both "OPD Assignment" and "Walk in queue" submodules — their edit
 # tiers are identical (admin/doctor/nurse/receptionist); walkin_queue's view
 # tier additionally includes visiting_doctor + report_viewer.
-walkin_view_guard = require_any_role(*view_roles("appt.walkin_queue"))
-walkin_edit_guard = require_any_role(*edit_roles("appt.walkin_queue"))
+walkin_view_guard = require_permission("appt.walkin_queue", "view")
+walkin_edit_guard = require_permission("appt.walkin_queue", "edit")
 
 
 class ConsultationNotesPayload(BaseModel):

@@ -19,15 +19,15 @@ from ..database import get_db
 from ..models.user import User
 from ..models.prescription import Medicine as MedicineModel, Prescription
 from ..dependencies import get_current_active_user, require_any_role
-from ..core.module_roles import view_roles, edit_roles
+from ..core.module_roles import require_permission
 from ..services import dispensing_service as svc
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/pharmacy", tags=["Pharmacy Dispensing"])
 
-pharmacy_view_guard = require_any_role(*view_roles("pharmacy"))
-pharmacy_edit_guard = require_any_role(*edit_roles("pharmacy"))
+pharmacy_view_guard = require_permission("pharmacy", "view")
+pharmacy_edit_guard = require_permission("pharmacy", "edit")
 
 
 # ═══════════════════════════════════════════════════════════════════════════

@@ -15,7 +15,7 @@ from ..database import get_db
 from ..models.user import User
 from ..models.optical import OpticalProduct as OpticalProductModel, OpticalBatch
 from ..dependencies import get_current_active_user, require_any_role
-from ..core.module_roles import view_roles, edit_roles
+from ..core.module_roles import require_permission
 from ..services.notification_service import notify_hospital_users
 from ..schemas.optical import (
     # Product
@@ -42,8 +42,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/optical", tags=["Optical"])
 
-optical_view_guard = require_any_role(*view_roles("optical"))
-optical_edit_guard = require_any_role(*edit_roles("optical"))
+optical_view_guard = require_permission("optical", "view")
+optical_edit_guard = require_permission("optical", "edit")
 
 
 # ═══ Dashboard ═══

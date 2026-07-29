@@ -13,7 +13,7 @@ from ..models.user import User
 from ..models.patient import Patient
 from ..models.appointment import Doctor, Appointment, AppointmentQueue, Waitlist
 from ..dependencies import get_current_active_user, require_any_role
-from ..core.module_roles import view_roles, edit_roles
+from ..core.module_roles import require_permission
 from ..schemas.appointment import (
     WaitlistCreate,
     WaitlistUpdate,
@@ -39,8 +39,8 @@ from pydantic import BaseModel
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/waitlist", tags=["Waitlist"])
 
-waitlist_view_guard = require_any_role(*view_roles("appt.waitlist"))
-waitlist_edit_guard = require_any_role(*edit_roles("appt.waitlist"))
+waitlist_view_guard = require_permission("appt.waitlist", "view")
+waitlist_edit_guard = require_permission("appt.waitlist", "edit")
 
 
 class BookFromWaitlistPayload(BaseModel):

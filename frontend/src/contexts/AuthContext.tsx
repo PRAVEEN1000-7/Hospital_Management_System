@@ -5,6 +5,8 @@ import authService from '../services/authService';
 import { hospitalService } from '../services/hospitalService';
 import api from '../services/api';
 import { setActiveTimeZone } from '../utils/calendarDate';
+import rolePermissionService from '../services/rolePermissionService';
+import { setEffectiveMatrix } from '../config/modulePermissions';
 
 // The public Queue Display kiosk (/public/queue/:code) is intentionally
 // unauthenticated and standalone — it must never trigger auth/tenant calls
@@ -44,6 +46,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     isLoading: false,
   });
   const [enabledModules, setEnabledModules] = useState<string[]>([]);
+  // Bumped whenever the effective permission matrix (module-level variable in
+  // modulePermissions.ts) is (re)set. setEffectiveMatrix() itself isn't React
+  // state, so nothing would otherwise force AuthContext's consumers (route
+  // gating in App.tsx, nav gating in Layout.tsx, etc.) to re-render and pick
+  // up a freshly-fetched matrix — this state bump is what makes that happen
+  // deterministically, instead of accidentally piggybacking on enabledModules
+  // updates landing at the right moment.
+  const [matrixVersion, setMatrixVersion] = useState(0);
 
   // Every timestamp in the app should render in the logged-in user's HOSPITAL
   // timezone (set at hospital creation / in Hospital Settings), not whatever
@@ -80,19 +90,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [state.isAuthenticated, state.user, location.pathname]);
 
+  // Fetch this hospital's effective Roles & Permissions matrix once per
+  // login — same lifecycle as fetchModules above. super_admin bypasses every
+  // permission check already (see getAccess/hasAccess), so there's nothing
+  // to fetch for that role.
+  const fetchPermissionMatrix = useCallback(async () => {
+    if (!state.isAuthenticated || isPublicRoute(location.pathname)) return;
+    if (state.user?.roles.includes('super_admin')) {
+      setEffectiveMatrix(null);
+      setMatrixVersion(v => v + 1);
+      return;
+    }
+    try {
+      const matrix = await rolePermissionService.getMatrix();
+      setEffectiveMatrix(matrix);
+    } catch {
+      // Fall back to the static default matrix rather than blocking the app.
+      setEffectiveMatrix(null);
+    } finally {
+      setMatrixVersion(v => v + 1);
+    }
+  }, [state.isAuthenticated, state.user, location.pathname]);
+
   // Run once whenever auth state changes (login / logout)
   useEffect(() => {
     fetchModules();
-  }, [fetchModules]);
+    fetchPermissionMatrix();
+  }, [fetchModules, fetchPermissionMatrix]);
 
   // Re-fetch when the hospital admin switches back to this tab so any
   // module changes made by a SuperAdmin in another tab take effect immediately.
   useEffect(() => {
     if (!state.isAuthenticated || state.user?.roles.includes('super_admin')) return;
-    const handleFocus = () => fetchModules();
+    const handleFocus = () => { fetchModules(); fetchPermissionMatrix(); };
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
-  }, [state.isAuthenticated, state.user, fetchModules]);
+  }, [state.isAuthenticated, state.user, fetchModules, fetchPermissionMatrix]);
 
   const login = useCallback(async (credentials: LoginCredentials) => {
     setState(prev => ({ ...prev, isLoading: true }));
@@ -119,6 +152,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isLoading: false,
     });
     setEnabledModules([]);
+    setEffectiveMatrix(null);
+    setMatrixVersion(v => v + 1);
   }, []);
 
   // Patch the in-memory user and keep localStorage in sync (e.g. after photo upload)
@@ -179,6 +214,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           isLoading: false,
         });
         setEnabledModules([]);
+        setEffectiveMatrix(null);
+        setMatrixVersion(v => v + 1);
       }
     };
     window.addEventListener('storage', handleStorage);

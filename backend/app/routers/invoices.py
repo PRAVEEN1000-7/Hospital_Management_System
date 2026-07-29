@@ -10,7 +10,7 @@ import uuid
 
 from ..database import get_db
 from ..dependencies import get_current_active_user
-from ..core.module_roles import view_roles, edit_roles
+from ..core.module_roles import check_permission
 from ..models.user import User
 from ..models.appointment import Appointment
 from ..schemas.invoice import (
@@ -36,8 +36,6 @@ router = APIRouter(prefix="/invoices", tags=["Billing — Invoices"])
 # matches what other billing-adjacent features (e.g. consultation fee
 # "Collected By") expect.
 BILLING_ADMIN_ROLES = {"super_admin", "admin"}
-BILLING_STAFF_ROLES = set(edit_roles("billing"))
-BILLING_VIEW_ROLES = set(view_roles("billing"))
 
 
 def _has_any_role(current_user: User, allowed_roles: set[str]) -> bool:
@@ -45,14 +43,14 @@ def _has_any_role(current_user: User, allowed_roles: set[str]) -> bool:
     return bool(roles & {r.lower() for r in allowed_roles})
 
 
-def _require_billing_staff(current_user: User) -> None:
-    if not _has_any_role(current_user, BILLING_STAFF_ROLES):
+def _require_billing_staff(db: Session, current_user: User) -> None:
+    if not check_permission(db, current_user, "billing", "edit"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Billing staff access required")
 
 
-def _require_billing_view(current_user: User) -> None:
-    if not _has_any_role(current_user, BILLING_VIEW_ROLES):
+def _require_billing_view(db: Session, current_user: User) -> None:
+    if not check_permission(db, current_user, "billing", "view"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Access denied")
 
@@ -87,7 +85,7 @@ async def get_medicine_lookup(
     
     Only accessible to billing staff.
     """
-    _require_billing_staff(current_user)
+    _require_billing_staff(db, current_user)
     
     from ..services.inventory_service import get_medicine_for_invoice
     
@@ -123,7 +121,7 @@ async def create_new_invoice(
     current_user: User = Depends(get_current_active_user),
 ):
     """Create a new draft invoice with optional line items."""
-    _require_billing_staff(current_user)
+    _require_billing_staff(db, current_user)
     try:
         invoice = create_invoice(db, data, current_user.id, current_user.hospital_id)
         return InvoiceResponse.model_validate(invoice)
@@ -142,7 +140,7 @@ async def get_or_create_consultation_invoice(
     current_user: User = Depends(get_current_active_user),
 ):
     """Create (or return existing) issued consultation invoice for an appointment."""
-    _require_billing_staff(current_user)
+    _require_billing_staff(db, current_user)
     try:
         appointment_uuid = uuid.UUID(appointment_id)
     except ValueError:
@@ -194,7 +192,7 @@ async def list_all_invoices(
     current_user: User = Depends(get_current_active_user),
 ):
     """List invoices with filters and pagination."""
-    _require_billing_view(current_user)
+    _require_billing_view(db, current_user)
     try:
         return list_invoices(
             db, current_user.hospital_id, page, limit,
@@ -216,7 +214,7 @@ async def list_patient_invoices(
     current_user: User = Depends(get_current_active_user),
 ):
     """Get all invoices for a specific patient."""
-    _require_billing_view(current_user)
+    _require_billing_view(db, current_user)
     try:
         return list_invoices(db, current_user.hospital_id, page, limit, patient_id=patient_id)
     except Exception as e:
@@ -231,7 +229,7 @@ async def payment_status_summary(
 ):
     """BRD-001 — counts + totals per payment-status bucket, for the Reports/
     Analytics dashboard's Financial panel."""
-    _require_billing_view(current_user)
+    _require_billing_view(db, current_user)
     return get_payment_status_summary(db, current_user.hospital_id)
 
 
@@ -242,7 +240,7 @@ async def get_invoice(
     current_user: User = Depends(get_current_active_user),
 ):
     """Get full invoice details including line items and payments."""
-    _require_billing_view(current_user)
+    _require_billing_view(db, current_user)
     invoice = get_invoice_by_id(db, invoice_id)
     if not invoice or str(invoice.hospital_id) != str(current_user.hospital_id):
         raise HTTPException(status_code=404, detail="Invoice not found")
@@ -266,7 +264,7 @@ async def get_invoice_pdf(
     from datetime import datetime
     from ..models.user import Hospital
 
-    _require_billing_view(current_user)
+    _require_billing_view(db, current_user)
     invoice = get_invoice_by_id(db, invoice_id)
     if not invoice or str(invoice.hospital_id) != str(current_user.hospital_id):
         raise HTTPException(status_code=404, detail="Invoice not found")
@@ -395,7 +393,7 @@ async def update_invoice_header(
     current_user: User = Depends(get_current_active_user),
 ):
     """Update draft invoice header fields."""
-    _require_billing_staff(current_user)
+    _require_billing_staff(db, current_user)
     invoice = get_invoice_by_id(db, invoice_id)
     if not invoice or str(invoice.hospital_id) != str(current_user.hospital_id):
         raise HTTPException(status_code=404, detail="Invoice not found")
@@ -417,7 +415,7 @@ async def issue_invoice_endpoint(
     current_user: User = Depends(get_current_active_user),
 ):
     """Issue a draft invoice (makes it payable)."""
-    _require_billing_staff(current_user)
+    _require_billing_staff(db, current_user)
     invoice = get_invoice_by_id(db, invoice_id)
     if not invoice or str(invoice.hospital_id) != str(current_user.hospital_id):
         raise HTTPException(status_code=404, detail="Invoice not found")
@@ -462,7 +460,7 @@ async def add_line_item(
     current_user: User = Depends(get_current_active_user),
 ):
     """Add a line item to a draft invoice."""
-    _require_billing_staff(current_user)
+    _require_billing_staff(db, current_user)
     invoice = get_invoice_by_id(db, invoice_id)
     if not invoice or str(invoice.hospital_id) != str(current_user.hospital_id):
         raise HTTPException(status_code=404, detail="Invoice not found")
@@ -485,7 +483,7 @@ async def remove_line_item(
     current_user: User = Depends(get_current_active_user),
 ):
     """Remove a line item from a draft invoice."""
-    _require_billing_staff(current_user)
+    _require_billing_staff(db, current_user)
     invoice = get_invoice_by_id(db, invoice_id)
     if not invoice or str(invoice.hospital_id) != str(current_user.hospital_id):
         raise HTTPException(status_code=404, detail="Invoice not found")

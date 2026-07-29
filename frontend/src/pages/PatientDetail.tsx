@@ -13,8 +13,7 @@ import EmailVerificationField from '../components/patients/EmailVerificationFiel
 import PhoneVerificationField from '../components/patients/PhoneVerificationField';
 import PrescriptionHistoryGrid from '../components/patients/PrescriptionHistoryGrid';
 import PatientBillingSection from '../components/patients/PatientBillingSection';
-
-const EDIT_ALLOWED_ROLES = ['super_admin', 'admin', 'receptionist'];
+import { canEdit as canEditModule } from '../config/modulePermissions';
 
 // Returns the section heading to render above rows[idx] (or undefined) — a
 // heading only appears when a row's non-empty section differs from the
@@ -31,7 +30,7 @@ const PatientDetail: React.FC = () => {
   const navigate = useNavigate();
   const toast = useToast();
   const { user, isModuleEnabled } = useAuth();
-  const canEdit = Boolean(user?.roles?.some(r => EDIT_ALLOWED_ROLES.includes(r)));
+  const canEdit = canEditModule('general.patients', user?.roles);
   const [labResults, setLabResults] = useState<PatientLabResult[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [patient, setPatient] = useState<Patient | null>(null);

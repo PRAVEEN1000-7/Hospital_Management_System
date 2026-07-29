@@ -17,7 +17,7 @@ import {
   formatNotificationMessage,
   getRelativeTime,
 } from '../../utils/notificationUtils';
-import { hasAccess } from '../../config/modulePermissions';
+import { hasAccess, canEdit } from '../../config/modulePermissions';
 
 const Layout: React.FC = () => {
   const { user, logout, isModuleEnabled, isEyeHospitalFeatureEnabled } = useAuth();
@@ -629,12 +629,14 @@ const Layout: React.FC = () => {
       { to: '/multitenant', label: 'Multi-Tenant Control', icon: 'hub' },
       { to: '/hospital-setup', label: 'Hospital Setup', icon: 'local_hospital' },
       { to: '/user-management', label: 'User Management', icon: 'admin_panel_settings' },
+      { to: '/roles-permissions', label: 'Roles & Permissions', icon: 'shield_person' },
       { to: '/settings', label: 'Settings', icon: 'settings' },
     );
   } else if (hasRole('admin')) {
     systemNavItems.push(
       { to: '/subscription', label: 'Subscription', icon: 'credit_card' },
       { to: '/user-management', label: 'User Management', icon: 'admin_panel_settings' },
+      { to: '/roles-permissions', label: 'Roles & Permissions', icon: 'shield_person' },
       { to: '/settings', label: 'Settings', icon: 'settings' },
     );
   }
@@ -1162,8 +1164,12 @@ const Layout: React.FC = () => {
 
       {/* Main Area */}
       <main className="flex-1 flex flex-col overflow-hidden bg-slate-50/50">
-        {/* Trial expiry banner — shows for trialing tenants with ≤14 days left */}
-        {!user?.roles?.includes('super_admin') && <TrialBanner />}
+        {/* Trial expiry banner — shows for trialing tenants with ≤14 days left.
+            GET /tenant/subscription is edit-gated on "system.subscription"
+            (admin-only per the shared matrix), so only render/fetch it for
+            roles that can actually pass — avoids a guaranteed 403 for every
+            other role on every page load. */}
+        {!user?.roles?.includes('super_admin') && canEdit('system.subscription', effectiveRoles) && <TrialBanner />}
         {/* Top Header */}
         <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 md:px-8 shrink-0 z-10">
           <div className="flex items-center gap-3 min-w-0">

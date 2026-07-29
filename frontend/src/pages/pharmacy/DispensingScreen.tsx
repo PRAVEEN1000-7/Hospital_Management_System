@@ -10,6 +10,7 @@ import pharmacyService, {
 import type { Medicine, MedicineBatch } from '../../types/pharmacy';
 import { formatDateOnly, formatDateTime } from '../../utils/calendarDate';
 import { useListKeyboardNav } from '../../hooks/useListKeyboardNav';
+import { canEdit } from '../../config/modulePermissions';
 
 type DispensingPrescriptionItem = PrescriptionItemWithStock;
 
@@ -169,8 +170,12 @@ const DispensingScreen: React.FC = () => {
   const [extraItemResults, setExtraItemResults] = useState<Medicine[]>([]);
   const [showExtraItemSearch, setShowExtraItemSearch] = useState(false);
 
-  const role = user?.roles?.[0];
-  const hasPharmacyAccess = ['pharmacist', 'admin', 'super_admin'].includes(role || '');
+  // Dispensing is a mutating action — the route itself is already gated to
+  // edit-level pharmacy access (allowedRoles('pharmacy','edit') in App.tsx),
+  // so this mirrors that with canEdit() instead of a hardcoded role list,
+  // keeping it correct if a hospital admin grants pharmacy edit to a role
+  // beyond pharmacist/admin.
+  const hasPharmacyAccess = canEdit('pharmacy', user?.roles);
 
   // Load prescription details
   useEffect(() => {
@@ -727,7 +732,7 @@ const DispensingScreen: React.FC = () => {
       <div className="max-w-7xl mx-auto p-6">
         <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
           <h2 className="text-lg font-semibold text-red-800">Access Denied</h2>
-          <p className="text-red-600 mt-2">Only pharmacists can access this page.</p>
+          <p className="text-red-600 mt-2">You don't have access to edit this.</p>
         </div>
       </div>
     );

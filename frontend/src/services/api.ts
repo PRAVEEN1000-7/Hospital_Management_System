@@ -75,6 +75,46 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+// ── Error detail normalization ──────────────────────────────────────────────
+
+/**
+ * FastAPI's `detail` field is a plain string for handwritten HTTPExceptions
+ * (e.g. "Cannot delete", "Batch number already exists") — those are already
+ * good, specific, human messages and are left untouched. But on a 422
+ * (pydantic request-validation failure), `detail` is instead an ARRAY of
+ * `{loc, msg, type}` objects. ~50 pages across the app do
+ * `showToast('error', err?.response?.data?.detail || 'fallback')`, and
+ * ToastContainer renders that value directly as a React child — handed an
+ * array of objects, React throws ("Objects are not valid as a React child"),
+ * crashing the toast (and the current view) instead of showing a message.
+ * Flattening it to a readable string here, once, fixes every one of those
+ * call sites without touching them individually.
+ */
+function humanizeFieldName(loc: unknown): string {
+  if (!Array.isArray(loc)) return '';
+  const field = loc.filter((p) => p !== 'body' && p !== 'query' && p !== 'path').pop();
+  if (typeof field !== 'string') return '';
+  return field.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+}
+
+function normalizeErrorDetail(detail: unknown): string | undefined {
+  if (detail == null) return undefined;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map((d) => {
+        if (typeof d === 'string') return d;
+        const field = humanizeFieldName(d?.loc);
+        const msg = typeof d?.msg === 'string' ? d.msg : '';
+        if (!msg) return '';
+        return field ? `${field}: ${msg}` : msg;
+      })
+      .filter(Boolean);
+    return messages.length ? messages.join('; ') : 'Please check the highlighted fields and try again.';
+  }
+  return 'Please check your input and try again.';
+}
+
 // ── Response interceptor: handle 401 / 402, log failures ──────────────────
 
 api.interceptors.response.use(
@@ -127,6 +167,42 @@ api.interceptors.response.use(
       window.dispatchEvent(new CustomEvent('hms:quota-exceeded', {
         detail: { message: error.response?.data?.detail || 'Subscription limit reached.' }
       }));
+    }
+
+    // Flatten any non-string `detail` (currently only ever a pydantic 422
+    // validation array in practice) into a readable string, for every status
+    // code, before anything else reads it — see normalizeErrorDetail() above.
+    if (error.response && typeof error.response.data?.detail !== 'undefined' && typeof error.response.data.detail !== 'string') {
+      error.response.data = { ...error.response.data, detail: normalizeErrorDetail(error.response.data.detail) };
+    }
+
+    // Every role/permission/subscription-gate denial across the app (Roles &
+    // Permissions matrix, module-not-in-plan, hospital inactive/suspended)
+    // comes back as a 403 with a backend-internal `detail` string like
+    // "Insufficient role permissions" or "Module 'X' is not enabled for your
+    // subscription plan" — fine for logs, confusing/unprofessional as a user-
+    // facing toast. ~50 pages across the app already do
+    // `showToast('error', err?.response?.data?.detail || 'fallback')`, so
+    // rewriting `detail` here to a clean message — once, at the one place
+    // every request passes through — fixes every one of those call sites
+    // without touching any of them individually.
+    if (statusCode === 403 && error.response) {
+      const rawDetail: string | undefined = error.response.data?.detail;
+      feLogger.error('api', `${method} ${url} → 403 (raw detail: ${rawDetail || 'none'})`);
+
+      let friendly: string;
+      if (rawDetail && /not enabled for your subscription plan/i.test(rawDetail)) {
+        friendly = "This feature isn't included in your hospital's current plan. Contact your administrator.";
+      } else if (rawDetail && /(hospital is inactive|invalid hospital context|could not verify tenant status|tenant.*suspend)/i.test(rawDetail)) {
+        friendly = 'Your hospital account is not active right now. Contact your administrator.';
+      } else {
+        const isMutating = ['post', 'put', 'patch', 'delete'].includes(method.toLowerCase());
+        friendly = isMutating
+          ? "You don't have access to edit this."
+          : "You don't have access to view this.";
+      }
+
+      error.response.data = { ...(error.response.data || {}), detail: friendly };
     }
 
     return Promise.reject(error);

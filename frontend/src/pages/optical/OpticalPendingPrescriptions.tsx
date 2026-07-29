@@ -5,6 +5,7 @@ import { useToast } from '../../contexts/ToastContext';
 import opticalService from '../../services/opticalService';
 import type { PendingOpticalPrescription } from '../../services/opticalService';
 import { formatDateTime } from '../../utils/calendarDate';
+import { hasAccess as hasModuleAccess } from '../../config/modulePermissions';
 
 const STATUS_BADGES: Record<string, { label: string; color: string }> = {
   finalized: { label: 'Pending', color: 'bg-blue-100 text-blue-700' },
@@ -26,8 +27,12 @@ const OpticalPendingPrescriptions: React.FC = () => {
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
 
-  const role = user?.roles?.[0];
-  const hasAccess = ['optical_staff', 'admin', 'super_admin'].includes(role || '');
+  // The route itself is already gated to view-level optical access
+  // (allowedRoles('optical') in App.tsx), so this mirrors that with
+  // hasModuleAccess() instead of a hardcoded role list, keeping it correct if
+  // a hospital admin grants optical access to a role beyond
+  // optical_staff/admin.
+  const hasAccess = hasModuleAccess('optical', user?.roles);
 
   const fetchPrescriptions = useCallback(async () => {
     if (!hasAccess) return;
@@ -67,7 +72,7 @@ const OpticalPendingPrescriptions: React.FC = () => {
       <div className="max-w-7xl mx-auto p-6">
         <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
           <h2 className="text-lg font-semibold text-red-800">Access Denied</h2>
-          <p className="text-red-600 mt-2">Only optical staff can access this page.</p>
+          <p className="text-red-600 mt-2">You don't have access to view this page.</p>
         </div>
       </div>
     );

@@ -5,6 +5,7 @@ import { useToast } from '../../contexts/ToastContext';
 import pharmacyService from '../../services/pharmacyService';
 import type { PendingPrescription } from '../../services/pharmacyService';
 import { formatDateTime } from '../../utils/calendarDate';
+import { hasAccess } from '../../config/modulePermissions';
 
 const STATUS_BADGES: Record<string, { label: string; color: string; icon: string }> = {
   finalized: { label: 'Pending', color: 'bg-blue-100 text-blue-700', icon: '⏳' },
@@ -26,14 +27,17 @@ const PendingPrescriptions: React.FC = () => {
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
 
-  const role = user?.roles?.[0];
-
-  // Check if user has pharmacy access
-  const hasPharmacyAccess = ['pharmacist', 'admin', 'super_admin'].includes(role || '');
+  // This is a read-only queue view — the route itself is already gated to
+  // view-level pharmacy access (allowedRoles('pharmacy') in App.tsx), so this
+  // mirrors that with hasAccess() instead of a hardcoded role list. The
+  // previous hardcoded check excluded inventory_manager, who has "view" on
+  // pharmacy by default and could already reach this route — they'd land on
+  // a hard "Access Denied" page despite being legitimately authorized.
+  const hasPharmacyAccess = hasAccess('pharmacy', user?.roles);
 
   const fetchPrescriptions = useCallback(async () => {
     if (!hasPharmacyAccess) {
-      showToast('error', 'Access denied. Pharmacists only.');
+      showToast('error', "You don't have access to view this.");
       return;
     }
 
@@ -97,7 +101,7 @@ const PendingPrescriptions: React.FC = () => {
       <div className="max-w-7xl mx-auto p-6">
         <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
           <h2 className="text-lg font-semibold text-red-800">Access Denied</h2>
-          <p className="text-red-600 mt-2">Only pharmacists can access this page.</p>
+          <p className="text-red-600 mt-2">You don't have access to view this page.</p>
         </div>
       </div>
     );

@@ -13,6 +13,7 @@ import { htmlStringToPdf } from '../utils/pdf';
 import { formatDateOnly } from '../utils/calendarDate';
 import type { Patient } from '../types/patient';
 import type { Invoice, PaymentListItem, PaymentMode, InvoiceStatus, RefundReasonCode, RefundListItem } from '../types/billing';
+import { canEdit } from '../config/modulePermissions';
 
 const STATUS_COLORS: Record<InvoiceStatus, string> = {
   draft: 'bg-slate-100 text-slate-600',
@@ -93,9 +94,17 @@ const InvoiceDetail: React.FC = () => {
   const [refundSaving, setRefundSaving] = useState(false);
 
   const role = user?.roles?.[0];
-  const canMutate = ['super_admin', 'admin', 'cashier', 'pharmacist', 'receptionist'].includes(role || '');
+  // Refund Approve/Reject is a deliberately narrower, hardcoded admin-only
+  // tier — matches the backend's separate _require_billing_admin check on
+  // those two endpoints, which does NOT consult the billing permission
+  // matrix. Every other mutating action here (record payment, void, refund
+  // request, process) maps to the backend's _require_billing_staff, i.e.
+  // actual "billing: edit" access — using canEdit() instead of a hardcoded
+  // role list means it stays correct if a hospital admin grants/revokes
+  // billing edit for any role.
   const isAdmin = ['super_admin', 'admin'].includes(role || '');
-  const isBillingStaff = ['super_admin', 'admin', 'cashier', 'pharmacist', 'receptionist'].includes(role || '');
+  const canMutate = canEdit('billing', user?.roles);
+  const isBillingStaff = canMutate;
 
   const load = useCallback(async () => {
     if (!id) return;

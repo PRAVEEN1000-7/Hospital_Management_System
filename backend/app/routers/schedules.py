@@ -11,7 +11,7 @@ from datetime import date
 from ..database import get_db
 from ..models.user import User
 from ..dependencies import get_current_active_user, require_admin_or_super_admin, require_any_role
-from ..core.module_roles import view_roles, edit_roles
+from ..core.module_roles import require_permission
 from ..models.appointment import Doctor, DoctorSchedule, DoctorLeave
 from ..schemas.appointment import (
     DoctorScheduleCreate,
@@ -37,8 +37,8 @@ from ..services.schedule_service import (
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/schedules", tags=["Doctor Schedules"])
 
-schedule_view_guard = require_any_role(*view_roles("appt.doctor_schedule"))
-schedule_edit_guard = require_any_role(*edit_roles("appt.doctor_schedule"))
+schedule_view_guard = require_permission("appt.doctor_schedule", "view")
+schedule_edit_guard = require_permission("appt.doctor_schedule", "edit")
 
 
 def _has_admin_role(user: User) -> bool:

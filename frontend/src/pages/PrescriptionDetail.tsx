@@ -7,6 +7,7 @@ import prescriptionService from '../services/prescriptionService';
 import { htmlStringToPdf } from '../utils/pdf';
 import type { Prescription, PrescriptionListItem } from '../types/prescription';
 import { formatDateTime } from '../utils/calendarDate';
+import { canEdit as canEditModule } from '../config/modulePermissions';
 
 const PrescriptionDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -139,12 +140,18 @@ const PrescriptionDetail: React.FC = () => {
 
   const rx = prescription;
   const userRole = user?.roles?.[0];
-  // Pharmacist gets real edit/finalize/delete rights on prescription records
-  // per the shared permission matrix (rx.all) — see
-  // docs/security/ROLE_PERMISSIONS_DECISIONS_2026-07-25.md. Nurse's rx.all
-  // access is view-only, so they deliberately stay excluded from both.
-  const canEdit = !rx.is_finalized && (userRole === 'doctor' || userRole === 'super_admin' || userRole === 'admin' || userRole === 'pharmacist');
-  const canFinalize = !rx.is_finalized && (userRole === 'doctor' || userRole === 'super_admin' || userRole === 'pharmacist');
+  // Edit rights come straight from the shared "rx.all" permission matrix
+  // (nurse's rx.all access is view-only, so canEditModule correctly excludes
+  // them) — see docs/security/ROLE_PERMISSIONS_DECISIONS_2026-07-25.md.
+  // Finalize is a deliberately narrower business rule (excludes plain admin,
+  // unlike general edit access), so it stays its own explicit check.
+  const canEdit = !rx.is_finalized && canEditModule('rx.all', user?.roles);
+  // Finalize requires BOTH the business-rule role restriction (excludes plain
+  // admin, unlike general edit access) AND actual edit-level permission — a
+  // role downgraded to "view" on rx.all must lose the Finalize button too,
+  // otherwise clicking it 403s against the backend's edit guard and surfaces
+  // as an error even though the button was visible.
+  const canFinalize = !rx.is_finalized && canEditModule('rx.all', user?.roles) && (userRole === 'doctor' || userRole === 'super_admin' || userRole === 'pharmacist');
 
   return (
     <div className="max-w-7xl mx-auto">
@@ -592,12 +599,14 @@ const PrescriptionDetail: React.FC = () => {
               >
                 <span className="material-symbols-outlined text-sm">person</span> View Patient
               </button>
-              <button
-                onClick={() => navigate(`/prescriptions/new?patient_id=${rx.patient_id}`)}
-                className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm font-medium hover:bg-slate-50 flex items-center gap-2 mt-2"
-              >
-                <span className="material-symbols-outlined text-sm">add</span> New Prescription
-              </button>
+              {canEditModule('rx.new', user?.roles) && (
+                <button
+                  onClick={() => navigate(`/prescriptions/new?patient_id=${rx.patient_id}`)}
+                  className="w-full px-4 py-2 rounded-lg border border-slate-200 text-sm font-medium hover:bg-slate-50 flex items-center gap-2 mt-2"
+                >
+                  <span className="material-symbols-outlined text-sm">add</span> New Prescription
+                </button>
+              )}
             </div>
           </div>
         </div>

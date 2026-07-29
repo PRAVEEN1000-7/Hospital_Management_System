@@ -1,5 +1,6 @@
 from .user import (
     User, Role, Permission, UserRole, RolePermission,
+    HospitalPermissionOverride,
     RefreshToken, RevokedToken, Hospital,
 )
 from .patient import Patient, PatientEmailVerificationToken

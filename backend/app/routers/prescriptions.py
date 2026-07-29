@@ -14,7 +14,7 @@ from ..models.user import User, Hospital
 from ..models.appointment import Doctor, Appointment, AppointmentQueue
 from ..models.prescription import Medicine as MedicineModel, PrescriptionTemplate
 from ..dependencies import get_current_active_user, require_any_role
-from ..core.module_roles import view_roles, edit_roles
+from ..core.module_roles import require_permission
 from ..core.tenant_security import is_eye_hospital_feature_enabled
 from ..core.hospital_time import hospital_today
 from ..schemas.prescription import (
@@ -60,10 +60,10 @@ router = APIRouter(prefix="/prescriptions", tags=["Prescriptions"])
 # "All Prescription" (existing records) vs "New Prescription" (authoring) —
 # per the confirmed decision, pharmacist gets real edit rights on rx.all
 # (docs/security/ROLE_PERMISSIONS_DECISIONS_2026-07-25.md).
-rx_all_view_guard = require_any_role(*view_roles("rx.all"))
-rx_all_edit_guard = require_any_role(*edit_roles("rx.all"))
-rx_new_view_guard = require_any_role(*view_roles("rx.new"))
-rx_new_edit_guard = require_any_role(*edit_roles("rx.new"))
+rx_all_view_guard = require_permission("rx.all", "view")
+rx_all_edit_guard = require_permission("rx.all", "edit")
+rx_new_view_guard = require_permission("rx.new", "view")
+rx_new_edit_guard = require_permission("rx.new", "edit")
 
 
 # ═══════════════════════════════════════════════════════════════════════════

@@ -7,6 +7,7 @@ import type { PurchaseOrder, Supplier } from '../../types/inventory';
 import DateRangeFilter from '../../components/common/DateRangeFilter';
 import { formatDateOnly } from '../../utils/calendarDate';
 import { htmlStringToPdf } from '../../utils/pdf';
+import { canEdit } from '../../config/modulePermissions';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-slate-100 text-slate-600',
@@ -48,6 +49,10 @@ const PurchaseOrdersPage: React.FC = () => {
   const isAdminUser = roles.includes('admin') || roles.includes('super_admin');
   const isInventoryManager = roles.includes('inventory_manager') && !isAdminUser;
   const isPharmacyLogin = roles.includes('pharmacist');
+  // "view" access on `inventory` (e.g. pharmacist by default) can see this
+  // whole page correctly, but every create/submit/approve/reject/cancel
+  // action must be hidden — only "edit" tier gets those.
+  const canManagePOs = canEdit('inventory', user?.roles);
 
   useEffect(() => {
     inventoryService.getSuppliers(1, 100, '', true).then(r => setSuppliers(r.data)).catch(() => {});
@@ -169,10 +174,12 @@ td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
             </span>
             {exportingPdf ? 'Exporting…' : 'Export PDF'}
           </button>
-          <button onClick={() => navigate('/inventory/purchase-orders/new')} className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors">
-            <span className="material-symbols-outlined text-lg">add</span>
-            New Purchase Order
-          </button>
+          {canManagePOs && (
+            <button onClick={() => navigate('/inventory/purchase-orders/new')} className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors">
+              <span className="material-symbols-outlined text-lg">add</span>
+              New Purchase Order
+            </button>
+          )}
         </div>
       </header>
 
@@ -264,14 +271,14 @@ td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
                     </td>
                     <td className="px-4 py-4 text-right">
                       <div className="flex items-center justify-end gap-1.5 flex-wrap">
-                        {po.status === 'draft' && (
+                        {canManagePOs && po.status === 'draft' && (
                           <button onClick={() => handleStatusChange(po, 'submitted')}
                             className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
                             title="Send this draft to an admin for approval">
                             <span className="material-symbols-outlined text-[15px]">send</span> Submit
                           </button>
                         )}
-                        {po.status === 'submitted' && isAdminUser && (
+                        {canManagePOs && po.status === 'submitted' && isAdminUser && (
                           <>
                             <button onClick={() => handleStatusChange(po, 'approved')}
                               className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors"
@@ -285,7 +292,7 @@ td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
                             </button>
                           </>
                         )}
-                        {po.status === 'draft' && !isAdminUser && (
+                        {canManagePOs && po.status === 'draft' && !isAdminUser && (
                           <button onClick={() => handleStatusChange(po, 'cancelled')}
                             className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
                             title="Cancel this draft order">
@@ -297,7 +304,7 @@ td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
                           title="View full order details and line items">
                           <span className="material-symbols-outlined text-[15px]">visibility</span>
                         </button>
-                        {isAdminUser && !['draft', 'cancelled'].includes(po.status) && (
+                        {canManagePOs && isAdminUser && !['draft', 'cancelled'].includes(po.status) && (
                           <button onClick={() => navigate(`/inventory/purchase-orders/${po.id}/payments`)}
                             className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors"
                             title="Record and view vendor payments for this order">

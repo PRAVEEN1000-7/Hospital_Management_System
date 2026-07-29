@@ -14,9 +14,49 @@
  *     always gets edit access to every key.
  */
 
+import type { EffectiveMatrixResponse } from '../types/rolePermissions';
+
 export type AccessLevel = 'none' | 'view' | 'edit';
 
 const LEVELS: Record<Exclude<AccessLevel, 'none'>, number> = { view: 0, edit: 1 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Per-hospital effective matrix (Roles & Permissions admin UI)
+// ─────────────────────────────────────────────────────────────────────────────
+// MODULE_ROLES below is the GLOBAL DEFAULT. AuthContext fetches this hospital's
+// resolved matrix once at login (mirrors how `enabledModules` is fetched) and
+// calls setEffectiveMatrix() — every function below then reads from it
+// instead of the static default, with ZERO changes needed at any of the ~70
+// existing hasAccess/allowedRoles/canEdit call sites across the app.
+let _effectiveMatrix: Record<string, Partial<Record<string, Exclude<AccessLevel, 'none'>>>> | null = null;
+
+/** Called once by AuthContext after fetching GET /roles-permissions/matrix. */
+export function setEffectiveMatrix(response: EffectiveMatrixResponse | null): void {
+  if (!response) {
+    _effectiveMatrix = null;
+    return;
+  }
+  const matrix: Record<string, Partial<Record<string, Exclude<AccessLevel, 'none'>>>> = {};
+  for (const row of response.rows) {
+    const entry: Partial<Record<string, Exclude<AccessLevel, 'none'>>> = {};
+    for (const [role, cell] of Object.entries(row.cells)) {
+      if (cell.access_level !== 'none') entry[role] = cell.access_level;
+    }
+    matrix[row.key] = entry;
+  }
+  _effectiveMatrix = matrix;
+}
+
+function currentMatrix(): Record<string, Partial<Record<string, Exclude<AccessLevel, 'none'>>>> {
+  return _effectiveMatrix ?? MODULE_ROLES;
+}
+
+// The Dashboard must behave exactly as it did before the Roles & Permissions
+// feature existed, for every role, in every hospital — it's excluded from
+// the whole override system (mirrors backend module_roles.py's _LOCKED_KEYS)
+// rather than merely defaulted, so it can never be broken by a saved
+// override for this key.
+const LOCKED_KEYS = new Set(['general.dashboard']);
 
 export const MODULE_ROLES: Record<string, Partial<Record<string, Exclude<AccessLevel, 'none'>>>> = {
   'general.dashboard': {
@@ -105,7 +145,7 @@ function normalize(roles: string[]): string[] {
 export function getAccess(key: string, roles: string[] | undefined | null): AccessLevel {
   const normalized = normalize(roles || []);
   if (normalized.includes('super_admin')) return 'edit';
-  const entry = MODULE_ROLES[key];
+  const entry = (LOCKED_KEYS.has(key) ? MODULE_ROLES : currentMatrix())[key];
   if (!entry) return 'none';
   let best: AccessLevel = 'none';
   for (const role of normalized) {
@@ -127,7 +167,7 @@ export function canEdit(key: string, roles: string[] | undefined | null): boolea
 
 /** Role list for a given key, for ProtectedRoute's allowedRoles — always includes super_admin. */
 export function allowedRoles(key: string, minLevel: Exclude<AccessLevel, 'none'> = 'view'): string[] {
-  const entry = MODULE_ROLES[key] || {};
+  const entry = (LOCKED_KEYS.has(key) ? MODULE_ROLES : currentMatrix())[key] || {};
   const threshold = LEVELS[minLevel];
   const roles = Object.entries(entry)
     .filter(([, level]) => level !== undefined && LEVELS[level] >= threshold)

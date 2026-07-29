@@ -8,7 +8,7 @@ from typing import Optional
 
 from ..database import get_db
 from ..dependencies import get_current_active_user
-from ..core.module_roles import edit_roles
+from ..core.module_roles import check_permission
 from ..models.user import User
 from ..schemas.settlement import (
     SettlementCreate, SettlementResponse, PaginatedSettlementResponse
@@ -25,7 +25,6 @@ router = APIRouter(prefix="/settlements", tags=["Billing — Daily Settlements"]
 # Driven by the shared "billing" permission matrix — see the flagged
 # conflict in docs/security/ROLE_PERMISSIONS_DECISIONS_2026-07-25.md.
 BILLING_ADMIN_ROLES = {"super_admin", "admin"}
-BILLING_STAFF_ROLES = set(edit_roles("billing"))
 
 
 def _has_any_role(current_user: User, allowed_roles: set[str]) -> bool:
@@ -33,10 +32,16 @@ def _has_any_role(current_user: User, allowed_roles: set[str]) -> bool:
     return bool(roles & {r.lower() for r in allowed_roles})
 
 
-def _require_billing_staff(current_user: User) -> None:
-    if not _has_any_role(current_user, BILLING_STAFF_ROLES):
+def _require_billing_staff(db: Session, current_user: User) -> None:
+    if not check_permission(db, current_user, "billing", "edit"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Billing staff access required")
+
+
+def _require_billing_view(db: Session, current_user: User) -> None:
+    if not check_permission(db, current_user, "billing", "view"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Access denied")
 
 
 def _require_billing_admin(current_user: User) -> None:
@@ -52,7 +57,7 @@ async def create_daily_settlement(
     current_user: User = Depends(get_current_active_user),
 ):
     """Create a day-end settlement — aggregates all payments for the date."""
-    _require_billing_staff(current_user)
+    _require_billing_staff(db, current_user)
     try:
         record = create_settlement(db, data, current_user.id, current_user.hospital_id)
         return _to_response(db, record)
@@ -75,7 +80,7 @@ async def list_all_settlements(
     current_user: User = Depends(get_current_active_user),
 ):
     """List settlements with pagination."""
-    _require_billing_staff(current_user)
+    _require_billing_view(db, current_user)
     try:
         return list_settlements(db, current_user.hospital_id, page, limit, status=status, date_from=date_from, date_to=date_to)
     except Exception as e:
@@ -90,7 +95,7 @@ async def get_settlement(
     current_user: User = Depends(get_current_active_user),
 ):
     """Get settlement details."""
-    _require_billing_staff(current_user)
+    _require_billing_view(db, current_user)
     record = get_settlement_by_id(db, settlement_id)
     if not record or str(record.hospital_id) != str(current_user.hospital_id):
         raise HTTPException(status_code=404, detail="Settlement not found")
@@ -104,7 +109,7 @@ async def close_settlement_endpoint(
     current_user: User = Depends(get_current_active_user),
 ):
     """Close an open settlement (cashier action)."""
-    _require_billing_staff(current_user)
+    _require_billing_staff(db, current_user)
     record = get_settlement_by_id(db, settlement_id)
     if not record or str(record.hospital_id) != str(current_user.hospital_id):
         raise HTTPException(status_code=404, detail="Settlement not found")

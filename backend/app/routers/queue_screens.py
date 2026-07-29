@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..dependencies import get_current_active_user, require_any_role
-from ..core.module_roles import view_roles, edit_roles
+from ..core.module_roles import require_permission
 from ..models.user import User
 from ..schemas.queue_screen import (
     QueueDisplayScreenCreate, QueueDisplayScreenUpdate, QueueDisplayScreenResponse,
@@ -24,8 +24,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/queue-screens", tags=["Queue Display Screens"])
 
 # BRD-005 configuration lives under System > Settings in the shared permission matrix.
-queue_screens_view_guard = require_any_role(*view_roles("system.settings"))
-queue_screens_edit_guard = require_any_role(*edit_roles("system.settings"))
+queue_screens_view_guard = require_permission("system.settings", "view")
+queue_screens_edit_guard = require_permission("system.settings", "edit")
 
 _UUID_FIELDS = ("department_id", "doctor_id", "doctor2_id")
 

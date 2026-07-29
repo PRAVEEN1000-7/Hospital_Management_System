@@ -5,6 +5,7 @@ import settlementService from '../services/settlementService';
 import type { SettlementListItem, SettlementStatus } from '../types/billing';
 import DateRangeFilter from '../components/common/DateRangeFilter';
 import { formatDateOnly } from '../utils/calendarDate';
+import { canEdit } from '../config/modulePermissions';
 
 const STATUS_COLORS: Record<SettlementStatus, string> = {
   open: 'bg-amber-100 text-amber-700',
@@ -34,8 +35,16 @@ const SettlementList: React.FC = () => {
   const [processing, setProcessing] = useState<string | null>(null);
 
   const role = user?.roles?.[0];
+  // Verify is a deliberately narrower, hardcoded admin-only tier — matches
+  // the backend's separate _require_billing_admin check on that endpoint
+  // (see docs/security/ROLE_PERMISSIONS_DECISIONS_2026-07-25.md), which does
+  // NOT consult the billing permission matrix at all. Open/Close and the
+  // Actions column map to the backend's _require_billing_staff, i.e. actual
+  // "billing: edit" access — using canEdit() instead of a hardcoded role
+  // check means it stays correct if a hospital admin grants/revokes billing
+  // edit for any role (previously hardcoded to admin+cashier only).
   const isAdmin = ['super_admin', 'admin'].includes(role || '');
-  const isCashier = role === 'cashier';
+  const canManageBilling = canEdit('billing', user?.roles);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -99,7 +108,7 @@ const SettlementList: React.FC = () => {
           <h1 className="text-2xl font-bold text-slate-900">Daily Settlements</h1>
           <p className="text-sm text-slate-500 mt-0.5">{total} record{total !== 1 ? 's' : ''}</p>
         </div>
-        {(isAdmin || isCashier) && (
+        {canManageBilling && (
           <button
             onClick={() => setShowCreateModal(true)}
             className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-all active:scale-[0.98]"
@@ -153,7 +162,7 @@ const SettlementList: React.FC = () => {
                   <th className="text-right px-4 py-3 font-semibold text-slate-600">Refunds</th>
                   <th className="text-right px-4 py-3 font-semibold text-green-700">Net</th>
                   <th className="text-center px-4 py-3 font-semibold text-slate-600">Status</th>
-                  {(isAdmin || isCashier) && <th className="text-center px-4 py-3 font-semibold text-slate-600">Actions</th>}
+                  {canManageBilling && <th className="text-center px-4 py-3 font-semibold text-slate-600">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -171,7 +180,7 @@ const SettlementList: React.FC = () => {
                         {s.status.charAt(0).toUpperCase() + s.status.slice(1)}
                       </span>
                     </td>
-                    {(isAdmin || isCashier) && (
+                    {canManageBilling && (
                       <td className="px-4 py-3 text-center">
                         <div className="flex items-center justify-center gap-1">
                           {s.status === 'open' && (

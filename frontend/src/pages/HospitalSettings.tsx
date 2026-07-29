@@ -7,6 +7,7 @@ import scheduleService from '../services/scheduleService';
 import HospitalLogo from '../components/common/HospitalLogo';
 import type { HospitalDetails, HospitalSettings as HospitalSettingsType } from '../services/hospitalService';
 import type { DoctorOption } from '../types/appointment';
+import { canEdit } from '../config/modulePermissions';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -456,6 +457,11 @@ const SystemSettingsTab: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const isEyeHospital = user?.hospital_specialty === 'eye_hospital' || user?.hospital_specialty === 'multi_specialty';
+  // Inert today (no role has "view" on system.settings by default, and the
+  // /settings route itself is edit-gated) — kept as defense-in-depth so this
+  // page still degrades to read-only correctly if a hospital admin ever
+  // grants view-only access here via the Roles & Permissions UI.
+  const canEditSettings = canEdit('system.settings', user?.roles);
   const [settings, setSettings] = useState<HospitalSettingsType | null>(null);
   const [editValues, setEditValues] = useState<Partial<HospitalSettingsType>>({});
   const [loading, setLoading] = useState(true);
@@ -513,6 +519,7 @@ const SystemSettingsTab: React.FC = () => {
   };
 
   const handleSave = async () => {
+    if (!canEditSettings) return;
     const hospitalCode = editValues.hospital_code;
     if (typeof hospitalCode === 'string' && !/^[A-Z]{2}$/.test(hospitalCode)) {
       toast.error('Hospital Code must be exactly 2 uppercase letters');
@@ -599,7 +606,8 @@ const SystemSettingsTab: React.FC = () => {
                     {isBoolean ? (
                       <button
                         onClick={() => handleChange(field.key, !isOn)}
-                        className={`relative w-12 h-6 rounded-full transition-colors ${isOn ? 'bg-primary' : 'bg-slate-200'}`}
+                        disabled={!canEditSettings}
+                        className={`relative w-12 h-6 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${isOn ? 'bg-primary' : 'bg-slate-200'}`}
                       >
                         <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${isOn ? 'left-[26px]' : 'left-0.5'}`} />
                       </button>
@@ -610,7 +618,8 @@ const SystemSettingsTab: React.FC = () => {
                           type={field.type === 'number' ? 'number' : 'text'}
                           value={value !== null && value !== undefined ? String(value) : ''}
                           onChange={e => handleChange(field.key, field.type === 'number' ? Number(e.target.value) : e.target.value)}
-                          className={`px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none ${field.type === 'number' ? 'w-24 text-right' : 'w-40'}`}
+                          disabled={!canEditSettings}
+                          className={`px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-50 ${field.type === 'number' ? 'w-24 text-right' : 'w-40'}`}
                         />
                         {field.suffix && field.suffix !== '₹' && <span className="text-xs text-slate-400">{field.suffix}</span>}
                       </div>

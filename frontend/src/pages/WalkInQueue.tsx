@@ -13,6 +13,7 @@ import { useDoctorMonthAvailability } from '../hooks/useDoctorMonthAvailability'
 import { formatTimeOnly, formatDateOnly } from '../utils/calendarDate';
 import { formatLocalDateISO, formatMonthKey } from '../utils/calendarDate';
 import type { Patient } from '../types/patient';
+import { canEdit } from '../config/modulePermissions';
 import VerifiedBadge from '../components/patients/VerifiedBadge';
 
 // ── Priority helpers ───────────────────────────────────────────────
@@ -51,7 +52,12 @@ const WalkInQueue: React.FC = () => {
   const isReception = roles.includes('receptionist');
   const isAdmin = roles.includes('admin') || roles.includes('super_admin');
   const canFilter = isReception || isAdmin;
-  const canActOnQueue = isDoctor;  // Only doctors can perform clinical actions
+  // Only doctors ever see this console at all, but a hospital admin can still
+  // downgrade the "doctor" role to view-only on appt.queue_display via the
+  // Roles & Permissions UI — canEdit() closes that gap so the clinical
+  // action buttons (Call/Skip/Start/Complete/Refer) correctly disappear
+  // instead of rendering controls that would just 403 on click.
+  const canActOnQueue = isDoctor && canEdit('appt.queue_display', roles);
   const today = formatLocalDateISO();
 
   const [queueData, setQueueData] = useState<QueueStatusType | null>(null);
@@ -728,7 +734,7 @@ const WalkInQueue: React.FC = () => {
                           <span className="material-symbols-outlined text-sm">event_upcoming</span>
                           Book Follow-up
                         </button>
-                        {!currentPatient.is_specialist_assignment && (
+                        {canActOnQueue && !currentPatient.is_specialist_assignment && (
                           <button onClick={() => openReferModal(currentPatient)}
                             className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-orange-700 bg-white border border-orange-200 rounded-lg hover:bg-orange-50 transition-colors">
                             <span className="material-symbols-outlined text-sm">send</span>
@@ -791,10 +797,12 @@ const WalkInQueue: React.FC = () => {
                           <span className="material-symbols-outlined text-sm">person</span>
                           Info
                         </button>
-                        <button onClick={() => handleSkip(calledPatient.queue_id)}
-                          className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="No Show">
-                          <span className="material-symbols-outlined text-lg">person_off</span>
-                        </button>
+                        {canActOnQueue && (
+                          <button onClick={() => handleSkip(calledPatient.queue_id)}
+                            className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="No Show">
+                            <span className="material-symbols-outlined text-lg">person_off</span>
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -860,11 +868,13 @@ const WalkInQueue: React.FC = () => {
                           <span className="material-symbols-outlined text-sm">person</span>
                           Info
                         </button>
-                        <button onClick={() => handleStartConsultation(nextPatient.queue_id)}
-                          className="inline-flex items-center gap-1.5 px-5 py-2.5 text-sm font-bold text-white bg-purple-500 rounded-lg hover:bg-purple-600 transition-colors shadow-sm">
-                          <span className="material-symbols-outlined text-base">clinical_notes</span>
-                          Start Consultation
-                        </button>
+                        {canActOnQueue && (
+                          <button onClick={() => handleStartConsultation(nextPatient.queue_id)}
+                            className="inline-flex items-center gap-1.5 px-5 py-2.5 text-sm font-bold text-white bg-purple-500 rounded-lg hover:bg-purple-600 transition-colors shadow-sm">
+                            <span className="material-symbols-outlined text-base">clinical_notes</span>
+                            Start Consultation
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -928,14 +938,14 @@ const WalkInQueue: React.FC = () => {
                               </div>
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
-                              {!isCalled && isSelectedDateToday && (
+                              {canActOnQueue && !isCalled && isSelectedDateToday && (
                                 <button onClick={() => handleCall(item.queue_id)}
                                   className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors">
                                   <span className="material-symbols-outlined text-sm">campaign</span>
                                   Call
                                 </button>
                               )}
-                              {isSelectedDateToday && (
+                              {canActOnQueue && isSelectedDateToday && (
                                 <button onClick={() => handleStartConsultation(item.queue_id)}
                                   className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors">
                                   <span className="material-symbols-outlined text-sm">clinical_notes</span>
@@ -1598,7 +1608,7 @@ const WalkInQueue: React.FC = () => {
                           <span className="material-symbols-outlined text-sm">person</span>
                           Patient Info
                         </button>
-                        {item.status === 'completed' && !item.is_specialist_assignment && (
+                        {canActOnQueue && item.status === 'completed' && !item.is_specialist_assignment && (
                           <button onClick={() => openReferModal(item)}
                             className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-orange-700 bg-orange-50 border border-orange-200 rounded-lg hover:bg-orange-100 transition-colors">
                             <span className="material-symbols-outlined text-sm">send</span>

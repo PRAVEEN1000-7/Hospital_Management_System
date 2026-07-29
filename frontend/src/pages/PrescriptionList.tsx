@@ -14,6 +14,7 @@ import DateRangeFilter from '../components/common/DateRangeFilter';
 import { formatDateTime, formatLocalDateISO } from '../utils/calendarDate';
 import { VISIT_REASON_OPTIONS } from '../utils/constants';
 import VerifiedBadge from '../components/patients/VerifiedBadge';
+import { hasAccess, canEdit } from '../config/modulePermissions';
 
 const REFRESH_INTERVAL_MS = 15000;
 
@@ -55,8 +56,15 @@ const PrescriptionList: React.FC = () => {
   const { showToast } = useToast();
   const confirm = useConfirm();
 
-  const showOpticalTab = isModuleEnabled('optical') || isEyeHospitalFeatureEnabled;
-  const [activeTab, setActiveTab] = useState<'medicine' | 'optical'>('medicine');
+  // Hospital-specialty/module checks alone aren't enough — the "optical"
+  // permission key only grants admin/optical_staff any access at all (per
+  // the shared matrix), so a doctor at an eye hospital was still trying to
+  // fetch /optical/prescriptions and getting a 403. Gate the section on
+  // actual role access too, matching Layout.tsx's canAccessOptical pattern.
+  // Both sections render together (stacked, not tab-switched) — every
+  // prescription for the hospital that the user can see is always visible
+  // at once, with no category picker gating visibility.
+  const showOpticalSection = (isModuleEnabled('optical') || isEyeHospitalFeatureEnabled) && hasAccess('optical', user?.roles);
 
   const [prescriptions, setPrescriptions] = useState<PrescriptionListItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -107,29 +115,26 @@ const PrescriptionList: React.FC = () => {
 
   const role = user?.roles?.[0];
 
+  // "All Prescription" means every prescription recorded for this hospital
+  // that the caller's role has view/edit access to (rx.all) — not just the
+  // ones a doctor personally wrote. Doctors previously got the narrower
+  // /my-prescriptions endpoint here, which is what "categorized" the list by
+  // doctor identity; the backend's GET /prescriptions already scopes by
+  // hospital_id and is gated by the same rx.all permission, so every role
+  // that can reach this page uses the same hospital-wide query.
   const fetchPrescriptions = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const isDoctor = role === 'doctor';
-      let res: PaginatedResponse<PrescriptionListItem>;
-
-      if (isDoctor) {
-        res = await prescriptionService.getMyPrescriptions(
-          page, 10, statusFilter || undefined, sortBy, sortOrder,
-          dateFrom || undefined, dateTo || undefined, search || undefined, reasonFilter || undefined,
-        );
-      } else {
-        res = await prescriptionService.getPrescriptions(page, 10, {
-          status: statusFilter || undefined,
-          search: search || undefined,
-          date_from: dateFrom || undefined,
-          date_to: dateTo || undefined,
-          doctor_id: doctorFilter || undefined,
-          reason: reasonFilter || undefined,
-          sort_by: sortBy,
-          sort_order: sortOrder,
-        });
-      }
+      const res = await prescriptionService.getPrescriptions(page, 10, {
+        status: statusFilter || undefined,
+        search: search || undefined,
+        date_from: dateFrom || undefined,
+        date_to: dateTo || undefined,
+        doctor_id: doctorFilter || undefined,
+        reason: reasonFilter || undefined,
+        sort_by: sortBy,
+        sort_order: sortOrder,
+      });
 
       setPrescriptions(res.data);
       setTotalPages(res.total_pages);
@@ -139,22 +144,22 @@ const PrescriptionList: React.FC = () => {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [page, search, statusFilter, dateFrom, dateTo, doctorFilter, reasonFilter, sortBy, sortOrder, role]);
+  }, [page, search, statusFilter, dateFrom, dateTo, doctorFilter, reasonFilter, sortBy, sortOrder]);
 
   useEffect(() => { fetchPrescriptions(); }, [fetchPrescriptions]);
 
   // Near-real-time refresh (BRD_OP_1 §3.1.2) — poll matching the existing
   // WalkInQueue.tsx convention (no WebSocket infra exists in this repo).
   // Silent (no spinner/toast) so it doesn't flicker the table on every tick;
-  // skipped while a manual fetch is already in flight.
+  // skipped while a manual fetch is already in flight. Both sections are
+  // always mounted now, so this simply always runs.
   useEffect(() => {
-    if (activeTab !== 'medicine') return;
     const interval = setInterval(() => { if (!loading) fetchPrescriptions(true); }, REFRESH_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [activeTab, loading, fetchPrescriptions]);
+  }, [loading, fetchPrescriptions]);
 
   const fetchOpticalRx = useCallback(async () => {
-    if (!showOpticalTab) return;
+    if (!showOpticalSection) return;
     setOptLoading(true);
     try {
       const res = await opticalService.getPrescriptions(optPage, 15);
@@ -166,7 +171,7 @@ const PrescriptionList: React.FC = () => {
     } finally {
       setOptLoading(false);
     }
-  }, [optPage, showOpticalTab]);
+  }, [optPage, showOpticalSection]);
 
   useEffect(() => { fetchOpticalRx(); }, [fetchOpticalRx]);
 
@@ -267,12 +272,12 @@ const PrescriptionList: React.FC = () => {
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Prescriptions</h1>
           <p className="text-sm text-slate-500 mt-1">
-            {activeTab === 'medicine'
-              ? `${total} medicine prescription${total !== 1 ? 's' : ''}`
-              : `${optTotal} eye prescription${optTotal !== 1 ? 's' : ''}`}
+            {showOpticalSection
+              ? `${total} prescription${total !== 1 ? 's' : ''} · ${optTotal} eye prescription${optTotal !== 1 ? 's' : ''} — all for this hospital`
+              : `${total} prescription${total !== 1 ? 's' : ''} for this hospital`}
           </p>
         </div>
-        {(role === 'doctor' || role === 'super_admin' || role === 'admin') && (
+        {canEdit('rx.new', user?.roles) && (
           <button
             onClick={() => navigate('/prescriptions/new')}
             className="bg-primary hover:bg-primary/90 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
@@ -283,30 +288,8 @@ const PrescriptionList: React.FC = () => {
         )}
       </div>
 
-      {/* Tab switcher — shown only for eye hospitals / optical enabled */}
-      {showOpticalTab && (
-        <div className="flex gap-1 bg-slate-100 rounded-xl p-1 w-fit mb-5">
-          <button
-            onClick={() => setActiveTab('medicine')}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === 'medicine' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-          >
-            <span className="material-symbols-outlined text-base">medication</span>
-            Medicine
-            <span className={`ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${activeTab === 'medicine' ? 'bg-primary/10 text-primary' : 'bg-slate-200 text-slate-500'}`}>{total}</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('optical')}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${activeTab === 'optical' ? 'bg-white text-violet-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-          >
-            <span className="material-symbols-outlined text-base">visibility</span>
-            Eye / Optical
-            <span className={`ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${activeTab === 'optical' ? 'bg-violet-100 text-violet-600' : 'bg-slate-200 text-slate-500'}`}>{optTotal}</span>
-          </button>
-        </div>
-      )}
-
-      {/* ── Medicine Prescription Filters (only on medicine tab) ── */}
-      {activeTab === 'medicine' && (
+      {/* Every prescription for the hospital renders in one continuous page —
+          no tab/category switch that hides one type behind a click. */}
       <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm mb-6">
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="flex-1 relative">
@@ -361,11 +344,16 @@ const PrescriptionList: React.FC = () => {
           />
         </div>
       </div>
-      )}
 
-      {/* ── Optical Prescription Table ── */}
-      {activeTab === 'optical' && showOpticalTab && (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-4">
+      {/* ── Eye / Optical Prescriptions — always visible alongside Medicine
+          below when the hospital/role has access, never behind a tab ── */}
+      {showOpticalSection && (
+        <>
+        <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wide mb-2 flex items-center gap-2">
+          <span className="material-symbols-outlined text-violet-500 text-base">visibility</span>
+          Eye / Optical Prescriptions
+        </h2>
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-6">
           {optLoading ? (
             <div className="flex items-center justify-center h-64">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-violet-500" />
@@ -449,10 +437,16 @@ const PrescriptionList: React.FC = () => {
             </div>
           )}
         </div>
+        </>
       )}
 
-      {/* Medicine Prescription Table */}
-      {activeTab === 'medicine' && (
+      {/* ── Medicine Prescriptions ── */}
+      {showOpticalSection && (
+        <h2 className="text-sm font-bold text-slate-700 uppercase tracking-wide mb-2 flex items-center gap-2">
+          <span className="material-symbols-outlined text-primary text-base">medication</span>
+          Medicine Prescriptions
+        </h2>
+      )}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center h-64">
@@ -603,7 +597,7 @@ const PrescriptionList: React.FC = () => {
                             {downloadingId === rx.id ? 'progress_activity' : 'download'}
                           </span>
                         </button>
-                        {!rx.is_finalized && (
+                        {!rx.is_finalized && canEdit('rx.all', user?.roles) && (
                           <>
                             <button
                               onClick={() => navigate(`/prescriptions/${rx.id}/edit`)}
@@ -655,7 +649,6 @@ const PrescriptionList: React.FC = () => {
           </div>
         )}
       </div>
-      )}
     </div>
   );
 };

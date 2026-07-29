@@ -7,6 +7,7 @@ import type { InvoiceListItem, InvoiceStatus } from '../types/billing';
 import DateRangeFilter from '../components/common/DateRangeFilter';
 import { formatDateOnly } from '../utils/calendarDate';
 import { PAYMENT_STATUS_LABELS, PAYMENT_STATUS_COLORS, PAYMENT_STATUS_OPTIONS } from '../utils/paymentStatus';
+import { canEdit } from '../config/modulePermissions';
 
 const STATUS_COLORS: Record<InvoiceStatus, string> = {
   draft: 'bg-slate-100 text-slate-600',
@@ -49,8 +50,7 @@ const InvoiceList: React.FC = () => {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
-  const role = user?.roles?.[0];
-  const canCreate = ['super_admin', 'admin', 'cashier', 'pharmacist'].includes(role || '');
+  const canCreate = canEdit('billing', user?.roles);
 
   const load = useCallback(async () => {
     setLoading(true);

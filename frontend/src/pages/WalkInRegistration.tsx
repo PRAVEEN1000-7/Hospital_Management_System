@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useToast } from '../contexts/ToastContext';
+import { useAuth } from '../contexts/AuthContext';
 import { useDashboardRefresh } from '../contexts/DashboardRefreshContext';
+import { canEdit } from '../config/modulePermissions';
 import walkInService from '../services/walkInService';
 import scheduleService from '../services/scheduleService';
 import patientService from '../services/patientService';
@@ -14,10 +16,16 @@ import { VISIT_REASON_OPTIONS } from '../utils/constants';
 
 const WalkInRegistration: React.FC = () => {
   const toast = useToast();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const { triggerRefresh } = useDashboardRefresh();
+  // Defense-in-depth: the route itself already requires edit on
+  // appt.walkin_queue to be reached at all, so this can't be hit in practice
+  // today — but it keeps this page safe on its own if that route gate is
+  // ever loosened to allow view-only roles through.
+  const canRegisterWalkIn = canEdit('appt.walkin_queue', user?.roles);
 
   const [doctors, setDoctors] = useState<DoctorOption[]>([]);
   const [selectedDoctorId, setSelectedDoctorId] = useState<string>('');
@@ -490,7 +498,7 @@ const WalkInRegistration: React.FC = () => {
           </div>
 
           {/* Submit */}
-          <button onClick={handleSubmit} disabled={!selectedPatient || submitting || doctorScheduleState === 'no_schedule' || doctorScheduleState === 'checking'}
+          <button onClick={handleSubmit} disabled={!canRegisterWalkIn || !selectedPatient || submitting || doctorScheduleState === 'no_schedule' || doctorScheduleState === 'checking'}
             className="w-full py-2.5 bg-primary text-white rounded-lg text-sm font-bold disabled:opacity-40 hover:bg-primary/90 transition-colors shadow-sm flex items-center justify-center gap-2">
             <span className="material-symbols-outlined text-base">{submitting ? 'progress_activity' : 'how_to_reg'}</span>
             {submitting ? 'Registering...' : 'Register Walk-in'}

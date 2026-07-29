@@ -18,6 +18,18 @@ const STATUS_COLORS: Record<string, string> = {
   cancelled: 'bg-red-50 text-red-600',
 };
 
+// BRD 5.7 — Payment Status column
+const PAYMENT_STATUS_LABELS: Record<string, string> = {
+  completed: 'Completed',
+  incomplete: 'Incomplete',
+  partial: 'Partial',
+};
+const PAYMENT_STATUS_COLORS: Record<string, string> = {
+  completed: 'bg-emerald-50 text-emerald-700',
+  incomplete: 'bg-red-50 text-red-600',
+  partial: 'bg-amber-50 text-amber-700',
+};
+
 const PurchaseOrdersPage: React.FC = () => {
   const toast = useToast();
   const navigate = useNavigate();
@@ -34,6 +46,9 @@ const PurchaseOrdersPage: React.FC = () => {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [detailPO, setDetailPO] = useState<PurchaseOrder | null>(null);
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState('');
+  const [sortBy, setSortBy] = useState('created_at');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   // Role-based access control
   const roleAlias: Record<string, string> = {
@@ -67,6 +82,9 @@ const PurchaseOrdersPage: React.FC = () => {
         search: search || undefined,
         date_from: dateFrom || undefined,
         date_to: dateTo || undefined,
+        payment_status: paymentStatusFilter || undefined,
+        sort_by: sortBy,
+        sort_order: sortOrder,
       });
       setOrders(res.data);
       setTotalPages(res.total_pages);
@@ -77,7 +95,18 @@ const PurchaseOrdersPage: React.FC = () => {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, search, statusFilter, supplierFilter, dateFrom, dateTo]);
+  }, [page, search, statusFilter, supplierFilter, dateFrom, dateTo, paymentStatusFilter, sortBy, sortOrder]);
+
+  const toggleSort = (col: string) => {
+    if (sortBy === col) {
+      setSortOrder(o => (o === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(col);
+      setSortOrder('asc');
+    }
+    setPage(1);
+  };
+  const sortIcon = (col: string) => sortBy === col ? (sortOrder === 'asc' ? 'arrow_upward' : 'arrow_downward') : 'unfold_more';
 
   useEffect(() => { fetchOrders(); }, [fetchOrders]);
 
@@ -159,6 +188,23 @@ td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
     }
   };
 
+  // BRD 5.4 — download a single PO as a proper document (PO number, vendor,
+  // items, tax/total, signatory) via the new backend endpoint, distinct from
+  // handleExportPdf's client-built bulk list export above.
+  const [downloadingPoId, setDownloadingPoId] = useState<string | null>(null);
+  const handleDownloadPo = async (po: PurchaseOrder) => {
+    if (downloadingPoId) return;
+    setDownloadingPoId(po.id);
+    try {
+      const html = await inventoryService.getPurchaseOrderPdfHtml(po.id);
+      await htmlStringToPdf(html, `PO_${po.po_number}.pdf`);
+    } catch {
+      toast.error('Failed to download purchase order');
+    } finally {
+      setDownloadingPoId(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -221,6 +267,13 @@ td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
               <option value="">All Suppliers</option>
               {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
+            <select value={paymentStatusFilter} onChange={e => { setPaymentStatusFilter(e.target.value); setPage(1); }}
+              className="px-4 py-2.5 border border-slate-200 rounded-lg text-sm bg-slate-50 cursor-pointer">
+              <option value="">All Payment Statuses</option>
+              <option value="completed">Completed</option>
+              <option value="partial">Partial</option>
+              <option value="incomplete">Incomplete</option>
+            </select>
           </div>
           <DateRangeFilter
             dateFrom={dateFrom}
@@ -250,6 +303,12 @@ td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
                   <th className="px-4 py-3.5 text-center text-xs font-bold text-slate-600 uppercase tracking-wider">Expected</th>
                   <th className="px-4 py-3.5 text-center text-xs font-bold text-slate-600 uppercase tracking-wider">Total</th>
                   <th className="px-4 py-3.5 text-center text-xs font-bold text-slate-600 uppercase tracking-wider">Status</th>
+                  <th
+                    className="px-4 py-3.5 text-center text-xs font-bold text-slate-600 uppercase tracking-wider cursor-pointer select-none hover:text-slate-800"
+                    onClick={() => toggleSort('payment_status')}
+                  >
+                    <span className="inline-flex items-center gap-1">Payment Status <span className="material-symbols-outlined text-[13px]">{sortIcon('payment_status')}</span></span>
+                  </th>
                   <th className="px-4 py-3.5 text-center text-xs font-bold text-slate-600 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
@@ -267,6 +326,14 @@ td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
                     <td className="px-4 py-4 text-center">
                       <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold capitalize ${STATUS_COLORS[po.status] || 'bg-slate-100 text-slate-600'}`}>
                         {po.status.replace('_', ' ')}
+                      </span>
+                    </td>
+                    <td className="px-4 py-4 text-center">
+                      <span
+                        className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${PAYMENT_STATUS_COLORS[po.payment_status] || 'bg-slate-100 text-slate-600'}`}
+                        title={`Paid ${formatCurrency(po.total_paid)} of ${formatCurrency(po.total_amount)}`}
+                      >
+                        {PAYMENT_STATUS_LABELS[po.payment_status] || po.payment_status}
                       </span>
                     </td>
                     <td className="px-4 py-4 text-right">
@@ -303,6 +370,13 @@ td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
                           className="inline-flex items-center gap-1 p-1.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
                           title="View full order details and line items">
                           <span className="material-symbols-outlined text-[15px]">visibility</span>
+                        </button>
+                        <button onClick={() => handleDownloadPo(po)} disabled={downloadingPoId === po.id}
+                          className="inline-flex items-center gap-1 p-1.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors disabled:opacity-50"
+                          title="Download this purchase order as a PDF">
+                          <span className={`material-symbols-outlined text-[15px] ${downloadingPoId === po.id ? 'animate-spin' : ''}`}>
+                            {downloadingPoId === po.id ? 'progress_activity' : 'download'}
+                          </span>
                         </button>
                         {canManagePOs && isAdminUser && !['draft', 'cancelled'].includes(po.status) && (
                           <button onClick={() => navigate(`/inventory/purchase-orders/${po.id}/payments`)}

@@ -22,6 +22,7 @@ const PAYMENT_MODES: { value: PaymentMode; label: string }[] = [
   { value: 'upi', label: 'UPI' },
   { value: 'debit_card', label: 'Debit Card' },
   { value: 'credit_card', label: 'Credit Card' },
+  { value: 'insurance', label: 'Insurance' },
 ];
 
 const formatMoney = (n: number) =>

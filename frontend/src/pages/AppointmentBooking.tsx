@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useToast } from '../contexts/ToastContext';
 import { useDashboardRefresh } from '../contexts/DashboardRefreshContext';
 import scheduleService from '../services/scheduleService';
 import appointmentService from '../services/appointmentService';
 import patientService from '../services/patientService';
 import appointmentSettingsService from '../services/appointmentSettingsService';
+import walkInService from '../services/walkInService';
 import TimeSlotPicker from '../components/appointments/TimeSlotPicker';
 import {
   TITLE_OPTIONS, GENDER_OPTIONS, BLOOD_GROUP_OPTIONS,
@@ -40,6 +42,13 @@ const emptyReg = (): RegForm => ({
 const AppointmentBooking: React.FC = () => {
   const toast = useToast();
   const { triggerRefresh } = useDashboardRefresh();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  // Walk-in Queue's "OPD Assignment" button (BRD 5.2) links here with these
+  // two params pre-filled instead of building a separate screen — see the
+  // prefill effect below and the post-booking handling in handleBook().
+  const prefillPatientId = searchParams.get('patient_id');
+  const fromQueueId = searchParams.get('from_queue');
 
   // Step tracker
   const [step, setStep] = useState(1); // 1: Patient, 2: Doctor, 3: Slot, 4: Confirm
@@ -66,6 +75,17 @@ const AppointmentBooking: React.FC = () => {
   const selectPatient = (p: Patient) => { setSelectedPatient(p); setPatientSearch(`${p.first_name} ${p.last_name}`); setPatients([]); };
   const patientNav = useListKeyboardNav(patients, selectPatient);
   const [patientLoading, setPatientLoading] = useState(false);
+
+  // Prefill from Walk-in Queue's "OPD Assignment" button — skip straight to
+  // doctor selection instead of making the front-desk user re-search/re-pick
+  // a patient they already selected from the queue.
+  useEffect(() => {
+    if (!prefillPatientId) return;
+    patientService.getPatient(prefillPatientId)
+      .then((p) => { selectPatient(p); setStep(2); })
+      .catch(() => toast.error('Failed to load patient for OPD assignment'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefillPatientId]);
 
   // Doctor search/filter
   const [doctorSearch, setDoctorSearch] = useState('');
@@ -234,6 +254,21 @@ const AppointmentBooking: React.FC = () => {
       });
       toast.success('Appointment booked successfully!');
       triggerRefresh();
+
+      if (fromQueueId) {
+        // Arrived here via Walk-in Queue's "OPD Assignment" button — mark the
+        // queue entry assigned (idempotent server-side) and return to the
+        // queue instead of resetting this wizard for another booking.
+        try {
+          await walkInService.markOpdAssigned(fromQueueId);
+        } catch {
+          // Booking already succeeded; a failure here only means the queue
+          // badge won't flip to "Assigned" — not worth blocking on.
+        }
+        navigate('/appointments/walk-in');
+        return;
+      }
+
       // Reset
       setStep(1);
       setSelectedPatient(null);

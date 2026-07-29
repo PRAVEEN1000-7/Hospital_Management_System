@@ -6,7 +6,7 @@ from typing import Optional
 from datetime import date, time, datetime
 from decimal import Decimal
 
-VALID_PAYMENT_MODES = ["cash", "upi", "debit_card", "credit_card"]
+VALID_PAYMENT_MODES = ["cash", "upi", "debit_card", "credit_card", "insurance"]
 VALID_PAYMENT_STATUSES = ["pending", "completed", "failed", "reversed"]
 
 
@@ -14,7 +14,7 @@ class PaymentCreate(BaseModel):
     invoice_id: str
     patient_id: str
     amount: Decimal = Field(..., gt=0, decimal_places=2)
-    payment_mode: str = Field(..., description="cash | upi | debit_card | credit_card")
+    payment_mode: str = Field(..., description="cash | upi | debit_card | credit_card | insurance")
     payment_reference: Optional[str] = Field(None, max_length=100)
     payment_date: Optional[date] = None   # defaults to today
     notes: Optional[str] = None

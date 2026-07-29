@@ -611,7 +611,27 @@ def list_purchase_orders(
     status: Optional[str] = None, supplier_id: Optional[str] = None,
     search: Optional[str] = None,
     date_from: Optional[date] = None, date_to: Optional[date] = None,
+    payment_status: Optional[str] = None,
+    sort_by: Optional[str] = None, sort_order: str = "desc",
 ) -> dict:
+    # payment_status (BRD 5.7) isn't a stored column — it's derived from
+    # payments recorded against the PO (see _po_payment_status). A correlated
+    # scalar subquery lets both the WHERE filter and ORDER BY operate at the
+    # SQL level (unlike PrescriptionList's "Billed Tablets", which sorts only
+    # within the current page — PO volumes are small enough per hospital that
+    # full server-side filter/sort is the right call here).
+    paid_subq = (
+        db.query(func.coalesce(func.sum(PurchaseOrderPayment.amount), 0))
+        .filter(PurchaseOrderPayment.purchase_order_id == PurchaseOrder.id)
+        .correlate(PurchaseOrder)
+        .scalar_subquery()
+    )
+    payment_status_expr = case(
+        (paid_subq <= 0, "incomplete"),
+        (paid_subq >= PurchaseOrder.total_amount, "completed"),
+        else_="partial",
+    )
+
     q = (
         db.query(PurchaseOrder)
         .options(joinedload(PurchaseOrder.supplier), joinedload(PurchaseOrder.items))
@@ -637,8 +657,19 @@ def list_purchase_orders(
         q = q.filter(PurchaseOrder.order_date >= date_from)
     if date_to:
         q = q.filter(PurchaseOrder.order_date <= date_to)
+    if payment_status:
+        q = q.filter(payment_status_expr == payment_status)
     total = q.count()
-    orders = q.order_by(PurchaseOrder.created_at.desc()).offset((page - 1) * limit).limit(limit).all()
+    if sort_by == "payment_status":
+        order_col = payment_status_expr
+    elif sort_by == "total_amount":
+        order_col = PurchaseOrder.total_amount
+    elif sort_by == "order_date":
+        order_col = PurchaseOrder.order_date
+    else:
+        order_col = PurchaseOrder.created_at
+    q = q.order_by(order_col.asc() if sort_order == "asc" else order_col.desc())
+    orders = q.offset((page - 1) * limit).limit(limit).all()
     return {**_paginate(total, page, limit), "data": orders}
 
 
@@ -674,8 +705,21 @@ def update_purchase_order(
     return po
 
 
+def _po_payment_status(total_paid: float, po_total: float) -> str:
+    """Completed/Incomplete/Partial per BRD 5.7, mirroring create_po_payment's
+    own "already_paid vs total_amount" comparison used elsewhere in this file."""
+    if total_paid <= 0:
+        return "incomplete"
+    if total_paid >= po_total:
+        return "completed"
+    return "partial"
+
+
 def _format_po_response(po: PurchaseOrder, db: Session) -> dict:
     """Build a PurchaseOrderResponse-compatible dict."""
+    total_paid = float(db.query(func.coalesce(func.sum(PurchaseOrderPayment.amount), 0)).filter(
+        PurchaseOrderPayment.purchase_order_id == po.id,
+    ).scalar() or 0)
     items = []
     for it in po.items:
         items.append({
@@ -705,6 +749,8 @@ def _format_po_response(po: PurchaseOrder, db: Session) -> dict:
         "total_amount": float(po.total_amount or 0),
         "tax_amount": float(po.tax_amount or 0),
         "notes": po.notes,
+        "payment_status": _po_payment_status(total_paid, float(po.total_amount or 0)),
+        "total_paid": total_paid,
         "items": items,
         "created_by_name": _user_name(po.creator) if hasattr(po, "creator") else None,
         "approved_by_name": _user_name(po.approver) if hasattr(po, "approver") else None,
@@ -1004,13 +1050,17 @@ def update_grn_item_batch(
     grn_id: uuid.UUID,
     item_id: uuid.UUID,
     data: GRNItemBatchUpdate,
+    current_user: Optional[User] = None,
 ) -> GRNItem:
-    """Correct batch_number/manufactured_date/expiry_date on a received line item.
+    """Correct batch_number/manufactured_date/expiry_date/quantity_received/
+    discrepancy_notes on a received line item (BRD 5.5 extends this to also
+    cover quantity_received + discrepancy_notes, not just batch/expiry).
 
     Only allowed while the GRN is 'pending'. Once verified/accepted,
     _process_grn_acceptance has already created MedicineBatch/OpticalBatch
-    and StockMovement rows keyed by the original batch_number — changing it
-    afterward would silently desync the GRN from the stock it produced.
+    and StockMovement rows keyed by the original batch_number/quantity —
+    changing either afterward would silently desync the GRN from the stock
+    it produced.
     """
     grn = db.query(GoodsReceiptNote).filter(GoodsReceiptNote.id == grn_id).first()
     if not grn:
@@ -1028,12 +1078,28 @@ def update_grn_item_batch(
         raise ValueError("GRN item not found")
 
     update_data = data.model_dump(exclude_unset=True)
+    old_values = {k: (str(getattr(item, k)) if getattr(item, k) is not None else None) for k in update_data}
     for k, v in update_data.items():
         setattr(item, k, v)
 
     db.commit()
     db.refresh(item)
     logger.info("GRN item batch details updated: %s (item=%s)", grn.grn_number, item_id)
+
+    if current_user and update_data:
+        from ..core.audit_logger import AuditLogger, AuditAction
+        new_values = {k: (str(v) if v is not None else None) for k, v in update_data.items()}
+        AuditLogger.log(
+            action=AuditAction.INVENTORY_ADJUST,
+            user=current_user,
+            tenant=None,
+            resource_type="grn_item",
+            resource_id=item.id,
+            old_values=old_values,
+            new_values=new_values,
+            metadata={"grn_number": grn.grn_number},
+        )
+
     return item
 
 
@@ -1210,6 +1276,7 @@ def _format_grn_response(grn: GoodsReceiptNote, db: Session) -> dict:
             "unit_price": float(it.unit_price),
             "total_price": float(it.total_price),
             "rejection_reason": it.rejection_reason,
+            "discrepancy_notes": it.discrepancy_notes,
         })
     return {
         "id": str(grn.id),

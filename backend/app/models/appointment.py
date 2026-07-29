@@ -187,6 +187,12 @@ class AppointmentQueue(Base):
     position = Column(Integer, nullable=False)
     status = Column(String(20), default="waiting")  # 'waiting','called','sent_to_doctor','in_consultation','completed','skipped'
     called_at = Column(DateTime(timezone=True))
+    # Set once this queue entry has been sent through the Walk-in Queue's
+    # "OPD Assignment" button (BRD 5.2) — deliberately separate from `status`
+    # above (doesn't interact with the call/skip/complete state machine), used
+    # only to show an "Assigned" badge and to prevent creating a second OPD
+    # appointment for the same queue entry on a repeat click.
+    opd_assigned_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

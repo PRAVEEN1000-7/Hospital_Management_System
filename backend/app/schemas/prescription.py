@@ -331,6 +331,7 @@ class PrescriptionListItem(BaseModel):
     # Prescription Dashboard (BRD_OP_1 §3.1)
     chief_complaint: Optional[str] = None
     medicine_names: list[str] = []
+    dispensed_medicine_names: list[str] = []
     billed_qty: int = 0
     billed_cost: float = 0.0
     is_email_verified: bool = False

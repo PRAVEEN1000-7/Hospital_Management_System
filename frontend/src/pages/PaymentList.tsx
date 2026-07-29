@@ -12,12 +12,14 @@ const MODE_LABELS: Record<string, string> = {
   upi: 'UPI',
   debit_card: 'Debit Card',
   credit_card: 'Credit Card',
+  insurance: 'Insurance',
 };
 const MODE_COLORS: Record<string, string> = {
   cash: 'bg-green-100 text-green-700',
   upi: 'bg-purple-100 text-purple-700',
   debit_card: 'bg-blue-100 text-blue-700',
   credit_card: 'bg-violet-100 text-violet-700',
+  insurance: 'bg-amber-100 text-amber-700',
 };
 
 const fmt = (n: number) =>
@@ -154,6 +156,7 @@ const PaymentList: React.FC = () => {
               <option value="upi">UPI</option>
               <option value="debit_card">Debit Card</option>
               <option value="credit_card">Credit Card</option>
+              <option value="insurance">Insurance</option>
             </select>
             {modeFilter && (
               <button

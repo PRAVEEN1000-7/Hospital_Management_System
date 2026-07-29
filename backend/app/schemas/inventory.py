@@ -211,6 +211,7 @@ class GRNItemResponse(BaseModel):
     unit_price: float
     total_price: float
     rejection_reason: Optional[str] = None
+    discrepancy_notes: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -226,6 +227,10 @@ class GRNItemBatchUpdate(BaseModel):
     batch_number: Optional[str] = Field(None, max_length=50)
     manufactured_date: Optional[date] = None
     expiry_date: Optional[date] = None
+    # BRD 5.5 — correcting the actually-received quantity and recording why
+    # (discrepancy from the PO / packing slip), still only while 'pending'.
+    quantity_received: Optional[int] = Field(None, ge=0)
+    discrepancy_notes: Optional[str] = Field(None, max_length=1000)
 
     _validate_manufactured_date = field_validator("manufactured_date")(_reject_future_mfg_date)
     _validate_expiry_date = field_validator("expiry_date")(_reject_past_expiry_date)

@@ -112,6 +112,7 @@ const GRNReceiptForm: React.FC = () => {
           unit_price: i.unit_price,
           total_price: i.total_price,
           rejection_reason: i.rejection_reason || '',
+          discrepancy_notes: i.discrepancy_notes || '',
         })));
       } catch (err: any) {
         console.error(err);
@@ -246,6 +247,8 @@ const GRNReceiptForm: React.FC = () => {
         batch_number: item.batch_number || undefined,
         manufactured_date: item.manufactured_date || undefined,
         expiry_date: item.expiry_date || undefined,
+        quantity_received: item.quantity_received,
+        discrepancy_notes: item.discrepancy_notes || undefined,
       });
       toast.success('Batch details updated');
     } catch (err: any) {
@@ -342,10 +345,10 @@ const GRNReceiptForm: React.FC = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">{isEditMode ? 'View GRN' : 'Create Goods Receipt Note'}</h1>
+          <h1 className="text-2xl font-bold text-slate-900">{isEditMode ? (canEditBatchDetails ? 'Edit GRN' : 'View GRN') : 'Create Goods Receipt Note'}</h1>
           <p className="text-sm text-slate-500 mt-1">
             {canEditBatchDetails
-              ? 'This receipt is still Pending — batch #, mfg date and expiry date can be corrected below.'
+              ? 'This receipt is still Pending — batch #, quantity received, dates, and discrepancy notes can be corrected below.'
               : 'Record incoming stock delivery and create medicine batches'}
           </p>
         </div>
@@ -479,6 +482,7 @@ const GRNReceiptForm: React.FC = () => {
                   <th className="px-3 py-2 text-center font-semibold text-slate-600">Received</th>
                   <th className="px-3 py-2 text-center font-semibold text-slate-600">Accepted</th>
                   <th className="px-3 py-2 text-right font-semibold text-slate-600">Unit Price</th>
+                  <th className="px-3 py-2 text-left font-semibold text-slate-600">Discrepancy Notes</th>
                   {(!isEditMode || canEditBatchDetails) && <th className="px-3 py-2 text-center font-semibold text-slate-600">Action</th>}
                 </tr>
               </thead>
@@ -554,7 +558,8 @@ const GRNReceiptForm: React.FC = () => {
                         type="number"
                         value={item.quantity_received}
                         onChange={(e) => updateItem(idx, 'quantity_received', parseInt(e.target.value))}
-                        disabled={isEditMode}
+                        disabled={isEditMode && !canEditBatchDetails}
+                        title={isEditMode && !canEditBatchDetails ? 'Locked — quantity can only be corrected while the GRN is still Pending' : undefined}
                         className="w-16 px-2 py-1 border border-slate-200 rounded text-xs focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:bg-slate-50"
                       />
                     </td>
@@ -569,6 +574,17 @@ const GRNReceiptForm: React.FC = () => {
                     </td>
                     <td className="px-3 py-3 text-right font-mono text-slate-900">
                       ₹{(item.unit_price || 0).toFixed(2)}
+                    </td>
+                    <td className="px-3 py-3 min-w-[160px]">
+                      <input
+                        type="text"
+                        value={item.discrepancy_notes || ''}
+                        onChange={(e) => updateItem(idx, 'discrepancy_notes', e.target.value)}
+                        placeholder={isEditMode ? undefined : 'Optional'}
+                        disabled={isEditMode && !canEditBatchDetails}
+                        title={isEditMode && !canEditBatchDetails ? 'Locked — notes can only be added while the GRN is still Pending' : undefined}
+                        className="w-full px-2 py-1 border border-slate-200 rounded text-xs focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:bg-slate-50"
+                      />
                     </td>
                     {!isEditMode && (
                       <td className="px-3 py-3 text-center">

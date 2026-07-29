@@ -120,6 +120,7 @@ export interface PrescriptionListItem {
   // Prescription Dashboard (BRD_OP_1 §3.1)
   chief_complaint?: string | null;
   medicine_names?: string[];
+  dispensed_medicine_names?: string[];
   billed_qty?: number;
   billed_cost?: number;
   is_email_verified?: boolean;

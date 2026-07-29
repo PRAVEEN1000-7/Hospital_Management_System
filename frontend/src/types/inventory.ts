@@ -92,6 +92,8 @@ export interface PurchaseOrder {
   total_amount: number;
   tax_amount: number;
   notes: string | null;
+  payment_status: 'completed' | 'incomplete' | 'partial';
+  total_paid: number;
   items: PurchaseOrderItem[];
   created_by_name: string | null;
   approved_by_name: string | null;
@@ -163,6 +165,15 @@ export interface GRNItem {
   unit_price: number;
   total_price: number;
   rejection_reason: string | null;
+  discrepancy_notes: string | null;
+}
+
+export interface GRNItemBatchUpdate {
+  batch_number?: string;
+  manufactured_date?: string;
+  expiry_date?: string;
+  quantity_received?: number;
+  discrepancy_notes?: string;
 }
 
 export interface GRNItemCreate {
@@ -178,6 +189,7 @@ export interface GRNItemCreate {
   unit_price: number;
   total_price: number;
   rejection_reason?: string;
+  discrepancy_notes?: string;
 }
 
 export interface GoodsReceiptNote {

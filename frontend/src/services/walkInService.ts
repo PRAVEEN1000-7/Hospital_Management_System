@@ -46,6 +46,11 @@ const walkInService = {
     await api.patch(`/walk-ins/queue/${queueId}/skip`);
   },
 
+  async markOpdAssigned(queueId: string): Promise<{ ok: boolean; queue_id: string; opd_assigned_at: string }> {
+    const res = await api.patch(`/walk-ins/queue/${queueId}/opd-assigned`);
+    return res.data;
+  },
+
   async saveConsultationNotes(queueId: string, data: {
     notes?: string;
     diagnosis?: string;

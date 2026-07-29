@@ -176,6 +176,9 @@ export interface QueueItem {
   called_at: string | null;
   consultation_start_at: string | null;
   consultation_end_at: string | null;
+  consultation_fee_collected: boolean;
+  consultation_invoice_id: string | null;
+  opd_assigned_at: string | null;
 }
 
 export interface QueueStatus {

@@ -900,8 +900,28 @@ def enrich_prescriptions(db: Session, prescriptions: list[Prescription]) -> list
             .all()
         )
         billed = {pid: (int(qty), float(cost)) for pid, qty, cost in billed_rows}
+
+        # "Dispensed Medicine" (BRD 29-Jul-2026 §5.6) — distinct medicine names
+        # actually dispensed by the pharmacy for this prescription, as opposed
+        # to "Prescribed Medicine" (medicine_names above, from PrescriptionItem
+        # directly). Same join path as the "Billed Tablets" aggregate, but
+        # collecting the dispensed item's own name (PharmacySaleItem stores it
+        # independently — a substitution means it can differ from what was
+        # prescribed) instead of summing quantity/cost.
+        dispensed_name_rows = (
+            db.query(PrescriptionItem.prescription_id, PharmacySaleItem.medicine_name)
+            .join(PharmacySaleItem, PharmacySaleItem.prescription_item_id == PrescriptionItem.id)
+            .filter(PrescriptionItem.prescription_id.in_(rx_ids))
+            .distinct()
+            .all()
+        )
+        dispensed_medicine_names: dict = {}
+        for pid, name in dispensed_name_rows:
+            if name:
+                dispensed_medicine_names.setdefault(pid, []).append(name)
     else:
         billed = {}
+        dispensed_medicine_names = {}
 
     result = []
     for rx in prescriptions:
@@ -925,6 +945,7 @@ def enrich_prescriptions(db: Session, prescriptions: list[Prescription]) -> list
             chief_complaints.get(rx.appointment_id) if rx.appointment_id else None
         ) or (p.reason_for_visit if p else None)
         d["medicine_names"] = medicine_names.get(rx.id, [])
+        d["dispensed_medicine_names"] = dispensed_medicine_names.get(rx.id, [])
         billed_qty, billed_cost = billed.get(rx.id, (0, 0.0))
         d["billed_qty"] = billed_qty
         d["billed_cost"] = billed_cost

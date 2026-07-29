@@ -131,6 +131,10 @@ class GRNItem(Base):
     unit_price = Column(Numeric(12, 2), nullable=False)
     total_price = Column(Numeric(12, 2), nullable=False)
     rejection_reason = Column(String(255))
+    # Free-text note for a quantity/batch mismatch found at receipt — editable
+    # via the same GRN item correction endpoint that already handles
+    # batch_number/expiry, while the GRN is still 'pending' (BRD 5.5).
+    discrepancy_notes = Column(Text)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     grn = relationship("GoodsReceiptNote", back_populates="items")

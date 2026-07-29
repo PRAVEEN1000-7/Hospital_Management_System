@@ -31,6 +31,7 @@ from ..services.waitlist_service import (
 from ..services.notification_service import notify_hospital_users
 from ..core.hospital_time import hospital_today
 from ..core.audit_logger import AuditLogger, AuditAction
+from ..models.invoice import Invoice
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/walk-ins", tags=["Walk-in Registration"])
@@ -400,6 +401,23 @@ async def get_queue_status(
     )
     queue_entries = query.order_by(priority_order, AppointmentQueue.queue_number.asc()).all()
 
+    # Consultation-fee state per queue entry (BRD 5.1 "Collect Fee" button) —
+    # batched by appointment_id in one query rather than per-row, since a
+    # void/cancelled invoice can never accept payment (see record_payment) and
+    # should be treated the same as "no invoice yet" here.
+    appt_ids_for_fee = [qe.appointment_id for qe in queue_entries if qe.appointment_id]
+    invoice_by_appt: dict = {}
+    if appt_ids_for_fee:
+        for inv in (
+            db.query(Invoice)
+            .filter(
+                Invoice.appointment_id.in_(appt_ids_for_fee),
+                Invoice.status.notin_(["void", "cancelled"]),
+            )
+            .all()
+        ):
+            invoice_by_appt[str(inv.appointment_id)] = inv
+
     # Build rich items with patient names, doctor names, priority, etc.
     items = []
     for qe in queue_entries:
@@ -471,6 +489,9 @@ async def get_queue_status(
         appointment_type = appt.appointment_type if appt else None
         referring_doctor_name = None
         referral_notes = None
+        invoice_for_fee = invoice_by_appt.get(str(qe.appointment_id))
+        consultation_invoice_id = str(invoice_for_fee.id) if invoice_for_fee else None
+        consultation_fee_collected = bool(invoice_for_fee and float(invoice_for_fee.balance_amount or 0) <= 0)
         if appt and appt.parent_appointment_id:
             parent = db.query(Appointment).filter(Appointment.id == appt.parent_appointment_id).first()
             if parent and parent.doctor_id:
@@ -516,6 +537,9 @@ async def get_queue_status(
             "called_at": qe.called_at.isoformat() if qe.called_at else None,
             "consultation_start_at": appt.consultation_start_at.isoformat() if appt and appt.consultation_start_at else None,
             "consultation_end_at": appt.consultation_end_at.isoformat() if appt and appt.consultation_end_at else None,
+            "consultation_fee_collected": consultation_fee_collected,
+            "consultation_invoice_id": consultation_invoice_id,
+            "opd_assigned_at": qe.opd_assigned_at.isoformat() if qe.opd_assigned_at else None,
         })
 
     total_waiting = sum(1 for i in items if i["status"] in ("waiting", "called", "sent_to_doctor"))
@@ -885,6 +909,61 @@ async def assign_doctor_to_walkin(
     enriched["queue_number"] = queue_entry.queue_number
     enriched["queue_position"] = queue_entry.position
     return enriched
+
+
+@router.patch("/queue/{queue_id}/opd-assigned")
+async def mark_opd_assigned(
+    queue_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(walkin_edit_guard),
+):
+    """Mark a Walk-in Queue entry as sent through OPD Assignment (BRD 5.2).
+
+    Called by the frontend after the /appointments/book wizard successfully
+    creates an appointment for a patient that was reached via a queue row's
+    "OPD Assignment" button. Idempotent: a second call for an already-marked
+    entry is a no-op rather than an error, so a double-click or a retried
+    request can never be mistaken for "assignment failed."
+    """
+    try:
+        q_uuid = uuid.UUID(queue_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid queue_id")
+
+    qe = db.query(AppointmentQueue).filter(AppointmentQueue.id == q_uuid).first()
+    if not qe:
+        raise HTTPException(status_code=404, detail="Queue entry not found")
+
+    # Tenant isolation: AppointmentQueue has no hospital_id of its own — scope
+    # via the queue entry's doctor, same technique as _require_queue_actor.
+    if getattr(current_user, "hospital_id", None):
+        doctor = db.query(Doctor).filter(Doctor.id == qe.doctor_id).first()
+        if not doctor or str(doctor.hospital_id) != str(current_user.hospital_id):
+            raise HTTPException(status_code=404, detail="Queue entry not found")
+
+    # This is a front-desk action, not a clinical one — unlike
+    # _require_queue_actor (used by call/skip/complete), it must NOT be
+    # restricted to "the assigned doctor or admin only."
+    if not (_is_receptionist(current_user) or _is_admin_or_super(current_user)):
+        raise HTTPException(
+            status_code=403,
+            detail="Only receptionists or admins can perform OPD assignment",
+        )
+
+    if qe.opd_assigned_at is None:
+        qe.opd_assigned_at = datetime.now(timezone.utc)
+        db.commit()
+
+        AuditLogger.log(
+            action=AuditAction.OPD_ASSIGNMENT,
+            user=current_user,
+            tenant=None,
+            resource_type="appointment_queue",
+            resource_id=qe.id,
+            new_values={"appointment_id": str(qe.appointment_id)},
+        )
+
+    return {"ok": True, "queue_id": str(qe.id), "opd_assigned_at": qe.opd_assigned_at.isoformat()}
 
 
 @router.get("/today")

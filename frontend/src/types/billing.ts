@@ -21,7 +21,7 @@ export type InvoiceItemType =
   | 'procedure'
   | 'registration';
 
-export type PaymentMode = 'cash' | 'upi' | 'debit_card' | 'credit_card';
+export type PaymentMode = 'cash' | 'upi' | 'debit_card' | 'credit_card' | 'insurance';
 
 export type PaymentStatus = 'pending' | 'completed' | 'failed' | 'reversed';
 

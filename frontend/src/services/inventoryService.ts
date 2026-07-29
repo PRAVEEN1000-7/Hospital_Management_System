@@ -60,7 +60,10 @@ const inventoryService = {
   // ── Purchase Orders ────────────────────────────────────────────────────
   async getPurchaseOrders(
     page = 1, limit = 10,
-    filters?: { status?: string; supplier_id?: string; search?: string; date_from?: string; date_to?: string },
+    filters?: {
+      status?: string; supplier_id?: string; search?: string; date_from?: string; date_to?: string;
+      payment_status?: string; sort_by?: string; sort_order?: 'asc' | 'desc';
+    },
   ): Promise<PaginatedResponse<PurchaseOrder>> {
     const params: Record<string, string | number> = { page, limit };
     if (filters?.status) params.status = filters.status;
@@ -68,6 +71,9 @@ const inventoryService = {
     if (filters?.search) params.search = filters.search;
     if (filters?.date_from) params.date_from = filters.date_from;
     if (filters?.date_to) params.date_to = filters.date_to;
+    if (filters?.payment_status) params.payment_status = filters.payment_status;
+    if (filters?.sort_by) params.sort_by = filters.sort_by;
+    if (filters?.sort_order) params.sort_order = filters.sort_order;
     const res = await api.get<PaginatedResponse<PurchaseOrder>>('/inventory/purchase-orders', { params });
     return res.data;
   },
@@ -81,6 +87,10 @@ const inventoryService = {
   },
   async updatePurchaseOrder(id: string, data: { status?: string; notes?: string; expected_delivery_date?: string }): Promise<PurchaseOrder> {
     const res = await api.put<PurchaseOrder>(`/inventory/purchase-orders/${id}`, data);
+    return res.data;
+  },
+  async getPurchaseOrderPdfHtml(id: string): Promise<string> {
+    const res = await api.get(`/inventory/purchase-orders/${id}/pdf`, { responseType: 'text' });
     return res.data;
   },
 
@@ -127,13 +137,18 @@ const inventoryService = {
     const res = await api.put<GoodsReceiptNote>(`/inventory/grns/${id}`, data);
     return res.data;
   },
-  /** Correct batch_number/manufactured_date/expiry_date on a received line item.
-   * Backend only allows this while the GRN is still "pending". */
+  /** Correct batch_number/manufactured_date/expiry_date/quantity_received/
+   * discrepancy_notes on a received line item (BRD 5.5). Backend only allows
+   * this while the GRN is still "pending". */
   async updateGRNItemBatch(
     grnId: string, itemId: string,
-    data: { batch_number?: string; manufactured_date?: string; expiry_date?: string },
+    data: { batch_number?: string; manufactured_date?: string; expiry_date?: string; quantity_received?: number; discrepancy_notes?: string },
   ): Promise<void> {
     await api.put(`/inventory/grns/${grnId}/items/${itemId}`, data);
+  },
+  async getGRNPdfHtml(id: string): Promise<string> {
+    const res = await api.get(`/inventory/grns/${id}/pdf`, { responseType: 'text' });
+    return res.data;
   },
 
   // ── Stock Movements ────────────────────────────────────────────────────

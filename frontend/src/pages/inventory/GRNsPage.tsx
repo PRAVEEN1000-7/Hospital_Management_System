@@ -5,6 +5,7 @@ import inventoryService from '../../services/inventoryService';
 import type { GoodsReceiptNote } from '../../types/inventory';
 import DateRangeFilter from '../../components/common/DateRangeFilter';
 import { formatDateOnly } from '../../utils/calendarDate';
+import { htmlStringToPdf } from '../../utils/pdf';
 
 const STATUS_COLORS: Record<string, string> = {
   pending: 'bg-amber-50 text-amber-700',
@@ -57,6 +58,21 @@ const GRNsPage: React.FC = () => {
       if (detailGRN?.id === grn.id) setDetailGRN(null);
     } catch {
       toast.error('Failed to update GRN status');
+    }
+  };
+
+  // BRD 5.5 — download a single GRN as a proper document.
+  const [downloadingGrnId, setDownloadingGrnId] = useState<string | null>(null);
+  const handleDownloadGrn = async (grn: GoodsReceiptNote) => {
+    if (downloadingGrnId) return;
+    setDownloadingGrnId(grn.id);
+    try {
+      const html = await inventoryService.getGRNPdfHtml(grn.id);
+      await htmlStringToPdf(html, `GRN_${grn.grn_number}.pdf`);
+    } catch {
+      toast.error('Failed to download GRN');
+    } finally {
+      setDownloadingGrnId(null);
     }
   };
 
@@ -173,6 +189,20 @@ const GRNsPage: React.FC = () => {
                           className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
                           title="View full receipt details and line items">
                           <span className="material-symbols-outlined text-[15px]">visibility</span> View
+                        </button>
+                        {grn.status === 'pending' && (
+                          <button onClick={() => navigate(`/inventory/grns/${grn.id}`)}
+                            className="inline-flex items-center gap-1 p-1.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                            title="Correct batch/quantity details while this GRN is still Pending">
+                            <span className="material-symbols-outlined text-[15px]">edit</span>
+                          </button>
+                        )}
+                        <button onClick={() => handleDownloadGrn(grn)} disabled={downloadingGrnId === grn.id}
+                          className="inline-flex items-center gap-1 p-1.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors disabled:opacity-50"
+                          title="Download this GRN as a PDF">
+                          <span className={`material-symbols-outlined text-[15px] ${downloadingGrnId === grn.id ? 'animate-spin' : ''}`}>
+                            {downloadingGrnId === grn.id ? 'progress_activity' : 'download'}
+                          </span>
                         </button>
                       </div>
                     </td>

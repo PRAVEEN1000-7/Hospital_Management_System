@@ -76,7 +76,8 @@ const PrescriptionHistoryGrid: React.FC<PrescriptionHistoryGridProps> = ({ patie
                   <th className="px-4 py-2.5">Date</th>
                   <th className="px-4 py-2.5">Doctor</th>
                   <th className="px-4 py-2.5">Diagnosis</th>
-                  <th className="px-4 py-2.5">Medicines</th>
+                  <th className="px-4 py-2.5">Prescribed Medicine</th>
+                  <th className="px-4 py-2.5">Dispensed Medicine</th>
                   <th className="px-4 py-2.5">Status</th>
                 </tr>
               </thead>
@@ -84,6 +85,9 @@ const PrescriptionHistoryGrid: React.FC<PrescriptionHistoryGridProps> = ({ patie
                 {items.map((rx) => {
                   const shownMedicines = (rx.medicine_names || []).slice(0, 2);
                   const remaining = Math.max(0, (rx.item_count || 0) - shownMedicines.length);
+                  const dispensedNames = rx.dispensed_medicine_names || [];
+                  const shownDispensed = dispensedNames.slice(0, 2);
+                  const remainingDispensed = Math.max(0, dispensedNames.length - shownDispensed.length);
                   return (
                     <tr
                       key={rx.id}
@@ -109,6 +113,24 @@ const PrescriptionHistoryGrid: React.FC<PrescriptionHistoryGridProps> = ({ patie
                             {remaining > 0 && (
                               <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-[11px] rounded-full">
                                 +{remaining}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {shownDispensed.length === 0 ? (
+                          <span className="text-xs text-slate-400 italic">Not dispensed</span>
+                        ) : (
+                          <div className="flex flex-wrap gap-1">
+                            {shownDispensed.map((name, idx) => (
+                              <span key={idx} className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[11px] rounded-full">
+                                {name}
+                              </span>
+                            ))}
+                            {remainingDispensed > 0 && (
+                              <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 text-[11px] rounded-full">
+                                +{remainingDispensed}
                               </span>
                             )}
                           </div>

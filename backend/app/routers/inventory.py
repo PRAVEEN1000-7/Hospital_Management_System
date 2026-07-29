@@ -223,6 +223,9 @@ async def list_purchase_orders(
     search: Optional[str] = None,
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
+    payment_status: Optional[str] = Query(None, description="completed | incomplete | partial"),
+    sort_by: Optional[str] = Query(None, description="created_at | order_date | total_amount | payment_status"),
+    sort_order: str = Query("desc", pattern="^(asc|desc)$"),
     db: Session = Depends(get_db),
     current_user: User = Depends(inventory_view_roles),
 ):
@@ -231,6 +234,7 @@ async def list_purchase_orders(
         db, current_user.hospital_id, page, limit,
         status=status_filter, supplier_id=supplier_id, search=search,
         date_from=date_from, date_to=date_to,
+        payment_status=payment_status, sort_by=sort_by, sort_order=sort_order,
     )
     data = [svc._format_po_response(po, db) for po in result["data"]]
     return {**result, "data": data}
@@ -261,6 +265,143 @@ async def get_purchase_order(
     if not po or str(po.hospital_id) != str(current_user.hospital_id):
         raise HTTPException(status_code=404, detail="Purchase order not found")
     return svc._format_po_response(po, db)
+
+
+@po_router.get("/{po_id}/pdf")
+async def get_purchase_order_pdf(
+    po_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(inventory_view_roles),
+):
+    """Generate a downloadable/printable HTML document for this PO (BRD 5.4).
+
+    Mirrors invoices.py's get_invoice_pdf — a fully self-contained HTML
+    document (inline <style>, escaped values) so it renders identically
+    whether opened for printing or converted to PDF client-side via
+    htmlStringToPdf.
+    """
+    import html as _html_mod
+    from datetime import datetime
+    from ..models.user import Hospital
+
+    po = svc.get_purchase_order(db, po_id)
+    if not po or str(po.hospital_id) != str(current_user.hospital_id):
+        raise HTTPException(status_code=404, detail="Purchase order not found")
+
+    hospital = db.query(Hospital).filter(Hospital.id == current_user.hospital_id).first()
+    supplier = po.supplier
+
+    def _esc(value) -> str:
+        if value is None or value == "":
+            return ""
+        return _html_mod.escape(str(value), quote=True)
+
+    def fmt_money(v) -> str:
+        return f"{float(v or 0):,.2f}"
+
+    def fmt_date(d) -> str:
+        return d.strftime("%B %d, %Y") if d else "—"
+
+    hosp_name = _esc((hospital.name if hospital else "") or "Hospital")
+    hosp_address = _esc(hospital.address_line_1 if hospital else "")
+    hosp_city = _esc(hospital.city if hospital else "")
+    hosp_state = _esc(hospital.state_province if hospital else "")
+    hosp_phone = _esc(hospital.phone if hospital else "")
+    hosp_email = _esc(hospital.email if hospital else "")
+
+    subtotal = sum(float(it.total_price or 0) for it in po.items)
+
+    rows = "".join(
+        f"""<tr>
+            <td>{_esc(svc._resolve_item_name_with_fallback(db, it.item_type, it.item_id, po.hospital_id, float(it.unit_price)))}
+                <br><span class="muted">{_esc((it.item_type or '').replace('_', ' ').title())}</span></td>
+            <td class="right">{it.quantity_ordered}</td>
+            <td class="right">{it.quantity_received or 0}</td>
+            <td class="right">₹{fmt_money(it.unit_price)}</td>
+            <td class="right"><strong>₹{fmt_money(it.total_price)}</strong></td>
+        </tr>"""
+        for it in po.items
+    )
+
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+<title>Purchase Order - {_esc(po.po_number)}</title>
+<style>
+body {{ font-family: Arial, sans-serif; margin: 0; padding: 40px; color: #1e293b; }}
+.header {{ text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 3px solid #0284c7; }}
+.header h1 {{ margin: 0; color: #0284c7; font-size: 28px; }}
+.header p {{ margin: 4px 0 0; color: #64748b; font-size: 14px; }}
+.po-number {{ font-size: 20px; font-weight: bold; color: #0284c7; text-align: center; margin: 20px 0; padding: 12px; background: #f0f9ff; border-radius: 8px; }}
+.meta {{ display: flex; justify-content: space-between; margin: 16px 0; font-size: 13px; color: #64748b; }}
+table {{ width: 100%; border-collapse: collapse; margin: 16px 0; }}
+th, td {{ text-align: left; padding: 10px 12px; border-bottom: 1px solid #e2e8f0; font-size: 13px; }}
+th {{ color: #64748b; font-weight: 600; font-size: 12px; background: #f8fafc; }}
+.right {{ text-align: right; }}
+.muted {{ color: #94a3b8; font-size: 11px; }}
+.section-title {{ font-size: 16px; font-weight: bold; color: #0284c7; margin: 24px 0 8px; padding-bottom: 4px; border-bottom: 2px solid #e2e8f0; }}
+.status {{ display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: bold; text-transform: uppercase; }}
+.status-received {{ background: #dcfce7; color: #166534; }}
+.status-approved, .status-submitted {{ background: #dbeafe; color: #1e40af; }}
+.status-partially_received {{ background: #fef3c7; color: #92400e; }}
+.status-draft {{ background: #f1f5f9; color: #475569; }}
+.status-cancelled {{ background: #fee2e2; color: #991b1b; }}
+.summary {{ width: 280px; margin-left: auto; margin-top: 16px; }}
+.summary-row {{ display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }}
+.summary-total {{ font-size: 16px; font-weight: bold; border-top: 2px solid #e2e8f0; padding-top: 8px; margin-top: 8px; }}
+.signature {{ margin-top: 60px; display: flex; justify-content: flex-end; }}
+.signature-box {{ text-align: center; width: 220px; border-top: 1px solid #1e293b; padding-top: 8px; font-size: 12px; color: #64748b; }}
+.footer {{ margin-top: 40px; text-align: center; color: #94a3b8; font-size: 11px; border-top: 1px solid #e2e8f0; padding-top: 16px; }}
+@media print {{ body {{ padding: 20px; }} }}
+</style>
+</head>
+<body>
+<div class="header">
+    <h1>{hosp_name}</h1>
+    <p>{hosp_address}, {hosp_city}, {hosp_state}</p>
+    <p>Phone: {hosp_phone} | Email: {hosp_email}</p>
+</div>
+<div class="po-number">Purchase Order #{_esc(po.po_number)}</div>
+<div class="meta">
+    <span>Order Date: {fmt_date(po.order_date)}</span>
+    <span>Expected Delivery: {fmt_date(po.expected_delivery_date)}</span>
+    <span class="status status-{po.status}">{_esc((po.status or '').replace('_', ' '))}</span>
+</div>
+<p class="section-title">Vendor</p>
+<table>
+    <tr><th style="width:160px;">Supplier</th><td>{_esc(supplier.name) if supplier else '—'}</td></tr>
+    <tr><th>Contact</th><td>{_esc(supplier.contact_person) if supplier else '—'} {f'· {_esc(supplier.phone)}' if supplier and supplier.phone else ''}</td></tr>
+    <tr><th>Address</th><td>{_esc(supplier.address) if supplier else '—'}</td></tr>
+</table>
+<p class="section-title">Items</p>
+<table>
+    <thead>
+        <tr><th>Item</th><th class="right">Qty Ordered</th><th class="right">Qty Received</th><th class="right">Unit Price</th><th class="right">Total</th></tr>
+    </thead>
+    <tbody>{rows}</tbody>
+</table>
+<div class="summary">
+    <div class="summary-row"><span>Subtotal</span><span>₹{fmt_money(subtotal)}</span></div>
+    <div class="summary-row"><span>Tax</span><span>₹{fmt_money(po.tax_amount)}</span></div>
+    <div class="summary-row summary-total"><span>Total</span><span>₹{fmt_money(po.total_amount)}</span></div>
+</div>
+{f'<p class="section-title">Notes</p><p style="font-size:13px;">{_esc(po.notes)}</p>' if po.notes else ''}
+<div class="signature">
+    <div class="signature-box">Authorized Signatory{f' — {_esc(po.approver.full_name)}' if getattr(po, 'approver', None) else ''}</div>
+</div>
+<div class="footer">
+    <p>Generated on {datetime.now().strftime("%B %d, %Y at %I:%M %p")} | {hosp_name}</p>
+    <p>This is a computer-generated document. No signature required.</p>
+</div>
+</body>
+</html>"""
+
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(
+        content=html,
+        media_type="text/html",
+        headers={"Content-Disposition": f'inline; filename="po_{po.po_number}.html"'},
+    )
 
 
 @po_router.put("/{po_id}")
@@ -405,6 +546,131 @@ async def get_grn(
     return svc._format_grn_response(grn, db)
 
 
+@grn_router.get("/{grn_id}/pdf")
+async def get_grn_pdf(
+    grn_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(inventory_view_roles),
+):
+    """Generate a downloadable/printable HTML document for this GRN (BRD 5.5).
+
+    Mirrors invoices.py's get_invoice_pdf / the PO pdf endpoint above.
+    """
+    import html as _html_mod
+    from datetime import datetime
+    from ..models.user import Hospital
+
+    grn = svc.get_grn(db, grn_id)
+    if not grn or str(grn.hospital_id) != str(current_user.hospital_id):
+        raise HTTPException(status_code=404, detail="GRN not found")
+
+    hospital = db.query(Hospital).filter(Hospital.id == current_user.hospital_id).first()
+    supplier = grn.supplier
+
+    def _esc(value) -> str:
+        if value is None or value == "":
+            return ""
+        return _html_mod.escape(str(value), quote=True)
+
+    def fmt_money(v) -> str:
+        return f"{float(v or 0):,.2f}"
+
+    def fmt_date(d) -> str:
+        return d.strftime("%B %d, %Y") if d else "—"
+
+    hosp_name = _esc((hospital.name if hospital else "") or "Hospital")
+    hosp_address = _esc(hospital.address_line_1 if hospital else "")
+    hosp_city = _esc(hospital.city if hospital else "")
+    hosp_state = _esc(hospital.state_province if hospital else "")
+    hosp_phone = _esc(hospital.phone if hospital else "")
+    hosp_email = _esc(hospital.email if hospital else "")
+
+    rows = "".join(
+        f"""<tr>
+            <td>{_esc(svc._resolve_item_name_with_fallback(db, it.item_type, it.item_id, grn.hospital_id, float(it.unit_price)))}
+                {f'<br><span class="muted">{_esc(it.discrepancy_notes)}</span>' if it.discrepancy_notes else ''}</td>
+            <td>{_esc(it.batch_number) or '—'}</td>
+            <td>{fmt_date(it.expiry_date)}</td>
+            <td class="right">{it.quantity_received}</td>
+            <td class="right">₹{fmt_money(it.unit_price)}</td>
+            <td class="right"><strong>₹{fmt_money(it.total_price)}</strong></td>
+        </tr>"""
+        for it in grn.items
+    )
+
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+<title>Goods Receipt Note - {_esc(grn.grn_number)}</title>
+<style>
+body {{ font-family: Arial, sans-serif; margin: 0; padding: 40px; color: #1e293b; }}
+.header {{ text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 3px solid #0284c7; }}
+.header h1 {{ margin: 0; color: #0284c7; font-size: 28px; }}
+.header p {{ margin: 4px 0 0; color: #64748b; font-size: 14px; }}
+.grn-number {{ font-size: 20px; font-weight: bold; color: #0284c7; text-align: center; margin: 20px 0; padding: 12px; background: #f0f9ff; border-radius: 8px; }}
+.meta {{ display: flex; justify-content: space-between; margin: 16px 0; font-size: 13px; color: #64748b; }}
+table {{ width: 100%; border-collapse: collapse; margin: 16px 0; }}
+th, td {{ text-align: left; padding: 10px 12px; border-bottom: 1px solid #e2e8f0; font-size: 13px; }}
+th {{ color: #64748b; font-weight: 600; font-size: 12px; background: #f8fafc; }}
+.right {{ text-align: right; }}
+.muted {{ color: #94a3b8; font-size: 11px; }}
+.section-title {{ font-size: 16px; font-weight: bold; color: #0284c7; margin: 24px 0 8px; padding-bottom: 4px; border-bottom: 2px solid #e2e8f0; }}
+.status {{ display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: bold; text-transform: uppercase; }}
+.status-accepted {{ background: #dcfce7; color: #166534; }}
+.status-verified {{ background: #dbeafe; color: #1e40af; }}
+.status-pending {{ background: #fef3c7; color: #92400e; }}
+.status-rejected {{ background: #fee2e2; color: #991b1b; }}
+.summary {{ width: 280px; margin-left: auto; margin-top: 16px; }}
+.summary-row {{ display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }}
+.summary-total {{ font-size: 16px; font-weight: bold; border-top: 2px solid #e2e8f0; padding-top: 8px; margin-top: 8px; }}
+.footer {{ margin-top: 40px; text-align: center; color: #94a3b8; font-size: 11px; border-top: 1px solid #e2e8f0; padding-top: 16px; }}
+@media print {{ body {{ padding: 20px; }} }}
+</style>
+</head>
+<body>
+<div class="header">
+    <h1>{hosp_name}</h1>
+    <p>{hosp_address}, {hosp_city}, {hosp_state}</p>
+    <p>Phone: {hosp_phone} | Email: {hosp_email}</p>
+</div>
+<div class="grn-number">Goods Receipt Note #{_esc(grn.grn_number)}</div>
+<div class="meta">
+    <span>Receipt Date: {fmt_date(grn.receipt_date)}</span>
+    <span>PO Reference: {_esc(grn.purchase_order.po_number) if grn.purchase_order else '—'}</span>
+    <span class="status status-{grn.status}">{_esc(grn.status)}</span>
+</div>
+<p class="section-title">Vendor</p>
+<table>
+    <tr><th style="width:160px;">Supplier</th><td>{_esc(supplier.name) if supplier else '—'}</td></tr>
+    <tr><th>Invoice No.</th><td>{_esc(grn.invoice_number) or '—'}</td></tr>
+    <tr><th>Received By</th><td>{_esc(grn.creator.full_name) if getattr(grn, 'creator', None) else '—'}</td></tr>
+</table>
+<p class="section-title">Items Received</p>
+<table>
+    <thead>
+        <tr><th>Item</th><th>Batch</th><th>Expiry</th><th class="right">Qty Received</th><th class="right">Unit Price</th><th class="right">Total</th></tr>
+    </thead>
+    <tbody>{rows}</tbody>
+</table>
+<div class="summary">
+    <div class="summary-row summary-total"><span>Total</span><span>₹{fmt_money(grn.total_amount)}</span></div>
+</div>
+{f'<p class="section-title">Notes</p><p style="font-size:13px;">{_esc(grn.notes)}</p>' if grn.notes else ''}
+<div class="footer">
+    <p>Generated on {datetime.now().strftime("%B %d, %Y at %I:%M %p")} | {hosp_name}</p>
+    <p>This is a computer-generated document. No signature required.</p>
+</div>
+</body>
+</html>"""
+
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(
+        content=html,
+        media_type="text/html",
+        headers={"Content-Disposition": f'inline; filename="grn_{grn.grn_number}.html"'},
+    )
+
+
 @grn_router.put("/{grn_id}")
 async def update_grn(
     grn_id: uuid.UUID,
@@ -431,7 +697,8 @@ async def update_grn_item_batch(
     db: Session = Depends(get_db),
     current_user: User = Depends(grn_verify_roles),
 ):
-    """Correct batch_number/manufactured_date/expiry_date on a received line item.
+    """Correct batch_number/manufactured_date/expiry_date/quantity_received/
+    discrepancy_notes on a received line item (BRD 5.5).
 
     Only permitted while the GRN is still 'pending' — see update_grn_item_batch
     in inventory_service.py for why this is locked once verified/accepted.
@@ -440,7 +707,7 @@ async def update_grn_item_batch(
     if not existing or str(existing.hospital_id) != str(current_user.hospital_id):
         raise HTTPException(status_code=404, detail="GRN not found")
     try:
-        item = svc.update_grn_item_batch(db, grn_id, item_id, payload)
+        item = svc.update_grn_item_batch(db, grn_id, item_id, payload, current_user=current_user)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return GRNItemResponse(

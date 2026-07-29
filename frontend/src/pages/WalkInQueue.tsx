@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
@@ -15,6 +15,17 @@ import { formatLocalDateISO, formatMonthKey } from '../utils/calendarDate';
 import type { Patient } from '../types/patient';
 import { canEdit } from '../config/modulePermissions';
 import VerifiedBadge from '../components/patients/VerifiedBadge';
+import invoiceService from '../services/invoiceService';
+import paymentService from '../services/paymentService';
+import type { Invoice, PaymentMode, PaymentCollector } from '../types/billing';
+
+const PAYMENT_MODES: { value: PaymentMode; label: string }[] = [
+  { value: 'cash', label: 'Cash' },
+  { value: 'upi', label: 'UPI' },
+  { value: 'debit_card', label: 'Debit Card' },
+  { value: 'credit_card', label: 'Credit Card' },
+  { value: 'insurance', label: 'Insurance' },
+];
 
 // ── Priority helpers ───────────────────────────────────────────────
 const PRIORITY_CONFIG: Record<string, { label: string; bg: string; text: string; icon: string }> = {
@@ -74,6 +85,23 @@ const WalkInQueue: React.FC = () => {
   const [sendingInProgress, setSendingInProgress] = useState(false);
   const [detailItem, setDetailItem] = useState<QueueItem | null>(null);
   const [unassigned, setUnassigned] = useState<UnassignedWalkIn[]>([]);
+
+  // ── Collect Consultation Fee (BRD 5.1) — same flow as
+  // AppointmentManagement.tsx's Collect Fee modal, adapted to work off a
+  // QueueItem instead of a full Appointment (Invoice already carries
+  // patient_name/invoice_number, so no separate appointment fetch is needed).
+  const [collectItem, setCollectItem] = useState<QueueItem | null>(null);
+  const [collectInvoice, setCollectInvoice] = useState<Invoice | null>(null);
+  const [collectLoading, setCollectLoading] = useState(false);
+  const [collectSaving, setCollectSaving] = useState(false);
+  const [collectAmount, setCollectAmount] = useState(0);
+  const [collectMode, setCollectMode] = useState<PaymentMode>('cash');
+  const [collectRef, setCollectRef] = useState('');
+  const [collectNotes, setCollectNotes] = useState('');
+  const [collectDate, setCollectDate] = useState(formatLocalDateISO());
+  const [collectors, setCollectors] = useState<PaymentCollector[]>([]);
+  const [collectCollectorId, setCollectCollectorId] = useState('');
+  const collectRequestRef = useRef(0);
 
   // ── Doctor View: Tab + Scheduled Appointments ─────────────────
   const [activeTab, setActiveTab] = useState<'queue' | 'scheduled' | 'completed' | 'upcoming'>('queue');
@@ -214,6 +242,92 @@ const WalkInQueue: React.FC = () => {
   }, [isDoctor]);
 
   useEffect(() => { fetchQueue(); }, [fetchQueue]);
+
+  useEffect(() => { paymentService.getCollectors().then(setCollectors).catch(() => {}); }, []);
+
+  const openCollectFee = async (item: QueueItem) => {
+    const requestId = ++collectRequestRef.current;
+    setCollectItem(item);
+    setCollectLoading(true);
+    try {
+      const invoice = await invoiceService.getOrCreateConsultationInvoice(item.appointment_id);
+      if (collectRequestRef.current !== requestId) return; // dialog closed/reopened since this fetch started
+      setCollectInvoice(invoice);
+      setCollectAmount(Number(invoice.balance_amount || 0));
+      setCollectMode('cash');
+      setCollectRef('');
+      setCollectNotes('');
+      setCollectDate(formatLocalDateISO());
+      setCollectCollectorId(user?.id || '');
+    } catch (err: any) {
+      if (collectRequestRef.current !== requestId) return;
+      toast.error(err?.response?.data?.detail || 'Failed to prepare consultation invoice');
+      setCollectItem(null);
+      setCollectInvoice(null);
+    } finally {
+      if (collectRequestRef.current === requestId) setCollectLoading(false);
+    }
+  };
+
+  const closeCollectFee = () => {
+    collectRequestRef.current++; // invalidate any in-flight invoice fetch
+    setCollectItem(null);
+    setCollectInvoice(null);
+    setCollectLoading(false);
+    setCollectSaving(false);
+    setCollectAmount(0);
+    setCollectMode('cash');
+    setCollectRef('');
+    setCollectNotes('');
+    setCollectCollectorId('');
+  };
+
+  const submitCollectFee = async () => {
+    if (!collectItem || !collectInvoice) return;
+    const balance = Number(collectInvoice.balance_amount || 0);
+    if (balance <= 0) {
+      toast.info('Consultation invoice is already paid');
+      closeCollectFee();
+      return;
+    }
+    if (collectAmount <= 0) {
+      toast.error('Payment amount must be greater than zero');
+      return;
+    }
+    if (collectAmount > balance) {
+      toast.error(`Amount cannot exceed balance (Rs ${collectInvoice.balance_amount})`);
+      return;
+    }
+
+    setCollectSaving(true);
+    try {
+      await paymentService.record({
+        invoice_id: collectInvoice.id,
+        patient_id: collectInvoice.patient_id,
+        amount: collectAmount,
+        payment_mode: collectMode,
+        payment_reference: collectRef || undefined,
+        payment_date: collectDate,
+        notes: collectNotes || undefined,
+        received_by: collectCollectorId || undefined,
+      });
+
+      const refreshed = await invoiceService.getById(collectInvoice.id);
+      setCollectInvoice(refreshed);
+      setCollectAmount(Number(refreshed.balance_amount || 0));
+      toast.success(
+        Number(refreshed.balance_amount || 0) <= 0
+          ? 'Consultation fee fully collected'
+          : 'Payment recorded (partial)'
+      );
+      fetchQueue();
+      closeCollectFee();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to record payment');
+    } finally {
+      setCollectSaving(false);
+    }
+  };
 
   // Fetch scheduled appointments for doctors
   useEffect(() => { fetchScheduledAppts(); }, [fetchScheduledAppts]);
@@ -1433,6 +1547,42 @@ const WalkInQueue: React.FC = () => {
                               With Doctor
                             </span>
                           )}
+                          {/* Consultation Fee (BRD 5.1) — collected/uncollected state right
+                              in the queue row, no navigation to another module needed. */}
+                          {canEdit('billing', roles) && item.appointment_id && (
+                            item.consultation_fee_collected ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold rounded-lg bg-emerald-100 text-emerald-700" title="Consultation fee collected">
+                                <span className="material-symbols-outlined text-sm">paid</span>
+                                Paid
+                              </span>
+                            ) : (
+                              <button onClick={() => openCollectFee(item)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-500 text-white hover:bg-amber-600 hover:scale-105 active:scale-95 transition-all shadow-sm text-xs font-semibold"
+                                title="Collect Consultation Fee">
+                                <span className="material-symbols-outlined text-base">payments</span>
+                                Collect Fee
+                              </button>
+                            )
+                          )}
+                          {/* OPD Assignment (BRD 5.2) — navigates to the OPD Assignment
+                              (Book Appointment) wizard with the patient pre-filled, distinct
+                              from the "Assign"/"Send" doctor-picker above. */}
+                          {canFilter && item.patient_id && (
+                            item.opd_assigned_at ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold rounded-lg bg-indigo-100 text-indigo-700" title="Sent to OPD Assignment">
+                                <span className="material-symbols-outlined text-sm">assignment_turned_in</span>
+                                Assigned
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => navigate(`/appointments/book?patient_id=${item.patient_id}&from_queue=${item.queue_id}`)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-indigo-200 text-indigo-600 hover:bg-indigo-50 hover:scale-105 active:scale-95 transition-all text-xs font-semibold"
+                                title="OPD Assignment">
+                                <span className="material-symbols-outlined text-base">assignment_ind</span>
+                                OPD Assignment
+                              </button>
+                            )
+                          )}
                           {/* View Details button for any item */}
                           <button onClick={() => setDetailItem(item)}
                             className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors" title="View Patient Details">
@@ -1767,6 +1917,129 @@ const WalkInQueue: React.FC = () => {
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Collect Consultation Fee Modal (BRD 5.1) */}
+      {collectItem && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={closeCollectFee}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-slate-900">Collect Consultation Fee</h3>
+              <button onClick={closeCollectFee} className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"><span className="material-symbols-outlined">close</span></button>
+            </div>
+
+            {collectLoading ? (
+              <div className="py-8 text-center text-slate-400">
+                <span className="material-symbols-outlined animate-spin text-3xl">progress_activity</span>
+                <p className="text-sm mt-2">Preparing consultation invoice...</p>
+              </div>
+            ) : collectInvoice ? (
+              <>
+                <div className="bg-slate-50 rounded-xl p-4 mb-4 text-sm space-y-2">
+                  <div className="flex justify-between"><span className="text-slate-500">Token</span><span className="font-medium text-slate-900">#{collectItem.queue_number}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">Patient</span><span className="font-medium text-slate-900">{collectItem.patient_name || '—'}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">Doctor</span><span className="font-medium text-slate-900">{collectItem.doctor_name || '—'}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">Invoice</span><span className="font-medium text-slate-900">{collectInvoice.invoice_number}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">Total</span><span className="font-semibold text-slate-900">Rs {Number(collectInvoice.total_amount || 0).toFixed(2)}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">Paid</span><span className="font-semibold text-emerald-700">Rs {Number(collectInvoice.paid_amount || 0).toFixed(2)}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">Balance</span><span className="font-bold text-red-600">Rs {Number(collectInvoice.balance_amount || 0).toFixed(2)}</span></div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Amount</label>
+                    <input
+                      type="number"
+                      min="0.01"
+                      max={Number(collectInvoice.balance_amount || 0)}
+                      step="0.01"
+                      value={collectAmount || ''}
+                      onChange={(e) => {
+                        const balance = Number(collectInvoice.balance_amount || 0);
+                        const raw = parseFloat(e.target.value) || 0;
+                        setCollectAmount(Math.min(Math.max(0, raw), balance));
+                      }}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                    />
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      {collectAmount < Number(collectInvoice.balance_amount || 0)
+                        ? `Partial payment — Rs ${(Number(collectInvoice.balance_amount || 0) - collectAmount).toFixed(2)} will remain after this`
+                        : 'Defaults to the full outstanding balance — edit to record a partial payment'}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Payment Mode</label>
+                    <select
+                      value={collectMode}
+                      onChange={(e) => setCollectMode(e.target.value as PaymentMode)}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                    >
+                      {PAYMENT_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Payment Date</label>
+                    <input
+                      type="date"
+                      value={collectDate}
+                      onChange={(e) => setCollectDate(e.target.value)}
+                      onClick={(e) => (e.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.()}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Reference</label>
+                    <input
+                      type="text"
+                      value={collectRef}
+                      onChange={(e) => setCollectRef(e.target.value)}
+                      placeholder="Txn / UPI / Card ref"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Collected By</label>
+                    <select
+                      value={collectCollectorId}
+                      onChange={(e) => setCollectCollectorId(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                    >
+                      {collectors.length === 0 && user && (
+                        <option value={user.id}>{user.first_name} {user.last_name} (you)</option>
+                      )}
+                      {collectors.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.first_name} {c.last_name}{c.id === user?.id ? ' (you)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-xs font-medium text-slate-500 mb-1">Notes</label>
+                  <textarea
+                    rows={2}
+                    value={collectNotes}
+                    onChange={(e) => setCollectNotes(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm resize-none focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-3">
+                  <button onClick={closeCollectFee} className="px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 rounded-lg">Close</button>
+                  <button
+                    onClick={submitCollectFee}
+                    disabled={collectSaving || Number(collectInvoice.balance_amount || 0) <= 0}
+                    className="px-4 py-2 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50"
+                  >
+                    {collectSaving ? 'Recording...' : 'Record Payment'}
+                  </button>
+                </div>
+              </>
+            ) : null}
+          </div>
         </div>
       )}
 

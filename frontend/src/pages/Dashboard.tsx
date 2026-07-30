@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useDashboardRefresh } from '../contexts/DashboardRefreshContext';
 import { formatRole } from '../utils/constants';
+import { hasAccess } from '../config/modulePermissions';
 import patientService from '../services/patientService';
 import hospitalService from '../services/hospitalService';
 import userService from '../services/userService';
@@ -202,7 +203,10 @@ const Dashboard: React.FC = () => {
   const isAdmin = role === 'admin' || role === 'super_admin';
   const isReceptionist = role === 'receptionist';
   const isPharmacist = role === 'pharmacist';
-  const roleCanReadPatients = ['super_admin', 'admin', 'receptionist', 'nurse', 'pharmacist', 'doctor'].includes(role);
+  // The patient endpoints are guarded by view_roles('general.patients'), which
+  // has no pharmacist entry — the local list allowed one, and checking only
+  // roles[0] denied users whose patient-capable role isn't listed first.
+  const roleCanReadPatients = hasAccess('general.patients', user?.roles);
   const canAccessPatients = roleCanReadPatients && isModuleEnabled('patients');
 
   // Redirect pharmacists to pharmacy dashboard

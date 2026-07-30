@@ -17,6 +17,7 @@ import type { LabTest, PatientLabResult } from '../types/lab';
 import type { Patient } from '../types/patient';
 import type { DoctorOption } from '../types/appointment';
 import { genId } from '../utils/id';
+import { canEdit } from '../config/modulePermissions';
 import AvailabilityCalendar from '../components/common/AvailabilityCalendar';
 import { useDoctorMonthAvailability } from '../hooks/useDoctorMonthAvailability';
 import { useListKeyboardNav } from '../hooks/useListKeyboardNav';
@@ -186,6 +187,10 @@ const PrescriptionBuilder: React.FC = () => {
 
   // Check if hospital is eye hospital or multi-specialty
   const isEyeHospital = user?.hospital_specialty === 'eye_hospital' || user?.hospital_specialty === 'multi_specialty';
+  // POST /optical/prescriptions is guarded by edit_roles('optical')
+  // (admin/optical_staff only) — without this the optical card renders for any
+  // eye-hospital user and the create silently 403s after the form is filled in.
+  const canCreateOpticalRx = canEdit('optical', user?.roles);
 
   // Institution dual-letterhead selector (BRD §4.2) + Patient History auto-fill (BRD §4.4)
   const [institutionId, setInstitutionId] = useState('');
@@ -1779,7 +1784,7 @@ const PrescriptionBuilder: React.FC = () => {
               create-mode only (it's a separate record, not part of this edit).
               Shown for all eye hospitals; optical module (store) controls whether
               the patient is sent to the optical store after finalization. */}
-          {isEyeHospital && !isEditMode && (
+          {isEyeHospital && !isEditMode && canCreateOpticalRx && (
             <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold flex items-center gap-2">

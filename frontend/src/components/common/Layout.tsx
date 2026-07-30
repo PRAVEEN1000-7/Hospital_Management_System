@@ -110,12 +110,14 @@ const Layout: React.FC = () => {
   // per the client's instruction to leave the Lab role as-is — not part of the
   // shared matrix (its spreadsheet column is blank for every row).
   const canAccessLab           = hasRole('super_admin', 'admin', 'lab_technician') && isModuleEnabled('lab');
-  const canAccessHolidays      = hasAccess('employee.holidays', effectiveRoles) && isModuleEnabled('holiday_management');
-  const canAccessShifts        = hasAccess('employee.shifts', effectiveRoles) && isModuleEnabled('shift_management');
-  const canAccessAttendance    = hasAccess('employee.attendance', effectiveRoles) && isModuleEnabled('attendance');
-  const canAccessLeave         = hasAccess('employee.leave', effectiveRoles) && isModuleEnabled('leave_management');
-  const canAccessWorkforceReports = hasAccess('employee.records', effectiveRoles) && isModuleEnabled('employee_management');
-  const canAccessPayroll       = hasAccess('employee.payroll', effectiveRoles) && isModuleEnabled('payroll');
+  // One module ("workforce_management") gates all six feature areas below —
+  // which sub-pages a role actually sees is entirely down to the RBAC key.
+  const canAccessHolidays      = hasAccess('employee.holidays', effectiveRoles) && isModuleEnabled('workforce_management');
+  const canAccessShifts        = hasAccess('employee.shifts', effectiveRoles) && isModuleEnabled('workforce_management');
+  const canAccessAttendance    = hasAccess('employee.attendance', effectiveRoles) && isModuleEnabled('workforce_management');
+  const canAccessLeave         = hasAccess('employee.leave', effectiveRoles) && isModuleEnabled('workforce_management');
+  const canAccessWorkforceReports = hasAccess('employee.records', effectiveRoles) && isModuleEnabled('workforce_management');
+  const canAccessPayroll       = hasAccess('employee.payroll', effectiveRoles) && isModuleEnabled('workforce_management');
   // Report Viewer's whole job is the appointment reports export — no other role gets a
   // sidebar entry for it since admin/super_admin already reach it via the Appointments dropdown.
   const canAccessAppointmentReports = hasRole('report_viewer') && isModuleEnabled('appointments');

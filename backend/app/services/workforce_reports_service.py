@@ -14,6 +14,7 @@ from ..models.employee import EmployeeProfile
 from ..models.leave import LeaveBalance
 from ..models.department import Department
 from .leave_service import leave_days_taken_in_period
+from .employee_service import ensure_employee_profiles
 
 
 def daily_attendance_count(db: Session, hospital_id: uuid.UUID, date_from: date, date_to: date) -> list[dict]:
@@ -91,6 +92,7 @@ def verified_attendance_sheet(db: Session, hospital_id: uuid.UUID, date_from: da
 def lop_report(db: Session, hospital_id: uuid.UUID, year: int) -> list[dict]:
     """Per employee: leave taken in `year` vs. allocated → LOP days (same
     formula as the payroll worked example: max(0, taken - allocated))."""
+    ensure_employee_profiles(db, hospital_id)
     profiles = db.query(EmployeeProfile).filter(EmployeeProfile.hospital_id == hospital_id).all()
     date_from, date_to = date(year, 1, 1), date(year, 12, 31)
     result = []
@@ -112,6 +114,7 @@ def lop_report(db: Session, hospital_id: uuid.UUID, year: int) -> list[dict]:
 
 
 def paid_leave_balance_report(db: Session, hospital_id: uuid.UUID, year: int) -> list[dict]:
+    ensure_employee_profiles(db, hospital_id)
     profiles = db.query(EmployeeProfile).filter(EmployeeProfile.hospital_id == hospital_id).all()
     result = []
     for profile in profiles:
@@ -134,6 +137,7 @@ def paid_leave_balance_report(db: Session, hospital_id: uuid.UUID, year: int) ->
 
 
 def headcount_report(db: Session, hospital_id: uuid.UUID) -> dict:
+    ensure_employee_profiles(db, hospital_id)
     profiles = db.query(EmployeeProfile).filter(EmployeeProfile.hospital_id == hospital_id).all()
     by_department: dict[str, int] = {}
     by_employment_type: dict[str, int] = {}

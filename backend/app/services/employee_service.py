@@ -8,11 +8,43 @@ from typing import Optional
 from decimal import Decimal
 from sqlalchemy.orm import Session
 from ..models.employee import EmployeeProfile, EmployeeSalary
+from ..models.user import User
 
 logger = logging.getLogger(__name__)
 
 
+def ensure_employee_profiles(db: Session, hospital_id: uuid.UUID) -> None:
+    """Workforce Management manages every staff member in the hospital, not
+    just the ones an admin happened to fill 'Employee Details' in for.
+    Lazily backfills a minimal EmployeeProfile (module defaults — full_time,
+    0 leave entitlement, included in payroll) for any hospital User missing
+    one, so a hospital that's had staff for years and only just turned this
+    module on gets every existing staff member on the Attendance/Shift/
+    Leave/Payroll rosters immediately, not just staff created after today.
+    Idempotent and cheap enough to call on every read of the roster — new
+    staff created via StaffModals.tsx already get a profile at creation time
+    (see routers/employees.py), so this only ever has to do real work once
+    per hospital, or after inserting a new hospital user some other way."""
+    existing_ids = {
+        row[0] for row in
+        db.query(EmployeeProfile.user_id).filter(EmployeeProfile.hospital_id == hospital_id).all()
+    }
+    users = (
+        db.query(User)
+        .filter(User.hospital_id == hospital_id, User.is_deleted == False)  # noqa: E712
+        .all()
+    )
+    missing = [u for u in users if u.id not in existing_ids]
+    if not missing:
+        return
+    for u in missing:
+        db.add(EmployeeProfile(hospital_id=hospital_id, user_id=u.id))
+    db.commit()
+    logger.info(f"Backfilled {len(missing)} employee profile(s) for hospital {hospital_id}")
+
+
 def list_employee_profiles(db: Session, hospital_id: uuid.UUID) -> list[EmployeeProfile]:
+    ensure_employee_profiles(db, hospital_id)
     return (
         db.query(EmployeeProfile)
         .filter(EmployeeProfile.hospital_id == hospital_id)

@@ -54,7 +54,7 @@ const staffCreateSchema = z.object({
   department_id: z.string().optional(),
   analytics_enabled: z.boolean().optional(),
   // Employee Details (Workforce Management) — optional, applies to any role,
-  // gated on the employee_management module being enabled rather than role.
+  // gated on the workforce_management module being enabled rather than role.
   designation: z.string().optional(),
   employment_type: z.string().optional(),
   date_of_joining: z.string().optional(),
@@ -173,7 +173,7 @@ const ROLE_MODULE_REQUIREMENTS: Partial<Record<string, string[]>> = {
   optical_staff:     ['optical'],
   lab_technician:    ['lab'],
   report_viewer:     ['analytics'],
-  hr_manager:        ['employee_management'],
+  hr_manager:        ['workforce_management'],
   // doctor, nurse, receptionist, admin — rely on CORE modules only, always available
 };
 
@@ -398,7 +398,7 @@ const DoctorFields: React.FC<{
   </div>
 );
 
-/** Employee (HR) sub-fields — gated on the employee_management module being
+/** Employee (HR) sub-fields — gated on the workforce_management module being
  * enabled, not on role, since any staff member can be an "employee" (BRD:
  * "employee = an extension of users, applies to any staff member"). Shared
  * by Create and Edit; department_id is the same field DoctorFields uses so a
@@ -479,7 +479,7 @@ const EmployeeFields: React.FC<{
 export const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => void; onError: (msg: string) => void }> = ({ onClose, onSuccess, onError }) => {
   const toast = useToast();
   const { isModuleEnabled } = useAuth();
-  const isEmployeeModuleEnabled = isModuleEnabled('employee_management');
+  const isEmployeeModuleEnabled = isModuleEnabled('workforce_management');
   const availableRoles = useAssignableRoles();
   const [showPassword, setShowPassword] = useState(false);
   const [photoPreview, setPhotoPreview] = useState<string>('');
@@ -893,7 +893,7 @@ export const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => 
 export const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onSuccess: () => void; onError: (msg: string) => void }> = ({ user, onClose, onSuccess, onError }) => {
   const toast = useToast();
   const { isModuleEnabled } = useAuth();
-  const isEmployeeModuleEnabled = isModuleEnabled('employee_management');
+  const isEmployeeModuleEnabled = isModuleEnabled('workforce_management');
   const availableRoles = useAssignableRoles();
   const [photoPreview, setPhotoPreview] = useState<string>(user.avatar_url ? userService.getPhotoUrl(user.avatar_url) || '' : '');
   const [photoFile, setPhotoFile] = useState<File | null>(null);

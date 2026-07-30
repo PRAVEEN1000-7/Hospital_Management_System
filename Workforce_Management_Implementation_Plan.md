@@ -250,7 +250,19 @@ New `GET /payslips/{id}/print` returns escaped HTML exactly like
 - [x] Phase 0 — Foundation plumbing (`database_hole/11_workforce_management.sql` — the
       plan's assumed `08` was stale; three other files had already claimed 08-10 by the
       time this ran, confirmed via Glob per the plan's own instruction to re-check)
-- [x] Phase 1 — Employee Management + Holiday Management (`database_hole/12_employee_holiday_tables.sql`;
+      **Revised 2026-07-30 per explicit user request**: originally registered 6 separate
+      `saas_core.modules` rows (employee_management/holiday_management/shift_management/
+      attendance/leave_management/payroll) with a `required_modules` dependency chain.
+      Consolidated into **one** module, `workforce_management` — a hospital either has
+      Workforce Management on or it doesn't; which of the six sub-areas a given role can
+      reach is entirely down to the six RBAC keys (unchanged). Updated: migration 11 (now
+      seeds one row), `main.py` (one `_require_workforce` dependency list instead of six,
+      used for every workforce router include, including `workforce_reports` which no
+      longer needs its own per-endpoint module checks), `Layout.tsx`/`App.tsx`/
+      `StaffModals.tsx` (`isModuleEnabled`/`requiredModule` all point at
+      `workforce_management`). Live-verified: toggling the one module on/off correctly
+      gates all of employees/holidays/shifts/leave/payroll/reports together.
+- [x] Phase 1 — Employee Management + Holiday Management (`database_hole/11_workforce_management.sql` (§3);
       `models/employee.py`, `models/holiday.py`; `routers/employees.py`, `routers/holidays.py`;
       `EmployeeFields` in StaffModals.tsx create+edit; `pages/workforce/HolidayCalendar.tsx` +
       Layout.tsx "Workforce" nav section + App.tsx route. Deviation from the plan: employee HR
@@ -262,7 +274,7 @@ New `GET /payslips/{id}/print` returns escaped HTML exactly like
       silently dropped them since the schema's `_orm_to_dict` only reads real table columns;
       moved enrichment to the router layer post-validation, matching routers/doctors.py's
       existing pattern.)
-- [x] Phase 2 — Shift Management + Attendance (`database_hole/13_shift_attendance_tables.sql`;
+- [x] Phase 2 — Shift Management + Attendance (`database_hole/11_workforce_management.sql` (§4);
       `models/shift.py`, `models/attendance.py`; `routers/shifts.py`, `routers/attendance.py`;
       `services/attendance_service.py` implements the provisional/verify workflow — holiday
       auto-fill on grid read, upsert-on-click marking, verify-locks-the-range, and a 409 if
@@ -272,7 +284,7 @@ New `GET /payslips/{id}/print` returns escaped HTML exactly like
       end-to-end: shift + assignment creation, holiday auto-populating an unmarked grid cell,
       marking present, verifying a range, and confirming a re-mark attempt on a verified date
       correctly 409s.)
-- [x] Phase 3 — Leave Management (`database_hole/14_leave_tables.sql`; `models/leave.py`;
+- [x] Phase 3 — Leave Management (`database_hole/11_workforce_management.sql` (§5); `models/leave.py`;
       `routers/leave.py`; `services/leave_service.py` — creating a record increments
       `leave_balances.used`, writes `on_leave` into attendance via `attendance_service.mark_on_leave`,
       and notifies the reporting manager. Resolved the plan's open question #3: `allocated`
@@ -293,7 +305,7 @@ New `GET /payslips/{id}/print` returns escaped HTML exactly like
       The "HR / Payroll" GAP REPORT comment this was meant to fill in AnalyticsDashboard.tsx was
       already removed in an earlier, separate Analytics-redesign session — nothing left to clean
       up there. Live-tested all endpoints respond 200 with correct empty-state shape.)
-- [x] Phase 5 — Payroll (`database_hole/15_payroll_tables.sql`; `models/payroll.py`;
+- [x] Phase 5 — Payroll (`database_hole/11_workforce_management.sql` (§6); `models/payroll.py`;
       `routers/payroll.py` (+ a separate `payslips_router` for `/payslips/{id}` and
       `/payslips/{id}/print`); `services/payroll_service.generate_payroll_run` reads only
       *verified* attendance_records, blocks with 422 if any tracked employee has an unverified
@@ -317,5 +329,22 @@ compiled) — module-toggle + RBAC gating together, the holiday→attendance aut
 attendance verify-lock, the leave→attendance sync and LOP math, and the full payroll generation
 path — with test data cleaned up and module toggles reverted after each phase. `npx tsc -b
 --noEmit` and `npm run build` both pass clean on the final state.
+
+**Critical fix (2026-07-30) — "manage every staff member" gap.** Explicit user request to verify
+Workforce Management is wired to the entire hospital's existing staff data, not just staff
+created after the feature shipped. Found a real gap by querying the dev DB directly: every one
+of the 7 seeded hospitals had real staff `users` rows but **zero** `employee_profiles` rows — a
+hospital with 10 existing staff turning Workforce Management on would see an empty roster on
+Attendance/Shifts/Leave/Payroll/Reports, because those all filter by `EmployeeProfile.hospital_id`,
+and a profile only ever got created when an admin explicitly filled in "Employee Details" through
+StaffModals.tsx. Fixed with a lazy backfill: `employee_service.ensure_employee_profiles(db,
+hospital_id)` creates a minimal-default `EmployeeProfile` for any hospital `User` missing one
+(idempotent, cheap `NOT IN` check), called from every roster read path — `list_employee_profiles`
+(→ `GET /employees`, which is what every employee-picker dropdown across Shift/Attendance/Leave
+uses), `attendance_service._tracked_employee_ids`, `payroll_service.generate_payroll_run`, and
+`workforce_reports_service`'s headcount/LOP/paid-leave-balance reports. Live-verified against
+"HMS Core Hospital" (10 real staff, 0 profiles beforehand): `GET /employees` went from `total: 0`
+to `total: 10` on first call, matching `headcount` report's total exactly — no manual per-staff
+setup required. Test data reverted after verification.
 
 *(Update the checklist above as phases complete — the user will share updates between phases.)*

@@ -678,7 +678,7 @@ const AppWithNotifications: React.FC = () => {
               <Route path="/workforce/holidays" element={
                 <ProtectedRoute
                   allowedRoles={allowedRoles('employee.holidays')}
-                  requiredModule="holiday_management"
+                  requiredModule="workforce_management"
                 >
                   <HolidayCalendar />
                 </ProtectedRoute>
@@ -686,7 +686,7 @@ const AppWithNotifications: React.FC = () => {
               <Route path="/workforce/shifts" element={
                 <ProtectedRoute
                   allowedRoles={allowedRoles('employee.shifts')}
-                  requiredModule="shift_management"
+                  requiredModule="workforce_management"
                 >
                   <ShiftManagement />
                 </ProtectedRoute>
@@ -694,7 +694,7 @@ const AppWithNotifications: React.FC = () => {
               <Route path="/workforce/attendance" element={
                 <ProtectedRoute
                   allowedRoles={allowedRoles('employee.attendance')}
-                  requiredModule="attendance"
+                  requiredModule="workforce_management"
                 >
                   <AttendanceGrid />
                 </ProtectedRoute>
@@ -702,7 +702,7 @@ const AppWithNotifications: React.FC = () => {
               <Route path="/workforce/leave" element={
                 <ProtectedRoute
                   allowedRoles={allowedRoles('employee.leave')}
-                  requiredModule="leave_management"
+                  requiredModule="workforce_management"
                 >
                   <LeaveManagement />
                 </ProtectedRoute>
@@ -710,7 +710,7 @@ const AppWithNotifications: React.FC = () => {
               <Route path="/workforce/reports" element={
                 <ProtectedRoute
                   allowedRoles={allowedRoles('employee.records')}
-                  requiredModule="employee_management"
+                  requiredModule="workforce_management"
                 >
                   <WorkforceReports />
                 </ProtectedRoute>
@@ -718,7 +718,7 @@ const AppWithNotifications: React.FC = () => {
               <Route path="/workforce/payroll" element={
                 <ProtectedRoute
                   allowedRoles={allowedRoles('employee.payroll')}
-                  requiredModule="payroll"
+                  requiredModule="workforce_management"
                 >
                   <PayrollRuns />
                 </ProtectedRoute>
@@ -726,7 +726,7 @@ const AppWithNotifications: React.FC = () => {
               <Route path="/workforce/payroll/payslips/:payslipId" element={
                 <ProtectedRoute
                   allowedRoles={allowedRoles('employee.payroll')}
-                  requiredModule="payroll"
+                  requiredModule="workforce_management"
                 >
                   <PayslipDetail />
                 </ProtectedRoute>

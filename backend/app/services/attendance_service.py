@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from ..models.attendance import AttendanceRecord
 from ..models.employee import EmployeeProfile
 from .holiday_service import holidays_in_range
+from .employee_service import ensure_employee_profiles
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,7 @@ class AttendanceLockedError(Exception):
 
 
 def _tracked_employee_ids(db: Session, hospital_id: uuid.UUID) -> list[uuid.UUID]:
+    ensure_employee_profiles(db, hospital_id)
     rows = (
         db.query(EmployeeProfile.user_id)
         .filter(EmployeeProfile.hospital_id == hospital_id)

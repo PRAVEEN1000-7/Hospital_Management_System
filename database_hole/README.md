@@ -218,11 +218,7 @@ DEBUG=false
 | `08_role_permission_overrides.sql` | Roles & Permissions admin UI — `hospital_permission_overrides` table. Sparse per-hospital deltas on top of the static role/permission matrix (`backend/app/core/module_roles.py`); a hospital admin can now customize which roles see/edit each area from Hospital Settings, without a code deploy. | ✅ Yes |
 | `09_grn_edit_and_opd_assignment.sql` | BRD 29-Jul-2026 — `appointment_queue.opd_assigned_at` (Walk-in Queue "OPD Assigned" tracking) + `grn_items.discrepancy_notes` (GRN item batch-correction extension). Both purely additive. | ✅ Yes |
 | `10_lab_test_templates_batch2.sql` | Lab Test Catalog — 10 additional `lab_tests` rows (Lipid Profile, Prolactin, Iron Studies, HLA B27, Vitamin D3 & Calcium, Urine Culture & Sensitivity, standalone Blood Group & Rh Typing, Dengue Fever Profile, Peripheral Smear, general Microscopy), sourced from a client-supplied report workbook. Data only — reuses the existing `report_template` mechanism from `06`. | ✅ Yes |
-| `11_workforce_management.sql` | Workforce Management Phase 0 — registers 6 opt-in modules (`employee_management`, `holiday_management`, `shift_management`, `attendance`, `leave_management`, `payroll`) in `saas_core.modules`, plus the global `hr_manager` system role. No new tables yet (those arrive with Phases 1-3/5). | ✅ Yes |
-| `12_employee_holiday_tables.sql` | Workforce Management Phase 1 — creates `employee_profiles` (1:1 HR extension of `users`), `employee_salary` (effective-dated, insert-only history), and `holidays`. | ✅ Yes |
-| `13_shift_attendance_tables.sql` | Workforce Management Phase 2 — creates `shifts`, `employee_shift_assignments` (effective-dated), and `attendance_records` (one row per employee per date, provisional-then-verified). | ✅ Yes |
-| `14_leave_tables.sql` | Workforce Management Phase 3 — creates `leave_records` (HR data-entry, status defaults `approved`) and `leave_balances` (per employee/year). | ✅ Yes |
-| `15_payroll_tables.sql` | Workforce Management Phase 5 — creates `payroll_runs` and `payslips` (LOP/payable-days feed only, not disbursement or statutory filings). | ✅ Yes |
+| `11_workforce_management.sql` | Workforce Management — all phases, consolidated in one file. Registers a single opt-in `workforce_management` module (not six) + the global `hr_manager` role, then creates every workforce table: `employee_profiles`/`employee_salary` (effective-dated)/`holidays` (Phase 1), `shifts`/`employee_shift_assignments`/`attendance_records` (Phase 2), `leave_records`/`leave_balances` (Phase 3), `payroll_runs`/`payslips` (Phase 5, feed only — not disbursement or statutory filings). | ✅ Yes |
 | `99_drop_database.sql` | **Destructive.** Terminates connections, drops `hms_db` and the `hms_user` role entirely. Only for a clean local re-deploy. Run as the `postgres` superuser, never inside `hms_db`. | ❌ No |
 
 `05` and `06` are each idempotent (`IF NOT EXISTS` / `ON CONFLICT DO NOTHING` / guarded
@@ -314,10 +310,6 @@ psql -U hms_user -d hms_db -f database_hole/08_role_permission_overrides.sql
 psql -U hms_user -d hms_db -f database_hole/09_grn_edit_and_opd_assignment.sql
 psql -U hms_user -d hms_db -f database_hole/10_lab_test_templates_batch2.sql
 psql -U hms_user -d hms_db -f database_hole/11_workforce_management.sql
-psql -U hms_user -d hms_db -f database_hole/12_employee_holiday_tables.sql
-psql -U hms_user -d hms_db -f database_hole/13_shift_attendance_tables.sql
-psql -U hms_user -d hms_db -f database_hole/14_leave_tables.sql
-psql -U hms_user -d hms_db -f database_hole/15_payroll_tables.sql
 
 # 6. Verify
 psql -U hms_user -d hms_db -c "SELECT name, specialty, tenant_id FROM hospitals;"

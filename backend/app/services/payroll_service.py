@@ -26,6 +26,7 @@ from ..models.attendance import AttendanceRecord
 from ..models.employee import EmployeeProfile, EmployeeSalary
 from ..models.leave import LeaveBalance
 from ..services.notification_service import notify_hospital_users
+from ..services.employee_service import ensure_employee_profiles
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +102,7 @@ def generate_payroll_run(
         raise PayrollAlreadyExistsError(f"Payroll for {period_month}/{period_year} was already generated")
 
     date_from, date_to = _month_bounds(period_year, period_month)
+    ensure_employee_profiles(db, hospital_id)
     profiles = (
         db.query(EmployeeProfile)
         .filter(EmployeeProfile.hospital_id == hospital_id, EmployeeProfile.include_in_payroll == True)  # noqa: E712

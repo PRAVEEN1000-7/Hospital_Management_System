@@ -228,11 +228,21 @@ def create_user(
     db.add(user)
     db.flush()  # Get the user.id
     
-    # Find or create the role and assign it
+    # Assign the role. A miss here must be loud, not silent — a role name
+    # accepted by the schema (VALID_ROLES) but missing from this table would
+    # otherwise create a user with zero roles: login still succeeds (auth
+    # doesn't check roles) but every hasRole()/allowedRoles() check across the
+    # app fails, which looks indistinguishable from "login is broken" to
+    # whoever ends up with the account. See database_hole/11_lab_technician_role.sql
+    # for the real incident this caught (lab_technician was never seeded).
     role = db.query(Role).filter(Role.name == role_name).first()
-    if role:
-        user_role = UserRole(user_id=user.id, role_id=role.id)
-        db.add(user_role)
+    if not role:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Role '{role_name}' is not configured on this server (missing from the roles table). Contact support.",
+        )
+    user_role = UserRole(user_id=user.id, role_id=role.id)
+    db.add(user_role)
     
     # Auto-create doctor record when the role is 'doctor'
     if role_name == "doctor" and specialization:

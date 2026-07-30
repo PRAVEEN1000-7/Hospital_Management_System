@@ -24,6 +24,9 @@ from .routers import (
     inventory, notifications, optical, lab,
     # Billing & Invoice module
     invoices, payments, refunds, settlements, tax_configurations,
+    # Workforce Management module (Phase 1-5)
+    employees, holidays, shifts, attendance, leave,
+    workforce_reports, payroll,
 )
 from .routers import logs as logs_router  # frontend log ingestion endpoint
 from .routers import public_queue  # unauthenticated public Queue Display
@@ -41,6 +44,10 @@ from .models import user, patient, appointment, patient_id_sequence, department,
 # Ensure PasswordResetToken is registered with SQLAlchemy metadata
 from .models import tax_config, invoice, payment, refund, settlement, insurance  # noqa: F401
 from .models import tenant  # noqa: F401
+from .models import employee, holiday  # noqa: F401
+from .models import shift, attendance as attendance_models  # noqa: F401
+from .models import leave as leave_models  # noqa: F401
+from .models import payroll as payroll_models  # noqa: F401
 
 # NOTE: We do NOT call Base.metadata.create_all() — the new hms_db schema
 # is managed via the SQL migration files (01_schema.sql, 02_seed_data.sql).
@@ -256,6 +263,12 @@ _require_inventory     = [Depends(SubscriptionValidator.require_module_access('i
 _require_billing       = [Depends(SubscriptionValidator.require_module_access('billing'))]
 _require_optical       = [Depends(SubscriptionValidator.require_module_access('optical'))]
 _require_lab           = [Depends(SubscriptionValidator.require_module_access('lab'))]
+_require_employees     = [Depends(SubscriptionValidator.require_module_access('employee_management'))]
+_require_holidays      = [Depends(SubscriptionValidator.require_module_access('holiday_management'))]
+_require_shifts        = [Depends(SubscriptionValidator.require_module_access('shift_management'))]
+_require_attendance    = [Depends(SubscriptionValidator.require_module_access('attendance'))]
+_require_leave         = [Depends(SubscriptionValidator.require_module_access('leave_management'))]
+_require_payroll       = [Depends(SubscriptionValidator.require_module_access('payroll'))]
 
 app.include_router(prescriptions.router, prefix="/api/v1", dependencies=_require_prescriptions)
 app.include_router(prescriptions.medicines_router, prefix="/api/v1", dependencies=_require_prescriptions)
@@ -289,6 +302,18 @@ app.include_router(payments.router, prefix="/api/v1", dependencies=_require_bill
 app.include_router(refunds.router, prefix="/api/v1", dependencies=_require_billing)
 app.include_router(settlements.router, prefix="/api/v1", dependencies=_require_billing)
 app.include_router(tax_configurations.router, prefix="/api/v1", dependencies=_require_billing)
+
+# Workforce Management module (Phase 1: Employee + Holiday; Phase 2: Shift + Attendance)
+app.include_router(employees.router, prefix="/api/v1", dependencies=_require_employees)
+app.include_router(holidays.router, prefix="/api/v1", dependencies=_require_holidays)
+app.include_router(shifts.router, prefix="/api/v1", dependencies=_require_shifts)
+app.include_router(attendance.router, prefix="/api/v1", dependencies=_require_attendance)
+app.include_router(leave.router, prefix="/api/v1", dependencies=_require_leave)
+app.include_router(payroll.router, prefix="/api/v1", dependencies=_require_payroll)
+app.include_router(payroll.payslips_router, prefix="/api/v1", dependencies=_require_payroll)
+# Reports gate module access per-endpoint (different reports need different
+# modules) rather than one blanket dependency for the whole router.
+app.include_router(workforce_reports.router, prefix="/api/v1")
 
 # Multi-tenant management routes
 app.include_router(superadmin.router, prefix="/api/v1")

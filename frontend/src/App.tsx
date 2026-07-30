@@ -93,6 +93,14 @@ import LabTestCatalog from './pages/lab/LabTestCatalog';
 import LabQueue from './pages/lab/LabQueue';
 import LabOrderDetail from './pages/lab/LabOrderDetail';
 import LabReferralForm from './pages/lab/LabReferralForm';
+// Workforce Management pages
+import HolidayCalendar from './pages/workforce/HolidayCalendar';
+import ShiftManagement from './pages/workforce/ShiftManagement';
+import AttendanceGrid from './pages/workforce/AttendanceGrid';
+import LeaveManagement from './pages/workforce/LeaveManagement';
+import WorkforceReports from './pages/workforce/WorkforceReports';
+import PayrollRuns from './pages/workforce/PayrollRuns';
+import PayslipDetail from './pages/workforce/PayslipDetail';
 
 // Inventory pages
 import InventoryDashboard from './pages/inventory/InventoryDashboard';
@@ -663,6 +671,64 @@ const AppWithNotifications: React.FC = () => {
                   requiredModule="lab"
                 >
                   <LabReferralForm />
+                </ProtectedRoute>
+              } />
+
+              {/* ── Workforce Management module ── */}
+              <Route path="/workforce/holidays" element={
+                <ProtectedRoute
+                  allowedRoles={allowedRoles('employee.holidays')}
+                  requiredModule="holiday_management"
+                >
+                  <HolidayCalendar />
+                </ProtectedRoute>
+              } />
+              <Route path="/workforce/shifts" element={
+                <ProtectedRoute
+                  allowedRoles={allowedRoles('employee.shifts')}
+                  requiredModule="shift_management"
+                >
+                  <ShiftManagement />
+                </ProtectedRoute>
+              } />
+              <Route path="/workforce/attendance" element={
+                <ProtectedRoute
+                  allowedRoles={allowedRoles('employee.attendance')}
+                  requiredModule="attendance"
+                >
+                  <AttendanceGrid />
+                </ProtectedRoute>
+              } />
+              <Route path="/workforce/leave" element={
+                <ProtectedRoute
+                  allowedRoles={allowedRoles('employee.leave')}
+                  requiredModule="leave_management"
+                >
+                  <LeaveManagement />
+                </ProtectedRoute>
+              } />
+              <Route path="/workforce/reports" element={
+                <ProtectedRoute
+                  allowedRoles={allowedRoles('employee.records')}
+                  requiredModule="employee_management"
+                >
+                  <WorkforceReports />
+                </ProtectedRoute>
+              } />
+              <Route path="/workforce/payroll" element={
+                <ProtectedRoute
+                  allowedRoles={allowedRoles('employee.payroll')}
+                  requiredModule="payroll"
+                >
+                  <PayrollRuns />
+                </ProtectedRoute>
+              } />
+              <Route path="/workforce/payroll/payslips/:payslipId" element={
+                <ProtectedRoute
+                  allowedRoles={allowedRoles('employee.payroll')}
+                  requiredModule="payroll"
+                >
+                  <PayslipDetail />
                 </ProtectedRoute>
               } />
 

@@ -62,6 +62,9 @@ const Layout: React.FC = () => {
   const [labOpen, setLabOpen] = useState(
     () => location.pathname.startsWith('/lab')
   );
+  const [workforceOpen, setWorkforceOpen] = useState(
+    () => location.pathname.startsWith('/workforce')
+  );
 
   const role = user?.roles?.[0];
   const [billingOpen, setBillingOpen] = useState(
@@ -107,6 +110,12 @@ const Layout: React.FC = () => {
   // per the client's instruction to leave the Lab role as-is — not part of the
   // shared matrix (its spreadsheet column is blank for every row).
   const canAccessLab           = hasRole('super_admin', 'admin', 'lab_technician') && isModuleEnabled('lab');
+  const canAccessHolidays      = hasAccess('employee.holidays', effectiveRoles) && isModuleEnabled('holiday_management');
+  const canAccessShifts        = hasAccess('employee.shifts', effectiveRoles) && isModuleEnabled('shift_management');
+  const canAccessAttendance    = hasAccess('employee.attendance', effectiveRoles) && isModuleEnabled('attendance');
+  const canAccessLeave         = hasAccess('employee.leave', effectiveRoles) && isModuleEnabled('leave_management');
+  const canAccessWorkforceReports = hasAccess('employee.records', effectiveRoles) && isModuleEnabled('employee_management');
+  const canAccessPayroll       = hasAccess('employee.payroll', effectiveRoles) && isModuleEnabled('payroll');
   // Report Viewer's whole job is the appointment reports export — no other role gets a
   // sidebar entry for it since admin/super_admin already reach it via the Appointments dropdown.
   const canAccessAppointmentReports = hasRole('report_viewer') && isModuleEnabled('appointments');
@@ -592,6 +601,30 @@ const Layout: React.FC = () => {
     );
   }
 
+  // ── Workforce navigation ── grows across Phases 1-5 (Holiday Calendar now;
+  // Shifts/Attendance/Leave/Payroll get pushed into this same section later).
+  // No Employee Management entry here — it has no dedicated page, per the
+  // design decision to extend StaffDirectory.tsx/StaffModals.tsx directly.
+  const workforceItems: { to: string; label: string; icon: string }[] = [];
+  if (canAccessHolidays) {
+    workforceItems.push({ to: '/workforce/holidays', label: 'Holiday Calendar', icon: 'event_busy' });
+  }
+  if (canAccessShifts) {
+    workforceItems.push({ to: '/workforce/shifts', label: 'Shift Management', icon: 'schedule' });
+  }
+  if (canAccessAttendance) {
+    workforceItems.push({ to: '/workforce/attendance', label: 'Attendance', icon: 'fact_check' });
+  }
+  if (canAccessLeave) {
+    workforceItems.push({ to: '/workforce/leave', label: 'Leave Management', icon: 'event_busy' });
+  }
+  if (canAccessWorkforceReports) {
+    workforceItems.push({ to: '/workforce/reports', label: 'Reports', icon: 'summarize' });
+  }
+  if (canAccessPayroll) {
+    workforceItems.push({ to: '/workforce/payroll', label: 'Payroll', icon: 'payments' });
+  }
+
   // ── Inventory navigation ── role-driven
   const inventoryItems: { to: string; label: string; icon: string }[] = [];
 
@@ -968,6 +1001,53 @@ const Layout: React.FC = () => {
               </button>
               <div id="lab-menu" className={`overflow-hidden transition-all duration-200 ${labOpen ? 'max-h-[700px] opacity-100' : 'max-h-0 opacity-0'}`}>
                 {labItems.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    onClick={() => setSidebarOpen(false)}
+                    className={`flex items-center pl-10 pr-6 py-2.5 text-[13px] font-medium transition-all ${
+                      isExactActive(item.to)
+                        ? 'sidebar-item-active'
+                        : 'text-slate-400 hover:text-primary hover:bg-slate-50'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined mr-3 text-[18px]">{item.icon}</span>
+                    {item.label}
+                  </NavLink>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ══ WORKFORCE — collapsible ══ */}
+          {workforceItems.length > 0 && (
+            <div
+              className="mt-4"
+              onMouseEnter={() => setWorkforceOpen(true)}
+              onMouseLeave={() => setWorkforceOpen(false)}
+            >
+              <div className="px-6 mb-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Workforce</span>
+              </div>
+              <button
+                onClick={() => setWorkforceOpen(!workforceOpen)}
+                aria-expanded={workforceOpen}
+                aria-controls="workforce-menu"
+                className={`w-full flex items-center justify-between px-6 py-2.5 text-sm font-medium transition-all ${
+                  location.pathname.startsWith('/workforce')
+                    ? 'text-primary bg-primary/5'
+                    : 'text-slate-500 hover:text-primary hover:bg-slate-50'
+                }`}
+              >
+                <div className="flex items-center">
+                  Workforce
+                </div>
+                <span className={`material-symbols-outlined text-[18px] transition-transform duration-200 ${workforceOpen ? 'rotate-180' : ''}`}>
+                  expand_more
+                </span>
+              </button>
+              <div id="workforce-menu" className={`overflow-hidden transition-all duration-200 ${workforceOpen ? 'max-h-[700px] opacity-100' : 'max-h-0 opacity-0'}`}>
+                {workforceItems.map((item) => (
                   <NavLink
                     key={item.to}
                     to={item.to}

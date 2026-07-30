@@ -247,11 +247,75 @@ New `GET /payslips/{id}/print` returns escaped HTML exactly like
 
 ## Status
 
-- [ ] Phase 0 — Foundation plumbing
-- [ ] Phase 1 — Employee Management + Holiday Management
-- [ ] Phase 2 — Shift Management + Attendance
-- [ ] Phase 3 — Leave Management
-- [ ] Phase 4 — Workforce Reports
-- [ ] Phase 5 — Payroll
+- [x] Phase 0 — Foundation plumbing (`database_hole/11_workforce_management.sql` — the
+      plan's assumed `08` was stale; three other files had already claimed 08-10 by the
+      time this ran, confirmed via Glob per the plan's own instruction to re-check)
+- [x] Phase 1 — Employee Management + Holiday Management (`database_hole/12_employee_holiday_tables.sql`;
+      `models/employee.py`, `models/holiday.py`; `routers/employees.py`, `routers/holidays.py`;
+      `EmployeeFields` in StaffModals.tsx create+edit; `pages/workforce/HolidayCalendar.tsx` +
+      Layout.tsx "Workforce" nav section + App.tsx route. Deviation from the plan: employee HR
+      fields are a separate `POST/PUT /employees` call made right after user create/update
+      succeeds, not merged into `UserCreate`/`UserUpdate` — kept the already-sensitive core user
+      flow untouched. Live-tested end-to-end incl. module+RBAC gating together (admin 200,
+      doctor 403); caught and fixed a real bug during testing — service-layer `_enrich()` set
+      `employee_name`/`department_name` on the ORM object *before* Pydantic validation, which
+      silently dropped them since the schema's `_orm_to_dict` only reads real table columns;
+      moved enrichment to the router layer post-validation, matching routers/doctors.py's
+      existing pattern.)
+- [x] Phase 2 — Shift Management + Attendance (`database_hole/13_shift_attendance_tables.sql`;
+      `models/shift.py`, `models/attendance.py`; `routers/shifts.py`, `routers/attendance.py`;
+      `services/attendance_service.py` implements the provisional/verify workflow — holiday
+      auto-fill on grid read, upsert-on-click marking, verify-locks-the-range, and a 409 if
+      re-marking an already-verified date. Frontend: `ShiftManagement.tsx` (shift CRUD +
+      assignment), `AttendanceGrid.tsx` (employees × days-in-month, click-to-cycle
+      not_marked→present→absent→on_leave→holiday, locked cells show a lock icon). Live-tested
+      end-to-end: shift + assignment creation, holiday auto-populating an unmarked grid cell,
+      marking present, verifying a range, and confirming a re-mark attempt on a verified date
+      correctly 409s.)
+- [x] Phase 3 — Leave Management (`database_hole/14_leave_tables.sql`; `models/leave.py`;
+      `routers/leave.py`; `services/leave_service.py` — creating a record increments
+      `leave_balances.used`, writes `on_leave` into attendance via `attendance_service.mark_on_leave`,
+      and notifies the reporting manager. Resolved the plan's open question #3: `allocated`
+      auto-seeds from `employee_profiles.paid_leave_entitlement` the first time a balance is
+      needed for an employee/year, rather than requiring an annual manual HR step. Frontend:
+      `LeaveManagement.tsx` (HR entry + balance table). Live-tested end-to-end incl. the BRD's
+      own worked example — 2 days allocated, 3 taken → balance shows remaining=0 and attendance
+      grid correctly shows `on_leave` for all 3 covered dates.)
+- [x] Phase 4 — Workforce Reports (no new tables — read-only aggregations over Phases 1-3.
+      `services/workforce_reports_service.py` + `routers/workforce_reports.py` implement all 5
+      BRD-named reports (Daily Attendance Count, Absentee Report, Verified Attendance Sheet, LOP
+      Report, Paid Leave Balance Report) + a Headcount report. This router is registered in
+      main.py with NO blanket module dependency — each endpoint declares its own
+      `require_module_access(...)` inline instead, since different reports need different
+      modules (a deviation from every other router in this feature, called out explicitly in the
+      router's docstring). Frontend: `workforceReportsStore.ts` (mirrors analyticsStore.ts),
+      `useWorkforceReportsQueries.ts` (mirrors useAnalyticsQueries.ts), `WorkforceReports.tsx`.
+      The "HR / Payroll" GAP REPORT comment this was meant to fill in AnalyticsDashboard.tsx was
+      already removed in an earlier, separate Analytics-redesign session — nothing left to clean
+      up there. Live-tested all endpoints respond 200 with correct empty-state shape.)
+- [x] Phase 5 — Payroll (`database_hole/15_payroll_tables.sql`; `models/payroll.py`;
+      `routers/payroll.py` (+ a separate `payslips_router` for `/payslips/{id}` and
+      `/payslips/{id}/print`); `services/payroll_service.generate_payroll_run` reads only
+      *verified* attendance_records, blocks with 422 if any tracked employee has an unverified
+      row in the period, blocks with 409 if the period was already generated, computes
+      `gross_salary = basic_salary + flexi_allowance` and
+      `net_salary = gross_salary - (lop_days × per_day_salary)` exactly per the BRD formula.
+      `/payslips/{id}/print` returns escaped self-contained HTML matching invoices.py's `/pdf`
+      pattern exactly (confirmed: no WeasyPrint anywhere in this codebase). Frontend:
+      `PayrollRuns.tsx` (generate + expandable run → payslip list), `PayslipDetail.tsx`
+      (breakdown + `htmlStringToPdf()` download, same pattern as InvoiceDetail.tsx). Live-tested
+      the BRD's own worked example end-to-end (₹30,000 salary → ₹1,000/day; 2-day entitlement, 3
+      taken → 1 LOP day → exactly ₹1,000 deduction, ₹29,000 net) plus both block conditions
+      (unverified attendance → 422, duplicate period → 409). Caught and fixed a real bug during
+      testing: `EmployeeProfile.user`'s backref defaulted to a list (no `uselist=False`), so
+      `payslip.employee.employee_profile.designation` crashed with `AttributeError:
+      'InstrumentedList' object has no attribute 'designation'` — fixed by querying
+      `EmployeeProfile` directly in the router instead of relying on the reverse relationship.)
+
+**All 6 phases complete.** Every module was live-tested end-to-end against the dev DB (not just
+compiled) — module-toggle + RBAC gating together, the holiday→attendance auto-fill, the
+attendance verify-lock, the leave→attendance sync and LOP math, and the full payroll generation
+path — with test data cleaned up and module toggles reverted after each phase. `npx tsc -b
+--noEmit` and `npm run build` both pass clean on the final state.
 
 *(Update the checklist above as phases complete — the user will share updates between phases.)*

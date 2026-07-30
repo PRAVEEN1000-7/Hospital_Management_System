@@ -36,6 +36,22 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:5173"]
 
+    # Content-Security-Policy — narrow, space-separated source-list additions
+    # appended to the fixed baseline built in main.py's security_headers
+    # middleware. Only these get env-driven extensions: default-src,
+    # script-src's own 'self', object-src, frame-ancestors and base-uri are
+    # never overridable from .env, so a misconfigured environment can't
+    # weaken the directives that actually stop injected scripts / clickjacking.
+    # Defaults cover Google-hosted profile photos (the one external image host
+    # this app renders today via a user's stored avatar_url); leave the others
+    # empty until a real need exists (e.g. add accounts.google.com to
+    # CSP_SCRIPT_SRC_EXTRA / CSP_FRAME_SRC_EXTRA only if Google Sign-In is
+    # ever wired in — no such login flow exists in this codebase today).
+    CSP_IMG_SRC_EXTRA: str = "https://lh3.googleusercontent.com"
+    CSP_CONNECT_SRC_EXTRA: str = ""
+    CSP_FRAME_SRC_EXTRA: str = ""
+    CSP_SCRIPT_SRC_EXTRA: str = ""
+
     # Pagination
     DEFAULT_PAGE_SIZE: int = 10
     MAX_PAGE_SIZE: int = 100

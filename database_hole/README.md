@@ -218,6 +218,9 @@ DEBUG=false
 | `08_role_permission_overrides.sql` | Roles & Permissions admin UI — `hospital_permission_overrides` table. Sparse per-hospital deltas on top of the static role/permission matrix (`backend/app/core/module_roles.py`); a hospital admin can now customize which roles see/edit each area from Hospital Settings, without a code deploy. | ✅ Yes |
 | `09_grn_edit_and_opd_assignment.sql` | BRD 29-Jul-2026 — `appointment_queue.opd_assigned_at` (Walk-in Queue "OPD Assigned" tracking) + `grn_items.discrepancy_notes` (GRN item batch-correction extension). Both purely additive. | ✅ Yes |
 | `10_lab_test_templates_batch2.sql` | Lab Test Catalog — 10 additional `lab_tests` rows (Lipid Profile, Prolactin, Iron Studies, HLA B27, Vitamin D3 & Calcium, Urine Culture & Sensitivity, standalone Blood Group & Rh Typing, Dengue Fever Profile, Peripheral Smear, general Microscopy), sourced from a client-supplied report workbook. Data only — reuses the existing `report_template` mechanism from `06`. | ✅ Yes |
+| `11_lab_technician_role.sql` | Seeds the missing `lab_technician` system role row (`roles` table) — the Lab module's routes/RBAC/staff-creation dropdown all referenced this role by name since it was built, but the actual row was never seeded, so creating a "Lab Technician" staff member silently attached no role at all. Data only. | ✅ Yes |
+| `12_lab_test_templates_batch3.sql` | Lab Test Catalog — 3 additional `lab_tests` rows (Blood Sugar (RBS), Hormonal Profile [FSH/LH/Prolactin/Testosterone], MUSK Antibody), sourced from two more client-supplied report specs. The specs' other 17 "templates"/reports were cross-checked and found already covered by the existing catalog — including combined panels, which the lab order PDF already renders as one document per order regardless of how many tests are on it. Data only. | ✅ Yes |
+| `13_lab_test_fasting_blood_sugar.sql` | Lab Test Catalog — 1 additional `lab_tests` row (Blood Sugar (FBS), 80-120 mg/dl — distinct from the RBS test in `12`). Found by re-checking every one of the 27 real sheets in `REPORT_HEALTH_FOUNDATION.xlsx` (not just the 10-sheet subset `10_lab_test_templates_batch2.sql` used) — everything else in that workbook was already covered. Data only. | ✅ Yes |
 | `99_drop_database.sql` | **Destructive.** Terminates connections, drops `hms_db` and the `hms_user` role entirely. Only for a clean local re-deploy. Run as the `postgres` superuser, never inside `hms_db`. | ❌ No |
 
 `05` and `06` are each idempotent (`IF NOT EXISTS` / `ON CONFLICT DO NOTHING` / guarded
@@ -308,6 +311,9 @@ psql -U hms_user -d hms_db -f database_hole/07_queue_display_screens.sql
 psql -U hms_user -d hms_db -f database_hole/08_role_permission_overrides.sql
 psql -U hms_user -d hms_db -f database_hole/09_grn_edit_and_opd_assignment.sql
 psql -U hms_user -d hms_db -f database_hole/10_lab_test_templates_batch2.sql
+psql -U hms_user -d hms_db -f database_hole/11_lab_technician_role.sql
+psql -U hms_user -d hms_db -f database_hole/12_lab_test_templates_batch3.sql
+psql -U hms_user -d hms_db -f database_hole/13_lab_test_fasting_blood_sugar.sql
 
 # 6. Verify
 psql -U hms_user -d hms_db -c "SELECT name, specialty, tenant_id FROM hospitals;"

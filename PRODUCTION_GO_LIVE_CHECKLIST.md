@@ -219,15 +219,31 @@ before I implement it.
 
 ---
 
-## 6. Broader pre-go-live checklist (found during this audit)
+## 6a. Application code completeness (fresh pass — nothing infra/deploy, this is the code itself)
+
+Checked: leftover TODO/FIXME markers, disabled features, mock/fake data, debug `print()`/`console.log`,
+automated test coverage, API doc exposure, bundle size, and outstanding git state.
+
+| # | Item | Finding | Risk if unaddressed |
+|---|------|---------|----------------------|
+| 1 | **TODO/FIXME/mock data** | None found — grepped the whole backend and frontend. `frontend/src/mocks/` no longer exists (Analytics mock data was fully replaced with real endpoints earlier this session). No leftover `print()`/`console.log` debug statements anywhere. | None — this is clean. |
+| 2 | **Automated test coverage** | Backend: 3 test files total (`test_imports.py`, `test_middleware.py`, `test_multi_tenant_security.py`) — import smoke tests + security middleware checks, no business-logic test suite. Frontend: 0 test files. Every feature in this project has instead been *manually* live-tested against the dev DB as it was built (established pattern all session). | Regressions in one module from a future change to a shared file (e.g. `inventory_service.py`, `module_roles.py`) have no automated safety net — only caught by manual testing, which won't happen for every change post-launch. Not a launch blocker, but a real ongoing risk once this is live and being iterated on quickly. |
+| 3 | **Cycle Counts module** | Intentionally disabled — router not mounted (`main.py:289-292`), clearly commented as deliberate, not broken. | None — working as intended, just confirming it's not an oversight. |
+| 4 | **API docs always exposed** | `docs_url="/api/docs"`, `redoc_url="/api/redoc"` — unconditional, no `DEBUG` gate (`main.py:51-52`). | Full Swagger UI (every endpoint, every schema) is publicly browsable at your production domain. Low severity (doesn't leak data by itself) but easy, free hardening: `docs_url=None if not settings.DEBUG else "/api/docs"`. |
+| 5 | **Frontend bundle size** | Vite's own build warning: one JS chunk is **3+ MB** (764 KB gzipped) — well past its 500 KB warning threshold. No code-splitting beyond what's already lazy-loaded. | Slower first page load, especially on mobile/weak connections — a real user-facing perf issue, not a correctness one. Fixable later via `manualChunks`/more route-level lazy loading; not a hard blocker for go-live. |
+| 6 | **Migration count is now 13 files, not "01+02"** | Confirms and updates item 1 in the table below — as of this session there are 13 files in `database_hole/` (`01` through `13`), and `deploy.sh` still only runs `01`+`02`. | Same risk as below, just re-confirming it's gotten bigger since the original audit — now also missing Workforce Management, both lab catalog batches, and the FBS test. |
+| 7 | **Database backups** | Still nothing in the repo — I drafted a `deploy/backup.sh` + cron template earlier this session per your request for backup *details*, but you correctly stopped me since you'd only asked for the explanation, not the script, and removed the files. The actual gap (no automated backup running anywhere) is unchanged. | If you want this before go-live, say so explicitly and I'll write it — otherwise it stays an open item, not silently assumed done. |
+| 8 | **Three git remotes configured** (`origin`, `backup`, `mecan`) — branch `opthal` is fully pushed to `origin`, 0 commits ahead. | Not a code issue — just confirming there's no uncommitted/unpushed work sitting only on this machine. Worth double-checking which remote is the one your production server actually pulls from before deploying. |
+
+## 6b. Broader pre-go-live checklist (original audit)
 
 | # | Item | Current state | Risk if unaddressed |
 |---|------|----------------|----------------------|
-| 1 | **Migrations run by `deploy.sh`** | Only runs `01` + `02` | Production DB missing RBAC overrides, queue display config, GRN/OPD updates, lab catalog additions, and Workforce Management entirely |
+| 1 | **Migrations run by `deploy.sh`** | Only runs `01` + `02` (13 files now exist — see 6a.6) | Production DB missing RBAC overrides, queue display config, GRN/OPD updates, lab catalog additions, and Workforce Management entirely |
 | 2 | `SECRET_KEY` / `DATABASE_URL` | Code already **refuses to start** with placeholders when `DEBUG=false` (`backend/app/config.py:86-106`) — good, real guardrail already in place | Low — just make sure real values are set in the server's `.env` |
 | 3 | `CORS_ORIGINS` | Defaults to `localhost:3000`/`5173`; `deploy.sh` auto-appends the server's bare IP | Must be your real domain(s) over HTTPS, not an IP, once DNS/SSL are up |
 | 4 | API docs exposed | `/api/docs` and `/api/redoc` are always mounted, never disabled for prod | Swagger UI + schema publicly browsable; low risk but easy to close (`docs_url=None` when `not DEBUG`) |
-| 5 | SSL/HTTPS | `nginx.conf` sends an HSTS header but has **no actual TLS/certbot block** — it's plain HTTP on port 80 only | Everything (including login) currently would be sent in the clear until a cert is installed |
+| 5 | SSL/HTTPS | `nginx.conf` **in this repo** sends an HSTS header but has no TLS/certbot block. You mentioned separately you've already deployed with HTTPS via Certbot — Certbot typically edits the live `/etc/nginx/sites-available/hms` file directly on the server rather than the repo copy, so this may already be resolved in production and just not reflected back into the repo. **Worth confirming**: if you ever re-run `deploy.sh` (which overwrites nginx config from the repo file, see `deploy.sh` step 6), it would clobber Certbot's SSL block and put you back on plain HTTP. | If already live with HTTPS: low, but re-running `deploy.sh` as-is would silently undo it. If not actually live with HTTPS: login credentials sent in cleartext. |
 | 6 | Health check bug | See §3 — `/api/v1/health` vs real `/health`, and nginx doesn't proxy `/health` at all | Automated health checks silently always "fail" or silently always "pass" against the wrong thing |
 | 7 | Rate limiter vs multi-worker | See §1 — in-memory limiter, `--workers 2` | Rate limiting under-enforced |
 | 8 | Log rotation | 1 backup kept for `logs/backend.log`/`frontend.log`; a second, never-rotated `backend/backend.log` from systemd | Disk fills slowly over time; short log history for incident investigation |

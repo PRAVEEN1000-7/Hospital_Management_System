@@ -67,6 +67,7 @@ def list_users(
             joinedload(User.user_roles).joinedload(UserRole.role),
             joinedload(User.hospital),
             joinedload(User.doctor_profile),
+            joinedload(User.shift),
         )
         .filter(User.is_deleted == False)
     )
@@ -130,6 +131,7 @@ def get_user_by_id(
             joinedload(User.user_roles).joinedload(UserRole.role),
             joinedload(User.hospital),
             joinedload(User.doctor_profile),
+            joinedload(User.shift),
         )
         .filter(User.id == user_id, User.is_deleted == False)
     )
@@ -205,15 +207,39 @@ def create_user(
     department_id: Optional[str] = None,
     analytics_enabled: Optional[bool] = True,
     created_by_id: Optional[uuid.UUID] = None,
+    # Employee / HR fields — apply to every role, stored directly on `users`.
+    designation: Optional[str] = None,
+    date_of_joining=None,
+    date_of_leaving=None,
+    employment_type: Optional[str] = None,
+    bank_account_holder_name: Optional[str] = None,
+    bank_account_number: Optional[str] = None,
+    bank_ifsc: Optional[str] = None,
+    bank_branch: Optional[str] = None,
+    pf_number: Optional[str] = None,
+    pan_number: Optional[str] = None,
+    paid_leave_entitlement: Optional[int] = None,
+    include_in_payroll: Optional[bool] = True,
+    base_salary: Optional[float] = None,
 ) -> User:
     """Create a new user with role assignment. Auto-creates Doctor record for doctor role."""
     password_hash = get_password_hash(password)
-    
+
     if isinstance(hospital_id, str):
         hospital_id = uuid.UUID(hospital_id)
-    
+
     # Generate 12-char HMS reference number: [HH][RoleCode][YY][M][Checksum][#####]
     reference_number = generate_staff_id(db, hospital_id, role_name)
+
+    # Doctor's clinical department (doctors.department_id) — not stored on
+    # User at all; the `departments` table is scoped to clinical specialties,
+    # not a general HR field applicable to every role.
+    dept_uuid = None
+    if department_id:
+        try:
+            dept_uuid = uuid.UUID(department_id)
+        except ValueError:
+            dept_uuid = None
 
     user = User(
         hospital_id=hospital_id,
@@ -224,24 +250,31 @@ def create_user(
         last_name=last_name,
         phone=phone,
         reference_number=reference_number,
+        designation=designation,
+        date_of_joining=date_of_joining,
+        date_of_leaving=date_of_leaving,
+        employment_type=employment_type,
+        bank_account_holder_name=bank_account_holder_name,
+        bank_account_number=bank_account_number,
+        bank_ifsc=bank_ifsc,
+        bank_branch=bank_branch,
+        pf_number=pf_number,
+        pan_number=pan_number,
+        paid_leave_entitlement=paid_leave_entitlement,
+        include_in_payroll=include_in_payroll if include_in_payroll is not None else True,
+        base_salary=base_salary,
     )
     db.add(user)
     db.flush()  # Get the user.id
-    
+
     # Find or create the role and assign it
     role = db.query(Role).filter(Role.name == role_name).first()
     if role:
         user_role = UserRole(user_id=user.id, role_id=role.id)
         db.add(user_role)
-    
+
     # Auto-create doctor record when the role is 'doctor'
     if role_name == "doctor" and specialization:
-        dept_uuid = None
-        if department_id:
-            try:
-                dept_uuid = uuid.UUID(department_id)
-            except ValueError:
-                dept_uuid = None
         doctor = Doctor(
             user_id=user.id,
             hospital_id=hospital_id,

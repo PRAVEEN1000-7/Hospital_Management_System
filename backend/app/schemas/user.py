@@ -1,6 +1,6 @@
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 from typing import Optional, List, Any
-from datetime import datetime
+from datetime import datetime, date
 import re
 
 
@@ -35,6 +35,21 @@ class UserCreate(BaseModel):
     department_id: Optional[str] = None
     # In-house doctors see Analytics; guest doctors don't (BUG-16).
     analytics_enabled: Optional[bool] = True
+
+    # Employee / HR fields — apply to every role, stored directly on `users`.
+    designation: Optional[str] = Field(None, max_length=100)
+    date_of_joining: Optional[date] = None
+    date_of_leaving: Optional[date] = None
+    employment_type: Optional[str] = Field(None, max_length=20)  # full_time / part_time / contract
+    bank_account_holder_name: Optional[str] = Field(None, max_length=150)
+    bank_account_number: Optional[str] = Field(None, max_length=50)
+    bank_ifsc: Optional[str] = Field(None, max_length=20)
+    bank_branch: Optional[str] = Field(None, max_length=150)
+    pf_number: Optional[str] = Field(None, max_length=50)
+    pan_number: Optional[str] = Field(None, max_length=20)
+    paid_leave_entitlement: Optional[int] = Field(None, ge=0)
+    include_in_payroll: Optional[bool] = True
+    base_salary: Optional[float] = Field(None, ge=0)
 
     @field_validator("username")
     @classmethod
@@ -115,6 +130,22 @@ class UserUpdate(BaseModel):
     follow_up_fee: Optional[float] = Field(None, ge=0)
     analytics_enabled: Optional[bool] = None
 
+    # Employee / HR fields — editable for every role, unlike the doctor-only
+    # create-time fields above.
+    designation: Optional[str] = Field(None, max_length=100)
+    date_of_joining: Optional[date] = None
+    date_of_leaving: Optional[date] = None
+    employment_type: Optional[str] = Field(None, max_length=20)
+    bank_account_holder_name: Optional[str] = Field(None, max_length=150)
+    bank_account_number: Optional[str] = Field(None, max_length=50)
+    bank_ifsc: Optional[str] = Field(None, max_length=20)
+    bank_branch: Optional[str] = Field(None, max_length=150)
+    pf_number: Optional[str] = Field(None, max_length=50)
+    pan_number: Optional[str] = Field(None, max_length=20)
+    paid_leave_entitlement: Optional[int] = Field(None, ge=0)
+    include_in_payroll: Optional[bool] = None
+    base_salary: Optional[float] = Field(None, ge=0)
+
     @field_validator("role")
     @classmethod
     def validate_role(cls, v: Optional[str]) -> Optional[str]:
@@ -163,6 +194,21 @@ class UserResponse(BaseModel):
     consultation_fee: Optional[float] = None
     follow_up_fee: Optional[float] = None
     analytics_enabled: Optional[bool] = None
+    designation: Optional[str] = None
+    date_of_joining: Optional[date] = None
+    date_of_leaving: Optional[date] = None
+    employment_type: Optional[str] = None
+    bank_account_holder_name: Optional[str] = None
+    bank_account_number: Optional[str] = None
+    bank_ifsc: Optional[str] = None
+    bank_branch: Optional[str] = None
+    pf_number: Optional[str] = None
+    pan_number: Optional[str] = None
+    paid_leave_entitlement: Optional[int] = None
+    include_in_payroll: Optional[bool] = None
+    base_salary: Optional[float] = None
+    shift_id: Optional[str] = None
+    shift_name: Optional[str] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -171,6 +217,7 @@ class UserResponse(BaseModel):
             # SQLAlchemy model instance
             roles = data.roles if hasattr(data, 'roles') else []
             hospital_name = data.hospital.name if hasattr(data, 'hospital') and data.hospital else None
+            shift_name = data.shift.name if hasattr(data, 'shift') and data.shift else None
             # Extract doctor fields from doctor_profile if available
             specialization = None
             qualification = None
@@ -209,6 +256,21 @@ class UserResponse(BaseModel):
                 "consultation_fee": float(consultation_fee) if consultation_fee is not None else None,
                 "follow_up_fee": float(follow_up_fee) if follow_up_fee is not None else None,
                 "analytics_enabled": analytics_enabled,
+                "designation": getattr(data, 'designation', None),
+                "date_of_joining": getattr(data, 'date_of_joining', None),
+                "date_of_leaving": getattr(data, 'date_of_leaving', None),
+                "employment_type": getattr(data, 'employment_type', None),
+                "bank_account_holder_name": getattr(data, 'bank_account_holder_name', None),
+                "bank_account_number": getattr(data, 'bank_account_number', None),
+                "bank_ifsc": getattr(data, 'bank_ifsc', None),
+                "bank_branch": getattr(data, 'bank_branch', None),
+                "pf_number": getattr(data, 'pf_number', None),
+                "pan_number": getattr(data, 'pan_number', None),
+                "paid_leave_entitlement": getattr(data, 'paid_leave_entitlement', None),
+                "include_in_payroll": getattr(data, 'include_in_payroll', None),
+                "base_salary": float(data.base_salary) if getattr(data, 'base_salary', None) is not None else None,
+                "shift_id": str(data.shift_id) if getattr(data, 'shift_id', None) else None,
+                "shift_name": shift_name,
             }
         if isinstance(data, dict):
             if "id" in data and not isinstance(data["id"], str):

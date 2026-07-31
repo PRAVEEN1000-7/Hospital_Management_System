@@ -2,7 +2,7 @@
 User, Role, Permission and RBAC models — matches new hms_db schema.
 """
 from sqlalchemy import (
-    Column, String, Boolean, DateTime, Integer, Text, ForeignKey, UniqueConstraint
+    Column, String, Boolean, DateTime, Date, Integer, Numeric, Text, ForeignKey, UniqueConstraint
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -76,12 +76,29 @@ class User(Base):
     is_deleted = Column(Boolean, default=False)
     deleted_at = Column(DateTime(timezone=True))
 
+    # Employee / HR fields (Attendance & Workforce Management)
+    designation = Column(String(100))
+    date_of_joining = Column(Date)
+    date_of_leaving = Column(Date)
+    employment_type = Column(String(20))  # full_time / part_time / contract
+    bank_account_holder_name = Column(String(150))
+    bank_account_number = Column(String(50))
+    bank_ifsc = Column(String(20))
+    bank_branch = Column(String(150))
+    pf_number = Column(String(50))
+    pan_number = Column(String(20))
+    paid_leave_entitlement = Column(Integer)
+    include_in_payroll = Column(Boolean, default=True)
+    base_salary = Column(Numeric(12, 2))
+    shift_id = Column(UUID(as_uuid=True), ForeignKey("shifts.id"))
+
     # Relationships
     user_roles = relationship(
         "UserRole", back_populates="user",
         foreign_keys="[UserRole.user_id]", lazy="joined",
     )
     hospital = relationship("Hospital", foreign_keys=[hospital_id], lazy="joined")
+    shift = relationship("Shift", foreign_keys=[shift_id])
 
     @property
     def roles(self) -> list[str]:

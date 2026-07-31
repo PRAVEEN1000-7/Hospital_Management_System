@@ -24,6 +24,8 @@ from .routers import (
     inventory, notifications, optical, lab,
     # Billing & Invoice module
     invoices, payments, refunds, settlements, tax_configurations,
+    # Attendance module
+    holidays,shift_route, attendance_records, payroll
 )
 from .routers import logs as logs_router  # frontend log ingestion endpoint
 from .routers import public_queue  # unauthenticated public Queue Display
@@ -256,6 +258,7 @@ _require_inventory     = [Depends(SubscriptionValidator.require_module_access('i
 _require_billing       = [Depends(SubscriptionValidator.require_module_access('billing'))]
 _require_optical       = [Depends(SubscriptionValidator.require_module_access('optical'))]
 _require_lab           = [Depends(SubscriptionValidator.require_module_access('lab'))]
+_require_attendance    = [Depends(SubscriptionValidator.require_module_access('attendance'))]
 
 app.include_router(prescriptions.router, prefix="/api/v1", dependencies=_require_prescriptions)
 app.include_router(prescriptions.medicines_router, prefix="/api/v1", dependencies=_require_prescriptions)
@@ -282,6 +285,13 @@ app.include_router(optical.router, prefix="/api/v1", dependencies=_require_optic
 
 # Laboratory module
 app.include_router(lab.router, prefix="/api/v1", dependencies=_require_lab)
+
+# Attendance module
+app.include_router(holidays.router, prefix="/api/v1", dependencies=_require_attendance)
+app.include_router(shift_route.router, prefix="/api/v1", dependencies=_require_attendance)
+app.include_router(attendance_records.router, prefix="/api/v1", dependencies=_require_attendance)
+app.include_router(payroll.router, prefix="/api/v1", dependencies=_require_attendance)
+
 
 # Billing & Invoice module
 app.include_router(invoices.router, prefix="/api/v1", dependencies=_require_billing)

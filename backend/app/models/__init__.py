@@ -25,3 +25,5 @@ from .inventory import (
     GoodsReceiptNote, GRNItem, StockMovement,
     StockAdjustment, CycleCount, CycleCountItem,
 )
+from .attendance import Holidays, Shift, AttendanceRecord
+from .payroll import PayrollRun, PayrollItem

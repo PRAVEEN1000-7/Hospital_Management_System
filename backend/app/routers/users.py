@@ -148,6 +148,20 @@ async def create_new_user(
                 department_id=user_data.department_id,
                 analytics_enabled=user_data.analytics_enabled,
                 created_by_id=current_user.id,
+                # Employee / HR fields — apply to every role
+                designation=user_data.designation,
+                date_of_joining=user_data.date_of_joining,
+                date_of_leaving=user_data.date_of_leaving,
+                employment_type=user_data.employment_type,
+                bank_account_holder_name=user_data.bank_account_holder_name,
+                bank_account_number=user_data.bank_account_number,
+                bank_ifsc=user_data.bank_ifsc,
+                bank_branch=user_data.bank_branch,
+                pf_number=user_data.pf_number,
+                pan_number=user_data.pan_number,
+                paid_leave_entitlement=user_data.paid_leave_entitlement,
+                include_in_payroll=user_data.include_in_payroll,
+                base_salary=user_data.base_salary,
             )
         except IntegrityError:
             # Defense in depth: covers the rare case the pre-checks above miss,

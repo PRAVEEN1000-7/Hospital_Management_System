@@ -514,6 +514,12 @@ const StaffDirectory: React.FC = () => {
               <ProfileField icon="person" label="Username" value={viewUser.username} />
             </section>
             <section>
+              <SectionTitle>Employment Details</SectionTitle>
+              <ProfileField icon="work" label="Designation" value={viewUser.designation || 'Not set'} />
+              <ProfileField icon="event" label="Date of Joining" value={viewUser.date_of_joining ? format(new Date(viewUser.date_of_joining), 'dd MMM yyyy') : 'Not set'} />
+              <ProfileField icon="badge" label="Employment Type" value={viewUser.employment_type ? viewUser.employment_type.replace('_', ' ') : 'Not set'} />
+            </section>
+            <section>
               <SectionTitle>Activity</SectionTitle>
               <ProfileField icon="login" label="Last Login" value={viewUser.last_login_at ? format(new Date(viewUser.last_login_at), 'dd MMM yyyy, HH:mm') : 'Never'} />
               <ProfileField icon="calendar_today" label="Joined" value={format(new Date(viewUser.created_at), 'dd MMM yyyy')} />

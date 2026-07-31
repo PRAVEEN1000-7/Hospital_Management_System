@@ -28,20 +28,25 @@ What it does, in order:
   4. TRUNCATEs every table in `public` + `saas_core` (single statement,
      CASCADE, so FK order is handled automatically) — no DROP, no ALTER,
      the schema itself is untouched.
-  5. Seeds the core module registry, system settings, and module
-     dependencies (extracted from 01_full_schema.sql — that file itself is
-     NOT replayed; see the comment on MIGRATIONS_TO_REPLAY for why). Also
-     self-healing: CREATE TABLE IF NOT EXISTS for each of those, since a
-     real server hit `relation does not exist` here — its schema had
-     silently drifted from what this file assumes, and a TRUNCATE never
-     creates missing tables, only empties existing ones.
-     subscription_plans is deliberately left with NO rows — the client
-     defines their own plan(s) via the Super Admin UI after logging in.
+  5. Seeds the core module registry (including the 'lab' module row —
+     see step 6), system settings, and module dependencies (extracted from
+     01_full_schema.sql — that file itself is NOT replayed; see the
+     comment on MIGRATIONS_TO_REPLAY for why). Also self-healing: CREATE
+     TABLE IF NOT EXISTS for each of those, since a real server hit
+     `relation does not exist` here — its schema had silently drifted from
+     what this file assumes, and a TRUNCATE never creates missing tables,
+     only empties existing ones. subscription_plans is deliberately left
+     with NO rows — the client defines their own plan(s) via the Super
+     Admin UI after logging in.
   6. Re-runs the existing, already-idempotent schema/reference migrations
-     (05, 06, 07, 08, 09, 10, 11, 12, 13) — lab test catalog, RBAC config,
-     GRN/OPD extensions, etc. 02 (eye-hospital pack) and 03 (fictional demo
-     hospitals) are deliberately skipped — 03 is explicitly marked "never
-     run against production" in its own README entry.
+     (05, 07, 08, 09, 10, 11, 12, 13) — RBAC config, GRN/OPD extensions,
+     and your real lab test catalog (10, 11, 12, 13 — the client-supplied
+     report templates). 02 (eye-hospital pack), 03 (fictional demo
+     hospitals), AND 06 (the original 18-test lab catalog + PO payment
+     modes + visiting_doctor role) are all deliberately skipped — per
+     explicit instruction, 06's rows were dev/testing data, not something
+     to carry into a client handoff (its one load-bearing piece, the 'lab'
+     module registration, is preserved in step 5 instead).
   7. Seeds the 14 system roles (fixed IDs, matching what's already live).
   8. Creates a placeholder "Platform" tenant + hospital — a super_admin's
      hospital_id is NOT NULL + FK, so it needs *some* hospital row to
@@ -97,9 +102,17 @@ DATABASE_HOLE = Path(__file__).resolve().parent.parent / "database_hole"
 # 02 (eye-hospital pack) and 03 (fictional demo hospitals) are deliberately
 # excluded — 03 is explicitly marked "never run against production" in its
 # own README entry, and 02 is opt-in per hospital, not universal seed data.
+#
+# 06_seed_reference_data.sql is ALSO deliberately excluded, per explicit
+# instruction — its actual seed rows (the original 18-test lab catalog,
+# default PO payment modes, the visiting_doctor role) were dev/testing data,
+# not something to carry into a client handoff. The one thing in that file
+# that IS real infrastructure — the 'lab' module registration row, which
+# makes Laboratory appear in the per-hospital module toggle UI at all — is
+# preserved by reproducing just that one INSERT in seed_core_platform_data()
+# below, alongside the other core modules extracted from 01_full_schema.sql.
 MIGRATIONS_TO_REPLAY = [
     "05_schema_structure.sql",
-    "06_seed_reference_data.sql",
     "07_queue_display_screens.sql",
     "08_role_permission_overrides.sql",
     "09_grn_edit_and_opd_assignment.sql",
@@ -276,7 +289,8 @@ def seed_core_platform_data():
         ('inventory', 'Inventory', 'Stock management and procurement', 'inventory', '/inventory', '/api/v1/inventory', 'package', false, '{}'),
         ('optical', 'Optical Store', 'Optical prescriptions and products', 'clinical', '/optical', '/api/v1/optical', 'glasses', false, '{"patients","inventory"}'),
         ('analytics', 'Analytics', 'Reports and insights', 'analytics', '/analytics', '/api/v1/analytics', 'bar-chart', false, '{}'),
-        ('insurance', 'Insurance', 'Claims and provider management', 'financial', '/insurance', '/api/v1/insurance', 'umbrella', false, '{"billing"}')
+        ('insurance', 'Insurance', 'Claims and provider management', 'financial', '/insurance', '/api/v1/insurance', 'umbrella', false, '{"billing"}'),
+        ('lab', 'Laboratory', 'Lab test catalog, ordering, sample tracking, and results', 'clinical', '/lab', '/api/v1/lab', 'flask', false, '{"patients","prescriptions"}')
         ON CONFLICT (code) DO NOTHING
     """))
     db.execute(text("""

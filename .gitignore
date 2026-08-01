@@ -41,6 +41,7 @@ frontend/node_modules/
 frontend/dist/
 frontend/dist-ssr/
 frontend/.env
+frontend/.env.production
 frontend/.env.local
 frontend/.env.*.local
 # Currently git-tracked (SECURITY_AUDIT.md H3) — ignoring it going forward

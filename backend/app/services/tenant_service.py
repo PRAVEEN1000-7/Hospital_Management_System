@@ -52,13 +52,9 @@ class TenantService:
     ) -> Dict[str, Any]:
         """List tenants with pagination and filters"""
         from ..models.tenant import SubscriptionPlan
-
-        # Excludes the single placeholder tenant that exists only to satisfy
-        # the super_admin's placeholder hospital's NOT NULL FK — not a real
-        # customer, shouldn't appear in this list. See
-        # deploy/flush_and_reseed_database.py's seed_platform_hospital().
-        query = db.query(Tenant).filter(Tenant.code != 'PLATFORM')
-
+        
+        query = db.query(Tenant)
+        
         # Apply filters
         if status:
             query = query.filter(Tenant.status == status)
@@ -676,13 +672,10 @@ class TenantService:
     @staticmethod
     def get_dashboard_stats(db: Session) -> Dict[str, Any]:
         """Get dashboard statistics for super admin"""
-        # Excludes the placeholder "PLATFORM" tenant (see list_tenants above)
-        # so it doesn't inflate the real hospital/tenant counts shown here.
-        not_placeholder = Tenant.code != 'PLATFORM'
-        total = db.query(Tenant).filter(not_placeholder).count()
-        active = db.query(Tenant).filter(Tenant.status == 'active', not_placeholder).count()
-        pending = db.query(Tenant).filter(Tenant.status == 'pending', not_placeholder).count()
-        suspended = db.query(Tenant).filter(Tenant.status == 'suspended', not_placeholder).count()
+        total = db.query(Tenant).count()
+        active = db.query(Tenant).filter(Tenant.status == 'active').count()
+        pending = db.query(Tenant).filter(Tenant.status == 'pending').count()
+        suspended = db.query(Tenant).filter(Tenant.status == 'suspended').count()
         
         # Subscription stats
         trial_count = db.query(TenantSubscription).filter(

@@ -123,18 +123,12 @@ def authenticate_user(db: Session, username: str, password: str) -> tuple:
         # across hospitals (pre-dating that check, or inserted outside the
         # app). Whichever row Postgres returned first would silently eat the
         # correct password for every account but one. Log it loudly so it's
-        # fixed at the data layer instead of surfacing as a mysterious "wrong
-        # password" for some other hospital's identical-username user — the
-        # global UNIQUE(username)/UNIQUE(email) constraints that should
-        # prevent this from ever happening again live in
-        # database_hole/05_schema_structure.sql's "auth global uniqueness"
-        # section; re-running it will refuse and report the exact duplicate
-        # rows if any still exist.
+        # fixed at the data layer (see database_hole/17_enforce_global_
+        # username_email_uniqueness.sql) instead of surfacing as a mysterious
+        # "wrong password" for some other hospital's identical-username user.
         logger.error(
             "AUTH: AMBIGUOUS LOGIN — username/email '%s' matches %d users across hospitals %s. "
-            "Re-run database_hole/05_schema_structure.sql to find and resolve the duplicate "
-            "(its 'auth global uniqueness' section reports duplicate groups instead of applying "
-            "the constraint if any still exist).",
+            "Run database_hole/17_enforce_global_username_email_uniqueness.sql to find and resolve the duplicate.",
             _mask_username(username), len(matches), [str(u.hospital_id) for u in matches],
         )
     user = matches[0]

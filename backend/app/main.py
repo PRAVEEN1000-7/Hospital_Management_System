@@ -181,17 +181,8 @@ async def rate_limit(request: Request, call_next):
 # Note: in production the SPA's index.html is served directly by nginx, not
 # by this app (see deploy/nginx.conf) — these headers do NOT reach the SPA
 # shell itself, only responses FastAPI returns directly. The SPA gets its own
-# CSP via a <meta> tag in frontend/index.html (built from the same
-# VITE_CSP_*_EXTRA env vars, see frontend/.env*), and nginx sets the headers
+# CSP via a <meta> tag in frontend/index.html, and nginx sets the headers
 # that can only be delivered as real HTTP headers (X-Frame-Options, HSTS).
-# Both CSPs are needed, not redundant — each is the only one that reaches its
-# respective content type (SPA shell vs. backend-rendered HTML/JSON).
-def _csp_extra(value: str) -> str:
-    """Space-separated extra sources for one directive, or '' if unset."""
-    value = value.strip()
-    return f" {value}" if value else ""
-
-
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
     response = await call_next(request)
@@ -203,17 +194,12 @@ async def security_headers(request: Request, call_next):
     # the directive that actually matters for stopping injected <script> tags
     # from executing (SECURITY_AUDIT.md M2). style-src needs 'unsafe-inline'
     # because the printed documents use inline style="" attributes throughout.
-    # Only img-src/connect-src/frame-src/script-src get env-driven extras
-    # (settings.CSP_*_EXTRA, backend/.env) — see the comment on those settings
-    # in config.py for why the rest of the policy is never overridable.
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        f"script-src 'self'{_csp_extra(settings.CSP_SCRIPT_SRC_EXTRA)}; "
+        "script-src 'self'; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "font-src 'self' https://fonts.gstatic.com; "
-        f"img-src 'self' data:{_csp_extra(settings.CSP_IMG_SRC_EXTRA)}; "
-        f"connect-src 'self'{_csp_extra(settings.CSP_CONNECT_SRC_EXTRA)}; "
-        f"frame-src 'self'{_csp_extra(settings.CSP_FRAME_SRC_EXTRA)}; "
+        "img-src 'self' data:; "
         "object-src 'none'; "
         "frame-ancestors 'none'; "
         "base-uri 'self'"

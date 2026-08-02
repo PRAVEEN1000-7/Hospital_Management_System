@@ -11,22 +11,17 @@
       from running. style-src needs 'unsafe-inline' because inline style=""
       attributes are used throughout this codebase.
 
-      'self' covers all API calls and uploaded logo/avatar images in both
-      environments (prod: nginx proxies /api/* on the same origin; dev: Vite
-      proxies /api to the backend, changeOrigin:true, so the browser only
-      ever sees the Vite origin) — no environment-specific origin ever needs
-      to be hardcoded here.
+      Production: nginx proxies /api/* to the backend at the same domain, so
+      'self' covers all API calls and logo/avatar images served from the API.
 
-      The VITE_CSP_..._EXTRA tokens below are replaced at build/dev time by
-      Vite from frontend/.env (dev) / frontend/.env.production (prod) — see
-      those files. This is the ONLY thing that should ever change per environment;
-      everything else in this policy is a fixed, safe baseline. Today's only
-      non-empty default is img-src, for Google-hosted user avatar photos.
+      Development: Vite proxies /api to localhost:8000 (changeOrigin:true), so
+      the browser only ever sees the Vite origin — 'self' covers dev too.
+      Never add localhost:8000 directly here; it ships into production builds.
 
       Note: frame-ancestors/X-Frame-Options can't be delivered via <meta> —
       those are set as real HTTP headers in deploy/nginx.conf instead.
     -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' %VITE_CSP_SCRIPT_SRC_EXTRA%; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: %VITE_CSP_IMG_SRC_EXTRA%; connect-src 'self' %VITE_CSP_CONNECT_SRC_EXTRA%; frame-src 'self' %VITE_CSP_FRAME_SRC_EXTRA%; object-src 'none'; base-uri 'self'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; object-src 'none'; base-uri 'self'; connect-src 'self'" />
     <title>HMS | Hospital Management System</title>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />

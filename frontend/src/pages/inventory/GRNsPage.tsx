@@ -190,11 +190,13 @@ const GRNsPage: React.FC = () => {
                           title="View full receipt details and line items">
                           <span className="material-symbols-outlined text-[15px]">visibility</span> View
                         </button>
-                        <button onClick={() => navigate(`/inventory/grns/${grn.id}`)}
-                          className="inline-flex items-center gap-1 p-1.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
-                          title="Correct batch #, quantity, dates, or discrepancy notes">
-                          <span className="material-symbols-outlined text-[15px]">edit</span>
-                        </button>
+                        {grn.status === 'pending' && (
+                          <button onClick={() => navigate(`/inventory/grns/${grn.id}`)}
+                            className="inline-flex items-center gap-1 p-1.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                            title="Correct batch/quantity details while this GRN is still Pending">
+                            <span className="material-symbols-outlined text-[15px]">edit</span>
+                          </button>
+                        )}
                         <button onClick={() => handleDownloadGrn(grn)} disabled={downloadingGrnId === grn.id}
                           className="inline-flex items-center gap-1 p-1.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors disabled:opacity-50"
                           title="Download this GRN as a PDF">

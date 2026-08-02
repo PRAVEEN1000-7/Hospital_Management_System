@@ -7,13 +7,6 @@ import opticalService from '../../services/opticalService';
 import SearchableSelect, { type SuggestionOption } from '../../components/common/SearchableSelect';
 import type { GRNItemCreate, GoodsReceiptNote, PurchaseOrder } from '../../types/inventory';
 
-const STATUS_COLORS: Record<string, string> = {
-  pending: 'bg-amber-50 text-amber-700',
-  verified: 'bg-blue-50 text-blue-700',
-  accepted: 'bg-emerald-50 text-emerald-700',
-  rejected: 'bg-red-50 text-red-600',
-};
-
 interface CatalogItem {
   id: string;
   name: string;
@@ -238,14 +231,11 @@ const GRNReceiptForm: React.FC = () => {
     setItems(items.filter((_, i) => i !== index));
   };
 
-  // Batch details (batch_number / mfg date / expiry date / quantity received /
-  // discrepancy notes) can be corrected regardless of GRN status. If the GRN
-  // has already been accepted (stock posted), the backend reconciles the
-  // already-created MedicineBatch/OpticalBatch + stock ledger against the
-  // correction automatically (see update_grn_item_batch in
-  // inventory_service.py) — it will reject the edit (400) only if the
-  // correction would take a batch's stock negative (e.g. some of it has
-  // already been dispensed/sold).
+  // Batch details (batch_number / mfg date / expiry date) can only be corrected
+  // while the GRN is still "pending" — once verified/accepted, stock has already
+  // been posted under the original batch_number and changing it would desync
+  // the GRN from the real inventory it produced (see inventory_service.py).
+  const canEditBatchDetails = isEditMode && existingGRN?.status === 'pending';
   const [savingBatchIdx, setSavingBatchIdx] = useState<number | null>(null);
 
   const handleSaveBatchDetails = async (index: number) => {
@@ -355,17 +345,10 @@ const GRNReceiptForm: React.FC = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-slate-900">{isEditMode ? 'Edit GRN' : 'Create Goods Receipt Note'}</h1>
-            {isEditMode && existingGRN && (
-              <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold capitalize ${STATUS_COLORS[existingGRN.status] || 'bg-slate-100 text-slate-600'}`}>
-                {existingGRN.status}
-              </span>
-            )}
-          </div>
+          <h1 className="text-2xl font-bold text-slate-900">{isEditMode ? (canEditBatchDetails ? 'Edit GRN' : 'View GRN') : 'Create Goods Receipt Note'}</h1>
           <p className="text-sm text-slate-500 mt-1">
-            {isEditMode
-              ? 'Batch #, quantity received, dates, and discrepancy notes can be corrected below — including after acceptance.'
+            {canEditBatchDetails
+              ? 'This receipt is still Pending — batch #, quantity received, dates, and discrepancy notes can be corrected below.'
               : 'Record incoming stock delivery and create medicine batches'}
           </p>
         </div>
@@ -500,7 +483,7 @@ const GRNReceiptForm: React.FC = () => {
                   <th className="px-3 py-2 text-center font-semibold text-slate-600">Accepted</th>
                   <th className="px-3 py-2 text-right font-semibold text-slate-600">Unit Price</th>
                   <th className="px-3 py-2 text-left font-semibold text-slate-600">Discrepancy Notes</th>
-                  <th className="px-3 py-2 text-center font-semibold text-slate-600">Action</th>
+                  {(!isEditMode || canEditBatchDetails) && <th className="px-3 py-2 text-center font-semibold text-slate-600">Action</th>}
                 </tr>
               </thead>
               <tbody>
@@ -543,6 +526,8 @@ const GRNReceiptForm: React.FC = () => {
                         value={item.batch_number}
                         onChange={(e) => updateItem(idx, 'batch_number', e.target.value)}
                         placeholder="Batch #"
+                        disabled={isEditMode && !canEditBatchDetails}
+                        title={isEditMode && !canEditBatchDetails ? 'Locked — batch details can only be corrected while the GRN is still Pending' : undefined}
                         className="w-full px-2 py-1 border border-slate-200 rounded text-xs focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:bg-slate-50"
                       />
                     </td>
@@ -551,7 +536,9 @@ const GRNReceiptForm: React.FC = () => {
                         type="date"
                         value={item.manufactured_date}
                         onChange={(e) => updateItem(idx, 'manufactured_date', e.target.value)}
+                        disabled={isEditMode && !canEditBatchDetails}
                         max={new Date().toISOString().split('T')[0]}
+                        title={isEditMode && !canEditBatchDetails ? 'Locked — batch details can only be corrected while the GRN is still Pending' : undefined}
                         className="w-full px-2 py-1 border border-slate-200 rounded text-xs focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:bg-slate-50"
                       />
                     </td>
@@ -560,7 +547,9 @@ const GRNReceiptForm: React.FC = () => {
                         type="date"
                         value={item.expiry_date}
                         onChange={(e) => updateItem(idx, 'expiry_date', e.target.value)}
+                        disabled={isEditMode && !canEditBatchDetails}
                         min={new Date().toISOString().split('T')[0]}
+                        title={isEditMode && !canEditBatchDetails ? 'Locked — batch details can only be corrected while the GRN is still Pending' : undefined}
                         className="w-full px-2 py-1 border border-slate-200 rounded text-xs focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:bg-slate-50"
                       />
                     </td>
@@ -569,6 +558,8 @@ const GRNReceiptForm: React.FC = () => {
                         type="number"
                         value={item.quantity_received}
                         onChange={(e) => updateItem(idx, 'quantity_received', parseInt(e.target.value))}
+                        disabled={isEditMode && !canEditBatchDetails}
+                        title={isEditMode && !canEditBatchDetails ? 'Locked — quantity can only be corrected while the GRN is still Pending' : undefined}
                         className="w-16 px-2 py-1 border border-slate-200 rounded text-xs focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:bg-slate-50"
                       />
                     </td>
@@ -590,6 +581,8 @@ const GRNReceiptForm: React.FC = () => {
                         value={item.discrepancy_notes || ''}
                         onChange={(e) => updateItem(idx, 'discrepancy_notes', e.target.value)}
                         placeholder={isEditMode ? undefined : 'Optional'}
+                        disabled={isEditMode && !canEditBatchDetails}
+                        title={isEditMode && !canEditBatchDetails ? 'Locked — notes can only be added while the GRN is still Pending' : undefined}
                         className="w-full px-2 py-1 border border-slate-200 rounded text-xs focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:bg-slate-50"
                       />
                     </td>
@@ -603,7 +596,7 @@ const GRNReceiptForm: React.FC = () => {
                         </button>
                       </td>
                     )}
-                    {isEditMode && (
+                    {canEditBatchDetails && (
                       <td className="px-3 py-3 text-center">
                         <button
                           onClick={() => handleSaveBatchDetails(idx)}

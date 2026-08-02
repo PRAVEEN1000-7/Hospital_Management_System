@@ -1053,21 +1053,22 @@ def update_grn_item_batch(
     current_user: Optional[User] = None,
 ) -> GRNItem:
     """Correct batch_number/manufactured_date/expiry_date/quantity_received/
-    discrepancy_notes on a received line item.
+    discrepancy_notes on a received line item (BRD 5.5 extends this to also
+    cover quantity_received + discrepancy_notes, not just batch/expiry).
 
-    Editable regardless of GRN status (including after acceptance). While
-    'pending'/'verified'/'rejected', no stock has been posted yet, so this is
-    a plain field edit. Once 'accepted', _process_grn_acceptance has already
-    created MedicineBatch/OpticalBatch and StockMovement rows from the item's
-    original batch identity (batch_number/mfg_date/expiry_date) and quantity
-    — _reconcile_grn_item_stock_correction() below applies the delta (moving
-    quantity between batch identities and/or adjusting quantity) so the
-    already-posted stock stays consistent with the corrected GRN record,
-    instead of silently desyncing from it.
+    Only allowed while the GRN is 'pending'. Once verified/accepted,
+    _process_grn_acceptance has already created MedicineBatch/OpticalBatch
+    and StockMovement rows keyed by the original batch_number/quantity —
+    changing either afterward would silently desync the GRN from the stock
+    it produced.
     """
     grn = db.query(GoodsReceiptNote).filter(GoodsReceiptNote.id == grn_id).first()
     if not grn:
         raise ValueError("GRN not found")
+    if grn.status != "pending":
+        raise ValueError(
+            f"Batch details are locked once a GRN is {grn.status} — only 'pending' GRNs can be edited"
+        )
 
     item = db.query(GRNItem).filter(
         GRNItem.id == item_id,
@@ -1078,43 +1079,8 @@ def update_grn_item_batch(
 
     update_data = data.model_dump(exclude_unset=True)
     old_values = {k: (str(getattr(item, k)) if getattr(item, k) is not None else None) for k in update_data}
-
-    # Snapshot the batch identity/quantity as posted to stock (only meaningful
-    # if this GRN has already been accepted) BEFORE mutating the item.
-    was_accepted = grn.status == "accepted"
-    old_batch_number = item.batch_number
-    old_mfg_date = item.manufactured_date
-    old_expiry_date = item.expiry_date
-    old_quantity_received = item.quantity_received or 0
-    old_posted_qty = item.quantity_accepted if item.quantity_accepted is not None else old_quantity_received
-    # This endpoint doesn't expose quantity_accepted directly — quantity_received
-    # is what's being corrected. When nothing was ever separately rejected
-    # (quantity_accepted == quantity_received, true for every GRN created via
-    # the normal flow, which defaults quantity_accepted to quantity_received),
-    # keep them in lockstep so a quantity_received correction actually changes
-    # what's treated as posted. If quantity_accepted had genuinely diverged
-    # (a deliberate partial-reject), leave it alone — the correction here is
-    # about batch/received-qty bookkeeping, not re-litigating that decision.
-    accepted_was_in_lockstep = old_posted_qty == old_quantity_received
-
     for k, v in update_data.items():
         setattr(item, k, v)
-
-    if (
-        was_accepted
-        and accepted_was_in_lockstep
-        and "quantity_received" in update_data
-    ):
-        item.quantity_accepted = item.quantity_received
-
-    if was_accepted and item.item_type in ("medicine", "optical_product"):
-        _reconcile_grn_item_stock_correction(
-            db, grn, item,
-            old_batch_number=old_batch_number,
-            old_mfg_date=old_mfg_date,
-            old_expiry_date=old_expiry_date,
-            old_posted_qty=old_posted_qty,
-        )
 
     db.commit()
     db.refresh(item)
@@ -1131,139 +1097,10 @@ def update_grn_item_batch(
             resource_id=item.id,
             old_values=old_values,
             new_values=new_values,
-            metadata={"grn_number": grn.grn_number, "corrected_after_acceptance": was_accepted},
+            metadata={"grn_number": grn.grn_number},
         )
 
     return item
-
-
-def _reconcile_grn_item_stock_correction(
-    db: Session,
-    grn: GoodsReceiptNote,
-    item: GRNItem,
-    old_batch_number: Optional[str],
-    old_mfg_date,
-    old_expiry_date,
-    old_posted_qty: int,
-) -> None:
-    """Keep MedicineBatch/OpticalBatch + the stock ledger in sync when a GRN
-    item is edited AFTER acceptance (stock already posted for its original
-    batch identity/quantity). Moves quantity from the old batch identity to
-    the new one (a no-op if identity didn't change) and posts a single
-    compensating StockMovement for the net item-level quantity change, if any.
-    Raises ValueError instead of allowing a batch to go negative — a
-    correction can't remove more than is still actually in stock (e.g. if
-    some of it was already dispensed/sold since the original acceptance).
-    """
-    new_posted_qty = item.quantity_accepted if item.quantity_accepted is not None else (item.quantity_received or 0)
-    identity_changed = (item.batch_number, item.manufactured_date, item.expiry_date) != (
-        old_batch_number, old_mfg_date, old_expiry_date,
-    )
-    if not identity_changed and new_posted_qty == old_posted_qty:
-        return  # nothing was actually posted differently
-
-    is_medicine = item.item_type == "medicine"
-    BatchModel = MedicineBatch if is_medicine else OpticalBatch
-    key_field = "medicine_id" if is_medicine else "product_id"
-
-    def _find_batch(batch_number, mfg_date, expiry_date):
-        return db.query(BatchModel).filter(
-            getattr(BatchModel, key_field) == item.item_id,
-            BatchModel.batch_number == batch_number,
-            BatchModel.mfg_date == mfg_date,
-            BatchModel.expiry_date == expiry_date,
-        ).first()
-
-    if identity_changed:
-        old_batch = _find_batch(old_batch_number, old_mfg_date, old_expiry_date)
-        if old_batch and old_posted_qty:
-            if old_batch.quantity - old_posted_qty < 0:
-                raise ValueError(
-                    f"Cannot correct this item's batch — only {old_batch.quantity} of batch "
-                    f"'{old_batch_number}' remains in stock (some has already been dispensed/sold), "
-                    f"less than the {old_posted_qty} this GRN originally contributed."
-                )
-            old_batch.quantity -= old_posted_qty
-            old_batch.initial_quantity -= old_posted_qty
-
-        new_batch = _find_batch(item.batch_number, item.manufactured_date, item.expiry_date)
-        if new_batch:
-            new_batch.quantity += new_posted_qty
-            new_batch.initial_quantity += new_posted_qty
-        elif new_posted_qty:
-            new_batch = BatchModel(
-                **{key_field: item.item_id},
-                batch_number=item.batch_number or f"GRN-{grn.id.hex[:8]}",
-                mfg_date=item.manufactured_date,
-                expiry_date=item.expiry_date,
-                initial_quantity=new_posted_qty,
-                quantity=new_posted_qty,
-                purchase_price=float(item.unit_price),
-                selling_price=float(item.unit_price),
-                is_active=True,
-            )
-            db.add(new_batch)
-    else:
-        # Same batch identity — just a quantity correction.
-        batch = _find_batch(item.batch_number, item.manufactured_date, item.expiry_date)
-        delta = new_posted_qty - old_posted_qty
-        if batch:
-            if batch.quantity + delta < 0:
-                raise ValueError(
-                    f"Cannot reduce quantity below what's already in stock — only {batch.quantity} of "
-                    f"batch '{item.batch_number}' remains (some has already been dispensed/sold)."
-                )
-            batch.quantity += delta
-            batch.initial_quantity += delta
-        elif delta > 0:
-            batch = BatchModel(
-                **{key_field: item.item_id},
-                batch_number=item.batch_number or f"GRN-{grn.id.hex[:8]}",
-                mfg_date=item.manufactured_date,
-                expiry_date=item.expiry_date,
-                initial_quantity=delta,
-                quantity=delta,
-                purchase_price=float(item.unit_price),
-                selling_price=float(item.unit_price),
-                is_active=True,
-            )
-            db.add(batch)
-    db.flush()
-
-    net_delta = new_posted_qty - old_posted_qty
-    if net_delta != 0:
-        balance_after = (
-            _get_medicine_batch_stock(db, item.item_id) if is_medicine
-            else _get_optical_batch_stock(db, item.item_id)
-        )
-        db.add(StockMovement(
-            hospital_id=grn.hospital_id,
-            item_type=item.item_type,
-            item_id=item.item_id,
-            movement_type="adjustment",
-            reference_type="grn",
-            reference_id=grn.id,
-            quantity=net_delta,
-            balance_after=balance_after,
-            unit_cost=float(item.unit_price),
-            notes=f"GRN {grn.grn_number} corrected after acceptance",
-            performed_by=grn.verified_by,
-        ))
-
-        # Keep the PO's received rollup / receipt status in step with the correction.
-        if grn.purchase_order_id:
-            po_item = (
-                db.query(PurchaseOrderItem)
-                .filter(
-                    PurchaseOrderItem.purchase_order_id == grn.purchase_order_id,
-                    PurchaseOrderItem.item_id == item.item_id,
-                    PurchaseOrderItem.item_type == item.item_type,
-                )
-                .first()
-            )
-            if po_item:
-                po_item.quantity_received = max(0, (po_item.quantity_received or 0) + net_delta)
-            _update_po_receipt_status(db, grn.purchase_order_id)
 
 
 def _process_grn_acceptance(db: Session, grn: GoodsReceiptNote):

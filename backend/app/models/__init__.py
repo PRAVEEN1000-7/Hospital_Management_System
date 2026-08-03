@@ -25,3 +25,9 @@ from .inventory import (
     GoodsReceiptNote, GRNItem, StockMovement,
     StockAdjustment, CycleCount, CycleCountItem,
 )
+from .employee import EmployeeProfile, EmployeeSalary
+from .holiday import Holiday
+from .shift import Shift, EmployeeShiftAssignment
+from .attendance import AttendanceRecord
+from .leave import LeaveRecord, LeaveBalance
+from .payroll import PayrollRun, Payslip

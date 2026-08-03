@@ -4,10 +4,8 @@ import { zodResolverV4 } from '../../utils/zodResolverV4';
 import { z } from 'zod';
 import userService from '../../services/userService';
 import doctorService from '../../services/doctorService';
-import employeeService from '../../services/employeeService';
 import api from '../../services/api';
 import type { UserData, UserCreateData, UserUpdateData } from '../../types/user';
-import type { EmployeeProfile, EmploymentType } from '../../types/employee';
 import { ROLE_LABELS, COUNTRIES } from '../../utils/constants';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -53,18 +51,6 @@ const staffCreateSchema = z.object({
   bio: z.string().optional(),
   department_id: z.string().optional(),
   analytics_enabled: z.boolean().optional(),
-  // Employee Details (Workforce Management) — optional, applies to any role,
-  // gated on the workforce_management module being enabled rather than role.
-  designation: z.string().optional(),
-  employment_type: z.string().optional(),
-  date_of_joining: z.string().optional(),
-  paid_leave_entitlement: z.union([z.string(), z.number()]).optional(),
-  bank_account_holder_name: z.string().optional(),
-  bank_account_number: z.string().optional(),
-  bank_ifsc: z.string().optional(),
-  bank_branch: z.string().optional(),
-  pf_number: z.string().optional(),
-  pan_number: z.string().optional(),
 }).superRefine((data, ctx) => {
   // Password validation — only when not auto-generating
   if (!data.auto_generate_password) {
@@ -112,20 +98,6 @@ const staffEditSchema = z.object({
   consultation_fee: z.union([z.string(), z.number()]).optional(),
   follow_up_fee: z.union([z.string(), z.number()]).optional(),
   analytics_enabled: z.boolean().optional(),
-  // Employee Details — goes through a separate employee_profiles API, not
-  // UserUpdate, so (unlike the doctor-only fields above) there's no backend
-  // reason to exclude any of these from the edit form.
-  department_id: z.string().optional(),
-  designation: z.string().optional(),
-  employment_type: z.string().optional(),
-  date_of_joining: z.string().optional(),
-  paid_leave_entitlement: z.union([z.string(), z.number()]).optional(),
-  bank_account_holder_name: z.string().optional(),
-  bank_account_number: z.string().optional(),
-  bank_ifsc: z.string().optional(),
-  bank_branch: z.string().optional(),
-  pf_number: z.string().optional(),
-  pan_number: z.string().optional(),
 }).superRefine((data, ctx) => {
   if (data.role === 'doctor') {
     if (!data.specialization) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Specialization is required for doctors', path: ['specialization'] });
@@ -163,7 +135,7 @@ type ResetFormData = z.infer<typeof resetPasswordSchema>;
 const ALL_ROLES = [
   'super_admin', 'admin', 'doctor', 'visiting_doctor', 'nurse', 'receptionist',
   'pharmacist', 'optical_staff', 'lab_technician', 'cashier', 'inventory_manager',
-  'report_viewer', 'hr_manager',
+  'report_viewer',
 ] as const;
 
 const ROLE_MODULE_REQUIREMENTS: Partial<Record<string, string[]>> = {
@@ -173,7 +145,6 @@ const ROLE_MODULE_REQUIREMENTS: Partial<Record<string, string[]>> = {
   optical_staff:     ['optical'],
   lab_technician:    ['lab'],
   report_viewer:     ['analytics'],
-  hr_manager:        ['workforce_management'],
   // doctor, nurse, receptionist, admin — rely on CORE modules only, always available
 };
 
@@ -398,88 +369,11 @@ const DoctorFields: React.FC<{
   </div>
 );
 
-/** Employee (HR) sub-fields — gated on the workforce_management module being
- * enabled, not on role, since any staff member can be an "employee" (BRD:
- * "employee = an extension of users, applies to any staff member"). Shared
- * by Create and Edit; department_id is the same field DoctorFields uses so a
- * doctor who's also tracked as an employee doesn't get two department pickers. */
-const EmployeeFields: React.FC<{
-  register: any;
-  errors: any;
-  departments?: { id: string; name: string }[];
-  showDepartment?: boolean;
-}> = ({ register, errors, departments, showDepartment = true }) => (
-  <div className="space-y-4 mt-2 p-4 bg-emerald-50/50 border border-emerald-200 rounded-xl">
-    <p className="text-xs font-bold text-emerald-700 uppercase tracking-wider flex items-center gap-1.5">
-      <span className="material-icons text-sm">badge</span> Employee Details
-    </p>
-    <div className="grid grid-cols-2 gap-4">
-      <Field label="Designation">
-        <input {...register('designation')} className="input-field" placeholder="e.g. Staff Nurse" />
-      </Field>
-      <Field label="Employment Type">
-        <select {...register('employment_type')} className="input-field">
-          <option value="full_time">Full-time</option>
-          <option value="part_time">Part-time</option>
-          <option value="contract">Contract</option>
-        </select>
-      </Field>
-    </div>
-    <div className="grid grid-cols-2 gap-4">
-      <Field label="Date of Joining">
-        <input {...register('date_of_joining')} type="date" className="input-field" />
-      </Field>
-      {showDepartment && (
-        <Field label="Department">
-          <select {...register('department_id')} className="input-field">
-            <option value="">Select department</option>
-            {(departments || []).map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-          </select>
-        </Field>
-      )}
-    </div>
-    <Field label="Paid Leave Entitlement (days/year)" error={errors.paid_leave_entitlement?.message}>
-      <input {...register('paid_leave_entitlement')} type="number" min="0" className="input-field w-1/2" placeholder="e.g. 12" />
-    </Field>
-    <details className="group">
-      <summary className="cursor-pointer text-xs font-semibold text-emerald-700 select-none">Bank &amp; Statutory Details (optional)</summary>
-      <div className="mt-3 space-y-3">
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Account Holder Name">
-            <input {...register('bank_account_holder_name')} className="input-field" />
-          </Field>
-          <Field label="Account Number">
-            <input {...register('bank_account_number')} className="input-field" />
-          </Field>
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="IFSC Code">
-            <input {...register('bank_ifsc')} className="input-field" />
-          </Field>
-          <Field label="Branch">
-            <input {...register('bank_branch')} className="input-field" />
-          </Field>
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="PF Number">
-            <input {...register('pf_number')} className="input-field" />
-          </Field>
-          <Field label="PAN Number">
-            <input {...register('pan_number')} className="input-field" />
-          </Field>
-        </div>
-      </div>
-    </details>
-  </div>
-);
-
 // ────────────────────────────────────────
 // Create Staff Modal
 // ────────────────────────────────────────
 export const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => void; onError: (msg: string) => void }> = ({ onClose, onSuccess, onError }) => {
   const toast = useToast();
-  const { isModuleEnabled } = useAuth();
-  const isEmployeeModuleEnabled = isModuleEnabled('workforce_management');
   const availableRoles = useAssignableRoles();
   const [showPassword, setShowPassword] = useState(false);
   const [photoPreview, setPhotoPreview] = useState<string>('');
@@ -500,7 +394,7 @@ export const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => 
   const { register, handleSubmit, watch, setValue, trigger, formState: { errors, isValid, isSubmitting } } = useForm<CreateFormData>({
     resolver: zodResolverV4(staffCreateSchema),
     mode: 'onTouched',
-    defaultValues: { first_name: '', last_name: '', email: '', username: '', phone_number: '', country_code: '+91', role: '', password: '', confirm_password: '', auto_generate_password: false, specialization: '', qualification: '', registration_number: '', registration_authority: '', experience_years: '', consultation_fee: '', follow_up_fee: '', bio: '', department_id: '', analytics_enabled: true, designation: '', employment_type: 'full_time', date_of_joining: '', paid_leave_entitlement: '', bank_account_holder_name: '', bank_account_number: '', bank_ifsc: '', bank_branch: '', pf_number: '', pan_number: '' },
+    defaultValues: { first_name: '', last_name: '', email: '', username: '', phone_number: '', country_code: '+91', role: '', password: '', confirm_password: '', auto_generate_password: false, specialization: '', qualification: '', registration_number: '', registration_authority: '', experience_years: '', consultation_fee: '', follow_up_fee: '', bio: '', department_id: '', analytics_enabled: true },
   });
 
   const email = watch('email', '');
@@ -695,28 +589,6 @@ export const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => 
         catch { toast.error('User created but photo upload failed'); }
       }
 
-      // Employee profile is a separate 1:1 resource, created via its own
-      // endpoint after the user exists — a failure here must not roll back
-      // the already-created user (same non-blocking pattern as photo upload).
-      if (isEmployeeModuleEnabled && createdUser.id) {
-        try {
-          await employeeService.create({
-            user_id: createdUser.id,
-            designation: data.designation || undefined,
-            employment_type: (data.employment_type as EmploymentType) || 'full_time',
-            date_of_joining: data.date_of_joining || undefined,
-            department_id: !isDoctorRole ? (data.department_id || undefined) : undefined,
-            paid_leave_entitlement: data.paid_leave_entitlement ? Number(data.paid_leave_entitlement) : undefined,
-            bank_account_holder_name: data.bank_account_holder_name || undefined,
-            bank_account_number: data.bank_account_number || undefined,
-            bank_ifsc: data.bank_ifsc || undefined,
-            bank_branch: data.bank_branch || undefined,
-            pf_number: data.pf_number || undefined,
-            pan_number: data.pan_number || undefined,
-          });
-        } catch { toast.error('Staff created, but saving employee details failed'); }
-      }
-
       onSuccess();
     } catch (err: any) {
       const detail = err?.response?.data?.detail;
@@ -789,9 +661,6 @@ export const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => 
           </Field>
           {isDoctorRole && (
             <DoctorFields register={register} errors={errors} specializations={specializations} variant="create" departments={departments} />
-          )}
-          {isEmployeeModuleEnabled && (
-            <EmployeeFields register={register} errors={errors} departments={departments} showDepartment={!isDoctorRole} />
           )}
         </section>
 
@@ -892,17 +761,17 @@ export const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => 
 // ────────────────────────────────────────
 export const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onSuccess: () => void; onError: (msg: string) => void }> = ({ user, onClose, onSuccess, onError }) => {
   const toast = useToast();
-  const { isModuleEnabled } = useAuth();
-  const isEmployeeModuleEnabled = isModuleEnabled('workforce_management');
   const availableRoles = useAssignableRoles();
   const [photoPreview, setPhotoPreview] = useState<string>(user.avatar_url ? userService.getPhotoUrl(user.avatar_url) || '' : '');
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoError, setPhotoError] = useState('');
   const [specializations, setSpecializations] = useState<string[]>([]);
-  const [departments, setDepartments] = useState<{ id: string; name: string }[]>([]);
-  const [employeeProfile, setEmployeeProfile] = useState<EmployeeProfile | null>(null);
 
-  const { register, handleSubmit, watch, reset, getValues, formState: { errors, isSubmitting, isValid } } = useForm<EditFormData>({
+  useEffect(() => {
+    doctorService.getSpecializations().then(setSpecializations).catch(() => {});
+  }, []);
+
+  const { register, handleSubmit, watch, formState: { errors, isSubmitting, isValid } } = useForm<EditFormData>({
     resolver: zodResolverV4(staffEditSchema),
     mode: 'onTouched',
     defaultValues: {
@@ -919,46 +788,8 @@ export const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onS
       consultation_fee: user.consultation_fee ?? '',
       follow_up_fee: user.follow_up_fee ?? '',
       analytics_enabled: user.analytics_enabled ?? true,
-      designation: '',
-      employment_type: 'full_time',
-      date_of_joining: '',
-      department_id: '',
-      paid_leave_entitlement: '',
-      bank_account_holder_name: '',
-      bank_account_number: '',
-      bank_ifsc: '',
-      bank_branch: '',
-      pf_number: '',
-      pan_number: '',
     },
   });
-
-  useEffect(() => {
-    doctorService.getSpecializations().then(setSpecializations).catch(() => {});
-    if (isEmployeeModuleEnabled) {
-      api.get('/departments').then(res => setDepartments(res.data?.data || [])).catch(() => {});
-      employeeService.getByUserId(user.id).then(profile => {
-        setEmployeeProfile(profile);
-        if (profile) {
-          reset({
-            ...getValues(),
-            designation: profile.designation || '',
-            employment_type: profile.employment_type || 'full_time',
-            date_of_joining: profile.date_of_joining || '',
-            department_id: profile.department_id || '',
-            paid_leave_entitlement: profile.paid_leave_entitlement ?? '',
-            bank_account_holder_name: profile.bank_account_holder_name || '',
-            bank_account_number: profile.bank_account_number || '',
-            bank_ifsc: profile.bank_ifsc || '',
-            bank_branch: profile.bank_branch || '',
-            pf_number: profile.pf_number || '',
-            pan_number: profile.pan_number || '',
-          });
-        }
-      }).catch(() => {});
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const firstName = watch('first_name', user.first_name || '');
   const lastName = watch('last_name', user.last_name || '');
@@ -995,32 +826,6 @@ export const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onS
         try { await userService.uploadPhoto(user.id, photoFile); }
         catch { toast.warning('Staff updated, but photo upload failed.'); onSuccess(); return; }
       }
-
-      // Employee profile is a separate 1:1 resource — upsert it after the
-      // user update succeeds, same non-blocking pattern as photo upload.
-      if (isEmployeeModuleEnabled) {
-        const employeeData = {
-          designation: data.designation || undefined,
-          employment_type: (data.employment_type as EmploymentType) || 'full_time',
-          date_of_joining: data.date_of_joining || undefined,
-          department_id: data.department_id || undefined,
-          paid_leave_entitlement: data.paid_leave_entitlement !== '' && data.paid_leave_entitlement != null ? Number(data.paid_leave_entitlement) : undefined,
-          bank_account_holder_name: data.bank_account_holder_name || undefined,
-          bank_account_number: data.bank_account_number || undefined,
-          bank_ifsc: data.bank_ifsc || undefined,
-          bank_branch: data.bank_branch || undefined,
-          pf_number: data.pf_number || undefined,
-          pan_number: data.pan_number || undefined,
-        };
-        try {
-          if (employeeProfile) {
-            await employeeService.update(employeeProfile.id, employeeData);
-          } else {
-            await employeeService.create({ user_id: user.id, ...employeeData });
-          }
-        } catch { toast.warning('Staff updated, but saving employee details failed.'); }
-      }
-
       feLogger.info('staff_edit', `Staff member updated: ${user.username}`);
       onSuccess();
     } catch (err: any) {
@@ -1081,13 +886,6 @@ export const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onS
           <section className="space-y-4">
             <SectionTitle>Doctor Details</SectionTitle>
             <DoctorFields register={register} errors={errors} specializations={specializations} variant="edit" />
-          </section>
-        )}
-
-        {isEmployeeModuleEnabled && (
-          <section className="space-y-4">
-            <SectionTitle>Employee Details</SectionTitle>
-            <EmployeeFields register={register} errors={errors} departments={departments} />
           </section>
         )}
 

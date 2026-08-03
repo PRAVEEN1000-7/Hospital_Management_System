@@ -121,24 +121,6 @@ MODULE_ROLES: Dict[str, Dict[str, str]] = {
     "system.settings": {
         "admin": _EDIT,
     },
-    "employee.records": {
-        "admin": _EDIT, "hr_manager": _EDIT,
-    },
-    "employee.holidays": {
-        "admin": _EDIT, "hr_manager": _EDIT,
-    },
-    "employee.shifts": {
-        "admin": _EDIT, "hr_manager": _EDIT,
-    },
-    "employee.attendance": {
-        "admin": _EDIT, "hr_manager": _EDIT,
-    },
-    "employee.leave": {
-        "admin": _EDIT, "hr_manager": _EDIT,
-    },
-    "employee.payroll": {
-        "admin": _EDIT, "hr_manager": _EDIT,
-    },
 }
 
 
@@ -166,12 +148,6 @@ PERMISSION_KEY_LABELS: Dict[str, str] = {
     "system.subscription": "Subscription & Modules",
     "system.user_management": "Staff & Role Management",
     "system.settings": "Hospital Settings",
-    "employee.records": "Employee Records",
-    "employee.holidays": "Holiday Calendar",
-    "employee.shifts": "Shift Management",
-    "employee.attendance": "Attendance",
-    "employee.leave": "Leave Management",
-    "employee.payroll": "Payroll",
 }
 
 # A hospital admin editing their own permission matrix must never be able to

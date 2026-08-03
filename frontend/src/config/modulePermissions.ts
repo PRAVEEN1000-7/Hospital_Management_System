@@ -135,24 +135,6 @@ export const MODULE_ROLES: Record<string, Partial<Record<string, Exclude<AccessL
   'system.settings': {
     admin: 'edit',
   },
-  'employee.records': {
-    admin: 'edit', hr_manager: 'edit',
-  },
-  'employee.holidays': {
-    admin: 'edit', hr_manager: 'edit',
-  },
-  'employee.shifts': {
-    admin: 'edit', hr_manager: 'edit',
-  },
-  'employee.attendance': {
-    admin: 'edit', hr_manager: 'edit',
-  },
-  'employee.leave': {
-    admin: 'edit', hr_manager: 'edit',
-  },
-  'employee.payroll': {
-    admin: 'edit', hr_manager: 'edit',
-  },
 };
 
 function normalize(roles: string[]): string[] {

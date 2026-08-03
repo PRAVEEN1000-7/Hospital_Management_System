@@ -121,11 +121,17 @@ psql -h localhost -U hms_user -d hms_db -f database_hole/01_full_schema.sql
 # Eye hospital / multi-specialty only — skip for a general hospital:
 psql -h localhost -U hms_user -d hms_db -f database_hole/02_eye_hospital_updates.sql
 
-# Optional — dev/demo sample data only, never on a real hospital's database:
-psql -h localhost -U hms_user -d hms_db -f database_hole/03_seed_data.sql
+# Then run the remaining schema/reference migrations in order (05, 07-13) —
+# see database_hole/README.md for the current full list and what each does.
 ```
 
-> **Do NOT run** `04_reference_queries.sql` — it's a reference file, not a migration.
+Once the schema is in place, seed the platform essentials (module registry,
+RBAC config, lab test catalog, roles) and the one Super Admin login via
+`deploy/flush_and_reseed_database.py` — see its own `--help` / docstring.
+No demo/sample data exists in this repo anymore; that file used to be
+`database_hole/03_seed_data.sql` (fictional demo hospitals, dev-only) and
+`04_reference_queries.sql` (a query cheat sheet tied to that demo data) —
+both were deleted, they had no place in a real deployment.
 
 ### A4 — Verify Database
 

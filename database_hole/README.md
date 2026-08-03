@@ -2,6 +2,12 @@
 
 Complete step-by-step guide to install, configure, and run the Hospital Management System database.
 
+**This is a multi-tenant platform with no bundled demo/sample data.** A fresh
+database gets: the schema, real platform infrastructure (module registry,
+RBAC config, your production lab test catalog), and exactly one Super Admin
+login. You create real hospitals through the app itself after logging in —
+nothing here inserts a fictional hospital, patient, or staff account.
+
 ---
 
 ## Table of Contents
@@ -11,7 +17,7 @@ Complete step-by-step guide to install, configure, and run the Hospital Manageme
 3. [Create the Database](#3-create-the-database)
 4. [Run the Schema](#4-run-the-schema)
 5. [Eye Hospital? Apply the Feature Pack](#5-eye-hospital-apply-the-feature-pack)
-6. [Load Seed Data (optional, dev only)](#6-load-seed-data-optional-dev-only)
+6. [Seed Platform Essentials + Super Admin Login](#6-seed-platform-essentials--super-admin-login)
 7. [Verify Installation](#7-verify-installation)
 8. [Connection String](#8-connection-string)
 9. [File Reference](#9-file-reference)
@@ -114,7 +120,7 @@ psql -U hms_user -d hms_db -f 01_full_schema.sql
 
 **Expected output:** a long series of `CREATE TABLE` / `CREATE INDEX` / `ALTER TABLE` / `INSERT` lines, no `ERROR`.
 
-Idempotent — uses `IF NOT EXISTS` / `ON CONFLICT DO NOTHING` throughout, so it's safe to re-run.
+This file is **not** safe to re-run against a database that already has the schema — most of its `CREATE TABLE` statements don't use `IF NOT EXISTS` (only 7 of 72 do), since it's meant to run once against a truly empty database. If you need to re-apply just its seed data (module registry, subscription plans, system settings) against an existing database, use `deploy/flush_and_reseed_database.py` instead (§6) — it reproduces that data idempotently without re-running the schema DDL.
 
 ---
 
@@ -132,17 +138,49 @@ It's purely additive and gated at the application layer by `hospitals.specialty`
 
 ---
 
-## 6. Load Seed Data (optional, dev only)
+## 6. Seed Platform Essentials + Super Admin Login
 
-**Do not run this against a real hospital's production database.** It inserts fictional hospitals ("HMS Core Hospital", "HMS Apollo Branch", etc.), demo users, and sample inventory data — useful only for local development/demos.
+Run the remaining schema/reference migrations, then seed exactly what's needed to log in — no demo data, no fictional hospitals.
 
 ```powershell
-psql -U hms_user -d hms_db -f 03_seed_data.sql
+cd database_hole
+psql -U hms_user -d hms_db -f 05_schema_structure.sql
+psql -U hms_user -d hms_db -f 07_queue_display_screens.sql
+psql -U hms_user -d hms_db -f 08_role_permission_overrides.sql
+psql -U hms_user -d hms_db -f 09_grn_edit_and_opd_assignment.sql
+psql -U hms_user -d hms_db -f 10_lab_test_templates_batch2.sql
+psql -U hms_user -d hms_db -f 11_lab_technician_role.sql
+psql -U hms_user -d hms_db -f 12_lab_test_templates_batch3.sql
+psql -U hms_user -d hms_db -f 13_lab_test_fasting_blood_sugar.sql
+
+cd ../backend
+python ../deploy/flush_and_reseed_database.py --confirm FLUSH \
+    --superadmin-username superadmin_hms \
+    --superadmin-email superadmin@mecandria.com \
+    --superadmin-password 'Superadmin@123'
 ```
 
-**Expected output:** a series of `INSERT 0 N` lines.
+That script does two things at once, safely, even on a database that already
+has data in it: it wipes any existing rows (schema untouched — see its own
+docstring for the exact `TRUNCATE` behavior), then seeds:
 
-For a real deployment, skip this and onboard the first hospital/admin through the application itself.
+- The core module registry, system settings, and module dependencies (the
+  real infrastructure `01_full_schema.sql` carries — reproduced idempotently
+  rather than re-running that file, per §4)
+- The 14 system roles (admin, doctor, pharmacist, etc.)
+- One invisible placeholder "Platform" hospital/tenant — not a real
+  hospital, exists only because a Super Admin's `hospital_id` column can't
+  be null; never shown anywhere in the UI
+- Exactly **one** Super Admin login (the credentials you pass above)
+
+It prints a verification at the end confirming the database has exactly one
+user. Log in with that Super Admin account and create your first real
+hospital through the UI — the client's hospital admin then builds out their
+own staff/patients/data from there.
+
+**If you only want to seed without flushing** (e.g. a fresh database you
+already know is empty), the same script does both — there's no separate
+"seed-only" file; it's idempotent either way (see its docstring).
 
 ---
 
@@ -162,17 +200,17 @@ ORDER BY table_name;
 
 **Expected:** 65+ tables listed (more if `02_eye_hospital_updates.sql` was also applied, since it adds `pharmacy_queue_entries`).
 
-### 7.2 Count rows in key tables (only meaningful if seed data was loaded)
+### 7.2 Confirm exactly one user exists
 
 ```sql
-SELECT 'hospitals' AS tbl, COUNT(*) FROM hospitals
-UNION ALL SELECT 'departments', COUNT(*) FROM departments
-UNION ALL SELECT 'users', COUNT(*) FROM users
-UNION ALL SELECT 'patients', COUNT(*) FROM patients
-UNION ALL SELECT 'doctors', COUNT(*) FROM doctors
-UNION ALL SELECT 'medicines', COUNT(*) FROM medicines
-ORDER BY tbl;
+SELECT u.username, u.email, r.name AS role
+FROM users u
+JOIN user_roles ur ON ur.user_id = u.id
+JOIN roles r ON r.id = ur.role_id
+WHERE u.is_deleted = false;
 ```
+
+**Expected:** exactly one row — your Super Admin. `deploy/flush_and_reseed_database.py` prints this same check automatically at the end of its run.
 
 ### 7.3 Verify the multi-tenant link
 
@@ -182,11 +220,7 @@ FROM hospitals h
 LEFT JOIN saas_core.tenants t ON t.id = h.tenant_id;
 ```
 
-Every hospital should have a non-null `tenant_id` with a matching active tenant.
-
-### 7.4 Test queries
-
-Use `04_reference_queries.sql` for a categorized library of common CRUD/operational queries (login lookup, patient search, stock checks, dashboard numbers, etc.) — reference only, never executed during deployment.
+Every hospital should have a non-null `tenant_id` with a matching active tenant. Right after seeding, the only row here will be the invisible `Platform (System Account Holder)` placeholder (`is_system = true`) — that's expected, not a bug.
 
 ---
 
@@ -208,27 +242,34 @@ DEBUG=false
 
 | File | Purpose | Run against production? |
 |------|---------|--------------------------|
-| `01_full_schema.sql` | Complete base structure — every hospital needs this. Core HMS schema, multi-tenant `saas_core`, RLS/security, inventory adjustments, common medicines, Optical Store batches, token revocation. | ✅ Yes, once |
+| `01_full_schema.sql` | Complete base structure — every hospital needs this. Core HMS schema, multi-tenant `saas_core`, RLS/security, inventory adjustments, common medicines, Optical Store batches, token revocation. Also carries the real seed data for `saas_core.modules`/`subscription_plans`/`system_settings` — see §6 for how that's re-applied without re-running this whole file. | ✅ Yes, once |
 | `02_eye_hospital_updates.sql` | BRD v1.1 eye-hospital feature pack — additive, gated by `hospitals.specialty`. | ✅ Yes, for eye/multi-specialty hospitals (harmless on others) |
-| `03_seed_data.sql` | Fictional sample hospitals/users/inventory for dev & demo only. | ❌ No |
-| `04_reference_queries.sql` | Categorized library of common queries — documentation only, never executed. | ❌ No (reference only) |
 | `05_schema_structure.sql` | All post-base-schema DDL, grouped into 7 numbered sections: appointments/queue/doctor settings, patient verification, pharmacy/optical integrity, billing refund link, laboratory module, auth global uniqueness, inventory PO payments. Schema only — no seed rows. | ✅ Yes |
-| `06_seed_reference_data.sql` | All production-safe seed/reference data for the tables `05` creates: optical opening-batch backfill, lab module registration + 18-test standard catalog, default PO payment modes, the `visiting_doctor` role. Run **after** `05`. | ✅ Yes |
 | `07_queue_display_screens.sql` | BRD-005 — multi-screen Queue Display config (`queue_display_screens` table). Purely additive alongside the existing single-config `hospital_settings.queue_display_*` columns and `/public/queue/:hospitalCode` URL, which are untouched. | ✅ Yes |
 | `08_role_permission_overrides.sql` | Roles & Permissions admin UI — `hospital_permission_overrides` table. Sparse per-hospital deltas on top of the static role/permission matrix (`backend/app/core/module_roles.py`); a hospital admin can now customize which roles see/edit each area from Hospital Settings, without a code deploy. | ✅ Yes |
 | `09_grn_edit_and_opd_assignment.sql` | BRD 29-Jul-2026 — `appointment_queue.opd_assigned_at` (Walk-in Queue "OPD Assigned" tracking) + `grn_items.discrepancy_notes` (GRN item batch-correction extension). Both purely additive. | ✅ Yes |
-| `10_lab_test_templates_batch2.sql` | Lab Test Catalog — 10 additional `lab_tests` rows (Lipid Profile, Prolactin, Iron Studies, HLA B27, Vitamin D3 & Calcium, Urine Culture & Sensitivity, standalone Blood Group & Rh Typing, Dengue Fever Profile, Peripheral Smear, general Microscopy), sourced from a client-supplied report workbook. Data only — reuses the existing `report_template` mechanism from `06`. | ✅ Yes |
+| `10_lab_test_templates_batch2.sql` | Lab Test Catalog — 10 additional `lab_tests` rows (Lipid Profile, Prolactin, Iron Studies, HLA B27, Vitamin D3 & Calcium, Urine Culture & Sensitivity, standalone Blood Group & Rh Typing, Dengue Fever Profile, Peripheral Smear, general Microscopy), sourced from a client-supplied report workbook. Data only. | ✅ Yes |
 | `11_lab_technician_role.sql` | Seeds the missing `lab_technician` system role row (`roles` table) — the Lab module's routes/RBAC/staff-creation dropdown all referenced this role by name since it was built, but the actual row was never seeded, so creating a "Lab Technician" staff member silently attached no role at all. Data only. | ✅ Yes |
-| `12_lab_test_templates_batch3.sql` | Lab Test Catalog — 3 additional `lab_tests` rows (Blood Sugar (RBS), Hormonal Profile [FSH/LH/Prolactin/Testosterone], MUSK Antibody), sourced from two more client-supplied report specs. The specs' other 17 "templates"/reports were cross-checked and found already covered by the existing catalog — including combined panels, which the lab order PDF already renders as one document per order regardless of how many tests are on it. Data only. | ✅ Yes |
-| `13_lab_test_fasting_blood_sugar.sql` | Lab Test Catalog — 1 additional `lab_tests` row (Blood Sugar (FBS), 80-120 mg/dl — distinct from the RBS test in `12`). Found by re-checking every one of the 27 real sheets in `REPORT_HEALTH_FOUNDATION.xlsx` (not just the 10-sheet subset `10_lab_test_templates_batch2.sql` used) — everything else in that workbook was already covered. Data only. | ✅ Yes |
+| `12_lab_test_templates_batch3.sql` | Lab Test Catalog — 3 additional `lab_tests` rows (Blood Sugar (RBS), Hormonal Profile [FSH/LH/Prolactin/Testosterone], MUSK Antibody), sourced from two more client-supplied report specs. Data only. | ✅ Yes |
+| `13_lab_test_fasting_blood_sugar.sql` | Lab Test Catalog — 1 additional `lab_tests` row (Blood Sugar (FBS), 80-120 mg/dl — distinct from the RBS test in `12`). Data only. | ✅ Yes |
 | `99_drop_database.sql` | **Destructive.** Terminates connections, drops `hms_db` and the `hms_user` role entirely. Only for a clean local re-deploy. Run as the `postgres` superuser, never inside `hms_db`. | ❌ No |
+| `../deploy/flush_and_reseed_database.py` | **Destructive** (wipes all data, keeps schema) **+ seeds** platform essentials + one Super Admin in the same run. The actual "get a working, login-ready database" step for production — see §6. | ✅ Yes (the intended way to seed production) |
 
-`05` and `06` are each idempotent (`IF NOT EXISTS` / `ON CONFLICT DO NOTHING` / guarded
-`ALTER`/`ADD CONSTRAINT`) and safe to run in that order after `01`-`03`, including re-running
-against a database that already has one or both applied. Every section inside them is clearly
-banner-commented (`-- N. SECTION NAME --`) with the same "why" reasoning the original per-feature
-files carried, so nothing was lost by consolidating — see the header comment of each file for a
-full section index.
+### Files that used to be here and were deliberately deleted
+
+This was originally a single-tenant application; these files were the
+pre-multi-tenant/dev-testing artifacts left over from that era and from
+ongoing development. None of them belong in a client-facing production
+database, so they were removed rather than just excluded from the setup
+steps above:
+
+- **`03_seed_data.sql`** — fictional demo hospitals ("HMS Core Hospital", "HMS Apollo Branch", etc.), demo users, and sample inventory data. Dev/demo only, never meant for production, and explicitly said so in its own header.
+- **`04_reference_queries.sql`** — a categorized cheat sheet of example SQL queries for developers, referencing `03`'s demo data by hardcoded ID (e.g. `WHERE username = 'doctor1'`). Never executed by any deployment step; became meaningless once `03` was removed.
+- **`06_seed_reference_data.sql`** — the *original* 18-test lab catalog, default PO payment modes, and the `visiting_doctor` role, all dev/testing-era seed data. The one genuinely load-bearing row it carried — the `lab` module registration (what makes "Laboratory" appear in the per-hospital module toggle UI at all) — was preserved by moving that single `INSERT` into `deploy/flush_and_reseed_database.py`'s `seed_core_platform_data()` before deleting the file, so nothing functional was lost.
+
+Your real, production lab test catalog is `10`-`13` — sourced from actual client report templates, not dev placeholders — and is unaffected by any of the above.
+
+---
 
 ### Schema highlights
 
@@ -301,12 +342,8 @@ psql -U hms_user -d hms_db -f database_hole/01_full_schema.sql
 # 3. Eye hospital? Apply the feature pack too
 psql -U hms_user -d hms_db -f database_hole/02_eye_hospital_updates.sql
 
-# 4. Dev/demo only — sample data
-psql -U hms_user -d hms_db -f database_hole/03_seed_data.sql
-
-# 5. Feature/fix schema + seed data — run in order, each is safe to re-run
+# 4. Remaining schema/reference migrations — run in order, each safe to re-run
 psql -U hms_user -d hms_db -f database_hole/05_schema_structure.sql
-psql -U hms_user -d hms_db -f database_hole/06_seed_reference_data.sql
 psql -U hms_user -d hms_db -f database_hole/07_queue_display_screens.sql
 psql -U hms_user -d hms_db -f database_hole/08_role_permission_overrides.sql
 psql -U hms_user -d hms_db -f database_hole/09_grn_edit_and_opd_assignment.sql
@@ -315,9 +352,19 @@ psql -U hms_user -d hms_db -f database_hole/11_lab_technician_role.sql
 psql -U hms_user -d hms_db -f database_hole/12_lab_test_templates_batch3.sql
 psql -U hms_user -d hms_db -f database_hole/13_lab_test_fasting_blood_sugar.sql
 
-# 6. Verify
+# 5. Seed platform essentials (module registry, RBAC, roles) + one Super Admin login
+cd backend
+python ../deploy/flush_and_reseed_database.py --confirm FLUSH \
+    --superadmin-username superadmin_hms \
+    --superadmin-email superadmin@mecandria.com \
+    --superadmin-password 'Superadmin@123'
+
+# 6. Verify — should show exactly one row: the invisible Platform placeholder
 psql -U hms_user -d hms_db -c "SELECT name, specialty, tenant_id FROM hospitals;"
 ```
+
+No demo hospitals, no sample patients, no test staff accounts. Log in as the
+Super Admin above and create your first real hospital through the UI.
 
 ---
 

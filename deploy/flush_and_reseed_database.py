@@ -41,12 +41,14 @@ What it does, in order:
   6. Re-runs the existing, already-idempotent schema/reference migrations
      (05, 07, 08, 09, 10, 11, 12, 13) — RBAC config, GRN/OPD extensions,
      and your real lab test catalog (10, 11, 12, 13 — the client-supplied
-     report templates). 02 (eye-hospital pack), 03 (fictional demo
-     hospitals), AND 06 (the original 18-test lab catalog + PO payment
-     modes + visiting_doctor role) are all deliberately skipped — per
-     explicit instruction, 06's rows were dev/testing data, not something
-     to carry into a client handoff (its one load-bearing piece, the 'lab'
-     module registration, is preserved in step 5 instead).
+     report templates). 02 (eye-hospital pack) is opt-in per hospital, run
+     manually, not part of this list. 03 (fictional demo hospitals), 04
+     (a reference-query cheat sheet tied to 03's demo IDs), and 06 (the
+     original 18-test lab catalog + PO payment modes + visiting_doctor
+     role) have been deleted from database_hole/ entirely — pre-multi-
+     tenant/dev-testing artifacts with no place in a client handoff (06's
+     one load-bearing piece, the 'lab' module registration, is preserved
+     in step 5 instead).
   7. Seeds the 14 system roles (fixed IDs, matching what's already live).
   8. Creates a placeholder "Platform" tenant + hospital — a super_admin's
      hospital_id is NOT NULL + FK, so it needs *some* hospital row to
@@ -99,18 +101,20 @@ DATABASE_HOLE = Path(__file__).resolve().parent.parent / "database_hole"
 # seed_core_platform_data() below instead, with ON CONFLICT added where the
 # original in 01 didn't need one (running once against an empty database).
 #
-# 02 (eye-hospital pack) and 03 (fictional demo hospitals) are deliberately
-# excluded — 03 is explicitly marked "never run against production" in its
-# own README entry, and 02 is opt-in per hospital, not universal seed data.
+# 02 (eye-hospital pack) is opt-in per hospital, not universal seed data —
+# excluded from this list, but still a real file, run manually per hospital.
 #
-# 06_seed_reference_data.sql is ALSO deliberately excluded, per explicit
-# instruction — its actual seed rows (the original 18-test lab catalog,
-# default PO payment modes, the visiting_doctor role) were dev/testing data,
-# not something to carry into a client handoff. The one thing in that file
-# that IS real infrastructure — the 'lab' module registration row, which
-# makes Laboratory appear in the per-hospital module toggle UI at all — is
-# preserved by reproducing just that one INSERT in seed_core_platform_data()
-# below, alongside the other core modules extracted from 01_full_schema.sql.
+# 03_seed_data.sql, 04_reference_queries.sql, and 06_seed_reference_data.sql
+# have been DELETED from database_hole/ entirely (not just excluded here) —
+# per explicit instruction, they were pre-multi-tenant/dev-testing artifacts
+# (fictional demo hospitals, a reference-query cheat sheet tied to that demo
+# data's IDs, and the original 18-test lab catalog + PO payment modes +
+# visiting_doctor role) with no place in a client-facing production
+# database. The one thing from 06 that WAS real infrastructure — the 'lab'
+# module registration row, which makes Laboratory appear in the per-hospital
+# module toggle UI at all — was preserved before deletion by reproducing
+# that one INSERT in seed_core_platform_data() below, alongside the other
+# core modules extracted from 01_full_schema.sql.
 MIGRATIONS_TO_REPLAY = [
     "05_schema_structure.sql",
     "07_queue_display_screens.sql",

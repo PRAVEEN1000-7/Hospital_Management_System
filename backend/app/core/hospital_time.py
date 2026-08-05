@@ -31,6 +31,29 @@ def hospital_today_by_id(db, hospital_id) -> date:
     return hospital_today(tz_name)
 
 
+def hospital_now(tz_name: str | None) -> datetime:
+    """
+    Current wall-clock instant expressed in the given IANA timezone,
+    defaulting to UTC. Use this (never `datetime.now()` or
+    `datetime.now(timezone.utc).astimezone()`) wherever a "current time of
+    day" wall-clock value is being derived for storage in a plain `Time`
+    column (e.g. a walk-in appointment's `start_time`) — `datetime.now()` is
+    naive server-local time and bare `.astimezone()` resolves to the server
+    OS's own timezone, neither of which is the hospital's configured
+    timezone. On a server not physically colocated with the hospital (the
+    normal case — one cloud VM in UTC serving hospitals in their own local
+    zones), both silently store the wrong clock time.
+    """
+    return datetime.now(_resolve_tz(tz_name))
+
+
+def hospital_now_by_id(db, hospital_id) -> datetime:
+    """Same as hospital_now(), but looks up the timezone by hospital_id."""
+    from ..models.user import Hospital
+    tz_name = db.query(Hospital.timezone).filter(Hospital.id == hospital_id).scalar()
+    return hospital_now(tz_name)
+
+
 def hospital_today_utc_range(tz_name: str | None, target_date: date | None = None) -> tuple[datetime, datetime]:
     """
     UTC-aware [start, end) instants spanning a day in the given timezone —

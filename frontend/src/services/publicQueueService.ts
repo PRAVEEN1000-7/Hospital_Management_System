@@ -22,6 +22,10 @@ export interface PublicQueueDisplayResponse {
   configured?: boolean;
   display_name?: string;
   token_format?: string;
+  // IANA timezone (e.g. "Asia/Kolkata") — this page has no logged-in user to
+  // source a timezone from, so the on-screen clock renders using this field
+  // instead of the kiosk device's own OS timezone.
+  timezone?: string;
 }
 
 /** Unauthenticated public Queue Display — see backend/app/routers/public_queue.py. */

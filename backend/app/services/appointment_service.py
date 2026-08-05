@@ -17,7 +17,7 @@ from ..models.user import User
 from ..models.invoice import Invoice
 from ..models.payment import Payment
 from .notification_service import notify_hospital_users
-from ..core.hospital_time import hospital_today_by_id
+from ..core.hospital_time import hospital_today_by_id, hospital_now_by_id
 
 logger = logging.getLogger(__name__)
 
@@ -163,9 +163,12 @@ def create_appointment(
     # appointments.start_time is NOT NULL in the database. Some creation paths
     # (e.g. follow-ups generated on prescription finalize, or walk-ins without an
     # explicit slot) omit it — default to the current time so the insert succeeds.
+    # Must be the hospital's local wall-clock time, not the server process's
+    # own (datetime.now() is naive server-local, wrong the moment the server
+    # isn't physically in the hospital's timezone).
     start_time = data.get("start_time")
     if start_time is None:
-        start_time = datetime.now().time().replace(microsecond=0)
+        start_time = hospital_now_by_id(db, hospital_id).time().replace(microsecond=0)
 
     appt = Appointment(
         hospital_id=hospital_id,

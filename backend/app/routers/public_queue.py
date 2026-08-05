@@ -179,6 +179,7 @@ async def get_public_queue_display(
         logo_url=hospital.logo_url,
         refresh_seconds=refresh_seconds,
         columns=columns,
+        timezone=hospital.timezone,
     )
 
 
@@ -213,6 +214,7 @@ async def get_public_queue_display_screen(
             configured=False,
             display_name=screen.display_name,
             token_format=screen.token_format,
+            timezone=hospital.timezone,
         )
 
     today = hospital_today(hospital.timezone)
@@ -233,4 +235,5 @@ async def get_public_queue_display_screen(
         configured=True,
         display_name=screen.display_name,
         token_format=screen.token_format,
+        timezone=hospital.timezone,
     )

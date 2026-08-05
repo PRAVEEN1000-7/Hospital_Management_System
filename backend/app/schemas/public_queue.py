@@ -28,3 +28,9 @@ class PublicQueueDisplayResponse(BaseModel):
     configured: bool = True
     display_name: Optional[str] = None
     token_format: Optional[str] = None
+    # IANA timezone (e.g. "Asia/Kolkata") — this is an unauthenticated kiosk
+    # page with no logged-in user/AuthContext to source a timezone from, so
+    # the on-screen clock needs it here to render the hospital's configured
+    # time rather than whatever timezone the kiosk device's OS happens to be
+    # set to.
+    timezone: Optional[str] = None

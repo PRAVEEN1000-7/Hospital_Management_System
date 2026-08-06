@@ -20,6 +20,22 @@ export interface UserData {
   consultation_fee?: number | null;
   follow_up_fee?: number | null;
   analytics_enabled?: boolean | null;
+  // Employee / HR fields
+  designation?: string | null;
+  date_of_joining?: string | null;
+  date_of_leaving?: string | null;
+  employment_type?: string | null;
+  bank_account_holder_name?: string | null;
+  bank_account_number?: string | null;
+  bank_ifsc?: string | null;
+  bank_branch?: string | null;
+  pf_number?: string | null;
+  pan_number?: string | null;
+  paid_leave_entitlement?: number | null;
+  include_in_payroll?: boolean | null;
+  base_salary?: number | null;
+  shift_id?: string | null;
+  shift_name?: string | null;
 }
 
 export interface UserCreateData {
@@ -42,6 +58,20 @@ export interface UserCreateData {
   bio?: string;
   department_id?: string;
   analytics_enabled?: boolean;
+  // Employee / HR fields — apply to every role
+  designation?: string;
+  date_of_joining?: string;
+  date_of_leaving?: string;
+  employment_type?: string;
+  bank_account_holder_name?: string;
+  bank_account_number?: string;
+  bank_ifsc?: string;
+  bank_branch?: string;
+  pf_number?: string;
+  pan_number?: string;
+  paid_leave_entitlement?: number;
+  include_in_payroll?: boolean;
+  base_salary?: number;
 }
 
 export interface UserUpdateData {
@@ -58,6 +88,20 @@ export interface UserUpdateData {
   consultation_fee?: number;
   follow_up_fee?: number;
   analytics_enabled?: boolean;
+  // Employee / HR fields — apply to every role
+  designation?: string;
+  date_of_joining?: string;
+  date_of_leaving?: string;
+  employment_type?: string;
+  bank_account_holder_name?: string;
+  bank_account_number?: string;
+  bank_ifsc?: string;
+  bank_branch?: string;
+  pf_number?: string;
+  pan_number?: string;
+  paid_leave_entitlement?: number;
+  include_in_payroll?: boolean;
+  base_salary?: number;
 }
 
 export interface PasswordResetData {

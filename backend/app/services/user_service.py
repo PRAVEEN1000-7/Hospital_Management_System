@@ -16,6 +16,7 @@ from ..models.appointment import Doctor
 from ..utils.security import get_password_hash
 from ..services.patient_id_service import generate_staff_id
 from ..services.auth_service import clear_lockout
+from ..services import shift_management
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,7 @@ def list_users(
             joinedload(User.user_roles).joinedload(UserRole.role),
             joinedload(User.hospital),
             joinedload(User.doctor_profile),
+            joinedload(User.shift),
         )
         .filter(User.is_deleted == False)
     )
@@ -130,6 +132,7 @@ def get_user_by_id(
             joinedload(User.user_roles).joinedload(UserRole.role),
             joinedload(User.hospital),
             joinedload(User.doctor_profile),
+            joinedload(User.shift),
         )
         .filter(User.id == user_id, User.is_deleted == False)
     )
@@ -205,15 +208,39 @@ def create_user(
     department_id: Optional[str] = None,
     analytics_enabled: Optional[bool] = True,
     created_by_id: Optional[uuid.UUID] = None,
+    # Employee / HR fields — apply to every role, stored directly on `users`.
+    designation: Optional[str] = None,
+    date_of_joining=None,
+    date_of_leaving=None,
+    employment_type: Optional[str] = None,
+    bank_account_holder_name: Optional[str] = None,
+    bank_account_number: Optional[str] = None,
+    bank_ifsc: Optional[str] = None,
+    bank_branch: Optional[str] = None,
+    pf_number: Optional[str] = None,
+    pan_number: Optional[str] = None,
+    paid_leave_entitlement: Optional[int] = None,
+    include_in_payroll: Optional[bool] = True,
+    base_salary: Optional[float] = None,
 ) -> User:
     """Create a new user with role assignment. Auto-creates Doctor record for doctor role."""
     password_hash = get_password_hash(password)
-    
+
     if isinstance(hospital_id, str):
         hospital_id = uuid.UUID(hospital_id)
-    
+
     # Generate 12-char HMS reference number: [HH][RoleCode][YY][M][Checksum][#####]
     reference_number = generate_staff_id(db, hospital_id, role_name)
+
+    # Doctor's clinical department (doctors.department_id) — not stored on
+    # User at all; the `departments` table is scoped to clinical specialties,
+    # not a general HR field applicable to every role.
+    dept_uuid = None
+    if department_id:
+        try:
+            dept_uuid = uuid.UUID(department_id)
+        except ValueError:
+            dept_uuid = None
 
     user = User(
         hospital_id=hospital_id,
@@ -224,10 +251,23 @@ def create_user(
         last_name=last_name,
         phone=phone,
         reference_number=reference_number,
+        designation=designation,
+        date_of_joining=date_of_joining,
+        date_of_leaving=date_of_leaving,
+        employment_type=employment_type,
+        bank_account_holder_name=bank_account_holder_name,
+        bank_account_number=bank_account_number,
+        bank_ifsc=bank_ifsc,
+        bank_branch=bank_branch,
+        pf_number=pf_number,
+        pan_number=pan_number,
+        paid_leave_entitlement=paid_leave_entitlement,
+        include_in_payroll=include_in_payroll if include_in_payroll is not None else True,
+        base_salary=base_salary,
     )
     db.add(user)
     db.flush()  # Get the user.id
-    
+
     # Assign the role. A miss here must be loud, not silent — a role name
     # accepted by the schema (VALID_ROLES) but missing from this table would
     # otherwise create a user with zero roles: login still succeeds (auth
@@ -243,15 +283,9 @@ def create_user(
         )
     user_role = UserRole(user_id=user.id, role_id=role.id)
     db.add(user_role)
-    
+
     # Auto-create doctor record when the role is 'doctor'
     if role_name == "doctor" and specialization:
-        dept_uuid = None
-        if department_id:
-            try:
-                dept_uuid = uuid.UUID(department_id)
-            except ValueError:
-                dept_uuid = None
         doctor = Doctor(
             user_id=user.id,
             hospital_id=hospital_id,
@@ -278,17 +312,38 @@ def create_user(
     return user
 
 
-def update_user(db: Session, user_id: str | uuid.UUID, **kwargs) -> Optional[User]:
+def update_user(
+    db: Session, user_id: str | uuid.UUID, changed_by: Optional[uuid.UUID] = None, **kwargs
+) -> Optional[User]:
     """Update user fields"""
     user = get_user_by_id(db, user_id)
     if not user:
         logger.warning("update_user: user %s not found", user_id)
         return None
-    
+
+    # shift_id changing here (StaffModals edit form) needs the same history
+    # bookkeeping as the bulk Shift Management assign path — see
+    # shift_management._record_shift_change / 21_add_shift_assignment_history.sql.
+    # Mirrors the `value is not None` guard below: this updater never clears
+    # a field to NULL, only ever sets a new value, so only that case needs
+    # a history entry here.
+    if kwargs.get("shift_id") is not None and kwargs["shift_id"] != str(user.shift_id or ""):
+        shift_management._record_shift_change(
+            db, user.hospital_id, user.id, uuid.UUID(kwargs["shift_id"]), changed_by
+        )
+
+    # Offboarding: a new/changed date_of_leaving must retroactively cap any
+    # shift_assignments row scheduling this employee past their last day —
+    # otherwise Shift Management keeps showing shifts for dates they're no
+    # longer employed on. See shift_management.cancel_shifts_after_leaving.
+    new_leaving_date = kwargs.get("date_of_leaving")
+    if new_leaving_date is not None and new_leaving_date != user.date_of_leaving:
+        shift_management.cancel_shifts_after_leaving(db, user.id, new_leaving_date)
+
     for key, value in kwargs.items():
         if hasattr(user, key) and value is not None:
             setattr(user, key, value)
-    
+
     db.commit()
     db.refresh(user)
     logger.info("Updated user: %s (fields: %s)", user.username, list(kwargs.keys()))

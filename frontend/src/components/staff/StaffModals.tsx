@@ -51,6 +51,19 @@ const staffCreateSchema = z.object({
   bio: z.string().optional(),
   department_id: z.string().optional(),
   analytics_enabled: z.boolean().optional(),
+  // Employee / HR fields — apply to every role
+  designation: z.string().optional(),
+  date_of_joining: z.string().optional(),
+  date_of_leaving: z.string().optional(),
+  employment_type: z.string().optional(),
+  bank_account_holder_name: z.string().optional(),
+  bank_account_number: z.string().optional(),
+  bank_ifsc: z.string().optional(),
+  bank_branch: z.string().optional(),
+  pf_number: z.string().optional(),
+  pan_number: z.string().optional(),
+  paid_leave_entitlement: z.union([z.string(), z.number()]).optional(),
+  base_salary: z.union([z.string(), z.number()]).optional(),
 }).superRefine((data, ctx) => {
   // Password validation — only when not auto-generating
   if (!data.auto_generate_password) {
@@ -76,7 +89,9 @@ const staffCreateSchema = z.object({
 
 // Edit intentionally excludes registration_authority / experience_years / bio /
 // department_id — the backend's UserUpdate schema doesn't accept them (they're
-// create-only fields), so asking for them here would silently do nothing.
+// doctor create-only fields), so asking for them here would silently do
+// nothing. The employee/HR fields below ARE editable (they're plain `users`
+// columns, not doctor-only), unlike the doctor fields above.
 const staffEditSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
   first_name: z.string().min(1, 'Required').max(100).regex(/^[A-Za-z]+$/, 'Only letters (A–Z) allowed'),
@@ -98,6 +113,19 @@ const staffEditSchema = z.object({
   consultation_fee: z.union([z.string(), z.number()]).optional(),
   follow_up_fee: z.union([z.string(), z.number()]).optional(),
   analytics_enabled: z.boolean().optional(),
+  // Employee / HR fields — apply to every role
+  designation: z.string().optional(),
+  date_of_joining: z.string().optional(),
+  date_of_leaving: z.string().optional(),
+  employment_type: z.string().optional(),
+  bank_account_holder_name: z.string().optional(),
+  bank_account_number: z.string().optional(),
+  bank_ifsc: z.string().optional(),
+  bank_branch: z.string().optional(),
+  pf_number: z.string().optional(),
+  pan_number: z.string().optional(),
+  paid_leave_entitlement: z.union([z.string(), z.number()]).optional(),
+  base_salary: z.union([z.string(), z.number()]).optional(),
 }).superRefine((data, ctx) => {
   if (data.role === 'doctor') {
     if (!data.specialization) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Specialization is required for doctors', path: ['specialization'] });
@@ -369,10 +397,78 @@ const DoctorFields: React.FC<{
   </div>
 );
 
+/** Employee/HR sub-fields — shared by every role (create + edit), stored directly on `users`. */
+const EmployeeFields: React.FC<{
+  register: any;
+  paidLeaveUniform?: boolean;
+}> = ({ register, paidLeaveUniform }) => (
+  <div className="space-y-4">
+    <Field label="Designation">
+      <input {...register('designation')} className="input-field" placeholder="e.g. Senior Nurse" />
+    </Field>
+    <div className="grid grid-cols-2 gap-4">
+      <Field label="Date of Joining">
+        <input {...register('date_of_joining')} type="date" className="input-field" />
+      </Field>
+      <Field label="Date of Leaving">
+        <input {...register('date_of_leaving')} type="date" className="input-field" />
+      </Field>
+    </div>
+    <Field label="Employment Type">
+      <select {...register('employment_type')} className="input-field">
+        <option value="">Select type</option>
+        <option value="full_time">Full-time</option>
+        <option value="part_time">Part-time</option>
+        <option value="contract">Contract</option>
+        <option value="trainee">Trainee</option>
+      </select>
+    </Field>
+    <div className="grid grid-cols-2 gap-4">
+      <Field label="Bank Account Holder Name">
+        <input {...register('bank_account_holder_name')} className="input-field" placeholder="As per bank records" />
+      </Field>
+      <Field label="Bank Account Number">
+        <input {...register('bank_account_number')} className="input-field" />
+      </Field>
+    </div>
+    <div className="grid grid-cols-2 gap-4">
+      <Field label="Bank IFSC">
+        <input {...register('bank_ifsc')} className="input-field" placeholder="e.g. HDFC0001234" />
+      </Field>
+      <Field label="Bank Branch">
+        <input {...register('bank_branch')} className="input-field" />
+      </Field>
+    </div>
+    <div className="grid grid-cols-2 gap-4">
+      <Field label="PF Number">
+        <input {...register('pf_number')} className="input-field" />
+      </Field>
+      <Field label="PAN Number">
+        <input {...register('pan_number')} className="input-field" placeholder="e.g. ABCDE1234F" />
+      </Field>
+    </div>
+    <div className="grid grid-cols-2 gap-4">
+      <Field label="Base Salary (₹/month)">
+        <input {...register('base_salary')} type="number" min="0" className="input-field" placeholder="e.g. 30000" />
+      </Field>
+      <Field label="Paid Leave Entitlement (days/year)">
+        {paidLeaveUniform ? (
+          <div>
+            <input disabled type="number" className="input-field opacity-50 cursor-not-allowed" placeholder="Set hospital-wide" />
+            <p className="text-xs text-slate-400 mt-1">Set hospital-wide in Settings → Leave Policy.</p>
+          </div>
+        ) : (
+          <input {...register('paid_leave_entitlement')} type="number" min="0" className="input-field" placeholder="e.g. 18" />
+        )}
+      </Field>
+    </div>
+  </div>
+);
+
 // ────────────────────────────────────────
 // Create Staff Modal
 // ────────────────────────────────────────
-export const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => void; onError: (msg: string) => void }> = ({ onClose, onSuccess, onError }) => {
+export const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => void; onError: (msg: string) => void; paidLeaveUniform?: boolean }> = ({ onClose, onSuccess, onError, paidLeaveUniform }) => {
   const toast = useToast();
   const availableRoles = useAssignableRoles();
   const [showPassword, setShowPassword] = useState(false);
@@ -394,7 +490,7 @@ export const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => 
   const { register, handleSubmit, watch, setValue, trigger, formState: { errors, isValid, isSubmitting } } = useForm<CreateFormData>({
     resolver: zodResolverV4(staffCreateSchema),
     mode: 'onTouched',
-    defaultValues: { first_name: '', last_name: '', email: '', username: '', phone_number: '', country_code: '+91', role: '', password: '', confirm_password: '', auto_generate_password: false, specialization: '', qualification: '', registration_number: '', registration_authority: '', experience_years: '', consultation_fee: '', follow_up_fee: '', bio: '', department_id: '', analytics_enabled: true },
+    defaultValues: { first_name: '', last_name: '', email: '', username: '', phone_number: '', country_code: '+91', role: '', password: '', confirm_password: '', auto_generate_password: false, specialization: '', qualification: '', registration_number: '', registration_authority: '', experience_years: '', consultation_fee: '', follow_up_fee: '', bio: '', department_id: '', analytics_enabled: true, designation: '', date_of_joining: '', date_of_leaving: '', employment_type: '', bank_account_holder_name: '', bank_account_number: '', bank_ifsc: '', bank_branch: '', pf_number: '', pan_number: '', paid_leave_entitlement: '', base_salary: '' },
   });
 
   const email = watch('email', '');
@@ -428,6 +524,9 @@ export const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => 
           'Radiology', 'Urology',
         ]);
       });
+      // Department is a doctor-only field (clinical specialty department,
+      // not a general HR field — see doctors.department_id vs. the removed
+      // users.department_id).
       api.get('/departments').then(res => setDepartments(res.data?.data || [])).catch(() => {});
     }
   }, [isDoctorRole]);
@@ -581,6 +680,20 @@ export const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => 
         payload.analytics_enabled = data.analytics_enabled ?? true;
       }
 
+      // Employee / HR fields — apply to every role, not just doctors
+      payload.designation = data.designation || undefined;
+      payload.date_of_joining = data.date_of_joining || undefined;
+      payload.date_of_leaving = data.date_of_leaving || undefined;
+      payload.employment_type = data.employment_type || undefined;
+      payload.bank_account_holder_name = data.bank_account_holder_name || undefined;
+      payload.bank_account_number = data.bank_account_number || undefined;
+      payload.bank_ifsc = data.bank_ifsc || undefined;
+      payload.bank_branch = data.bank_branch || undefined;
+      payload.pf_number = data.pf_number || undefined;
+      payload.pan_number = data.pan_number || undefined;
+      payload.paid_leave_entitlement = data.paid_leave_entitlement ? Number(data.paid_leave_entitlement) : undefined;
+      payload.base_salary = data.base_salary ? Number(data.base_salary) : undefined;
+
       const createdUser = await userService.createUser(payload, false);
       feLogger.info('staff_create', `Staff member created: ${data.username} (role=${data.role})`);
 
@@ -662,6 +775,11 @@ export const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => 
           {isDoctorRole && (
             <DoctorFields register={register} errors={errors} specializations={specializations} variant="create" departments={departments} />
           )}
+        </section>
+
+        <section className="space-y-4">
+          <SectionTitle>Employee Details</SectionTitle>
+          <EmployeeFields register={register} paidLeaveUniform={paidLeaveUniform} />
         </section>
 
         <section className="space-y-4">
@@ -759,7 +877,7 @@ export const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => 
 // ────────────────────────────────────────
 // Edit Staff Modal
 // ────────────────────────────────────────
-export const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onSuccess: () => void; onError: (msg: string) => void }> = ({ user, onClose, onSuccess, onError }) => {
+export const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onSuccess: () => void; onError: (msg: string) => void; paidLeaveUniform?: boolean }> = ({ user, onClose, onSuccess, onError, paidLeaveUniform }) => {
   const toast = useToast();
   const availableRoles = useAssignableRoles();
   const [photoPreview, setPhotoPreview] = useState<string>(user.avatar_url ? userService.getPhotoUrl(user.avatar_url) || '' : '');
@@ -788,6 +906,18 @@ export const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onS
       consultation_fee: user.consultation_fee ?? '',
       follow_up_fee: user.follow_up_fee ?? '',
       analytics_enabled: user.analytics_enabled ?? true,
+      designation: user.designation || '',
+      date_of_joining: user.date_of_joining || '',
+      date_of_leaving: user.date_of_leaving || '',
+      employment_type: user.employment_type || '',
+      bank_account_holder_name: user.bank_account_holder_name || '',
+      bank_account_number: user.bank_account_number || '',
+      bank_ifsc: user.bank_ifsc || '',
+      bank_branch: user.bank_branch || '',
+      pf_number: user.pf_number || '',
+      pan_number: user.pan_number || '',
+      paid_leave_entitlement: user.paid_leave_entitlement ?? '',
+      base_salary: user.base_salary ?? '',
     },
   });
 
@@ -820,6 +950,21 @@ export const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onS
         payload.follow_up_fee = data.follow_up_fee !== '' && data.follow_up_fee != null ? Math.round(Number(data.follow_up_fee)) : undefined;
         payload.analytics_enabled = data.analytics_enabled ?? true;
       }
+
+      // Employee / HR fields — apply to every role, not just doctors
+      payload.designation = data.designation || undefined;
+      payload.date_of_joining = data.date_of_joining || undefined;
+      payload.date_of_leaving = data.date_of_leaving || undefined;
+      payload.employment_type = data.employment_type || undefined;
+      payload.bank_account_holder_name = data.bank_account_holder_name || undefined;
+      payload.bank_account_number = data.bank_account_number || undefined;
+      payload.bank_ifsc = data.bank_ifsc || undefined;
+      payload.bank_branch = data.bank_branch || undefined;
+      payload.pf_number = data.pf_number || undefined;
+      payload.pan_number = data.pan_number || undefined;
+      payload.paid_leave_entitlement = data.paid_leave_entitlement ? Number(data.paid_leave_entitlement) : undefined;
+      payload.base_salary = data.base_salary ? Number(data.base_salary) : undefined;
+
       feLogger.info('staff_edit', `Updating staff member: ${user.username}`);
       await userService.updateUser(user.id, payload);
       if (photoFile) {
@@ -888,6 +1033,11 @@ export const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onS
             <DoctorFields register={register} errors={errors} specializations={specializations} variant="edit" />
           </section>
         )}
+
+        <section className="space-y-4">
+          <SectionTitle>Employee Details</SectionTitle>
+          <EmployeeFields register={register} paidLeaveUniform={paidLeaveUniform} />
+        </section>
 
         <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">
           <div>

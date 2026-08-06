@@ -128,6 +128,14 @@ import StockMovementsReportPage from './pages/inventory/StockMovementsReportPage
 // Analytics
 import AnalyticsDashboard from './pages/analytics/AnalyticsDashboard';
 
+// Attendance module
+import Attendance from './pages/Attendance';
+import ShiftManagement from './pages/ShiftManagement';
+import AttendanceReport from './pages/AttendanceReport';
+import LeaveManagement from './pages/LeaveManagement';
+import Payroll from './pages/Payroll';
+import Allowance from './pages/Allowance';
+
 // Shared role/module permission matrix (see docs/security/ROLE_PERMISSIONS_DECISIONS_2026-07-25.md)
 import { allowedRoles } from './config/modulePermissions';
 
@@ -863,6 +871,56 @@ const AppWithNotifications: React.FC = () => {
                   requiredModule="analytics"
                 >
                   <AnalyticsDashboard />
+                </ProtectedRoute>
+              } />
+
+              {/* ── Attendance module ── */}
+              <Route path="/attendance/holidays" element={
+                <ProtectedRoute
+                  allowedRoles={['super_admin', 'admin']}
+                  requiredModule="attendance"
+                >
+                  <Attendance />
+                </ProtectedRoute>
+              } />
+              <Route path="/attendance/shifts" element={
+                <ProtectedRoute
+                  allowedRoles={['super_admin', 'admin']}
+                  requiredModule="attendance"
+                >
+                  <ShiftManagement />
+                </ProtectedRoute>
+              } />
+              <Route path="/attendance/report" element={
+                <ProtectedRoute
+                  allowedRoles={['super_admin', 'admin']}
+                  requiredModule="attendance"
+                >
+                  <AttendanceReport />
+                </ProtectedRoute>
+              } />
+              <Route path="/attendance/leaves" element={
+                <ProtectedRoute
+                  allowedRoles={['super_admin', 'admin']}
+                  requiredModule="attendance"
+                >
+                  <LeaveManagement />
+                </ProtectedRoute>
+              } />
+              <Route path="/attendance/payroll" element={
+                <ProtectedRoute
+                  allowedRoles={['super_admin', 'admin']}
+                  requiredModule="attendance"
+                >
+                  <Payroll />
+                </ProtectedRoute>
+              } />
+              <Route path="/attendance/allowance" element={
+                <ProtectedRoute
+                  allowedRoles={['super_admin', 'admin']}
+                  requiredModule="attendance"
+                >
+                  <Allowance />
                 </ProtectedRoute>
               } />
 

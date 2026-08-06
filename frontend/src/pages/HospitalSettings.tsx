@@ -632,6 +632,54 @@ const SystemSettingsTab: React.FC = () => {
         </div>
       ))}
 
+      {/* Leave Policy — uniform hospital-wide paid leave, or per-employee (set in Staff Directory) */}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="flex items-center gap-3 px-5 py-4 bg-slate-50/50 border-b border-slate-100">
+          <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+            <span className="material-symbols-outlined text-primary text-lg">event_available</span>
+          </div>
+          <h2 className="font-bold text-slate-900">Leave Policy</h2>
+        </div>
+        <div className="divide-y divide-slate-100">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 px-5 py-4">
+            <div className="flex-1 min-w-0">
+              <p className="font-medium text-slate-900 text-sm">Same paid leave for every employee</p>
+              <p className="text-xs text-slate-400 mt-0.5">
+                On: one number below applies hospital-wide. Off: each employee keeps their own value, set individually in Staff Directory.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                onClick={() => handleChange('paid_leave_uniform', !(getValue('paid_leave_uniform') === true || getValue('paid_leave_uniform') === 'true'))}
+                disabled={!canEditSettings}
+                className={`relative w-12 h-6 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${(getValue('paid_leave_uniform') === true || getValue('paid_leave_uniform') === 'true') ? 'bg-primary' : 'bg-slate-200'}`}
+              >
+                <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${(getValue('paid_leave_uniform') === true || getValue('paid_leave_uniform') === 'true') ? 'left-[26px]' : 'left-0.5'}`} />
+              </button>
+            </div>
+          </div>
+          {(getValue('paid_leave_uniform') === true || getValue('paid_leave_uniform') === 'true') && (
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 px-5 py-4">
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-slate-900 text-sm">Paid Leave Days</p>
+                <p className="text-xs text-slate-400 mt-0.5">Applied to every employee's monthly attendance calculation.</p>
+              </div>
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <input
+                  type="number"
+                  min="0"
+                  value={getValue('paid_leave_default_days') !== '' ? String(getValue('paid_leave_default_days')) : ''}
+                  onChange={e => handleChange('paid_leave_default_days', Number(e.target.value))}
+                  disabled={!canEditSettings}
+                  className="px-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-50 w-24 text-right"
+                />
+                <span className="text-xs text-slate-400">days/month</span>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Queue Display — eye-hospital feature pack only */}
       {isEyeHospital && (
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">

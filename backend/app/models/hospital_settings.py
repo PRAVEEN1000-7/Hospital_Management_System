@@ -46,6 +46,12 @@ class HospitalSettings(Base):
     consultation_fee_default = Column(String(20), default="0")
     follow_up_validity_days = Column(Integer, default=7)
     data_retention_years = Column(Integer, default=7)
+    # Leave Policy — True: every employee gets paid_leave_default_days,
+    # ignoring their own users.paid_leave_entitlement value. False (default):
+    # each employee's own value is used, same as before this setting existed.
+    # See attendance_service.get_month_report for where this is consulted.
+    paid_leave_uniform = Column(Boolean, default=False)
+    paid_leave_default_days = Column(Integer, default=2)
     branding_primary_color = Column(String(7), default="#1E40AF")
     branding_secondary_color = Column(String(7), default="#3B82F6")
     print_header_text = Column(Text)

@@ -7,6 +7,7 @@ import type { Patient } from '../types/patient';
 import type { PatientLabResult } from '../types/lab';
 import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
+import { hasAccess } from '../config/modulePermissions';
 import ImageCropModal from '../components/common/ImageCropModal';
 import VerifiedBadge from '../components/patients/VerifiedBadge';
 import EmailVerificationField from '../components/patients/EmailVerificationField';
@@ -299,11 +300,18 @@ const PatientDetail: React.FC = () => {
           </div>
         </div>
 
-        {/* Prescription History */}
-        {isModuleEnabled('prescriptions') && <PrescriptionHistoryGrid patientId={patient.id} />}
+        {/* Prescription History — GET /prescriptions/patient/{id} is guarded by
+            view_roles('rx.all'), which excludes receptionist/report_viewer even
+            though they can open this page via general.patients. */}
+        {isModuleEnabled('prescriptions') && hasAccess('rx.all', user?.roles) && (
+          <PrescriptionHistoryGrid patientId={patient.id} />
+        )}
 
-        {/* Billing History (BRD-001) */}
-        {isModuleEnabled('billing') && <PatientBillingSection patientId={patient.id} />}
+        {/* Billing History (BRD-001) — GET /invoices/patient/{id} requires
+            billing view (admin/cashier only). */}
+        {isModuleEnabled('billing') && hasAccess('billing', user?.roles) && (
+          <PatientBillingSection patientId={patient.id} />
+        )}
 
         {/* Lab Results */}
         {labResults.length > 0 && (

@@ -70,7 +70,8 @@ class OpticalBatch(Base):
 
     __table_args__ = (
         # A batch number can legitimately repeat across shipments with different
-        # mfg/expiry dates (see database_hole/10_fix_batch_uniqueness.sql) — those
+        # mfg/expiry dates (see database_hole/05_schema_structure.sql, which adds
+        # this uq_optical_batch constraint) — those
         # are physically distinct batches and must be tracked as separate rows.
         UniqueConstraint("optical_product_id", "batch_number", "manufactured_date", "expiry_date", name="uq_optical_batch"),
     )

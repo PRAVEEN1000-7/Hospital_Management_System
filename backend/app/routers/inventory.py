@@ -346,6 +346,8 @@ th {{ color: #64748b; font-weight: 600; font-size: 12px; background: #f8fafc; }}
 .status-partially_received {{ background: #fef3c7; color: #92400e; }}
 .status-draft {{ background: #f1f5f9; color: #475569; }}
 .status-cancelled {{ background: #fee2e2; color: #991b1b; }}
+.approval-yes {{ background: #dcfce7; color: #166534; }}
+.approval-no {{ background: #f1f5f9; color: #64748b; }}
 .summary {{ width: 280px; margin-left: auto; margin-top: 16px; }}
 .summary-row {{ display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }}
 .summary-total {{ font-size: 16px; font-weight: bold; border-top: 2px solid #e2e8f0; padding-top: 8px; margin-top: 8px; }}
@@ -372,6 +374,7 @@ th {{ color: #64748b; font-weight: 600; font-size: 12px; background: #f8fafc; }}
     <tr><th style="width:160px;">Supplier</th><td>{_esc(supplier.name) if supplier else '—'}</td></tr>
     <tr><th>Contact</th><td>{_esc(supplier.contact_person) if supplier else '—'} {f'· {_esc(supplier.phone)}' if supplier and supplier.phone else ''}</td></tr>
     <tr><th>Address</th><td>{_esc(supplier.address) if supplier else '—'}</td></tr>
+    <tr><th>Approval Status</th><td><span class="status {'approval-yes' if po.approved_by else 'approval-no'}">{'Approved' if po.approved_by else 'Not Approved'}</span></td></tr>
 </table>
 <p class="section-title">Items</p>
 <table>
@@ -620,6 +623,8 @@ th {{ color: #64748b; font-weight: 600; font-size: 12px; background: #f8fafc; }}
 .status-verified {{ background: #dbeafe; color: #1e40af; }}
 .status-pending {{ background: #fef3c7; color: #92400e; }}
 .status-rejected {{ background: #fee2e2; color: #991b1b; }}
+.approval-yes {{ background: #dcfce7; color: #166534; }}
+.approval-no {{ background: #f1f5f9; color: #64748b; }}
 .summary {{ width: 280px; margin-left: auto; margin-top: 16px; }}
 .summary-row {{ display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }}
 .summary-total {{ font-size: 16px; font-weight: bold; border-top: 2px solid #e2e8f0; padding-top: 8px; margin-top: 8px; }}
@@ -644,6 +649,7 @@ th {{ color: #64748b; font-weight: 600; font-size: 12px; background: #f8fafc; }}
     <tr><th style="width:160px;">Supplier</th><td>{_esc(supplier.name) if supplier else '—'}</td></tr>
     <tr><th>Invoice No.</th><td>{_esc(grn.invoice_number) or '—'}</td></tr>
     <tr><th>Received By</th><td>{_esc(grn.creator.full_name) if getattr(grn, 'creator', None) else '—'}</td></tr>
+    <tr><th>Approval Status</th><td><span class="status {'approval-yes' if grn.status == 'accepted' else 'approval-no'}">{'Approved' if grn.status == 'accepted' else 'Not Approved'}</span></td></tr>
 </table>
 <p class="section-title">Items Received</p>
 <table>
@@ -698,10 +704,9 @@ async def update_grn_item_batch(
     current_user: User = Depends(grn_verify_roles),
 ):
     """Correct batch_number/manufactured_date/expiry_date/quantity_received/
-    discrepancy_notes on a received line item (BRD 5.5).
-
-    Only permitted while the GRN is still 'pending' — see update_grn_item_batch
-    in inventory_service.py for why this is locked once verified/accepted.
+    discrepancy_notes on a received line item — editable at any GRN status.
+    See update_grn_item_batch in inventory_service.py for how a correction
+    made after acceptance is reconciled against already-posted stock.
     """
     existing = svc.get_grn(db, grn_id)
     if not existing or str(existing.hospital_id) != str(current_user.hospital_id):
@@ -724,6 +729,7 @@ async def update_grn_item_batch(
         unit_price=float(item.unit_price),
         total_price=float(item.total_price),
         rejection_reason=item.rejection_reason,
+        discrepancy_notes=item.discrepancy_notes,
     )
 
 

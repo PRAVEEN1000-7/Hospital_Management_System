@@ -63,15 +63,18 @@ HMS/
 │   │   └── types/        # TypeScript type definitions
 │   └── package.json
 │
-├── database_hole/        # SQL migration scripts
+├── database_hole/        # SQL migration scripts (see database_hole/README.md
+│   │                       for the full, current file-by-file reference)
 │   ├── 01_full_schema.sql       # Complete database schema
-│   ├── 02_eye_hospital_updates.sql  # Eye-hospital feature additions
-│   ├── 03_seed_data.sql         # Initial data (roles, users, departments)
-│   ├── 04_reference_queries.sql # Reference queries (do not execute)
+│   ├── 02_eye_hospital_updates.sql  # Eye-hospital feature additions (opt-in, per hospital)
+│   ├── 05_schema_structure.sql  # Schema additions (RBAC, queue, GRN/OPD, etc.)
+│   ├── 07-13_*.sql              # Queue display, RBAC overrides, GRN/OPD, lab test catalog
+│   ├── 99_drop_database.sql     # Destructive — local dev reset only
 │   └── README.md
 │
 ├── deploy/               # Production deployment
 │   ├── deploy.sh         # Full deploy script (env → build → nginx → restart)
+│   ├── flush_and_reseed_database.py  # Wipes all data, re-seeds platform essentials + one Super Admin
 │   ├── nginx.conf        # Nginx site configuration
 │   └── hms-backend.service  # systemd service unit
 │
@@ -113,22 +116,30 @@ Notifications appear in the bell icon in the top navigation bar, scoped to the l
 See [docs/setup/SETUP_GUIDE.md](docs/setup/SETUP_GUIDE.md) for detailed step-by-step instructions.
 
 ```powershell
-# Database
+# Database — base schema
 $env:PGPASSWORD = "HMS@2026"
 psql -h localhost -U hms_user -d hms_db -f database_hole/01_full_schema.sql
-psql -h localhost -U hms_user -d hms_db -f database_hole/02_eye_hospital_updates.sql
-psql -h localhost -U hms_user -d hms_db -f database_hole/03_seed_data.sql
+psql -h localhost -U hms_user -d hms_db -f database_hole/02_eye_hospital_updates.sql  # eye hospitals only
 
 # Backend  (Terminal 1)
 cd backend && python -m venv venv && .\venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 
+# Seed platform essentials + one Super Admin (module registry, RBAC, lab
+# catalog, roles, one login) — see deploy/flush_and_reseed_database.py
+python ../deploy/flush_and_reseed_database.py --confirm FLUSH
+
 # Frontend  (Terminal 2)
 cd frontend && npm install && npm run dev
 ```
 
-Default login: `superadmin` / `Admin@123`
+No demo/sample data is seeded — this is a clean multi-tenant platform with a
+single Super Admin login. Create real hospitals through the Super Admin UI
+after logging in. Default login (override with `--superadmin-username` /
+`--superadmin-email` / `--superadmin-password`): `superadmin_hms` /
+`superadmin@mecandria.com` / `Superadmin@123` — you'll be forced to change
+the password on first login.
 
 ---
 

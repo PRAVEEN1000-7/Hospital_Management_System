@@ -29,7 +29,7 @@ from ..services.waitlist_service import (
     check_already_on_waitlist,
 )
 from ..services.notification_service import notify_hospital_users
-from ..core.hospital_time import hospital_today
+from ..core.hospital_time import hospital_today, hospital_now
 from ..core.audit_logger import AuditLogger, AuditAction
 from ..models.invoice import Invoice
 
@@ -142,7 +142,8 @@ async def register_walk_in(
     )
 
     try:
-        today = hospital_today(current_user.hospital.timezone if current_user.hospital else None)
+        hospital_tz = current_user.hospital.timezone if current_user.hospital else None
+        today = hospital_today(hospital_tz)
         now = datetime.now(timezone.utc)
 
         # Validate patient exists
@@ -241,7 +242,10 @@ async def register_walk_in(
             patient_id=patient_id,
             doctor_id=doctor_id,
             appointment_date=today,
-            start_time=now.astimezone().time().replace(second=0, microsecond=0),
+            # Hospital-local wall-clock time, not the server OS's own zone —
+            # bare .astimezone() resolves to whatever timezone the server
+            # process happens to run in (see hospital_now()'s docstring).
+            start_time=hospital_now(hospital_tz).time().replace(second=0, microsecond=0),
             end_time=None,
             appointment_type="walk-in",
             visit_type="new",

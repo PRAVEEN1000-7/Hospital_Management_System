@@ -16,13 +16,20 @@ const PublicQueueDisplayScreen: React.FC = () => {
   const [animKey, setAnimKey] = useState(0);
   const intervalRef = useRef<number | null>(null);
 
+  // Digital clock — rendered in the hospital's configured timezone (from the
+  // API response), not the kiosk device's own OS timezone. This page has no
+  // logged-in user/AuthContext to source a timezone from otherwise.
   useEffect(() => {
+    const tz = data?.timezone;
     const tick = () =>
-      setTime(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+      setTime(new Date().toLocaleTimeString([], {
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+        ...(tz ? { timeZone: tz } : {}),
+      }));
     tick();
     const t = setInterval(tick, 1000);
     return () => clearInterval(t);
-  }, []);
+  }, [data?.timezone]);
 
   const fetchQueue = useCallback(async () => {
     if (!hospitalCode || !screenSlug) return;

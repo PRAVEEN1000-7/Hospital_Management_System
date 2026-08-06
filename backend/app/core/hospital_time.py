@@ -54,6 +54,22 @@ def hospital_now_by_id(db, hospital_id) -> datetime:
     return hospital_now(tz_name)
 
 
+def hospital_local_date(dt: datetime | None, tz_name: str | None) -> date | None:
+    """
+    Re-express a stored UTC instant (e.g. Patient.created_at) as the calendar
+    date it falls on in the hospital's timezone — needed anywhere a
+    TIMESTAMPTZ column's day is compared against a plain Date column (e.g.
+    Appointment.appointment_date, which is already hospital-local by
+    definition) or bucketed by day/week/month for a trend chart. A naive
+    `dt.date()` would use whatever tzinfo happens to already be on `dt`
+    (usually UTC), silently misclassifying any visit within the hospital's
+    UTC-offset window around midnight.
+    """
+    if dt is None:
+        return None
+    return dt.astimezone(_resolve_tz(tz_name)).date()
+
+
 def hospital_today_utc_range(tz_name: str | None, target_date: date | None = None) -> tuple[datetime, datetime]:
     """
     UTC-aware [start, end) instants spanning a day in the given timezone —

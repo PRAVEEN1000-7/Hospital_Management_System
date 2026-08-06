@@ -81,7 +81,7 @@ def get_month_report(
     # month — shifts rotate week to week (Shift Calendar), so a single
     # "current shift" isn't enough; the report needs a day-by-day answer to
     # count "N days Day Shift, M days Night Shift" per employee. See
-    # shift_management.get_daily_shift_map / 21_add_shift_assignment_history.sql.
+    # shift_management.get_daily_shift_map (schema: 01_full_schema.sql §8.5).
     daily_shifts = shift_management.get_daily_shift_map(db, hospital_id, year, month)
 
     # is_active == False is a manual HR "hide everywhere" override — distinct

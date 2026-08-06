@@ -113,8 +113,10 @@ const Layout: React.FC = () => {
   // Report Viewer's whole job is the appointment reports export — no other role gets a
   // sidebar entry for it since admin/super_admin already reach it via the Appointments dropdown.
   const canAccessAppointmentReports = hasRole('report_viewer') && isModuleEnabled('appointments');
-  // Attendance — catalog-only module for now (see database_hole/10_add_attendance_module.sql);
-  // page is a placeholder until Shift/Attendance/Leave/Payroll are actually built.
+  // Attendance — Workforce Management module (Holidays/Shifts/Attendance/
+  // Leave/Payroll), schema in database_hole/01_full_schema.sql Section 8
+  // (see also database_hole/workforce_attendance_module_combined.sql for
+  // patching a database bootstrapped before that section existed).
   const canAccessAttendance   = hasRole('super_admin', 'admin') && isModuleEnabled('attendance');
 
   // Fetch the current hospital's name + logo from the tenant-scoped /hospital endpoint.

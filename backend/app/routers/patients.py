@@ -22,8 +22,10 @@ from ..schemas.patient import (
     VerifyPhoneOtpRequest,
     PatientVerificationStatus,
     PatientLastVisitResponse,
+    PatientTrendResponse,
 )
 from ..models.patient import Patient
+from ..models.appointment import Doctor
 from ..models.user import User, Hospital
 from ..dependencies import get_current_active_user, require_any_role
 from ..core.module_roles import require_permission
@@ -44,6 +46,7 @@ from ..services.patient_service import (
     verify_email_token,
     verify_email_code,
     get_patient_last_visit,
+    get_new_vs_returning_trend,
     EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS,
 )
 from ..services.email_service import send_patient_verification_email, send_email_with_attachment
@@ -58,6 +61,10 @@ patient_create_role_guard = require_permission("general.patients", "edit")
 patient_read_role_guard = require_permission("general.patients", "view")
 patient_update_role_guard = require_permission("general.patients", "edit")
 patient_delete_role_guard = require_permission("general.patients", "edit")
+# Dashboard trend chart — Doctor + Admin only, deliberately narrower than the
+# general.patients view permission (e.g. receptionist/nurse can view patient
+# records but this chart isn't meant for their dashboards).
+patient_trend_role_guard = require_any_role("doctor", "admin", "super_admin")
 
 
 @router.post("", response_model=PatientResponse, status_code=status.HTTP_201_CREATED)
@@ -522,6 +529,29 @@ async def send_phone_otp_stub(
     raise HTTPException(
         status_code=status.HTTP_501_NOT_IMPLEMENTED,
         detail="SMS verification is not yet available",
+    )
+
+
+@router.get("/stats/new-vs-returning", response_model=PatientTrendResponse)
+async def get_new_vs_returning_patient_trend(
+    granularity: str = Query("day", pattern="^(day|week|month)$"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(patient_trend_role_guard),
+):
+    """Dashboard chart data (Doctor + Admin only). A doctor sees only their
+    own patients; admin/super_admin see the whole hospital — resolved from
+    the caller's role, never a client-supplied doctor_id, so a doctor can't
+    query another doctor's numbers."""
+    doctor_id = None
+    is_admin = any(r in ("admin", "super_admin") for r in (current_user.roles or []))
+    if not is_admin and "doctor" in (current_user.roles or []):
+        doctor = db.query(Doctor).filter(Doctor.user_id == current_user.id).first()
+        if not doctor:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Doctor profile not found")
+        doctor_id = doctor.id
+
+    return get_new_vs_returning_trend(
+        db, current_user.hospital_id, granularity=granularity, doctor_id=doctor_id,
     )
 
 

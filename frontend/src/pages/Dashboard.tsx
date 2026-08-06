@@ -12,6 +12,7 @@ import walkInService from '../services/walkInService';
 import waitlistService from '../services/waitlistService';
 import appointmentService, { type DoctorTodaySummary } from '../services/appointmentService';
 import { useToast } from '../contexts/ToastContext';
+import PatientTrendChart from '../components/dashboard/PatientTrendChart';
 import type { DoctorProfile } from '../types/doctor';
 import type { QueueItem } from '../types/appointment';
 
@@ -466,6 +467,9 @@ const Dashboard: React.FC = () => {
           </div>
         ))}
       </div>
+
+      {/* Patient Registration Trend — Doctor + Admin dashboards only */}
+      {(isDoctor || isAdmin) && <PatientTrendChart />}
 
       {/* Quick Actions — full width */}
       <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm mb-8">

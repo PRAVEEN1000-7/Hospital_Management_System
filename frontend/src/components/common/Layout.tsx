@@ -598,9 +598,7 @@ const Layout: React.FC = () => {
     );
   }
 
-  // ── Attendance navigation ── sub-modules land here as they're built
-  // (Holiday Calendar + Shift Management so far — Daily Attendance, Payroll
-  // are future additions to this same array).
+  // ── Attendance navigation ── sub-modules land here as they're built.
   const attendanceItems: { to: string; label: string; icon: string }[] = [];
   if (canAccessAttendance) {
     attendanceItems.push(
@@ -609,6 +607,7 @@ const Layout: React.FC = () => {
       { to: '/attendance/report', label: 'Attendance Report', icon: 'fact_check' },
       { to: '/attendance/leaves', label: 'Leave Management', icon: 'event_busy' },
       { to: '/attendance/payroll', label: 'Payroll', icon: 'payments' },
+      { to: '/attendance/allowance', label: 'Payroll Add-ons', icon: 'redeem' },
     );
   }
 

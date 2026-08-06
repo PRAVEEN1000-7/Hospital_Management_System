@@ -16,6 +16,7 @@ from ..models.appointment import Doctor
 from ..utils.security import get_password_hash
 from ..services.patient_id_service import generate_staff_id
 from ..services.auth_service import clear_lockout
+from ..services import shift_management
 
 logger = logging.getLogger(__name__)
 
@@ -301,17 +302,38 @@ def create_user(
     return user
 
 
-def update_user(db: Session, user_id: str | uuid.UUID, **kwargs) -> Optional[User]:
+def update_user(
+    db: Session, user_id: str | uuid.UUID, changed_by: Optional[uuid.UUID] = None, **kwargs
+) -> Optional[User]:
     """Update user fields"""
     user = get_user_by_id(db, user_id)
     if not user:
         logger.warning("update_user: user %s not found", user_id)
         return None
-    
+
+    # shift_id changing here (StaffModals edit form) needs the same history
+    # bookkeeping as the bulk Shift Management assign path — see
+    # shift_management._record_shift_change / 21_add_shift_assignment_history.sql.
+    # Mirrors the `value is not None` guard below: this updater never clears
+    # a field to NULL, only ever sets a new value, so only that case needs
+    # a history entry here.
+    if kwargs.get("shift_id") is not None and kwargs["shift_id"] != str(user.shift_id or ""):
+        shift_management._record_shift_change(
+            db, user.hospital_id, user.id, uuid.UUID(kwargs["shift_id"]), changed_by
+        )
+
+    # Offboarding: a new/changed date_of_leaving must retroactively cap any
+    # shift_assignments row scheduling this employee past their last day —
+    # otherwise Shift Management keeps showing shifts for dates they're no
+    # longer employed on. See shift_management.cancel_shifts_after_leaving.
+    new_leaving_date = kwargs.get("date_of_leaving")
+    if new_leaving_date is not None and new_leaving_date != user.date_of_leaving:
+        shift_management.cancel_shifts_after_leaving(db, user.id, new_leaving_date)
+
     for key, value in kwargs.items():
         if hasattr(user, key) and value is not None:
             setattr(user, key, value)
-    
+
     db.commit()
     db.refresh(user)
     logger.info("Updated user: %s (fields: %s)", user.username, list(kwargs.keys()))

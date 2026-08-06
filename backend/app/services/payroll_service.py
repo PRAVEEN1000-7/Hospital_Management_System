@@ -1,65 +1,59 @@
 """
-Payroll service — turns one month's Attendance Report (present/absent/
-deduction, already computed in attendance_service.get_month_report) into a
-persisted payroll snapshot: base_salary - deduction_amount = net_payable,
-per employee. Frozen at generation time so later edits to an employee's
-salary or leave entitlement don't retroactively rewrite payroll history.
+Payroll service — computes one month's payroll LIVE, every time it's asked
+for: base_salary - deduction_amount + allowance_added + incentive_added -
+advance_deducted = net_payable, per employee. Nothing here is persisted or
+cached — it's built fresh from attendance_service.get_month_report() (itself
+already live) plus this month's allowance/incentive/advance totals, so
+entering an allowance, incentive, or advance is reflected the moment you
+reopen Payroll, with no separate "generate" step.
 """
 import uuid
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
-from ..models.payroll import PayrollRun, PayrollItem
-from . import attendance_service
+from . import attendance_service, allowance_service, incentive_service, advance_payment_service
 
 
-def generate_payroll(db: Session, hospital_id: uuid.UUID, year: int, month: int, generated_by: uuid.UUID) -> PayrollRun:
+def get_live_payroll(db: Session, hospital_id: uuid.UUID, year: int, month: int) -> dict:
     report = attendance_service.get_month_report(db, hospital_id, year, month)
+    allowance_totals = allowance_service.get_month_allowance_totals(db, hospital_id, year, month)
+    incentive_totals = incentive_service.get_month_incentive_totals(db, hospital_id, year, month)
+    advance_totals = advance_payment_service.get_month_advance_totals(db, hospital_id, year, month)
 
-    run = (
-        db.query(PayrollRun)
-        .filter(PayrollRun.hospital_id == hospital_id, PayrollRun.year == year, PayrollRun.month == month)
-        .first()
-    )
-    if run:
-        db.query(PayrollItem).filter(PayrollItem.payroll_run_id == run.id).delete()
-    else:
-        run = PayrollRun(hospital_id=hospital_id, year=year, month=month, generated_by=generated_by)
-        db.add(run)
-        db.flush()
-
-    run.generated_by = generated_by
-
+    items = []
     for emp in report["employees"]:
         # per_day_salary was derived from base_salary / working_days in
         # attendance_service — reconstruct base_salary from it rather than
         # re-querying the user, since working_days is already known here.
         base_salary = round(emp["per_day_salary"] * emp["working_days"], 2)
-        net_payable = round(base_salary - emp["deduction_amount"], 2)
-        db.add(PayrollItem(
-            payroll_run_id=run.id,
-            user_id=uuid.UUID(emp["user_id"]),
-            present_count=emp["present_count"],
-            absent_count=emp["absent_count"],
-            paid_leave_entitlement=emp["paid_leave_entitlement"],
-            working_days=emp["working_days"],
-            base_salary=base_salary,
-            per_day_salary=emp["per_day_salary"],
-            deduction_days=emp["deduction_days"],
-            deduction_amount=emp["deduction_amount"],
-            net_payable=net_payable,
-        ))
-
-    db.commit()
-    db.refresh(run)
-    return run
-
-
-def get_payroll(db: Session, hospital_id: uuid.UUID, year: int, month: int) -> PayrollRun | None:
-    return (
-        db.query(PayrollRun)
-        .options(
-            joinedload(PayrollRun.items).joinedload(PayrollItem.user),
+        user_uuid = uuid.UUID(emp["user_id"])
+        allowance_added = float(allowance_totals.get(user_uuid, 0))
+        incentive_added = float(incentive_totals.get(user_uuid, 0))
+        advance_deducted = float(advance_totals.get(user_uuid, 0))
+        net_payable = round(
+            base_salary - emp["deduction_amount"] + allowance_added + incentive_added - advance_deducted, 2
         )
-        .filter(PayrollRun.hospital_id == hospital_id, PayrollRun.year == year, PayrollRun.month == month)
-        .first()
-    )
+        items.append({
+            "user_id": emp["user_id"],
+            "reference_number": emp["reference_number"],
+            "first_name": emp["first_name"],
+            "last_name": emp["last_name"],
+            "designation": emp["designation"],
+            "present_count": emp["present_count"],
+            "absent_count": emp["absent_count"],
+            "paid_leave_entitlement": emp["paid_leave_entitlement"],
+            "working_days": emp["working_days"],
+            "base_salary": base_salary,
+            "per_day_salary": emp["per_day_salary"],
+            "deduction_days": emp["deduction_days"],
+            "deduction_amount": emp["deduction_amount"],
+            "allowance_added": allowance_added,
+            "incentive_added": incentive_added,
+            "advance_deducted": advance_deducted,
+            "net_payable": net_payable,
+        })
+
+    return {
+        "year": year,
+        "month": month,
+        "items": items,
+    }

@@ -134,6 +134,7 @@ import ShiftManagement from './pages/ShiftManagement';
 import AttendanceReport from './pages/AttendanceReport';
 import LeaveManagement from './pages/LeaveManagement';
 import Payroll from './pages/Payroll';
+import Allowance from './pages/Allowance';
 
 // Shared role/module permission matrix (see docs/security/ROLE_PERMISSIONS_DECISIONS_2026-07-25.md)
 import { allowedRoles } from './config/modulePermissions';
@@ -912,6 +913,14 @@ const AppWithNotifications: React.FC = () => {
                   requiredModule="attendance"
                 >
                   <Payroll />
+                </ProtectedRoute>
+              } />
+              <Route path="/attendance/allowance" element={
+                <ProtectedRoute
+                  allowedRoles={['super_admin', 'admin']}
+                  requiredModule="attendance"
+                >
+                  <Allowance />
                 </ProtectedRoute>
               } />
 

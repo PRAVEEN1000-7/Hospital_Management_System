@@ -7,18 +7,25 @@ import { jsPDF } from 'jspdf';
  * The HTML is loaded into an off-screen iframe so the document's own <style>/<body>
  * rules apply exactly as they do in the print view, then rasterised page-by-page.
  *
- * @param html      A complete HTML document (e.g. the prescription print template).
- * @param filename  Download file name; ".pdf" is appended if missing.
+ * @param html        A complete HTML document (e.g. the prescription print template).
+ * @param filename    Download file name; ".pdf" is appended if missing.
+ * @param orientation 'portrait' (default) or 'landscape' — use landscape for
+ *                    wide tabular documents (e.g. a multi-column payroll sheet)
+ *                    that would otherwise be cramped on a portrait page.
  */
-export async function htmlStringToPdf(html: string, filename: string): Promise<void> {
-  const A4_WIDTH_PX = 794; // A4 width at ~96dpi
+export async function htmlStringToPdf(
+  html: string, filename: string, orientation: 'portrait' | 'landscape' = 'portrait',
+): Promise<void> {
+  // A4 at ~96dpi: 794 x 1123px portrait; swapped for landscape.
+  const A4_WIDTH_PX = orientation === 'landscape' ? 1123 : 794;
+  const A4_HEIGHT_PX = orientation === 'landscape' ? 794 : 1123;
 
   const iframe = document.createElement('iframe');
   iframe.style.position = 'fixed';
   iframe.style.left = '-10000px';
   iframe.style.top = '0';
   iframe.style.width = `${A4_WIDTH_PX}px`;
-  iframe.style.height = '1123px';
+  iframe.style.height = `${A4_HEIGHT_PX}px`;
   iframe.style.border = '0';
   iframe.setAttribute('aria-hidden', 'true');
   document.body.appendChild(iframe);
@@ -65,7 +72,7 @@ export async function htmlStringToPdf(html: string, filename: string): Promise<v
       height: contentHeight,
     });
 
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const pdf = new jsPDF({ orientation, unit: 'mm', format: 'a4' });
     const pageW = pdf.internal.pageSize.getWidth();
     const pageH = pdf.internal.pageSize.getHeight();
     const imgW = pageW;

@@ -70,3 +70,25 @@ class Shift(Base):
     )
 
     hospital = relationship("Hospital", foreign_keys=[hospital_id])
+
+
+class ShiftAssignment(Base):
+    """Effective-dated shift history — see 21_add_shift_assignment_history.sql.
+    users.shift_id is only ever the CURRENT shift; this table is what lets a
+    report resolve "which shift was this employee on during month X" without
+    a later reassignment silently rewriting that answer. One open-ended row
+    per employee at a time (effective_to IS NULL = current)."""
+    __tablename__ = "shift_assignments"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    shift_id = Column(UUID(as_uuid=True), ForeignKey("shifts.id"), nullable=False)
+    effective_from = Column(Date, nullable=False)
+    effective_to = Column(Date)  # NULL = still current
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    hospital = relationship("Hospital", foreign_keys=[hospital_id])
+    user = relationship("User", foreign_keys=[user_id])
+    shift = relationship("Shift", foreign_keys=[shift_id])

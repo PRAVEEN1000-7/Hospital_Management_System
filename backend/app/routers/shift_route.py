@@ -1,12 +1,15 @@
 import logging
 import uuid
+from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models.user import User
 from ..dependencies import get_current_active_user, require_admin_or_super_admin
-from ..schemas.shift import ShiftCreate, ShiftUpdate, ShiftResponse, ShiftAssignRequest
+from ..schemas.shift import (
+    ShiftCreate, ShiftUpdate, ShiftResponse, ShiftAssignRequest, ShiftDatesAssignRequest,
+)
 from ..services import shift_management
 
 logger = logging.getLogger(__name__)
@@ -66,5 +69,24 @@ async def assign_shift(
     current_user: User = Depends(require_admin_or_super_admin),
 ):
     user_uuids = [uuid.UUID(u) for u in body.user_ids]
-    count = shift_management.assign_shift(db, current_user.hospital_id, user_uuids, uuid.UUID(body.shift_id))
+    count = shift_management.assign_shift(
+        db, current_user.hospital_id, user_uuids, uuid.UUID(body.shift_id), changed_by=current_user.id,
+    )
+    return {"updated": count}
+
+
+@router.post("/dates/assign", response_model=dict)
+async def assign_dates_shift(
+    body: ShiftDatesAssignRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_or_super_admin),
+):
+    """Assign one shift to a list of employees for an explicit set of dates
+    picked off the Shift Calendar (click-to-select, same interaction as the
+    Holiday Calendar) — any combination of dates, contiguous or not."""
+    user_uuids = [uuid.UUID(u) for u in body.user_ids]
+    dates = [date.fromisoformat(d) for d in body.dates]
+    count = shift_management.assign_shift_for_dates(
+        db, current_user.hospital_id, user_uuids, uuid.UUID(body.shift_id), dates, changed_by=current_user.id,
+    )
     return {"updated": count}

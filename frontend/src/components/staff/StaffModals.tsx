@@ -400,7 +400,8 @@ const DoctorFields: React.FC<{
 /** Employee/HR sub-fields — shared by every role (create + edit), stored directly on `users`. */
 const EmployeeFields: React.FC<{
   register: any;
-}> = ({ register }) => (
+  paidLeaveUniform?: boolean;
+}> = ({ register, paidLeaveUniform }) => (
   <div className="space-y-4">
     <Field label="Designation">
       <input {...register('designation')} className="input-field" placeholder="e.g. Senior Nurse" />
@@ -419,6 +420,7 @@ const EmployeeFields: React.FC<{
         <option value="full_time">Full-time</option>
         <option value="part_time">Part-time</option>
         <option value="contract">Contract</option>
+        <option value="trainee">Trainee</option>
       </select>
     </Field>
     <div className="grid grid-cols-2 gap-4">
@@ -450,7 +452,14 @@ const EmployeeFields: React.FC<{
         <input {...register('base_salary')} type="number" min="0" className="input-field" placeholder="e.g. 30000" />
       </Field>
       <Field label="Paid Leave Entitlement (days/year)">
-        <input {...register('paid_leave_entitlement')} type="number" min="0" className="input-field" placeholder="e.g. 18" />
+        {paidLeaveUniform ? (
+          <div>
+            <input disabled type="number" className="input-field opacity-50 cursor-not-allowed" placeholder="Set hospital-wide" />
+            <p className="text-xs text-slate-400 mt-1">Set hospital-wide in Settings → Leave Policy.</p>
+          </div>
+        ) : (
+          <input {...register('paid_leave_entitlement')} type="number" min="0" className="input-field" placeholder="e.g. 18" />
+        )}
       </Field>
     </div>
   </div>
@@ -459,7 +468,7 @@ const EmployeeFields: React.FC<{
 // ────────────────────────────────────────
 // Create Staff Modal
 // ────────────────────────────────────────
-export const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => void; onError: (msg: string) => void }> = ({ onClose, onSuccess, onError }) => {
+export const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => void; onError: (msg: string) => void; paidLeaveUniform?: boolean }> = ({ onClose, onSuccess, onError, paidLeaveUniform }) => {
   const toast = useToast();
   const availableRoles = useAssignableRoles();
   const [showPassword, setShowPassword] = useState(false);
@@ -770,7 +779,7 @@ export const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => 
 
         <section className="space-y-4">
           <SectionTitle>Employee Details</SectionTitle>
-          <EmployeeFields register={register} />
+          <EmployeeFields register={register} paidLeaveUniform={paidLeaveUniform} />
         </section>
 
         <section className="space-y-4">
@@ -868,7 +877,7 @@ export const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => 
 // ────────────────────────────────────────
 // Edit Staff Modal
 // ────────────────────────────────────────
-export const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onSuccess: () => void; onError: (msg: string) => void }> = ({ user, onClose, onSuccess, onError }) => {
+export const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onSuccess: () => void; onError: (msg: string) => void; paidLeaveUniform?: boolean }> = ({ user, onClose, onSuccess, onError, paidLeaveUniform }) => {
   const toast = useToast();
   const availableRoles = useAssignableRoles();
   const [photoPreview, setPhotoPreview] = useState<string>(user.avatar_url ? userService.getPhotoUrl(user.avatar_url) || '' : '');
@@ -1027,7 +1036,7 @@ export const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onS
 
         <section className="space-y-4">
           <SectionTitle>Employee Details</SectionTitle>
-          <EmployeeFields register={register} />
+          <EmployeeFields register={register} paidLeaveUniform={paidLeaveUniform} />
         </section>
 
         <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">

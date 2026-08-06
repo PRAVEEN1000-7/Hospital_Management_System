@@ -137,7 +137,7 @@ const Attendance: React.FC = () => {
         disabled={!inMonth}
         onClick={() => inMonth && toggleDay(dayNum)}
         title={isHoliday ? 'Weekly-off (click to make Festival)' : isFestival ? 'Festival holiday (click to clear)' : inMonth ? 'Working day (click to mark Weekly-off)' : undefined}
-        className={`aspect-square flex items-center justify-center rounded-lg text-sm font-semibold transition-colors ${
+        className={`h-12 flex items-center justify-center rounded-lg text-sm font-semibold transition-colors ${
           !inMonth
             ? 'text-slate-200 cursor-default'
             : isHoliday

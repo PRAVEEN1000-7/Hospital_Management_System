@@ -8,9 +8,17 @@ export interface AttendanceEmployeeRow {
   first_name: string;
   last_name: string;
   designation: string | null;
-  emp_status: 'active' | 'ex_employee';
-  shift_id: string | null;
-  shift_name: string | null;
+  // 'inactive' never actually reaches the frontend — the backend excludes
+  // deactivated employees from this report entirely (see
+  // attendance_service.get_month_report / User.employment_status) — but the
+  // full type is kept here so callers don't silently mishandle it if that
+  // filter ever moves.
+  emp_status: 'active' | 'notice_period' | 'relieved' | 'inactive';
+  date_of_joining: string | null;
+  date_of_leaving: string | null;
+  // Days worked per shift name this month, e.g. { "Day Shift": 12, "Night Shift": 10 } —
+  // an employee can appear under more than one shift because of weekly rotation.
+  shift_days: Record<string, number>;
   days: DayStatus[];
   present_count: number;
   absent_count: number;
@@ -33,7 +41,9 @@ export interface AttendanceReport {
   shifts: { id: string; name: string }[];
   employees: AttendanceEmployeeRow[];
   summary: { present: number; absent: number; half_day: number; holiday: number; festival: number; na: number; unmarked: number };
-  locked_days: number[];
+  // Headcount per shift name for this month (e.g. { "Day Shift": 6, "Night Shift": 2 }),
+  // resolved as of month-end so a later reassignment doesn't change past reports.
+  shift_summary: Record<string, number>;
 }
 
 export interface LeaveRecord {
@@ -65,6 +75,40 @@ const attendanceReportService = {
         params: { year, month, shift_id: shiftId || undefined },
       })
       .then(res => res.data),
+
+  getReportPdfUrl: async (year: number, month: number, shiftId?: string): Promise<string> => {
+    const res = await api.get('/attendance-records/report/pdf', {
+      params: { year, month, shift_id: shiftId || undefined },
+      responseType: 'text',
+    });
+    return res.data;
+  },
+
+  getMarkingPdfUrl: async (
+    year: number, month: number, shiftId?: string, fromDay?: number, toDay?: number,
+  ): Promise<string> => {
+    const res = await api.get('/attendance-records/marking-pdf', {
+      params: { year, month, shift_id: shiftId || undefined, from_day: fromDay, to_day: toDay },
+      responseType: 'text',
+    });
+    return res.data;
+  },
+
+  getLeavesPdfUrl: async (year: number, month: number, shiftId?: string): Promise<string> => {
+    const res = await api.get('/attendance-records/leaves/pdf', {
+      params: { year, month, shift_id: shiftId || undefined },
+      responseType: 'text',
+    });
+    return res.data;
+  },
+
+  getAnnualReportPdfUrl: async (year: number): Promise<string> => {
+    const res = await api.get('/attendance-records/annual-report/pdf', {
+      params: { year },
+      responseType: 'text',
+    });
+    return res.data;
+  },
 };
 
 export default attendanceReportService;

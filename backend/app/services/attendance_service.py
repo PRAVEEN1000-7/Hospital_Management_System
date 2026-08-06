@@ -22,11 +22,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from ..models.user import User
 from ..models.attendance import AttendanceRecord
-from . import holiday_service, shift_management
-
-
-class DayLockedError(Exception):
-    """Raised when trying to mark a date that's already in the past."""
+from . import holiday_service, shift_management, settings_service
 
 
 def mark_day(
@@ -35,10 +31,8 @@ def mark_day(
 ) -> None:
     """Always upserts a row — 'present' is now a real stored status (not a
     delete), so the report can tell "explicitly confirmed present" apart
-    from "never touched" (unmarked/blank). Past dates are frozen."""
-    if day < date_cls.today():
-        raise DayLockedError(f"{day.isoformat()} has already passed and can no longer be edited")
-
+    from "never touched" (unmarked/blank). Any date is editable, any time —
+    no past-date lock."""
     row = (
         db.query(AttendanceRecord)
         .filter(AttendanceRecord.user_id == user_id, AttendanceRecord.date == day)
@@ -67,20 +61,47 @@ def get_month_report(
     red_holidays = set(holiday_row.holiday_days) if holiday_row else set()
     festival_days = set(holiday_row.festival_days) if holiday_row else set()
 
+    # Leave Policy (System Settings) — a hospital-wide number overrides every
+    # employee's own paid_leave_entitlement when enabled. See
+    # models/hospital_settings.py.
+    hosp_settings = settings_service.get_hospital_settings(db, hospital_id)
+    uniform_leave_days = (
+        (hosp_settings.paid_leave_default_days or 0)
+        if hosp_settings and hosp_settings.paid_leave_uniform
+        else None
+    )
+
     # Only regular/weekly-off (red) days reduce working_days — festival days
     # are paid regardless of attendance, so they stay inside the count.
     working_days = total_days - len([d for d in red_holidays if 1 <= d <= total_days])
 
     shifts = shift_management.list_shifts(db, hospital_id)
 
-    employees_query = (
-        db.query(User)
-        .options(joinedload(User.shift))
-        .filter(User.hospital_id == hospital_id, User.is_deleted == False)
+    # Which shift each employee was on for EVERY individual day of this
+    # month — shifts rotate week to week (Shift Calendar), so a single
+    # "current shift" isn't enough; the report needs a day-by-day answer to
+    # count "N days Day Shift, M days Night Shift" per employee. See
+    # shift_management.get_daily_shift_map / 21_add_shift_assignment_history.sql.
+    daily_shifts = shift_management.get_daily_shift_map(db, hospital_id, year, month)
+
+    # is_active == False is a manual HR "hide everywhere" override — distinct
+    # from date_of_leaving (which still lets a relieved employee show up in
+    # historical reports/payroll for the days they actually worked). See
+    # User.employment_status.
+    employees_query = db.query(User).filter(
+        User.hospital_id == hospital_id, User.is_deleted == False, User.is_active == True,
     )
-    if shift_id is not None:
-        employees_query = employees_query.filter(User.shift_id == shift_id)
     employees = employees_query.order_by(User.first_name).all()
+    if shift_id is not None:
+        shift_id_str = str(shift_id)
+        # "Filter to this shift" now means "worked at least one day on it
+        # this month" — with rotation, an employee isn't cleanly "on" one
+        # shift for the whole month anymore.
+        shifts_by_name = {s.name: str(s.id) for s in shifts}
+        employees = [
+            e for e in employees
+            if any(shifts_by_name.get(name) == shift_id_str for name in daily_shifts.get(e.id, {}).values())
+        ]
 
     month_start = date_cls(year, month, 1)
     month_end = date_cls(year, month, total_days)
@@ -97,11 +118,21 @@ def get_month_report(
         (r.user_id, r.date.day): r.status for r in records
     }
 
-    today = date_cls.today()
     employee_rows = []
     summary = {"present": 0.0, "absent": 0.0, "half_day": 0, "holiday": 0, "festival": 0, "na": 0, "unmarked": 0}
+    # Total person-days per shift name across the whole roster this month —
+    # e.g. {"Day Shift": 145, "Night Shift": 62}. With rotation, "how many
+    # employees worked Day Shift" isn't a single headcount anymore (the same
+    # employee can appear under both), so this counts shift-days delivered.
+    shift_summary: dict[str, int] = {}
 
     for emp in employees:
+        emp_daily_shifts = daily_shifts.get(emp.id, {})
+        shift_days: dict[str, int] = {}
+        for shift_name in emp_daily_shifts.values():
+            if shift_name:
+                shift_days[shift_name] = shift_days.get(shift_name, 0) + 1
+                shift_summary[shift_name] = shift_summary.get(shift_name, 0) + 1
         days: list[str] = []
         counts = {"present": 0, "absent": 0, "half_day": 0, "holiday": 0, "festival": 0, "na": 0, "unmarked": 0}
 
@@ -111,9 +142,7 @@ def get_month_report(
                 status = "holiday"
             elif day_num in festival_days:
                 status = "festival"
-            elif emp.date_of_joining and day_obj < emp.date_of_joining:
-                status = "na"
-            elif emp.date_of_leaving and day_obj > emp.date_of_leaving:
+            elif not emp.is_employed_on(day_obj):
                 status = "na"
             elif (emp.id, day_num) in overrides:
                 status = overrides[(emp.id, day_num)]
@@ -137,7 +166,7 @@ def get_month_report(
         summary["na"] += counts["na"]
         summary["unmarked"] += counts["unmarked"]
 
-        paid_leave_entitlement = emp.paid_leave_entitlement or 0
+        paid_leave_entitlement = uniform_leave_days if uniform_leave_days is not None else (emp.paid_leave_entitlement or 0)
         deduction_days = max(0.0, absent_count - paid_leave_entitlement)
         per_day_salary = float(emp.base_salary) / working_days if emp.base_salary and working_days > 0 else 0.0
         deduction_amount = round(deduction_days * per_day_salary, 2)
@@ -148,9 +177,10 @@ def get_month_report(
             "first_name": emp.first_name,
             "last_name": emp.last_name,
             "designation": emp.designation,
-            "emp_status": "ex_employee" if not emp.is_active or emp.date_of_leaving else "active",
-            "shift_id": str(emp.shift_id) if emp.shift_id else None,
-            "shift_name": emp.shift.name if emp.shift else None,
+            "emp_status": emp.employment_status(),
+            "date_of_joining": emp.date_of_joining.isoformat() if emp.date_of_joining else None,
+            "date_of_leaving": emp.date_of_leaving.isoformat() if emp.date_of_leaving else None,
+            "shift_days": shift_days,
             "days": days,
             "present_count": present_count,
             "absent_count": absent_count,
@@ -166,11 +196,6 @@ def get_month_report(
             "deduction_amount": deduction_amount,
         })
 
-    # Days strictly before today are frozen — mark_day rejects edits to them
-    # server-side; this tells the grid which columns to disable + show a
-    # download button for, without every client needing its own clock.
-    locked_days = [d for d in range(1, total_days + 1) if date_cls(year, month, d) < today]
-
     return {
         "year": year,
         "month": month,
@@ -178,7 +203,7 @@ def get_month_report(
         "shifts": [{"id": str(s.id), "name": s.name} for s in shifts],
         "employees": employee_rows,
         "summary": summary,
-        "locked_days": locked_days,
+        "shift_summary": shift_summary,
     }
 
 
@@ -192,10 +217,17 @@ def get_month_leaves(
     month_start = date_cls(year, month, 1)
     month_end = date_cls(year, month, total_days)
 
+    # Same day-level resolution as get_month_report — each record shows the
+    # shift effective on ITS OWN date, not month-end or today, so a leave
+    # logged during a Night Shift week still reads correctly after the
+    # employee rotates back to Day.
+    daily_shifts = shift_management.get_daily_shift_map(db, hospital_id, year, month)
+    shifts_by_name = {s.name: str(s.id) for s in shift_management.list_shifts(db, hospital_id)}
+
     query = (
         db.query(AttendanceRecord)
         .join(User, User.id == AttendanceRecord.user_id)
-        .options(joinedload(AttendanceRecord.user).joinedload(User.shift))
+        .options(joinedload(AttendanceRecord.user))
         .filter(
             AttendanceRecord.hospital_id == hospital_id,
             AttendanceRecord.date >= month_start,
@@ -203,24 +235,27 @@ def get_month_leaves(
             # 'present' is now a real stored status (see mark_day) but isn't
             # a leave — exclude it so this stays an absence/half-day-only log.
             AttendanceRecord.status.in_(["absent", "half_day"]),
+            # Manually deactivated employees are hidden from every module —
+            # see User.employment_status.
+            User.is_active == True,
         )
     )
-    if shift_id is not None:
-        query = query.filter(User.shift_id == shift_id)
-
     records = query.order_by(AttendanceRecord.date).all()
 
-    return [
-        {
+    result = []
+    for r in records:
+        day_shift_name = daily_shifts.get(r.user_id, {}).get(r.date.day)
+        if shift_id is not None and shifts_by_name.get(day_shift_name) != str(shift_id):
+            continue
+        result.append({
             "user_id": str(r.user_id),
             "reference_number": r.user.reference_number,
             "first_name": r.user.first_name,
             "last_name": r.user.last_name,
             "designation": r.user.designation,
-            "shift_name": r.user.shift.name if r.user.shift else None,
+            "shift_name": day_shift_name,
             "date": r.date.isoformat(),
             "status": r.status,
             "reason": r.reason,
-        }
-        for r in records
-    ]
+        })
+    return result

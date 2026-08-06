@@ -400,7 +400,7 @@ async def update_existing_user(
 
         # Update remaining user fields
         try:
-            user = update_user(db, user_id, **update_fields)
+            user = update_user(db, user_id, changed_by=current_user.id, **update_fields)
         except IntegrityError:
             db.rollback()
             raise HTTPException(

@@ -50,3 +50,9 @@ class ShiftResponse(BaseModel):
 class ShiftAssignRequest(BaseModel):
     user_ids: list[str] = Field(..., min_length=1)
     shift_id: str
+
+
+class ShiftDatesAssignRequest(BaseModel):
+    user_ids: list[str] = Field(..., min_length=1)
+    shift_id: str
+    dates: list[str] = Field(..., min_length=1)  # each YYYY-MM-DD, picked off the Shift Calendar

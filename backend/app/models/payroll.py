@@ -38,6 +38,8 @@ class PayrollItem(Base):
     per_day_salary = Column(Numeric(12, 2), nullable=False, default=0)
     deduction_days = Column(Numeric(5, 1), nullable=False, default=0)
     deduction_amount = Column(Numeric(12, 2), nullable=False, default=0)
+    allowance_added = Column(Numeric(12, 2), nullable=False, default=0)
+    incentive_added = Column(Numeric(12, 2), nullable=False, default=0)
     net_payable = Column(Numeric(12, 2), nullable=False, default=0)
 
     __table_args__ = (

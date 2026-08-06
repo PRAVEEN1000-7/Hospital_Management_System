@@ -25,7 +25,7 @@ from .routers import (
     # Billing & Invoice module
     invoices, payments, refunds, settlements, tax_configurations,
     # Attendance module
-    holidays,shift_route, attendance_records, payroll
+    holidays,shift_route, attendance_records, payroll, allowances, incentives, advance_payments
 )
 from .routers import logs as logs_router  # frontend log ingestion endpoint
 from .routers import public_queue  # unauthenticated public Queue Display
@@ -291,6 +291,9 @@ app.include_router(holidays.router, prefix="/api/v1", dependencies=_require_atte
 app.include_router(shift_route.router, prefix="/api/v1", dependencies=_require_attendance)
 app.include_router(attendance_records.router, prefix="/api/v1", dependencies=_require_attendance)
 app.include_router(payroll.router, prefix="/api/v1", dependencies=_require_attendance)
+app.include_router(allowances.router, prefix="/api/v1", dependencies=_require_attendance)
+app.include_router(incentives.router, prefix="/api/v1", dependencies=_require_attendance)
+app.include_router(advance_payments.router, prefix="/api/v1", dependencies=_require_attendance)
 
 
 # Billing & Invoice module

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { format, formatDistanceToNow } from 'date-fns';
 import userService from '../services/userService';
+import { hospitalService } from '../services/hospitalService';
 import type { UserData } from '../types/user';
 import { ROLE_TEXT_COLORS, ROLE_LABELS } from '../utils/constants';
 import { useToast } from '../contexts/ToastContext';
@@ -76,6 +77,16 @@ const StaffDirectory: React.FC = () => {
   const [editUser, setEditUser] = useState<UserData | null>(null);
   const [resetUser, setResetUser] = useState<UserData | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<UserData | null>(null);
+  // Leave Policy (System Settings) — when the hospital's on "same for every
+  // employee," the individual field in these modals is greyed out instead
+  // of quietly having no effect.
+  const [paidLeaveUniform, setPaidLeaveUniform] = useState(false);
+
+  useEffect(() => {
+    hospitalService.getSettings()
+      .then(s => setPaidLeaveUniform(!!s.paid_leave_uniform))
+      .catch(() => {});
+  }, []);
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -560,6 +571,7 @@ const StaffDirectory: React.FC = () => {
       {/* Create Staff Modal */}
       {showCreate && (
         <CreateStaffModal
+          paidLeaveUniform={paidLeaveUniform}
           onClose={() => setShowCreate(false)}
           onSuccess={() => { setShowCreate(false); toast.success('Staff member added successfully'); fetchUsers(); }}
           onError={(msg) => toast.error(msg)}
@@ -570,6 +582,7 @@ const StaffDirectory: React.FC = () => {
       {editUser && (
         <EditStaffModal
           user={editUser}
+          paidLeaveUniform={paidLeaveUniform}
           onClose={() => setEditUser(null)}
           onSuccess={() => { setEditUser(null); toast.success('Staff member updated successfully'); fetchUsers(); }}
           onError={(msg) => toast.error(msg)}

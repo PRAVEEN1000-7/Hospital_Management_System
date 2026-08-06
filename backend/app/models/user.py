@@ -92,6 +92,37 @@ class User(Base):
     base_salary = Column(Numeric(12, 2))
     shift_id = Column(UUID(as_uuid=True), ForeignKey("shifts.id"))
 
+    def is_employed_on(self, on_date) -> bool:
+        """Single source of truth for the employment window used by
+        Attendance (na days) and Shift Management (assignment eligibility):
+        on/after date_of_joining and on/before date_of_leaving, when set."""
+        if self.date_of_joining and on_date < self.date_of_joining:
+            return False
+        if self.date_of_leaving and on_date > self.date_of_leaving:
+            return False
+        return True
+
+    def employment_status(self, as_of=None) -> str:
+        """Four-state display status, most-specific rule first:
+        - 'inactive'      — HR/admin manually deactivated the profile
+                             (is_active=False). Hard override: hidden from
+                             every module regardless of dates.
+        - 'relieved'      — date_of_leaving has passed as of `as_of`
+                             (defaults to today). Still shown in historical
+                             records (payroll/reports), just not for new
+                             scheduling — see is_employed_on.
+        - 'notice_period' — date_of_leaving is set but hasn't arrived yet;
+                             still a normal working employee, badge only.
+        - 'active'        — everyone else.
+        """
+        from datetime import date as _date
+        if not self.is_active:
+            return "inactive"
+        if self.date_of_leaving:
+            today = as_of or _date.today()
+            return "relieved" if today > self.date_of_leaving else "notice_period"
+        return "active"
+
     # Relationships
     user_roles = relationship(
         "UserRole", back_populates="user",

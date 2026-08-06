@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import attendanceReportService, { type LeaveRecord } from '../services/attendanceReportService';
-import { downloadElementAsImage } from '../utils/screenshot';
+import { htmlStringToPdf } from '../utils/pdf';
 import { useToast } from '../contexts/ToastContext';
 
 const today = new Date();
@@ -23,7 +23,6 @@ const LeaveManagement: React.FC = () => {
   const [records, setRecords] = useState<LeaveRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
-  const cardRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -43,10 +42,10 @@ const LeaveManagement: React.FC = () => {
   };
 
   const handleDownload = async () => {
-    if (!cardRef.current) return;
     setDownloading(true);
     try {
-      await downloadElementAsImage(cardRef.current, `leave-management-${year}-${String(month).padStart(2, '0')}`);
+      const html = await attendanceReportService.getLeavesPdfUrl(year, month);
+      await htmlStringToPdf(html, `Leave_Management_${format(new Date(year, month - 1, 1), 'MMMM_yyyy')}.pdf`);
     } catch {
       toast.error('Failed to generate download');
     } finally {
@@ -67,8 +66,8 @@ const LeaveManagement: React.FC = () => {
           disabled={records.length === 0 || downloading}
           className="px-4 py-2 text-sm font-bold bg-primary hover:bg-primary/90 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1.5"
         >
-          <span className="material-icons text-sm">{downloading ? 'hourglass_empty' : 'photo_camera'}</span>
-          {downloading ? 'Generating...' : 'Download'}
+          <span className="material-icons text-sm">{downloading ? 'hourglass_empty' : 'picture_as_pdf'}</span>
+          {downloading ? 'Generating...' : 'Download PDF'}
         </button>
       </header>
 
@@ -78,11 +77,12 @@ const LeaveManagement: React.FC = () => {
             type="month"
             value={`${year}-${String(month).padStart(2, '0')}`}
             onChange={e => handleMonthChange(e.target.value)}
+            onClick={e => e.currentTarget.showPicker?.()}
             className="px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
           />
         </div>
 
-        <div ref={cardRef} className="bg-white">
+        <div className="bg-white">
           <div className="px-5 py-3 text-sm font-bold text-slate-700 border-b border-slate-100">
             Leave Management — {format(new Date(year, month - 1, 1), 'MMMM yyyy')}
           </div>

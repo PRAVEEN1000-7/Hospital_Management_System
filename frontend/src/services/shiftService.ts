@@ -23,6 +23,13 @@ const shiftService = {
 
   assignShift: (userIds: string[], shiftId: string) =>
     api.post<{ updated: number }>('/shifts/assign', { user_ids: userIds, shift_id: shiftId }).then(res => res.data),
+
+  // dates picked off the Shift Calendar (click-to-select, same interaction
+  // as the Holiday Calendar) — any combination, contiguous or not.
+  assignDatesShift: (userIds: string[], shiftId: string, dates: string[]) =>
+    api
+      .post<{ updated: number }>('/shifts/dates/assign', { user_ids: userIds, shift_id: shiftId, dates })
+      .then(res => res.data),
 };
 
 export default shiftService;

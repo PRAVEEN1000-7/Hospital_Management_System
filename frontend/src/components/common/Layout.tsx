@@ -62,6 +62,9 @@ const Layout: React.FC = () => {
   const [labOpen, setLabOpen] = useState(
     () => location.pathname.startsWith('/lab')
   );
+  const [attendanceOpen, setAttendanceOpen] = useState(
+    () => location.pathname.startsWith('/attendance')
+  );
 
   const role = user?.roles?.[0];
   const [billingOpen, setBillingOpen] = useState(
@@ -110,6 +113,9 @@ const Layout: React.FC = () => {
   // Report Viewer's whole job is the appointment reports export — no other role gets a
   // sidebar entry for it since admin/super_admin already reach it via the Appointments dropdown.
   const canAccessAppointmentReports = hasRole('report_viewer') && isModuleEnabled('appointments');
+  // Attendance — catalog-only module for now (see database_hole/10_add_attendance_module.sql);
+  // page is a placeholder until Shift/Attendance/Leave/Payroll are actually built.
+  const canAccessAttendance   = hasRole('super_admin', 'admin') && isModuleEnabled('attendance');
 
   // Fetch the current hospital's name + logo from the tenant-scoped /hospital endpoint.
   const loadBranding = useCallback(() => {
@@ -592,6 +598,19 @@ const Layout: React.FC = () => {
     );
   }
 
+  // ── Attendance navigation ── sub-modules land here as they're built.
+  const attendanceItems: { to: string; label: string; icon: string }[] = [];
+  if (canAccessAttendance) {
+    attendanceItems.push(
+      { to: '/attendance/holidays', label: 'Holiday Calendar', icon: 'event_available' },
+      { to: '/attendance/shifts', label: 'Shift Management', icon: 'schedule' },
+      { to: '/attendance/report', label: 'Attendance Report', icon: 'fact_check' },
+      { to: '/attendance/leaves', label: 'Leave Management', icon: 'event_busy' },
+      { to: '/attendance/payroll', label: 'Payroll', icon: 'payments' },
+      { to: '/attendance/allowance', label: 'Payroll Add-ons', icon: 'redeem' },
+    );
+  }
+
   // ── Inventory navigation ── role-driven
   const inventoryItems: { to: string; label: string; icon: string }[] = [];
 
@@ -968,6 +987,53 @@ const Layout: React.FC = () => {
               </button>
               <div id="lab-menu" className={`overflow-hidden transition-all duration-200 ${labOpen ? 'max-h-[700px] opacity-100' : 'max-h-0 opacity-0'}`}>
                 {labItems.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    onClick={() => setSidebarOpen(false)}
+                    className={`flex items-center pl-10 pr-6 py-2.5 text-[13px] font-medium transition-all ${
+                      isExactActive(item.to)
+                        ? 'sidebar-item-active'
+                        : 'text-slate-400 hover:text-primary hover:bg-slate-50'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined mr-3 text-[18px]">{item.icon}</span>
+                    {item.label}
+                  </NavLink>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ══ ATTENDANCE — collapsible ══ */}
+          {attendanceItems.length > 0 && (
+            <div
+              className="mt-4"
+              onMouseEnter={() => setAttendanceOpen(true)}
+              onMouseLeave={() => setAttendanceOpen(false)}
+            >
+              <div className="px-6 mb-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Attendance</span>
+              </div>
+              <button
+                onClick={() => setAttendanceOpen(!attendanceOpen)}
+                aria-expanded={attendanceOpen}
+                aria-controls="attendance-menu"
+                className={`w-full flex items-center justify-between px-6 py-2.5 text-sm font-medium transition-all ${
+                  location.pathname.startsWith('/attendance')
+                    ? 'text-primary bg-primary/5'
+                    : 'text-slate-500 hover:text-primary hover:bg-slate-50'
+                }`}
+              >
+                <div className="flex items-center">
+                  Attendance
+                </div>
+                <span className={`material-symbols-outlined text-[18px] transition-transform duration-200 ${attendanceOpen ? 'rotate-180' : ''}`}>
+                  expand_more
+                </span>
+              </button>
+              <div id="attendance-menu" className={`overflow-hidden transition-all duration-200 ${attendanceOpen ? 'max-h-[700px] opacity-100' : 'max-h-0 opacity-0'}`}>
+                {attendanceItems.map((item) => (
                   <NavLink
                     key={item.to}
                     to={item.to}

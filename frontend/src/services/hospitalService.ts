@@ -64,6 +64,10 @@ export interface HospitalSettings {
   consultation_fee_default: string;
   follow_up_validity_days: number;
   data_retention_years: number;
+  // Leave Policy — true: paid_leave_default_days applies to every employee,
+  // overriding each employee's own value set in Staff Directory.
+  paid_leave_uniform?: boolean;
+  paid_leave_default_days?: number;
   branding_primary_color: string;
   branding_secondary_color: string;
   print_header_text: string | null;

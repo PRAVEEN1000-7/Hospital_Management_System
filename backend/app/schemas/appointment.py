@@ -372,6 +372,9 @@ class HospitalSettingsUpdate(BaseModel):
     prescription_prefix: Optional[str] = Field(None, max_length=10)
     # Compliance
     data_retention_years: Optional[int] = Field(None, ge=1, le=99)
+    # Leave Policy — see models/hospital_settings.py for how these are consulted.
+    paid_leave_uniform: Optional[bool] = None
+    paid_leave_default_days: Optional[int] = Field(None, ge=0, le=365)
     # Queue Display customization (BRD v1.1 §3.4, QD-04/05/06) — eye-hospital feature pack only
     queue_display_show_doctor2: Optional[bool] = None
     queue_display_show_pharmacy: Optional[bool] = None

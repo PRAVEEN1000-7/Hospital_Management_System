@@ -2,7 +2,7 @@
 User, Role, Permission and RBAC models — matches new hms_db schema.
 """
 from sqlalchemy import (
-    Column, String, Boolean, DateTime, Integer, Text, ForeignKey, UniqueConstraint
+    Column, String, Boolean, DateTime, Date, Integer, Numeric, Text, ForeignKey, UniqueConstraint
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -76,12 +76,60 @@ class User(Base):
     is_deleted = Column(Boolean, default=False)
     deleted_at = Column(DateTime(timezone=True))
 
+    # Employee / HR fields (Attendance & Workforce Management)
+    designation = Column(String(100))
+    date_of_joining = Column(Date)
+    date_of_leaving = Column(Date)
+    employment_type = Column(String(20))  # full_time / part_time / contract
+    bank_account_holder_name = Column(String(150))
+    bank_account_number = Column(String(50))
+    bank_ifsc = Column(String(20))
+    bank_branch = Column(String(150))
+    pf_number = Column(String(50))
+    pan_number = Column(String(20))
+    paid_leave_entitlement = Column(Integer)
+    include_in_payroll = Column(Boolean, default=True)
+    base_salary = Column(Numeric(12, 2))
+    shift_id = Column(UUID(as_uuid=True), ForeignKey("shifts.id"))
+
+    def is_employed_on(self, on_date) -> bool:
+        """Single source of truth for the employment window used by
+        Attendance (na days) and Shift Management (assignment eligibility):
+        on/after date_of_joining and on/before date_of_leaving, when set."""
+        if self.date_of_joining and on_date < self.date_of_joining:
+            return False
+        if self.date_of_leaving and on_date > self.date_of_leaving:
+            return False
+        return True
+
+    def employment_status(self, as_of=None) -> str:
+        """Four-state display status, most-specific rule first:
+        - 'inactive'      — HR/admin manually deactivated the profile
+                             (is_active=False). Hard override: hidden from
+                             every module regardless of dates.
+        - 'relieved'      — date_of_leaving has passed as of `as_of`
+                             (defaults to today). Still shown in historical
+                             records (payroll/reports), just not for new
+                             scheduling — see is_employed_on.
+        - 'notice_period' — date_of_leaving is set but hasn't arrived yet;
+                             still a normal working employee, badge only.
+        - 'active'        — everyone else.
+        """
+        from datetime import date as _date
+        if not self.is_active:
+            return "inactive"
+        if self.date_of_leaving:
+            today = as_of or _date.today()
+            return "relieved" if today > self.date_of_leaving else "notice_period"
+        return "active"
+
     # Relationships
     user_roles = relationship(
         "UserRole", back_populates="user",
         foreign_keys="[UserRole.user_id]", lazy="joined",
     )
     hospital = relationship("Hospital", foreign_keys=[hospital_id], lazy="joined")
+    shift = relationship("Shift", foreign_keys=[shift_id])
 
     @property
     def roles(self) -> list[str]:

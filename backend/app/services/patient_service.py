@@ -463,7 +463,12 @@ def save_patient_photo(
 
 # ── New-vs-returning patient trend (Doctor + Admin Dashboard chart) ────────
 
-_TREND_PERIODS = {"day": 14, "week": 8, "month": 6}
+# "day"/"week" are single-period snapshots (today only / this week only, not
+# a multi-period trend) — periods=1 against _generate_trend_buckets' existing
+# start-from-today math naturally collapses to exactly that one bucket.
+# "month" stays a genuine multi-period trend (6 months).
+_TREND_PERIODS = {"day": 1, "week": 1, "month": 6}
+_CUSTOM_RANGE_MAX_DAYS = 92  # ~3 months — keeps the chart readable and the query bounded
 
 
 def _month_bucket_end(bucket_start: date) -> date:
@@ -504,8 +509,19 @@ def _generate_trend_buckets(granularity: str, periods: int, today: date) -> list
     ]
 
 
+def _generate_custom_range_buckets(date_from: date, date_to: date) -> list[tuple[date, date]]:
+    """One bucket per calendar day across an explicit [date_from, date_to]
+    range — backs the dashboard chart's custom date-range picker."""
+    if date_from > date_to:
+        raise ValueError("date_from must not be after date_to")
+    span_days = (date_to - date_from).days + 1
+    if span_days > _CUSTOM_RANGE_MAX_DAYS:
+        raise ValueError(f"Custom date range cannot exceed {_CUSTOM_RANGE_MAX_DAYS} days")
+    return [(date_from + timedelta(days=i), date_from + timedelta(days=i)) for i in range(span_days)]
+
+
 def _trend_bucket_label(granularity: str, start: date, end: date) -> str:
-    if granularity == "day":
+    if granularity in ("day", "custom"):
         return start.strftime("%d %b")
     if granularity == "week":
         return f"{start.strftime('%d %b')} - {end.strftime('%d %b')}"
@@ -517,6 +533,8 @@ def get_new_vs_returning_trend(
     hospital_id: uuid.UUID,
     granularity: str = "day",
     doctor_id: Optional[uuid.UUID] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
 ) -> dict:
     """
     New-vs-returning patient trend for the Dashboard chart (Doctor + Admin
@@ -532,15 +550,27 @@ def get_new_vs_returning_trend(
 
     doctor_id scopes both series to one doctor's own patients (the Doctor
     Dashboard's view); omit it for the hospital-wide Admin Dashboard view.
+
+    granularity="day"/"week" are single-period snapshots (today only / this
+    week only). "month" is a genuine 6-month trend. granularity="custom"
+    requires date_from/date_to and buckets by day across that explicit range
+    (capped at _CUSTOM_RANGE_MAX_DAYS) — backs the dashboard's date-range
+    picker.
     """
-    granularity = granularity if granularity in _TREND_PERIODS else "day"
-    periods = _TREND_PERIODS[granularity]
+    today = hospital_today_by_id(db, hospital_id)
+
+    if granularity == "custom":
+        if not date_from or not date_to:
+            raise ValueError("date_from and date_to are required for granularity=custom")
+        buckets = _generate_custom_range_buckets(date_from, date_to)
+    else:
+        granularity = granularity if granularity in _TREND_PERIODS else "day"
+        periods = _TREND_PERIODS[granularity]
+        buckets = _generate_trend_buckets(granularity, periods, today)
 
     hospital = db.query(Hospital).filter(Hospital.id == hospital_id).first()
     tz_name = hospital.timezone if hospital else None
-    today = hospital_today_by_id(db, hospital_id)
 
-    buckets = _generate_trend_buckets(granularity, periods, today)
     range_start, range_end = buckets[0][0], buckets[-1][1]
 
     query = (

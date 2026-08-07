@@ -4,6 +4,7 @@ Patients router — works with new hms_db UUID schema.
 import asyncio
 import logging
 import uuid
+from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
@@ -534,14 +535,20 @@ async def send_phone_otp_stub(
 
 @router.get("/stats/new-vs-returning", response_model=PatientTrendResponse)
 async def get_new_vs_returning_patient_trend(
-    granularity: str = Query("day", pattern="^(day|week|month)$"),
+    granularity: str = Query("day", pattern="^(day|week|month|custom)$"),
+    date_from: Optional[date] = Query(None, description="Required when granularity=custom"),
+    date_to: Optional[date] = Query(None, description="Required when granularity=custom"),
     db: Session = Depends(get_db),
     current_user: User = Depends(patient_trend_role_guard),
 ):
     """Dashboard chart data (Doctor + Admin only). A doctor sees only their
     own patients; admin/super_admin see the whole hospital — resolved from
     the caller's role, never a client-supplied doctor_id, so a doctor can't
-    query another doctor's numbers."""
+    query another doctor's numbers.
+
+    granularity=day/week are single-period snapshots (today only / this week
+    only); month is a 6-month trend; custom requires date_from/date_to and
+    buckets by day across that explicit range."""
     doctor_id = None
     is_admin = any(r in ("admin", "super_admin") for r in (current_user.roles or []))
     if not is_admin and "doctor" in (current_user.roles or []):
@@ -550,9 +557,13 @@ async def get_new_vs_returning_patient_trend(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Doctor profile not found")
         doctor_id = doctor.id
 
-    return get_new_vs_returning_trend(
-        db, current_user.hospital_id, granularity=granularity, doctor_id=doctor_id,
-    )
+    try:
+        return get_new_vs_returning_trend(
+            db, current_user.hospital_id, granularity=granularity, doctor_id=doctor_id,
+            date_from=date_from, date_to=date_to,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
 @router.post("/{patient_id}/verify-phone-otp")

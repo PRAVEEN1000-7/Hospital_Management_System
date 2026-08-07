@@ -318,3 +318,17 @@ class PatientVerificationStatus(BaseModel):
 
 class PatientLastVisitResponse(BaseModel):
     last_visit_date: Optional[date] = None
+
+
+class PatientTrendBucket(BaseModel):
+    period_start: date
+    period_end: date
+    label: str
+    new_patients: int
+    returning_patients: int
+
+
+class PatientTrendResponse(BaseModel):
+    granularity: str
+    scope: str  # "hospital" (Admin Dashboard) | "doctor" (Doctor Dashboard, own patients only)
+    buckets: list[PatientTrendBucket]

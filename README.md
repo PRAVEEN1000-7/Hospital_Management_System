@@ -69,6 +69,7 @@ HMS/
 │   ├── 02_eye_hospital_updates.sql  # Eye-hospital feature additions (opt-in, per hospital)
 │   ├── 05_schema_structure.sql  # Schema additions (RBAC, queue, GRN/OPD, etc.)
 │   ├── 07-13_*.sql              # Queue display, RBAC overrides, GRN/OPD, lab test catalog
+│   ├── workforce_attendance_module_combined.sql  # Patch for pre-Workforce-Management DBs (01_full_schema.sql already has it fresh)
 │   ├── 99_drop_database.sql     # Destructive — local dev reset only
 │   └── README.md
 │

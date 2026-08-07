@@ -7,7 +7,7 @@ import os
 import secrets
 import shutil
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_, func
 from math import ceil
@@ -19,6 +19,7 @@ from ..models.patient import Patient, PatientEmailVerificationToken
 from ..models.user import Hospital
 from ..schemas.patient import PatientCreate, PatientUpdate, PaginatedPatientResponse, PatientListItem
 from ..services.patient_id_service import generate_patient_id
+from ..core.hospital_time import hospital_today_by_id, hospital_local_date
 from .user_service import (
     UPLOAD_DIR,
     ALLOWED_PHOTO_EXTENSIONS,
@@ -458,3 +459,128 @@ def save_patient_photo(
     db.commit()
     db.refresh(patient)
     return patient
+
+
+# ── New-vs-returning patient trend (Doctor + Admin Dashboard chart) ────────
+
+_TREND_PERIODS = {"day": 14, "week": 8, "month": 6}
+
+
+def _month_bucket_end(bucket_start: date) -> date:
+    if bucket_start.month == 12:
+        next_month_start = bucket_start.replace(year=bucket_start.year + 1, month=1)
+    else:
+        next_month_start = bucket_start.replace(month=bucket_start.month + 1)
+    return next_month_start - timedelta(days=1)
+
+
+def _shift_months(bucket_start: date, n: int) -> date:
+    total = bucket_start.year * 12 + (bucket_start.month - 1) + n
+    year, month = divmod(total, 12)
+    return date(year, month + 1, 1)
+
+
+def _generate_trend_buckets(granularity: str, periods: int, today: date) -> list[tuple[date, date]]:
+    """Full chronological list of (bucket_start, bucket_end) pairs ending
+    with the bucket containing `today` — generated up front (not derived
+    from query results) so a period with zero visits still shows as a
+    genuine 0 on the chart instead of silently disappearing from the axis."""
+    if granularity == "day":
+        start = today - timedelta(days=periods - 1)
+        return [(start + timedelta(days=i), start + timedelta(days=i)) for i in range(periods)]
+    if granularity == "week":
+        this_week_start = today - timedelta(days=today.weekday())  # Monday
+        start = this_week_start - timedelta(weeks=periods - 1)
+        return [
+            (start + timedelta(weeks=i), start + timedelta(weeks=i) + timedelta(days=6))
+            for i in range(periods)
+        ]
+    # month
+    this_month_start = today.replace(day=1)
+    start = _shift_months(this_month_start, -(periods - 1))
+    return [
+        (_shift_months(start, i), _month_bucket_end(_shift_months(start, i)))
+        for i in range(periods)
+    ]
+
+
+def _trend_bucket_label(granularity: str, start: date, end: date) -> str:
+    if granularity == "day":
+        return start.strftime("%d %b")
+    if granularity == "week":
+        return f"{start.strftime('%d %b')} - {end.strftime('%d %b')}"
+    return start.strftime("%b %Y")
+
+
+def get_new_vs_returning_trend(
+    db: Session,
+    hospital_id: uuid.UUID,
+    granularity: str = "day",
+    doctor_id: Optional[uuid.UUID] = None,
+) -> dict:
+    """
+    New-vs-returning patient trend for the Dashboard chart (Doctor + Admin
+    only — see routers/patients.py's role guard).
+
+    Anchored on actual visits, not raw sign-ups: for every non-cancelled,
+    non-rescheduled appointment in the window, the patient counts as "new"
+    if their registration (Patient.created_at, read in the hospital's own
+    configured timezone — never the server's) falls in the SAME bucket as
+    that appointment, or "returning" if they'd already registered before the
+    bucket started. A patient who registers but never books a visit isn't
+    counted in either series — this tracks footfall, not raw registrations.
+
+    doctor_id scopes both series to one doctor's own patients (the Doctor
+    Dashboard's view); omit it for the hospital-wide Admin Dashboard view.
+    """
+    granularity = granularity if granularity in _TREND_PERIODS else "day"
+    periods = _TREND_PERIODS[granularity]
+
+    hospital = db.query(Hospital).filter(Hospital.id == hospital_id).first()
+    tz_name = hospital.timezone if hospital else None
+    today = hospital_today_by_id(db, hospital_id)
+
+    buckets = _generate_trend_buckets(granularity, periods, today)
+    range_start, range_end = buckets[0][0], buckets[-1][1]
+
+    query = (
+        db.query(Appointment.patient_id, Appointment.appointment_date, Patient.created_at)
+        .join(Patient, Patient.id == Appointment.patient_id)
+        .filter(
+            Appointment.hospital_id == hospital_id,
+            Appointment.appointment_date >= range_start,
+            Appointment.appointment_date <= range_end,
+            Appointment.status.notin_(["cancelled", "rescheduled"]),
+        )
+    )
+    if doctor_id:
+        query = query.filter(Appointment.doctor_id == doctor_id)
+
+    new_sets: dict[date, set] = {b[0]: set() for b in buckets}
+    returning_sets: dict[date, set] = {b[0]: set() for b in buckets}
+
+    for patient_id, appt_date, created_at in query.all():
+        bucket = next((b for b in buckets if b[0] <= appt_date <= b[1]), None)
+        if not bucket:
+            continue
+        bucket_start, bucket_end = bucket
+        reg_date = hospital_local_date(created_at, tz_name)
+        if reg_date is not None and bucket_start <= reg_date <= bucket_end:
+            new_sets[bucket_start].add(patient_id)
+        else:
+            returning_sets[bucket_start].add(patient_id)
+
+    return {
+        "granularity": granularity,
+        "scope": "doctor" if doctor_id else "hospital",
+        "buckets": [
+            {
+                "period_start": start.isoformat(),
+                "period_end": end.isoformat(),
+                "label": _trend_bucket_label(granularity, start, end),
+                "new_patients": len(new_sets[start]),
+                "returning_patients": len(returning_sets[start]),
+            }
+            for start, end in buckets
+        ],
+    }

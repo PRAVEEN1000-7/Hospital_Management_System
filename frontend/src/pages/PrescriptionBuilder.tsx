@@ -185,8 +185,19 @@ const PrescriptionBuilder: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // Check if hospital is eye hospital or multi-specialty
+  // Check if hospital is eye hospital or multi-specialty — this gates access
+  // to the eye-hospital feature pack (optical Rx, institution letterhead,
+  // patient-history auto-fill) as an ADDITIVE option, not a replacement of
+  // the general prescription format.
   const isEyeHospital = user?.hospital_specialty === 'eye_hospital' || user?.hospital_specialty === 'multi_specialty';
+  // multi_specialty hospitals treat both eye and non-eye patients, so — unlike
+  // a pure eye_hospital, which only ever needs the Eye (RE/LE) medicines
+  // table — they need to choose the format per prescription rather than
+  // being locked into one. See the format toggle below and isOpthal's use as
+  // the table's render condition (previously incorrectly hard-coded to
+  // isEyeHospital, which forced every multi_specialty prescription into the
+  // eye-drop table even for non-eye patients).
+  const canChooseRxFormat = user?.hospital_specialty === 'multi_specialty';
   // POST /optical/prescriptions is guarded by edit_roles('optical')
   // (admin/optical_staff only) — without this the optical card renders for any
   // eye-hospital user and the create silently 403s after the form is filled in.
@@ -1221,6 +1232,33 @@ const PrescriptionBuilder: React.FC = () => {
                   <span className="material-symbols-outlined text-primary text-sm">medical_information</span>
                   Diagnosis & Medicines
                 </h3>
+                {/* Multi-specialty hospitals treat both eye and non-eye
+                    patients — let the doctor pick the medicines-table format
+                    per prescription instead of forcing the eye-drop layout
+                    on every patient. */}
+                {canChooseRxFormat && (
+                  <div className="flex items-center bg-slate-100 rounded-lg p-0.5 text-xs font-semibold">
+                    <button
+                      type="button"
+                      onClick={() => setIsOpthal(false)}
+                      className={`px-3 py-1.5 rounded-md transition-colors ${
+                        !isOpthal ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                      }`}
+                    >
+                      General
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsOpthal(true)}
+                      className={`px-3 py-1.5 rounded-md transition-colors flex items-center gap-1 ${
+                        isOpthal ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                      }`}
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>visibility</span>
+                      Eye (Opthal)
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="px-6 pb-5 space-y-4">
@@ -1247,9 +1285,12 @@ const PrescriptionBuilder: React.FC = () => {
                   </h4>
 
                   <div className="border border-slate-200 rounded-lg overflow-visible">
-                    {isEyeHospital ? (
+                    {isOpthal ? (
                       <>
-                        {/* Eye Hospital Unified Table — LE/RE eye drops + normal medicines with optional Freq/Duration */}
+                        {/* Eye Hospital Unified Table — LE/RE eye drops + normal medicines with optional Freq/Duration.
+                            Driven by isOpthal (per-prescription), not isEyeHospital (hospital-level) — a
+                            multi_specialty hospital treats non-eye patients too and must not be locked
+                            into this format for every prescription; see the format toggle above. */}
                         <div className="grid grid-cols-[28px_1fr_40px_40px_100px_88px_108px_28px] gap-1 bg-slate-100 border-b border-slate-200 px-3 py-2">
                           <div className="text-[10px] font-semibold text-slate-500 uppercase">#</div>
                           <div className="text-[10px] font-semibold text-slate-500 uppercase">Medicine</div>

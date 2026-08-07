@@ -323,7 +323,7 @@ def update_user(
 
     # shift_id changing here (StaffModals edit form) needs the same history
     # bookkeeping as the bulk Shift Management assign path — see
-    # shift_management._record_shift_change / 21_add_shift_assignment_history.sql.
+    # shift_management._record_shift_change (schema: 01_full_schema.sql §8.5).
     # Mirrors the `value is not None` guard below: this updater never clears
     # a field to NULL, only ever sets a new value, so only that case needs
     # a history entry here.

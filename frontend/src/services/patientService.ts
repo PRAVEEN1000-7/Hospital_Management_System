@@ -1,7 +1,31 @@
 import api, { API_BASE_URL } from './api';
 import type { Patient, PatientCreateData, PaginatedResponse, PatientLastVisit } from '../types/patient';
 
+export interface PatientTrendBucket {
+  period_start: string;
+  period_end: string;
+  label: string;
+  new_patients: number;
+  returning_patients: number;
+}
+
+export interface PatientTrendResponse {
+  granularity: 'day' | 'week' | 'month';
+  scope: 'hospital' | 'doctor';
+  buckets: PatientTrendBucket[];
+}
+
 export const patientService = {
+  /** Dashboard chart — New vs Returning patient trend (Doctor + Admin dashboards only).
+   * Doctor callers automatically get their own patients only (resolved server-side from
+   * the JWT's role — no doctor_id to pass); admin/super_admin get the whole hospital. */
+  async getNewVsReturningTrend(granularity: 'day' | 'week' | 'month' = 'day'): Promise<PatientTrendResponse> {
+    const response = await api.get<PatientTrendResponse>('/patients/stats/new-vs-returning', {
+      params: { granularity },
+    });
+    return response.data;
+  },
+
   async getPatients(
     page = 1, limit = 10, search = '',
     filters?: { gender?: string; blood_group?: string; city?: string; status?: string },

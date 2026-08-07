@@ -73,7 +73,7 @@ class Shift(Base):
 
 
 class ShiftAssignment(Base):
-    """Effective-dated shift history — see 21_add_shift_assignment_history.sql.
+    """Effective-dated shift history — see 01_full_schema.sql §8.5.
     users.shift_id is only ever the CURRENT shift; this table is what lets a
     report resolve "which shift was this employee on during month X" without
     a later reassignment silently rewriting that answer. One open-ended row

@@ -175,3 +175,31 @@ export function allowedRoles(key: string, minLevel: Exclude<AccessLevel, 'none'>
   roles.push('super_admin');
   return roles;
 }
+
+/**
+ * Where to send a user who just logged in (App.tsx's DefaultRedirect for
+ * "/") or who was just denied a route (ProtectedRoute's fallback). Both
+ * previously hardcoded "/dashboard" unconditionally — but pharmacist,
+ * inventory_manager, cashier, optical_staff, lab_technician and
+ * visiting_doctor are ALL absent from the 'general.dashboard' row above, so
+ * that target immediately re-denied them and bounced them right back to
+ * itself: an infinite redirect loop landing every one of those logins on a
+ * blank page straight after signing in. Route each to a module home they
+ * actually have access to instead; roles WITH 'general.dashboard' access
+ * are unaffected and keep landing on /dashboard exactly as before.
+ */
+export function getDefaultLandingPath(roles: string[] | undefined | null): string {
+  const normalized = normalize(roles || []);
+  if (normalized.includes('super_admin')) return '/superadmin';
+  if (hasAccess('general.dashboard', roles)) return '/dashboard';
+  if (normalized.includes('lab_technician')) return '/lab';
+  if (normalized.includes('pharmacist')) return '/pharmacy/medicines';
+  if (normalized.includes('inventory_manager')) return '/inventory';
+  if (normalized.includes('optical_staff')) return '/optical';
+  if (normalized.includes('cashier')) return '/billing/invoices';
+  // Universal safe fallback for any role with no specific module home mapped
+  // above (e.g. visiting_doctor, whose own nav/routing is a separate, larger
+  // gap than this redirect fix) — /profile carries no ProtectedRoute/role
+  // check at all, so landing here can never loop no matter the role.
+  return '/profile';
+}

@@ -261,11 +261,43 @@ def enqueue_lab_queue_entry(db: Session, lab_order: LabOrder) -> None:
     db.flush()
 
 
+def _resync_unpaid_item_prices(db: Session, order: LabOrder) -> bool:
+    """Keep an order's item price snapshots in step with the live catalog
+    price, for as long as nothing has actually been paid on that order yet.
+
+    LabOrderItem.price is normally a frozen snapshot taken at order-creation
+    time (same pattern as PrescriptionItem.medicine_name — deliberate, so a
+    *paid* bill never silently changes after the fact). But most lab tests
+    in this catalog start out priced at ₹0 and get a real price filled in by
+    admin/lab staff afterward — for any order created before that happened,
+    the snapshot stays frozen at ₹0 forever no matter what the catalog price
+    is corrected to, so the bill total stays ₹0 and there's nothing for the
+    Collect Payment flow to actually collect. Self-heals on every read/
+    billing touch while unpaid; once paid, stops touching it — the paid
+    record is history, same as GRN/dispensing corrections elsewhere.
+    """
+    sale = db.query(LabSale).filter(LabSale.lab_order_id == order.id).first()
+    if sale and sale.payment_status == "paid":
+        return False
+
+    changed = False
+    for item in (order.items or []):
+        test = item.test
+        if test is not None and test.price is not None and item.price != test.price:
+            item.price = test.price
+            changed = True
+    if changed:
+        db.commit()
+        db.refresh(order)
+    return changed
+
+
 def _enrich_order(db: Session, order: LabOrder) -> dict:
     """Serialize an order with items + billing summary for the response."""
     from ..models.user import User
     from ..schemas.lab import LabOrderResponse, LabOrderItemResponse
 
+    _resync_unpaid_item_prices(db, order)
     resp = LabOrderResponse.model_validate(order)
     resp.patient_name = order.patient.full_name if getattr(order, "patient", None) else None
     resp.doctor_name = (
@@ -310,6 +342,7 @@ def list_lab_queue(db: Session, hospital_id: uuid.UUID) -> list[dict]:
     )
     result = []
     for o in orders:
+        _resync_unpaid_item_prices(db, o)
         total = sum((i.price or Decimal("0")) for i in (o.items or []))
         sale = db.query(LabSale).filter(LabSale.lab_order_id == o.id).first()
         result.append({
@@ -360,14 +393,23 @@ def _generate_sale_number(db: Session, hospital_id: uuid.UUID) -> str:
 
 def get_or_create_lab_sale(db: Session, order: LabOrder) -> LabSale:
     """Get-or-create the billing header for an order; total is computed from
-    the order's item snapshots."""
+    the order's item snapshots (re-synced from the live catalog price first
+    — see _resync_unpaid_item_prices — so an already-existing-but-unpaid
+    sale's total doesn't stay stuck at whatever it was when first created)."""
     from sqlalchemy.exc import IntegrityError
+
+    _resync_unpaid_item_prices(db, order)
+    total = sum((i.price or Decimal("0")) for i in (order.items or []))
 
     existing = db.query(LabSale).filter(LabSale.lab_order_id == order.id).first()
     if existing:
+        if existing.payment_status != "paid" and existing.total_amount != total:
+            existing.subtotal = total
+            existing.total_amount = total
+            existing.balance_amount = max(Decimal("0"), total - (existing.paid_amount or Decimal("0")))
+            db.commit()
+            db.refresh(existing)
         return existing
-
-    total = sum((i.price or Decimal("0")) for i in (order.items or []))
 
     last_error: Exception | None = None
     for _ in range(5):

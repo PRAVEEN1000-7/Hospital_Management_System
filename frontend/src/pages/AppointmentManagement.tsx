@@ -30,7 +30,7 @@ const formatMoney = (n: number) =>
 
 const AppointmentManagement: React.FC = () => {
   const toast = useToast();
-  const { user } = useAuth();
+  const { user, hasRole } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const today = formatLocalDateISO();
@@ -91,7 +91,12 @@ const AppointmentManagement: React.FC = () => {
   // clicks Collect Fee, hits a 403" — and it re-appears automatically if a
   // hospital admin grants billing edit to receptionist/pharmacist via Roles
   // & Permissions.
-  const canCollectFee = canEdit('billing', user?.roles);
+  // Receptionist is allowed here too even without general "billing" access —
+  // the backend narrowly permits receptionist on the consultation-invoice/
+  // payment endpoints only, not general billing (see invoices.py's
+  // _require_billing_staff_or_receptionist and payments.py's
+  // _require_billing_staff_or_consultation_payment).
+  const canCollectFee = canEdit('billing', user?.roles) || hasRole('receptionist');
   const role = user?.roles?.[0] || '';
   const canProgressConsultation = role !== 'receptionist';
 

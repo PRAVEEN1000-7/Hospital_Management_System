@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import pharmacyService from '../../services/pharmacyService';
-import type { Sale } from '../../types/pharmacy';
+import type { Sale, SaleItem } from '../../types/pharmacy';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { canEdit } from '../../config/modulePermissions';
 import { format } from 'date-fns';
 import DateRangeFilter from '../../components/common/DateRangeFilter';
 
@@ -60,11 +61,108 @@ const SalesList: React.FC = () => {
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const canCreateSale = Boolean(user?.roles?.some((r) => ['super_admin', 'admin', 'pharmacist', 'cashier'].includes(r)));
   const canReceivePayment = Boolean(user?.roles?.some((r) => ['super_admin', 'admin', 'cashier', 'pharmacist'].includes(r)));
+  // Correcting a dispensed quantity or amount tendered AFTER a sale is
+  // finalized is scoped to the same "pharmacy" edit permission the whole
+  // dispensing flow already uses (pharmacist + admin) — no new RBAC key.
+  const canCorrectSale = canEdit('pharmacy', user?.roles);
 
   const [payingSale, setPayingSale] = useState<Sale | null>(null);
   const [payAmount, setPayAmount] = useState(0);
   const [payMethod, setPayMethod] = useState('cash');
   const [paySaving, setPaySaving] = useState(false);
+
+  // Post-finalization correction modal — reopens an already-dispensed sale
+  // so a pharmacist can fix a miskeyed dispensed quantity (reconciling stock
+  // for the delta) or the amount tendered (recomputing payment status).
+  const [correctingSale, setCorrectingSale] = useState<Sale | null>(null);
+  const [correctingLoadingId, setCorrectingLoadingId] = useState<string | null>(null);
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editQty, setEditQty] = useState<number>(0);
+  const [itemSaving, setItemSaving] = useState(false);
+  const [tenderedInput, setTenderedInput] = useState<number>(0);
+  const [tenderedSaving, setTenderedSaving] = useState(false);
+
+  const openCorrectSale = async (sale: Sale) => {
+    setCorrectingLoadingId(sale.id);
+    try {
+      const full = await pharmacyService.getSale(sale.id);
+      setCorrectingSale(full);
+      setTenderedInput(Number(full.amount_tendered) || 0);
+      setEditingItemId(null);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to load sale details');
+    } finally {
+      setCorrectingLoadingId(null);
+    }
+  };
+
+  const closeCorrectSale = () => {
+    setCorrectingSale(null);
+    setEditingItemId(null);
+  };
+
+  const startEditItem = (item: SaleItem) => {
+    setEditingItemId(item.id);
+    setEditQty(item.quantity);
+  };
+
+  const saveItemQty = async (item: SaleItem) => {
+    if (!correctingSale) return;
+    if (!editQty || editQty <= 0) {
+      toast.error('Quantity must be greater than zero');
+      return;
+    }
+    if (editQty === item.quantity) {
+      setEditingItemId(null);
+      return;
+    }
+    // Reducing a dispensed quantity credits stock back and shrinks the bill
+    // total — consequential enough to confirm, mirroring LabTestCatalog's
+    // deactivate-confirm pattern. Increasing it only draws down more stock
+    // (rejected cleanly by the backend if insufficient), so no confirm there.
+    if (editQty < item.quantity) {
+      const diff = item.quantity - editQty;
+      if (!window.confirm(
+        `Reduce dispensed quantity of ${item.medicine_name} from ${item.quantity} to ${editQty}? ` +
+        `${diff} unit(s) will be credited back to batch ${item.batch_number || ''}'s stock.`
+      )) {
+        return;
+      }
+    }
+    setItemSaving(true);
+    try {
+      await pharmacyService.updateSaleItemQuantity(correctingSale.id, item.id, editQty);
+      toast.success('Dispensed quantity corrected');
+      const refreshed = await pharmacyService.getSale(correctingSale.id);
+      setCorrectingSale(refreshed);
+      setTenderedInput(Number(refreshed.amount_tendered) || 0);
+      setEditingItemId(null);
+      fetchSales();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to correct quantity');
+    } finally {
+      setItemSaving(false);
+    }
+  };
+
+  const saveTendered = async () => {
+    if (!correctingSale) return;
+    if (tenderedInput < 0) {
+      toast.error('Amount tendered cannot be negative');
+      return;
+    }
+    setTenderedSaving(true);
+    try {
+      const updated = await pharmacyService.updateSaleAmountTendered(correctingSale.id, tenderedInput);
+      setCorrectingSale(updated);
+      toast.success('Amount tendered corrected');
+      fetchSales();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to correct amount tendered');
+    } finally {
+      setTenderedSaving(false);
+    }
+  };
 
   const openReceivePayment = (sale: Sale) => {
     setPayingSale(sale);
@@ -259,17 +357,30 @@ const SalesList: React.FC = () => {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    {canReceivePayment && s.payment_status !== 'paid' ? (
-                      <button
-                        onClick={() => openReceivePayment(s)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100"
-                      >
-                        <span className="material-symbols-outlined text-sm">payments</span>
-                        Receive Payment
-                      </button>
-                    ) : (
-                      <span className="text-xs text-slate-400">—</span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {canReceivePayment && s.payment_status !== 'paid' && (
+                        <button
+                          onClick={() => openReceivePayment(s)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100"
+                        >
+                          <span className="material-symbols-outlined text-sm">payments</span>
+                          Receive Payment
+                        </button>
+                      )}
+                      {canCorrectSale && s.status === 'dispensed' && (
+                        <button
+                          onClick={() => openCorrectSale(s)}
+                          disabled={correctingLoadingId === s.id}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-primary bg-primary/5 border border-primary/20 rounded-lg hover:bg-primary/10 disabled:opacity-50"
+                        >
+                          <span className="material-symbols-outlined text-sm">edit_note</span>
+                          {correctingLoadingId === s.id ? 'Loading…' : 'Correct'}
+                        </button>
+                      )}
+                      {!(canReceivePayment && s.payment_status !== 'paid') && !(canCorrectSale && s.status === 'dispensed') && (
+                        <span className="text-xs text-slate-400">—</span>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -327,6 +438,131 @@ const SalesList: React.FC = () => {
               <button onClick={handleReceivePayment} disabled={paySaving || payAmount <= 0}
                 className="px-4 py-2 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 shadow-sm disabled:opacity-50">
                 {paySaving ? 'Recording…' : 'Record Payment'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Correct Sale Modal — fix a miskeyed dispensed quantity or amount
+          tendered after the sale has already been finalized. */}
+      {correctingSale && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={closeCorrectSale}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between mb-1">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Correct Sale</h3>
+                <p className="text-sm text-slate-500">{correctingSale.invoice_number} — {correctingSale.patient_name || 'Walk-in'}</p>
+              </div>
+              <button onClick={closeCorrectSale} className="text-slate-400 hover:text-slate-600">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            <div className="mt-4 border border-slate-200 rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-semibold text-slate-600">Medicine</th>
+                    <th className="px-3 py-2 text-left font-semibold text-slate-600">Batch</th>
+                    <th className="px-3 py-2 text-right font-semibold text-slate-600">Qty</th>
+                    <th className="px-3 py-2 text-right font-semibold text-slate-600">Unit Price</th>
+                    <th className="px-3 py-2 text-right font-semibold text-slate-600">Total</th>
+                    <th className="px-3 py-2"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {(correctingSale.items || []).map((item) => (
+                    <tr key={item.id}>
+                      <td className="px-3 py-2 text-slate-800">{item.medicine_name}</td>
+                      <td className="px-3 py-2 text-slate-500">{item.batch_number || '—'}</td>
+                      <td className="px-3 py-2 text-right">
+                        {editingItemId === item.id ? (
+                          <input
+                            type="number"
+                            min={1}
+                            value={editQty || ''}
+                            onChange={(e) => setEditQty(parseInt(e.target.value, 10) || 0)}
+                            className="w-20 px-2 py-1 border border-slate-300 rounded text-right text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                            autoFocus
+                          />
+                        ) : (
+                          <span>{item.quantity}</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-right text-slate-600">₹{Number(item.unit_price).toFixed(2)}</td>
+                      <td className="px-3 py-2 text-right font-medium text-slate-900">₹{Number(item.total_price).toFixed(2)}</td>
+                      <td className="px-3 py-2 text-right whitespace-nowrap">
+                        {editingItemId === item.id ? (
+                          <div className="flex justify-end gap-1">
+                            <button
+                              onClick={() => saveItemQty(item)}
+                              disabled={itemSaving}
+                              className="px-2 py-1 text-xs font-semibold text-white bg-primary rounded hover:bg-primary/90 disabled:opacity-50"
+                            >
+                              {itemSaving ? 'Saving…' : 'Save'}
+                            </button>
+                            <button
+                              onClick={() => setEditingItemId(null)}
+                              disabled={itemSaving}
+                              className="px-2 py-1 text-xs font-semibold text-slate-500 hover:bg-slate-100 rounded disabled:opacity-50"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => startEditItem(item)}
+                            className="text-xs font-semibold text-primary hover:underline"
+                          >
+                            Edit
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {(!correctingSale.items || correctingSale.items.length === 0) && (
+                    <tr>
+                      <td colSpan={6} className="px-3 py-6 text-center text-slate-400">No items on this sale</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mt-4 flex items-center justify-between text-sm">
+              <span className="text-slate-500">Total Amount</span>
+              <span className="font-bold text-slate-900">₹{Number(correctingSale.total_amount || 0).toFixed(2)}</span>
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-slate-200">
+              <label className="block text-xs font-bold text-slate-500 mb-1">Amount Tendered</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  value={tenderedInput || ''}
+                  onChange={(e) => setTenderedInput(e.target.value === '' ? 0 : parseFloat(e.target.value))}
+                  className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                />
+                <button
+                  onClick={saveTendered}
+                  disabled={tenderedSaving}
+                  className="px-4 py-2 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {tenderedSaving ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+              <p className="text-xs text-slate-400 mt-1.5">
+                Payment status: <span className="font-semibold capitalize">{PAYMENT_STATUS_LABELS[correctingSale.payment_status] || correctingSale.payment_status}</span>
+                {' · '}Balance: ₹{Number(correctingSale.balance_amount || 0).toFixed(2)}
+              </p>
+            </div>
+
+            <div className="flex justify-end mt-5">
+              <button onClick={closeCorrectSale} className="px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 rounded-lg">
+                Close
               </button>
             </div>
           </div>

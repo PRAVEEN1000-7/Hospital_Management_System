@@ -381,6 +381,7 @@ async def update_lab_queue_status(
         order = svc.advance_lab_queue_status(db, order_id, data.queue_status, hospital_id=current_user.hospital_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    svc._resync_unpaid_item_prices(db, order)
     total = sum((i.price or Decimal("0")) for i in (order.items or []))
     return {
         "id": str(order.id),

@@ -52,6 +52,11 @@ grn_verify_roles = require_permission("inventory", "edit")
 # hospital paid a supplier is a financial control action, distinct from the
 # inventory_manager/pharmacist roles that can merely raise/receive POs.
 po_payment_roles = require_any_role("super_admin", "admin")
+# Stock-adjustment creation only: pharmacist may raise adjustments (they
+# routinely correct pharmacy stock counts) without gaining the broader
+# inventory_manage_roles access that PO/GRN/supplier creation still requires —
+# client-confirmed, see docs/security/ROLE_PERMISSIONS_DECISIONS_2026-07-25.md.
+adjustment_create_roles = require_any_role("super_admin", "admin", "inventory_manager", "pharmacist")
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -801,7 +806,7 @@ async def list_adjustments(
 async def create_adjustment(
     payload: StockAdjustmentCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(inventory_manage_roles),
+    current_user: User = Depends(adjustment_create_roles),
 ):
     """Create a stock adjustment request."""
     adj = svc.create_stock_adjustment(db, payload, current_user.hospital_id, current_user.id)

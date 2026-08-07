@@ -137,11 +137,11 @@ import Payroll from './pages/Payroll';
 import Allowance from './pages/Allowance';
 
 // Shared role/module permission matrix (see docs/security/ROLE_PERMISSIONS_DECISIONS_2026-07-25.md)
-import { allowedRoles } from './config/modulePermissions';
+import { allowedRoles, getDefaultLandingPath } from './config/modulePermissions';
 
 const DefaultRedirect: React.FC = () => {
   const { user } = useAuth();
-  return <Navigate to={user?.roles?.includes('super_admin') ? '/superadmin' : '/dashboard'} replace />;
+  return <Navigate to={getDefaultLandingPath(user?.roles)} replace />;
 };
 
 // Renders the actual route tree. Calling useAuth() here (not just for `user`)

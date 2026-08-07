@@ -1548,8 +1548,11 @@ const WalkInQueue: React.FC = () => {
                             </span>
                           )}
                           {/* Consultation Fee (BRD 5.1) — collected/uncollected state right
-                              in the queue row, no navigation to another module needed. */}
-                          {canEdit('billing', roles) && item.appointment_id && (
+                              in the queue row, no navigation to another module needed.
+                              Receptionist is allowed here too even without general "billing"
+                              access — the backend narrowly permits receptionist on the
+                              consultation-invoice/payment endpoints only, not general billing. */}
+                          {(canEdit('billing', roles) || isReception) && item.appointment_id && (
                             item.consultation_fee_collected ? (
                               <span className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold rounded-lg bg-emerald-100 text-emerald-700" title="Consultation fee collected">
                                 <span className="material-symbols-outlined text-sm">paid</span>

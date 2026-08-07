@@ -1,6 +1,7 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { getDefaultLandingPath } from '../../config/modulePermissions';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -45,7 +46,12 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles,
     const normalizedAllowed = allowedRoles.map(r => r.trim().toLowerCase());
     const hasAllowedRole = user.roles?.some(r => normalizedAllowed.includes(r.trim().toLowerCase()));
     if (!hasAllowedRole) {
-      return <Navigate to="/dashboard" replace />;
+      // Route-appropriate fallback, not a hardcoded "/dashboard" — a role
+      // without 'general.dashboard' access (pharmacist, lab_technician,
+      // etc.) would otherwise get bounced right back here in an infinite
+      // loop, since /dashboard itself denies them too. See
+      // getDefaultLandingPath's own comment for the full story.
+      return <Navigate to={getDefaultLandingPath(user.roles)} replace />;
     }
   }
 

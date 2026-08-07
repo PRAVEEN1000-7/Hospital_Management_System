@@ -64,6 +64,40 @@ def _require_billing_admin(current_user: User) -> None:
                             detail="Admin or Super Admin role required")
 
 
+# Narrow, single-endpoint carve-out: a receptionist can collect the
+# consultation fee for an appointment they're front-desking, without gaining
+# the general "billing" module permission (invoice creation/listing,
+# refunds, settlements, tax config stay admin/cashier-only per the client's
+# matrix). Safe to allow unconditionally here because this endpoint only
+# ever creates/returns a consultation invoice for one appointment — it can't
+# be used to touch any other invoice. Use ONLY on
+# get_or_create_consultation_invoice; every other endpoint in this router
+# must keep using _require_billing_staff/_require_billing_view as-is.
+def _require_billing_staff_or_receptionist(db: Session, current_user: User) -> None:
+    if _has_any_role(current_user, {"receptionist"}):
+        return
+    _require_billing_staff(db, current_user)
+
+
+# Narrow carve-out for lab staff "Collect Fee": LabOrderDetail.tsx bills a
+# lab order through this same generic invoice path DispensingBilling.tsx
+# uses (create → issue → record payment), but POST /invoices and PATCH
+# /invoices/{id}/issue are otherwise gated to billing staff (admin/cashier)
+# only — a lab_technician has no "billing" module permission at all, so
+# every call in that flow 403'd and the fee could never actually be
+# collected even though the UI showed the button. Scoped strictly to
+# invoice_type == "lab" so a lab_technician still can't touch/create any
+# other invoice type; cashier/admin/anyone who already passes
+# _require_billing_staff is unaffected.
+def _require_billing_staff_or_lab_invoice(db: Session, current_user: User, invoice_type: Optional[str]) -> None:
+    if check_permission(db, current_user, "billing", "edit"):
+        return
+    if _has_any_role(current_user, {"lab_technician"}) and invoice_type == "lab":
+        return
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Billing staff access required")
+
+
 @router.get("/config/item-type-mapping", tags=["Billing — Invoices"])
 async def get_invoice_item_mapping(
     current_user: User = Depends(get_current_active_user),
@@ -124,7 +158,7 @@ async def create_new_invoice(
     current_user: User = Depends(get_current_active_user),
 ):
     """Create a new draft invoice with optional line items."""
-    _require_billing_staff(db, current_user)
+    _require_billing_staff_or_lab_invoice(db, current_user, data.invoice_type)
     try:
         invoice = create_invoice(db, data, current_user.id, current_user.hospital_id)
         return InvoiceResponse.model_validate(invoice)
@@ -143,7 +177,7 @@ async def get_or_create_consultation_invoice(
     current_user: User = Depends(get_current_active_user),
 ):
     """Create (or return existing) issued consultation invoice for an appointment."""
-    _require_billing_staff(db, current_user)
+    _require_billing_staff_or_receptionist(db, current_user)
     try:
         appointment_uuid = uuid.UUID(appointment_id)
     except ValueError:
@@ -510,10 +544,13 @@ async def issue_invoice_endpoint(
     current_user: User = Depends(get_current_active_user),
 ):
     """Issue a draft invoice (makes it payable)."""
-    _require_billing_staff(db, current_user)
     invoice = get_invoice_by_id(db, invoice_id)
     if not invoice or str(invoice.hospital_id) != str(current_user.hospital_id):
         raise HTTPException(status_code=404, detail="Invoice not found")
+    # Checked against the invoice's own type (not the request body — this
+    # endpoint takes none) so a lab_technician can only issue the lab bill
+    # they just created, same carve-out as create_new_invoice above.
+    _require_billing_staff_or_lab_invoice(db, current_user, invoice.invoice_type)
     try:
         invoice = issue_invoice(db, invoice)
         return InvoiceResponse.model_validate(invoice)

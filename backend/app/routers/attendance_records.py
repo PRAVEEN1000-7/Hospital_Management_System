@@ -216,7 +216,7 @@ async def get_report_pdf(
     )
     header_html, hosp_name = _hospital_header_html(db, current_user.hospital_id)
     month_label = f"{MONTH_NAMES[month]} {year}"
-    employees = sorted(report["employees"], key=lambda e: e["first_name"])
+    employees = sorted(report["employees"], key=lambda e: e["first_name"].lower())
 
     def fmt_shift_days(shift_days: dict) -> str:
         if not shift_days:
@@ -328,7 +328,7 @@ async def get_marking_pdf(
         shift_id=uuid.UUID(shift_id) if shift_id else None,
     )
     header_html, hosp_name = _hospital_header_html(db, current_user.hospital_id)
-    employees = sorted(report["employees"], key=lambda e: e["first_name"])
+    employees = sorted(report["employees"], key=lambda e: e["first_name"].lower())
     total_days = report["total_days"]
 
     start_day = max(1, min(from_day, total_days)) if from_day else 1
@@ -342,13 +342,22 @@ async def get_marking_pdf(
 
     STATUS_LABEL = {"present": "P", "absent": "A", "half_day": "H", "holiday": "WO",
                      "festival": "F", "na": "NA", "unmarked": ""}
+    # Plain colored text (no pill/background) — matches the legend's colors
+    # without needing a box sized to fit the text.
     STATUS_STYLE = {
-        "present":   "background:#d1fae5;color:#047857;",
-        "absent":    "background:#fee2e2;color:#b91c1c;",
-        "half_day":  "background:#fef3c7;color:#b45309;",
-        "holiday":   "background:#ffe4e6;color:#be123c;",
-        "festival":  "background:#ccfbf1;color:#0f766e;",
-        "na":        "background:#f1f5f9;color:#94a3b8;",
+        "present":   "color:#047857;",
+        "absent":    "color:#b91c1c;",
+        "half_day":  "color:#b45309;",
+        "holiday":   "color:#be123c;",
+        "festival":  "color:#0f766e;",
+        "na":        "color:#94a3b8;",
+    }
+    # Same emp_status → dot color mapping as the on-screen attendance grid
+    # (AttendanceReport.tsx EMP_STATUS_DOT), so the PDF's employee dot matches
+    # what the user sees on the live page.
+    EMP_DOT_COLOR = {
+        "active": "#10b981", "notice_period": "#f59e0b",
+        "relieved": "#94a3b8", "inactive": "#94a3b8",
     }
     weekday_short = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
@@ -357,31 +366,49 @@ async def get_marking_pdf(
     # stretches to fill the full landscape width instead of sitting narrow
     # in the middle of the page with the days crammed into a small
     # fixed-pixel block.
+    #
+    # Widths are computed in whole pixels (against the fixed 1123px-wide
+    # viewport the frontend renders this HTML into via html2canvas — see
+    # frontend/src/utils/pdf.ts A4_WIDTH_PX) rather than percentages, and are
+    # applied to every header AND body cell identically. html2canvas's table
+    # layout is unreliable with percentage widths that only appear on the
+    # header row: body cells without an explicit width get auto-sized from
+    # their content, so the header and body columns drift out of alignment.
+    # Whole-pixel widths on every cell keep both rows pixel-identical.
     visible_days = end_day - start_day + 1
-    emp_col_pct = 13
-    day_col_pct = round((100 - emp_col_pct) / visible_days, 3)
+    page_content_px = 1123 - 24 * 2  # A4_WIDTH_PX minus body padding
+    emp_col_px = 150
+    days_area_px = page_content_px - emp_col_px
+    day_col_px = days_area_px // visible_days
+    # Give any leftover pixels (from integer division) to the last day
+    # column so the table fills the full width without a right-edge gap.
+    last_day_col_px = day_col_px + (days_area_px - day_col_px * visible_days)
+
+    def _day_col_width(index: int) -> int:
+        return last_day_col_px if index == visible_days - 1 else day_col_px
 
     day_headers = "".join(
-        f'<th class="daycol" style="width:{day_col_pct}%">{d}<br><span class="wd">{weekday_short[date_cls(year, month, d).weekday()]}</span></th>'
-        for d in range(start_day, end_day + 1)
+        f'<div class="daycol" style="width:{_day_col_width(i)}px">{d}<br><span class="wd">{weekday_short[date_cls(year, month, d).weekday()]}</span></div>'
+        for i, d in enumerate(range(start_day, end_day + 1))
     )
 
     def day_cells(days: list) -> str:
         cells = []
-        for d in days:
+        for i, d in enumerate(days):
+            width = _day_col_width(i)
             if d == "unmarked":
-                cells.append('<td class="daycol"></td>')
+                cells.append(f'<div class="daycol" style="width:{width}px"></div>')
                 continue
             style = STATUS_STYLE.get(d, "")
             label = STATUS_LABEL.get(d, "")
-            cells.append(f'<td class="daycol"><span class="pill" style="{style}">{label}</span></td>')
+            cells.append(f'<div class="daycol" style="width:{width}px"><span class="status" style="{style}">{label}</span></div>')
         return "".join(cells)
 
     rows = "".join(
-        f"""<tr>
-            <td class="empcol" style="width:{emp_col_pct}%">{_esc(emp['first_name'])} {_esc(emp['last_name'])}<span class="muted">{_esc(emp['reference_number']) if emp['reference_number'] else '—'}</span></td>
+        f"""<div class="row body">
+            <div class="empcol" style="width:{emp_col_px}px"><span class="dot" style="background:{EMP_DOT_COLOR.get(emp['emp_status'], '#94a3b8')}"></span>{_esc(emp['first_name'])} {_esc(emp['last_name'])}</div>
             {day_cells(emp['days'][start_day - 1:end_day])}
-        </tr>"""
+        </div>"""
         for emp in employees
     )
 
@@ -397,18 +424,19 @@ body {{ font-family: Arial, sans-serif; margin: 0; padding: 24px; color: #1e293b
 .header p {{ margin: 3px 0 0; color: #64748b; font-size: 12px; }}
 .title-row {{ margin: 16px 0 12px; font-size: 16px; font-weight: bold; }}
 .legend {{ font-size: 10px; color: #64748b; margin-bottom: 14px; }}
-.legend span {{ display: inline-block; padding: 2px 8px; border-radius: 10px; margin-right: 8px; font-weight: 600; }}
-table {{ width: 100%; border-collapse: collapse; table-layout: fixed; }}
-thead th {{ padding: 6px 2px; font-size: 9px; text-align: center; }}
-th.daycol {{ background: #f8fafc; color: #64748b; font-weight: 700; border-bottom: 2px solid #e2e8f0; }}
-th.daycol .wd {{ display: block; font-weight: 400; text-transform: none; color: #94a3b8; }}
-th.empcol {{ background: #f8fafc; color: #64748b; font-weight: 700; border-bottom: 2px solid #e2e8f0; border-right: 2px solid #e2e8f0; text-align: left; padding: 6px 8px; }}
-tbody tr {{ border-bottom: 1px solid #f1f5f9; }}
-tbody tr:nth-child(even) {{ background: #fafbfc; }}
-td.empcol {{ text-align: left; padding: 7px 8px; font-size: 10px; font-weight: 600; border-right: 2px solid #e2e8f0; white-space: nowrap; }}
-td.empcol .muted {{ display: block; color: #94a3b8; font-size: 8px; font-weight: 400; margin-top: 1px; }}
-td.daycol {{ text-align: center; padding: 4px 1px; font-size: 9px; }}
-.pill {{ display: inline-block; min-width: 16px; padding: 1px 3px; border-radius: 4px; font-weight: 700; line-height: 14px; }}
+.legend span {{ display: inline-block; margin-right: 16px; font-weight: 700; }}
+.gridtable {{ width: {page_content_px}px; }}
+.gridtable * {{ box-sizing: border-box; }}
+.row {{ display: flex; align-items: stretch; border-bottom: 1px solid #f1f5f9; }}
+.row.head {{ border-bottom: 2px solid #e2e8f0; }}
+.tbody .row:nth-child(even) {{ background: #fafbfc; }}
+.daycol {{ flex: 0 0 auto; text-align: center; padding: 4px 1px; font-size: 9px; overflow: hidden; }}
+.row.head .daycol {{ padding: 6px 2px; font-size: 9px; background: #f8fafc; color: #94a3b8; font-weight: 700; }}
+.row.head .daycol .wd {{ display: block; font-weight: 400; text-transform: none; color: #cbd5e1; }}
+.empcol {{ flex: 0 0 auto; text-align: left; padding: 7px 8px; font-size: 10px; font-weight: 600; border-right: 2px solid #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+.empcol .dot {{ display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }}
+.row.head .empcol {{ padding: 6px 8px; font-size: 10px; background: #f8fafc; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }}
+.status {{ font-weight: 700; font-size: 9px; }}
 .signature-row {{ display: flex; justify-content: flex-end; margin-top: 30px; page-break-inside: avoid; }}
 .signature-block {{ text-align: center; width: 180px; }}
 .signature-block .sig-space {{ height: 36px; }}
@@ -423,17 +451,20 @@ td.daycol {{ text-align: center; padding: 4px 1px; font-size: 9px; }}
 {header_html}
 <div class="title-row">Attendance Marking — {_esc(month_label)}</div>
 <div class="legend">
-    <span style="background:#d1fae5;color:#047857;">P Present</span>
-    <span style="background:#fee2e2;color:#b91c1c;">A Absent</span>
-    <span style="background:#fef3c7;color:#b45309;">H Half Day</span>
-    <span style="background:#ffe4e6;color:#be123c;">WO Week-Off</span>
-    <span style="background:#ccfbf1;color:#0f766e;">F Festival</span>
-    <span style="background:#f1f5f9;color:#94a3b8;">NA Not Applicable</span>
+    <span style="color:#047857;">P Present</span>
+    <span style="color:#b91c1c;">A Absent</span>
+    <span style="color:#b45309;">H Half Day</span>
+    <span style="color:#be123c;">WO Week-Off</span>
+    <span style="color:#0f766e;">F Festival</span>
+    <span style="color:#64748b;">NA Not Applicable</span>
 </div>
-<table>
-    <thead><tr><th class="empcol">Employee</th>{day_headers}</tr></thead>
-    <tbody>{rows}</tbody>
-</table>
+<div class="gridtable">
+    <div class="row head">
+        <div class="empcol" style="width:{emp_col_px}px">Employee</div>
+        {day_headers}
+    </div>
+    <div class="tbody">{rows}</div>
+</div>
 <div class="signature-row">
     <div class="signature-block">
         <div class="sig-space"></div>

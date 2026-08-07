@@ -94,6 +94,7 @@ const LabOrderDetail: React.FC = () => {
   const [notesDrafts, setNotesDrafts] = useState<Record<string, string>>({});
   const [savingItem, setSavingItem] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     if (!orderId) return;
@@ -265,6 +266,21 @@ const LabOrderDetail: React.FC = () => {
     }
   };
 
+  const handleDelete = async () => {
+    if (!orderId || !order || deleting) return;
+    if (!window.confirm(`Delete lab order ${order.order_number}? This cannot be undone.`)) return;
+    setDeleting(true);
+    try {
+      await labService.deleteOrder(orderId);
+      showToast('success', 'Lab order deleted');
+      if (isStaff) navigate('/lab/queue'); else navigate(-1);
+    } catch (err: any) {
+      showToast('error', err?.response?.data?.detail || 'Failed to delete lab order');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -336,6 +352,16 @@ const LabOrderDetail: React.FC = () => {
               <span className="material-symbols-outlined text-base">download</span>
               {downloading ? 'Preparing…' : 'Download PDF'}
             </button>
+            {/* Hidden once a bill exists (order.sale_id) rather than shown-and-
+                failing — matches the backend guard in DELETE /lab/orders/{id}. */}
+            {isStaff && !order.sale_id && (
+              <button onClick={handleDelete} disabled={deleting}
+                title="Delete this lab order"
+                className="px-3 py-1.5 text-sm font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100 disabled:opacity-50 flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-base">delete</span>
+                {deleting ? 'Deleting…' : 'Delete'}
+              </button>
+            )}
           </div>
         </div>
       </div>

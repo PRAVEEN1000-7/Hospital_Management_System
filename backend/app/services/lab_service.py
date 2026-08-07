@@ -103,6 +103,23 @@ def deactivate_lab_test(db: Session, test_id: str | uuid.UUID, hospital_id: Opti
     return True
 
 
+def is_lab_order_billed(db: Session, order_id: str | uuid.UUID) -> bool:
+    """LabSale.lab_order_id has no ON DELETE clause, so the DB itself would
+    already reject deleting a billed order — checked explicitly by the
+    router first so it can return a clear 409 instead of a raw FK
+    violation."""
+    return db.query(LabSale).filter(LabSale.lab_order_id == order_id).first() is not None
+
+
+def delete_lab_order(db: Session, order: LabOrder) -> None:
+    """Hard-deletes a lab order and its items (LabOrderItem cascades via the
+    ORM relationship). Unlike deactivate_lab_test (a catalog entry, kept for
+    historical order references), an order has nothing else pointing at it
+    once billing hasn't started (see is_lab_order_billed)."""
+    db.delete(order)
+    db.commit()
+
+
 # ══════════════════════════════════════════════════
 # Lab Order
 # ══════════════════════════════════════════════════

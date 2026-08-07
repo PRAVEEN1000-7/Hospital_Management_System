@@ -463,11 +463,11 @@ def save_patient_photo(
 
 # ── New-vs-returning patient trend (Doctor + Admin Dashboard chart) ────────
 
-# "day"/"week" are single-period snapshots (today only / this week only, not
-# a multi-period trend) — periods=1 against _generate_trend_buckets' existing
-# start-from-today math naturally collapses to exactly that one bucket.
+# "day" is a single-period snapshot (today only, not a multi-period trend).
+# "week" is handled separately by _generate_week_daily_buckets — this week
+# only, but broken down day-by-day rather than one aggregated total.
 # "month" stays a genuine multi-period trend (6 months).
-_TREND_PERIODS = {"day": 1, "week": 1, "month": 6}
+_TREND_PERIODS = {"day": 1, "month": 6}
 _CUSTOM_RANGE_MAX_DAYS = 92  # ~3 months — keeps the chart readable and the query bounded
 
 
@@ -493,13 +493,6 @@ def _generate_trend_buckets(granularity: str, periods: int, today: date) -> list
     if granularity == "day":
         start = today - timedelta(days=periods - 1)
         return [(start + timedelta(days=i), start + timedelta(days=i)) for i in range(periods)]
-    if granularity == "week":
-        this_week_start = today - timedelta(days=today.weekday())  # Monday
-        start = this_week_start - timedelta(weeks=periods - 1)
-        return [
-            (start + timedelta(weeks=i), start + timedelta(weeks=i) + timedelta(days=6))
-            for i in range(periods)
-        ]
     # month
     this_month_start = today.replace(day=1)
     start = _shift_months(this_month_start, -(periods - 1))
@@ -507,6 +500,15 @@ def _generate_trend_buckets(granularity: str, periods: int, today: date) -> list
         (_shift_months(start, i), _month_bucket_end(_shift_months(start, i)))
         for i in range(periods)
     ]
+
+
+def _generate_week_daily_buckets(today: date) -> list[tuple[date, date]]:
+    """The 7 individual days of the current week (Monday-Sunday containing
+    `today`), each its own single-day bucket — e.g. for the week of 3-9 Aug,
+    one bar for the 3rd, one for the 4th, ... one for the 9th, rather than a
+    single total for the whole week."""
+    week_start = today - timedelta(days=today.weekday())
+    return [(week_start + timedelta(days=i), week_start + timedelta(days=i)) for i in range(7)]
 
 
 def _generate_custom_range_buckets(date_from: date, date_to: date) -> list[tuple[date, date]]:
@@ -521,11 +523,11 @@ def _generate_custom_range_buckets(date_from: date, date_to: date) -> list[tuple
 
 
 def _trend_bucket_label(granularity: str, start: date, end: date) -> str:
-    if granularity in ("day", "custom"):
-        return start.strftime("%d %b")
-    if granularity == "week":
-        return f"{start.strftime('%d %b')} - {end.strftime('%d %b')}"
-    return start.strftime("%b %Y")
+    if granularity == "month":
+        return start.strftime("%b %Y")
+    # day, week (now day-by-day within the week), and custom are all
+    # single-day buckets.
+    return start.strftime("%d %b")
 
 
 def get_new_vs_returning_trend(
@@ -551,8 +553,10 @@ def get_new_vs_returning_trend(
     doctor_id scopes both series to one doctor's own patients (the Doctor
     Dashboard's view); omit it for the hospital-wide Admin Dashboard view.
 
-    granularity="day"/"week" are single-period snapshots (today only / this
-    week only). "month" is a genuine 6-month trend. granularity="custom"
+    granularity="day" is a single-period snapshot (today only). "week" is
+    also this-week-only, but broken down into 7 daily buckets rather than
+    one aggregated total (e.g. week of 3-9 Aug -> one bar per day, 3rd
+    through 9th). "month" is a genuine 6-month trend. granularity="custom"
     requires date_from/date_to and buckets by day across that explicit range
     (capped at _CUSTOM_RANGE_MAX_DAYS) — backs the dashboard's date-range
     picker.
@@ -563,6 +567,8 @@ def get_new_vs_returning_trend(
         if not date_from or not date_to:
             raise ValueError("date_from and date_to are required for granularity=custom")
         buckets = _generate_custom_range_buckets(date_from, date_to)
+    elif granularity == "week":
+        buckets = _generate_week_daily_buckets(today)
     else:
         granularity = granularity if granularity in _TREND_PERIODS else "day"
         periods = _TREND_PERIODS[granularity]

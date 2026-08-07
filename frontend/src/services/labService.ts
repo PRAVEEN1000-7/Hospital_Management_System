@@ -55,6 +55,11 @@ export const labService = {
     return res.data;
   },
 
+  /** Lab-staff/admin only — 409s if the order has already been billed. */
+  async deleteOrder(id: string): Promise<void> {
+    await api.delete(`/lab/orders/${id}`);
+  },
+
   async updateQueueStatus(orderId: string, queueStatus: LabQueueStatus): Promise<LabQueueEntry> {
     const res = await api.put<LabQueueEntry>(`/lab/orders/${orderId}/queue-status`, { queue_status: queueStatus });
     return res.data;

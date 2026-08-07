@@ -30,8 +30,11 @@ const PatientDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const toast = useToast();
-  const { user, isModuleEnabled } = useAuth();
+  const { user, isModuleEnabled, hasRole } = useAuth();
   const canEdit = canEditModule('general.patients', user?.roles);
+  // Lab is deliberately outside the shared module-permission matrix (see
+  // modulePermissions.ts) — mirrors LabOrderDetail.tsx's own STAFF_ROLES.
+  const canDeleteLabOrder = hasRole('super_admin', 'admin', 'lab_technician');
   const [labResults, setLabResults] = useState<PatientLabResult[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [patient, setPatient] = useState<Patient | null>(null);
@@ -62,6 +65,17 @@ const PatientDetail: React.FC = () => {
     if (!id || !isModuleEnabled('lab')) return;
     labService.getPatientResults(id).then(setLabResults).catch(() => {});
   }, [id, isModuleEnabled]);
+
+  const handleDeleteLabOrder = async (orderId: string, orderNumber: string) => {
+    if (!window.confirm(`Delete lab order ${orderNumber}? This cannot be undone.`)) return;
+    try {
+      await labService.deleteOrder(orderId);
+      setLabResults(prev => prev.filter(o => o.id !== orderId));
+      toast.success('Lab order deleted');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to delete lab order');
+    }
+  };
 
   // Reset the broken-image flag whenever the photo actually changes (e.g. after a new upload).
   useEffect(() => {
@@ -338,6 +352,15 @@ const PatientDetail: React.FC = () => {
                       >
                         View Full Report
                       </button>
+                      {canDeleteLabOrder && (
+                        <button
+                          onClick={() => handleDeleteLabOrder(order.id, order.order_number)}
+                          title="Delete this lab order"
+                          className="text-xs font-semibold text-red-500 hover:underline"
+                        >
+                          Delete
+                        </button>
+                      )}
                     </div>
                   </div>
                   <div className="overflow-x-auto">

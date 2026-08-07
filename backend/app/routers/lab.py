@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models.user import User
 from ..dependencies import get_current_active_user
+from ..core.audit_logger import AuditLogger, AuditAction
 from ..schemas.lab import (
     LabTestCreate, LabTestUpdate, LabTestResponse, LabTestListResponse,
     LabOrderCreate, LabOrderResponse, LabResultEntry,
@@ -143,6 +144,35 @@ async def get_lab_order(
     if not order:
         raise HTTPException(status_code=404, detail="Lab order not found")
     return svc._enrich_order(db, order)
+
+
+@router.delete("/orders/{order_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_lab_order(
+    order_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    # Tighter than order creation (LAB_ORDER_ROLES includes doctor) — deleting
+    # a report is a lab-staff/admin action, same tier as the test-catalog delete.
+    _require(current_user, LAB_STAFF_ROLES)
+    order = svc.get_lab_order_by_id(db, order_id, hospital_id=current_user.hospital_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Lab order not found")
+    if svc.is_lab_order_billed(db, order.id):
+        raise HTTPException(status_code=409, detail="This order has already been billed and cannot be deleted")
+
+    order_number = order.order_number
+    patient_id = order.patient_id
+    svc.delete_lab_order(db, order)
+
+    AuditLogger.log(
+        action=AuditAction.LAB_ORDER_DELETE,
+        user=current_user,
+        tenant=None,
+        resource_type="lab_order",
+        resource_id=order_id,
+        old_values={"order_number": order_number, "patient_id": str(patient_id)},
+    )
 
 
 @router.get("/orders/{order_id}/pdf")

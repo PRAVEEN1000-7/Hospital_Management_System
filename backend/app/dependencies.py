@@ -61,14 +61,15 @@ async def get_current_user(
         except (ValueError, TypeError):
             revoked = None
         except ProgrammingError:
-            # `revoked_tokens` doesn't exist yet — database_hole/security_updates.sql
-            # hasn't been applied to this database. Fail open rather than 500
+            # `revoked_tokens` doesn't exist yet —
+            # database_hole/security_token_revocation_combined.sql hasn't
+            # been applied to this database. Fail open rather than 500
             # every authenticated request in the app; this is loud on purpose
             # so it's impossible to miss in the logs.
             db.rollback()
             logger.critical(
                 "revoked_tokens table is missing — token revocation is NOT enforced. "
-                "Run database_hole/security_updates.sql against this database."
+                "Run database_hole/security_token_revocation_combined.sql against this database."
             )
             revoked = None
         if revoked:

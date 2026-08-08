@@ -16,6 +16,7 @@ from ..schemas.allowance import AllowanceLineItem
 from ..schemas.incentive import IncentiveLineItem
 from ..schemas.advance_payment import AdvancePaymentLineItem
 from ..services import payroll_service, allowance_service, incentive_service, advance_payment_service
+from ..core.hospital_time import hospital_now_by_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/payroll", tags=["Payroll"])
@@ -190,7 +191,7 @@ tfoot td {{ font-weight: bold; border-top: 2px solid #e2e8f0; border-bottom: non
 <div class="title-row">
     <h2>Payroll — {_esc(month_label)}</h2>
     <div class="meta">
-        As of {datetime.now().strftime("%B %d, %Y at %I:%M %p")}<br>
+        As of {hospital_now_by_id(db, current_user.hospital_id).strftime("%B %d, %Y at %I:%M %p")}<br>
         {len(items)} employee{'s' if len(items) != 1 else ''}
     </div>
 </div>
@@ -225,7 +226,7 @@ tfoot td {{ font-weight: bold; border-top: 2px solid #e2e8f0; border-bottom: non
     </div>
 </div>
 <div class="footer">
-    <p>Generated on {datetime.now().strftime("%B %d, %Y at %I:%M %p")} | {hosp_name}</p>
+    <p>Generated on {hospital_now_by_id(db, current_user.hospital_id).strftime("%B %d, %Y at %I:%M %p")} | {hosp_name}</p>
     <p>This is a computer-generated document.</p>
 </div>
 </body>

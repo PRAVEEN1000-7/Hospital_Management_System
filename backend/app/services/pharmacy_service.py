@@ -766,20 +766,28 @@ def create_sale(
                 MedicineBatch.is_active == True,
             ).first()
         else:
-            # ✅ FIX BUG #7: Add expiry date validation - block expired batches
+            # Expiry compared against the hospital's own local date, not the
+            # server's (date.today() reads the server process's own
+            # timezone — wrong the moment the server isn't physically in the
+            # hospital's timezone, silently including/excluding batches
+            # whose expiry date falls on today per one clock but not the
+            # other). This is the same class of bug fixed elsewhere via
+            # hospital_today_by_id — see core/hospital_time.py.
+            today = hospital_today_by_id(db, hospital_id)
             batch = db.query(MedicineBatch).filter(
                 MedicineBatch.medicine_id == uuid.UUID(item_data["medicine_id"]),
                 MedicineBatch.is_active == True,
                 MedicineBatch.quantity >= qty,
-                MedicineBatch.expiry_date > date.today(),  # ✅ BLOCK EXPIRED BATCHES
+                MedicineBatch.expiry_date > today,  # block expired batches
             ).order_by(MedicineBatch.expiry_date.asc()).first()
             batch_id_uuid = batch.id if batch else None
 
         if not batch or batch.quantity < qty:
-            # ✅ Check if expired batches exist and provide helpful error message
+            # Check if expired batches exist and provide a helpful error message
+            today = hospital_today_by_id(db, hospital_id)
             expired_batch = db.query(MedicineBatch).filter(
                 MedicineBatch.medicine_id == uuid.UUID(item_data["medicine_id"]),
-                MedicineBatch.expiry_date <= date.today(),
+                MedicineBatch.expiry_date <= today,
                 MedicineBatch.quantity > 0,
             ).first()
             

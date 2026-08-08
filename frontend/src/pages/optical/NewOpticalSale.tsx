@@ -32,7 +32,10 @@ const NewOpticalSale: React.FC = () => {
   const [patientSearch, setPatientSearch] = useState('');
   const [patientId, setPatientId] = useState('');
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
-  const selectPatient = (p: Patient) => { setPatientId(p.id); setSelectedPatient(p); setPatientSearch(''); };
+  // Lets the dropdown open on focus, before any typing — otherwise the only
+  // way to pick a patient is to already know something to search for.
+  const [patientFocused, setPatientFocused] = useState(false);
+  const selectPatient = (p: Patient) => { setPatientId(p.id); setSelectedPatient(p); setPatientSearch(''); setPatientFocused(false); };
   const patientNav = useListKeyboardNav(patients, selectPatient);
 
   const [prescriptions, setPrescriptions] = useState<OpticalPrescription[]>([]);
@@ -50,12 +53,15 @@ const NewOpticalSale: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if (patientId || !patientFocused) { setPatients([]); return; }
     const timeoutId = window.setTimeout(() => {
-      if (!patientSearch.trim() || patientId) { setPatients([]); return; }
+      // Empty search still resolves — most-recently-registered patients —
+      // so the dropdown has something to pick from as soon as it's opened,
+      // not only once the user has started typing.
       patientService.getPatients(1, 10, patientSearch.trim()).then(r => setPatients(r.data)).catch(() => setPatients([]));
     }, 250);
     return () => window.clearTimeout(timeoutId);
-  }, [patientSearch, patientId]);
+  }, [patientSearch, patientId, patientFocused]);
 
   useEffect(() => {
     if (!patientId) { setPrescriptions([]); setPrescriptionId(''); return; }
@@ -247,11 +253,16 @@ const NewOpticalSale: React.FC = () => {
                 value={selectedPatient ? `${selectedPatient.first_name} ${selectedPatient.last_name}` : patientSearch}
                 onChange={(e) => { setPatientSearch(e.target.value); setPatientId(''); setSelectedPatient(null); }}
                 onKeyDown={patientNav.onKeyDown}
-                placeholder="Search patient by name"
+                onFocus={() => setPatientFocused(true)}
+                onBlur={() => window.setTimeout(() => setPatientFocused(false), 150)}
+                placeholder="Search, or click to browse recent patients"
                 className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary"
               />
-              {patientSearch && !patientId && patients.length > 0 && (
+              {patientFocused && !patientId && patients.length > 0 && (
                 <div className="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                  {!patientSearch.trim() && (
+                    <p className="px-3 py-1.5 text-[11px] font-semibold text-slate-400 uppercase border-b border-slate-100">Recent patients</p>
+                  )}
                   {patients.map((p, idx) => (
                     <button key={p.id} type="button"
                       onClick={() => selectPatient(p)}

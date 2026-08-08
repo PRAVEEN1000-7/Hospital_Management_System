@@ -9,6 +9,7 @@ import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { format } from 'date-fns';
 import { useListKeyboardNav } from '../../hooks/useListKeyboardNav';
+import SearchableSelect, { type SuggestionOption } from '../../components/common/SearchableSelect';
 
 interface CartItem extends SaleItemCreate {
   medicine_name: string;
@@ -72,6 +73,20 @@ const NewSale: React.FC = () => {
 
   // Load medicine, add selected medicine to cart
   const [selectedMedicine, setSelectedMedicine] = useState('');
+  const [medicineLabel, setMedicineLabel] = useState('');
+  const medicineSuggestions: SuggestionOption[] = medicines.map(m => ({
+    id: m.id,
+    label: `${m.name}${m.strength ? ` (${m.strength})` : ''}`,
+    sublabel: m.generic_name || undefined,
+    metadata: { id: m.id },
+  }));
+  // Shared by both the search box and the plain dropdown below, so typing
+  // to search and picking straight from the list both land in the same
+  // selectedMedicine state.
+  const handleMedicineSelect = (value: string, metadata?: Record<string, unknown>) => {
+    setMedicineLabel(value);
+    setSelectedMedicine(metadata?.id ? (metadata.id as string) : '');
+  };
 
   useEffect(() => {
     pharmacyService.getMedicines(1, 500).then(r => setMedicines(r.data)).catch(() => {});
@@ -227,6 +242,7 @@ const NewSale: React.FC = () => {
       supplier_name: batch?.supplier_name || undefined,
     }]);
     setSelectedMedicine('');
+    setMedicineLabel('');
   };
 
   const updateCartItem = (idx: number, field: string, value: string | number) => {
@@ -425,9 +441,29 @@ const NewSale: React.FC = () => {
           <h2 className="text-lg font-semibold text-slate-900">Items</h2>
 
           <div className="flex gap-2">
-            <select value={selectedMedicine} onChange={e => setSelectedMedicine(e.target.value)}
+            {/* Both selection methods enabled side by side: type to search
+                (autocomplete), or pick straight from a plain dropdown —
+                either one sets the same selectedMedicine via handleMedicineSelect. */}
+            <div className="flex-1">
+              <SearchableSelect
+                value={medicineLabel}
+                onChange={handleMedicineSelect}
+                suggestions={medicineSuggestions}
+                placeholder="Search medicine..."
+                allowManualEntry={false}
+              />
+            </div>
+            <select
+              value={selectedMedicine}
+              onChange={e => {
+                const m = medicines.find(x => x.id === e.target.value);
+                handleMedicineSelect(
+                  m ? `${m.name}${m.strength ? ` (${m.strength})` : ''}` : '',
+                  m ? { id: m.id } : undefined,
+                );
+              }}
               className="flex-1 px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary">
-              <option value="">Select medicine to add...</option>
+              <option value="">— Or choose from dropdown —</option>
               {medicines.map(m => (
                 <option key={m.id} value={m.id}>
                   {m.name} {m.strength ? `(${m.strength})` : ''} — Stock: {m.total_stock ?? 'N/A'}

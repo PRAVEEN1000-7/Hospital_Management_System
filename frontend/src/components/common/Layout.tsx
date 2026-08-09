@@ -550,6 +550,11 @@ const Layout: React.FC = () => {
     if (hasRole('pharmacist') && !hasRole('super_admin', 'admin', 'inventory_manager')) {
       // Simplified pharmacy menu for pharmacists - essential items only
       pharmacyItems.push(
+        // Lets a pharmacist author a walk-in prescription directly (no
+        // doctor consultation first), attributed to a doctor they pick —
+        // reuses PrescriptionBuilder via the /prescriptions/new route,
+        // which carves out pharmacist access explicitly (see App.tsx).
+        { to: '/prescriptions/new', label: 'New Prescription', icon: 'note_add' },
         { to: '/pharmacy/medicines', label: 'Medicines', icon: 'medication' },
         {
           to: '/pharmacy/pending-prescriptions',
@@ -593,6 +598,7 @@ const Layout: React.FC = () => {
       { to: '/optical', label: 'Dashboard', icon: 'dashboard' },
       { to: '/optical/products', label: 'Products', icon: 'visibility' },
       { to: '/optical/prescriptions', label: 'Prescriptions', icon: 'description' },
+      { to: '/optical/prescriptions/new', label: 'New Prescription', icon: 'add_circle' },
       { to: '/optical/sales', label: 'Sales', icon: 'point_of_sale' },
       { to: '/optical/queue', label: 'Dispensing Queue', icon: 'queue' },
       { to: '/optical/stock-adjustments', label: 'Stock Adjustments', icon: 'tune' },
@@ -604,7 +610,11 @@ const Layout: React.FC = () => {
   if (canAccessLab) {
     labItems.push(
       { to: '/lab', label: 'Dashboard', icon: 'dashboard' },
+      // New Order — lets lab staff create a walk-in order directly (no prior
+      // doctor visit required), filed under a doctor picked from the roster.
+      { to: '/lab/new-order', label: 'New Order', icon: 'add_circle' },
       { to: '/lab/queue', label: 'Lab Queue', icon: 'queue' },
+      { to: '/lab/billing', label: 'Billing', icon: 'payments' },
       { to: '/lab/tests', label: 'Test Catalog', icon: 'biotech' },
     );
   }

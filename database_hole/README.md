@@ -152,6 +152,7 @@ psql -U hms_user -d hms_db -f 10_lab_test_templates_batch2.sql
 psql -U hms_user -d hms_db -f 11_lab_technician_role.sql
 psql -U hms_user -d hms_db -f 12_lab_test_templates_batch3.sql
 psql -U hms_user -d hms_db -f 13_lab_test_fasting_blood_sugar.sql
+psql -U hms_user -d hms_db -f 14_optional_doctor_id.sql
 
 cd ../backend
 python ../deploy/flush_and_reseed_database.py --confirm FLUSH \
@@ -252,6 +253,7 @@ DEBUG=false
 | `11_lab_technician_role.sql` | Seeds the missing `lab_technician` system role row (`roles` table) — the Lab module's routes/RBAC/staff-creation dropdown all referenced this role by name since it was built, but the actual row was never seeded, so creating a "Lab Technician" staff member silently attached no role at all. Data only. | ✅ Yes |
 | `12_lab_test_templates_batch3.sql` | Lab Test Catalog — 3 additional `lab_tests` rows (Blood Sugar (RBS), Hormonal Profile [FSH/LH/Prolactin/Testosterone], MUSK Antibody), sourced from two more client-supplied report specs. Data only. | ✅ Yes |
 | `13_lab_test_fasting_blood_sugar.sql` | Lab Test Catalog — 1 additional `lab_tests` row (Blood Sugar (FBS), 80-120 mg/dl — distinct from the RBS test in `12`). Data only. | ✅ Yes |
+| `14_optional_doctor_id.sql` | Drops `NOT NULL` on `prescriptions.doctor_id`, `lab_orders.doctor_id`, and `optical_prescriptions.doctor_id` — lets the pharmacist/lab-technician/optical-staff walk-in create flows leave a record's doctor unattributed instead of forcing a dropdown pick. Schema only. | ✅ Yes |
 | `workforce_attendance_module_combined.sql` | **Not needed on a fresh install** — `01_full_schema.sql` Section 8 already has this. Only for patching a database that was bootstrapped from an older copy of `01_full_schema.sql`, before Section 8 was added to it: a verbatim, transaction-wrapped, standalone-runnable copy of Section 8 (Workforce Management) plus the `password_reset_tokens` block from Section 7. Not part of `../deploy/flush_and_reseed_database.py`'s replay list — run manually, once, against an existing database that needs it. | ⚠️ Only if patching a pre-Section-8 database |
 | `security_token_revocation_combined.sql` | **Not needed on a fresh install** — `01_full_schema.sql` Section 7 already has this. Only for patching a database bootstrapped before Section 7 was added: `revoked_tokens` (the access-token blocklist) + its indexes + the `refresh_tokens` performance indexes + the `v_revoked_tokens_expired` housekeeping view. Missing this table means logout/password-change/account-deactivation silently fail to invalidate the user's still-valid JWT (app fails open and logs CRITICAL, rather than 500ing every request) — a real security gap, not just a cosmetic error. Replaces the standalone `security_updates.sql` referenced in old log messages, which no longer exists as its own file. | ⚠️ Only if seeing "revoked_tokens table is missing" in the logs |
 | `99_drop_database.sql` | **Destructive.** Terminates connections, drops `hms_db` and the `hms_user` role entirely. Only for a clean local re-deploy. Run as the `postgres` superuser, never inside `hms_db`. | ❌ No |
@@ -354,6 +356,7 @@ psql -U hms_user -d hms_db -f database_hole/10_lab_test_templates_batch2.sql
 psql -U hms_user -d hms_db -f database_hole/11_lab_technician_role.sql
 psql -U hms_user -d hms_db -f database_hole/12_lab_test_templates_batch3.sql
 psql -U hms_user -d hms_db -f database_hole/13_lab_test_fasting_blood_sugar.sql
+psql -U hms_user -d hms_db -f database_hole/14_optional_doctor_id.sql
 
 # 5. Seed platform essentials (module registry, RBAC, roles) + one Super Admin login
 cd backend

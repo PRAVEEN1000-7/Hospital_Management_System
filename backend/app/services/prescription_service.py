@@ -24,7 +24,7 @@ from .notification_service import notify_hospital_users
 from ..models.pharmacy import PharmacySale, PharmacySaleItem, PharmacyQueueEntry
 from ..models.user import Hospital
 from ..core.tenant_security import is_eye_hospital_feature_enabled
-from ..core.hospital_time import hospital_today_utc_range_by_id
+from ..core.hospital_time import hospital_today_utc_range_by_id, hospital_today_by_id
 
 logger = logging.getLogger(__name__)
 
@@ -246,13 +246,15 @@ def create_prescription(
         if not appt or str(appt.hospital_id) != str(hospital_id):
             raise ValueError("Appointment not found or belongs to a different hospital")
 
-    # If no doctor_id provided, look up doctor by current user
+    # If no doctor_id provided, look up doctor by current user. If the
+    # current user isn't a doctor either (e.g. a pharmacist creating a
+    # walk-in prescription with no consultation behind it), doctor_id is
+    # left as None — doctor_id is nullable precisely for this case, so this
+    # is not an error condition.
     if not doctor_id:
         doctor = db.query(Doctor).filter(Doctor.user_id == created_by).first()
         if doctor:
             doctor_id = doctor.id
-        else:
-            raise ValueError("No doctor_id provided and current user is not a doctor")
     else:
         # Client explicitly supplied a doctor_id — validate it the same way
         # appointment_id already is above, matching the doctor_id check
@@ -610,11 +612,15 @@ def finalize_prescription(
 
     # ✅ FIX BUG #1: Check stock availability before finalizing
     from ..models.pharmacy import MedicineBatch
-    from datetime import date
 
     items = db.query(PrescriptionItem).filter(
         PrescriptionItem.prescription_id == rx.id
     ).all()
+
+    # Hospital-local "today", not the server's — matches the expiry filter used
+    # by dispensing_service/pharmacy_service so this warning agrees with what
+    # the Dispensing screen will actually show for the same prescription.
+    today = hospital_today_by_id(db, rx.hospital_id)
 
     stock_warnings = []
     for item in items:
@@ -633,7 +639,7 @@ def finalize_prescription(
             batches = db.query(MedicineBatch).filter(
                 MedicineBatch.medicine_id == item.medicine_id,
                 MedicineBatch.is_active == True,
-                MedicineBatch.expiry_date > date.today(),  # Only consider non-expired batches
+                MedicineBatch.expiry_date > today,  # Only consider non-expired batches
                 MedicineBatch.quantity > 0,
             ).order_by(MedicineBatch.expiry_date.asc()).all()
 
@@ -1171,7 +1177,10 @@ def list_medicines(
     med_ids = [m.id for m in rows]
     stock_map: dict[uuid.UUID, int] = {}
     if med_ids:
-        today = date.today()
+        # Hospital-local "today", not the server's — this feeds the stock
+        # warning doctors see while prescribing (PrescriptionBuilder), which
+        # must agree with what the Dispensing screen later refuses to give out.
+        today = hospital_today_by_id(db, hospital_id) if hospital_id else date.today()
         stock_rows = (
             db.query(MedicineBatch.medicine_id, func.coalesce(func.sum(MedicineBatch.quantity), 0))
             .filter(

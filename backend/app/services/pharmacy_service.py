@@ -178,14 +178,25 @@ def list_medicines(
     )
     items = query.order_by(earliest_expiry.asc().nulls_last(), Medicine.created_at.desc()).offset((page - 1) * limit).limit(limit).all()
 
-    # Enrich with total stock
+    # Enrich with total stock. "Today" is resolved once for the whole page in
+    # this hospital's own timezone (all medicines here share hospital_id).
+    today = hospital_today_by_id(db, hospital_id)
     med_ids = [m.id for m in items]
     stock_map: dict[uuid.UUID, int] = {}
     batch_map: dict[uuid.UUID, dict] = {}
     if med_ids:
+        # total_stock feeds the "In Stock / Low Stock / Out of Stock" badge and
+        # filter on the Medicine List page — expired batches are excluded so a
+        # medicine whose only remaining stock has expired shows as out of
+        # stock here too, matching what the Dispensing screen already refuses
+        # to dispense (it never counted expired batches as available).
         stock_rows = (
             db.query(MedicineBatch.medicine_id, func.coalesce(func.sum(MedicineBatch.quantity), 0))
-            .filter(MedicineBatch.medicine_id.in_(med_ids), MedicineBatch.is_active == True)
+            .filter(
+                MedicineBatch.medicine_id.in_(med_ids),
+                MedicineBatch.is_active == True,
+                MedicineBatch.expiry_date >= today,
+            )
             .group_by(MedicineBatch.medicine_id)
             .all()
         )
@@ -200,6 +211,7 @@ def list_medicines(
                 MedicineBatch.medicine_id.in_(med_ids),
                 MedicineBatch.is_active == True,
                 MedicineBatch.quantity > 0,
+                MedicineBatch.expiry_date >= today,
             )
             .order_by(MedicineBatch.medicine_id, MedicineBatch.expiry_date.asc())
             .all()
@@ -346,8 +358,20 @@ def update_batch(
 def create_supplier(db: Session, hospital_id: uuid.UUID, data: dict) -> Supplier:
     payload = _filter_model_data(Supplier, data)
     if not payload.get("code"):
-        count = db.query(func.count(Supplier.id)).filter(Supplier.hospital_id == hospital_id).scalar() or 0
-        payload["code"] = f"SUP-{count + 1:04d}"
+        # MAX(existing seq)+1, not COUNT(*)+1 — a deleted supplier leaves a
+        # numbering gap that COUNT(*) doesn't account for, causing collisions.
+        last = (
+            db.query(Supplier.code)
+            .filter(Supplier.hospital_id == hospital_id)
+            .order_by(Supplier.code.desc())
+            .limit(1)
+            .scalar()
+        )
+        try:
+            seq = int(last.rsplit("-", 1)[-1]) + 1 if last else 1
+        except ValueError:
+            seq = 1
+        payload["code"] = f"SUP-{seq:04d}"
     sup = Supplier(hospital_id=hospital_id, **payload)
     db.add(sup)
     db.commit()
@@ -398,12 +422,22 @@ def delete_supplier(db: Session, supplier_id: str | uuid.UUID) -> bool:
 
 def _generate_po_number(db: Session, hospital_id: uuid.UUID) -> str:
     """Generate next PO number like PO-2026-0001."""
+    # MAX(existing seq)+1, not COUNT(*)+1 — a deleted/voided PO leaves a
+    # numbering gap that COUNT(*) doesn't account for, causing collisions.
     from datetime import date
     year = date.today().strftime("%y")
-    count = db.query(func.count(PurchaseOrder.id)).filter(
-        PurchaseOrder.hospital_id == hospital_id
-    ).scalar() or 0
-    return f"PO-{year}-{count + 1:04d}"
+    last = (
+        db.query(PurchaseOrder.po_number)
+        .filter(PurchaseOrder.hospital_id == hospital_id)
+        .order_by(PurchaseOrder.po_number.desc())
+        .limit(1)
+        .scalar()
+    )
+    try:
+        seq = int(last.rsplit("-", 1)[-1]) + 1 if last else 1
+    except ValueError:
+        seq = 1
+    return f"PO-{year}-{seq:04d}"
 
 
 def create_purchase_order(
@@ -663,10 +697,20 @@ def receive_purchase_order(
 # ══════════════════════════════════════════════════
 
 def _generate_invoice_number(db: Session, hospital_id: uuid.UUID) -> str:
-    count = db.query(func.count(PharmacySale.id)).filter(
-        PharmacySale.hospital_id == hospital_id
-    ).scalar() or 0
-    return f"INV-{count + 1:06d}"
+    # MAX(existing seq)+1, not COUNT(*)+1 — a deleted sale leaves a numbering
+    # gap that COUNT(*) doesn't account for, causing collisions.
+    last = (
+        db.query(PharmacySale.invoice_number)
+        .filter(PharmacySale.hospital_id == hospital_id)
+        .order_by(PharmacySale.invoice_number.desc())
+        .limit(1)
+        .scalar()
+    )
+    try:
+        seq = int(last.rsplit("-", 1)[-1]) + 1 if last else 1
+    except ValueError:
+        seq = 1
+    return f"INV-{seq:06d}"
 
 
 def create_sale(
@@ -1464,12 +1508,19 @@ def get_pharmacy_dashboard(db: Session, hospital_id: uuid.UUID) -> dict:
     # at or below that medicine's own reorder_level — not a hardcoded "<10" that
     # ignored the per-medicine reorder level set on the medicine form, and not a
     # per-batch check that miscounted medicines split across several batches.
+    # Expired batches are excluded from that on-hand total: they're already
+    # counted below in expired_count, and leaving them in the stock sum let a
+    # medicine whose only stock had expired look adequately stocked here.
     med_ids = [m.id for m in medicines]
     stock_map: dict[uuid.UUID, int] = {}
     if med_ids:
         stock_rows = (
             db.query(MedicineBatch.medicine_id, func.coalesce(func.sum(MedicineBatch.quantity), 0))
-            .filter(MedicineBatch.medicine_id.in_(med_ids), MedicineBatch.is_active == True)
+            .filter(
+                MedicineBatch.medicine_id.in_(med_ids),
+                MedicineBatch.is_active == True,
+                MedicineBatch.expiry_date >= today,
+            )
             .group_by(MedicineBatch.medicine_id)
             .all()
         )

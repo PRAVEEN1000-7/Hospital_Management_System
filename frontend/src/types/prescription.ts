@@ -54,7 +54,7 @@ export interface Prescription {
   prescription_number: string;
   appointment_id: string | null;
   patient_id: string;
-  doctor_id: string;
+  doctor_id: string | null;
   diagnosis: string | null;
   clinical_notes: string | null;
   advice: string | null;
@@ -104,7 +104,7 @@ export interface PrescriptionListItem {
   id: string;
   prescription_number: string;
   patient_id: string;
-  doctor_id: string;
+  doctor_id: string | null;
   appointment_id?: string | null;
   diagnosis: string | null;
   status: PrescriptionStatus;

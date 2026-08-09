@@ -18,6 +18,7 @@ import VerifiedBadge from '../components/patients/VerifiedBadge';
 import invoiceService from '../services/invoiceService';
 import paymentService from '../services/paymentService';
 import type { Invoice, PaymentMode, PaymentCollector } from '../types/billing';
+import SearchableSelect, { type SuggestionOption } from '../components/common/SearchableSelect';
 
 const PAYMENT_MODES: { value: PaymentMode; label: string }[] = [
   { value: 'cash', label: 'Cash' },
@@ -130,6 +131,7 @@ const WalkInQueue: React.FC = () => {
   // ── Refer to Doctor Modal State ───────────────────────────────
   const [referItem, setReferItem] = useState<QueueItem | null>(null);
   const [referDoctorId, setReferDoctorId] = useState<string>('');
+  const [referDoctorLabel, setReferDoctorLabel] = useState('');
   const [referDate, setReferDate] = useState<string>('');
   const [referReason, setReferReason] = useState<string>('');
   const [referSaving, setReferSaving] = useState(false);
@@ -461,6 +463,7 @@ const WalkInQueue: React.FC = () => {
       toast.success(result.message);
       setReferItem(null);
       setReferDoctorId('');
+      setReferDoctorLabel('');
       setReferDate('');
       setReferReason('');
       setReferDoctorLoad(null);
@@ -474,6 +477,7 @@ const WalkInQueue: React.FC = () => {
   const openReferModal = (item: QueueItem) => {
     setReferItem(item);
     setReferDoctorId('');
+    setReferDoctorLabel('');
     setReferDate('');
     setReferReason('');
     setReferDoctorLoad(null);
@@ -484,6 +488,7 @@ const WalkInQueue: React.FC = () => {
   const closeReferModal = () => {
     setReferItem(null);
     setReferDoctorId('');
+    setReferDoctorLabel('');
     setReferDate('');
     setReferReason('');
     setReferDoctorLoad(null);
@@ -503,6 +508,19 @@ const WalkInQueue: React.FC = () => {
   }, [referDoctorId, referDate]);
 
   const isSelectedReferralDateUnavailable = referDate ? referDateAvailability[referDate] === false : false;
+
+  const referDoctorSuggestions: SuggestionOption[] = allDoctors
+    .filter(d => d.doctor_id !== referItem?.doctor_id)
+    .map(d => ({
+      id: d.doctor_id,
+      label: d.name,
+      sublabel: d.specialization || undefined,
+      metadata: { id: d.doctor_id },
+    }));
+  const handleReferDoctorSelect = (value: string, metadata?: Record<string, unknown>) => {
+    setReferDoctorLabel(value);
+    setReferDoctorId(metadata?.id ? (metadata.id as string) : '');
+  };
   const isSelectedFollowUpDateUnavailable = bookNextDate ? bookDateAvailability[bookNextDate] === false : false;
 
   // ── Scheduled Appointment Actions (doctor view) ────────────────
@@ -2483,19 +2501,13 @@ const WalkInQueue: React.FC = () => {
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
                   Select Doctor / Specialist <span className="text-red-500">*</span>
                 </label>
-                <select
-                  value={referDoctorId}
-                  onChange={(e) => setReferDoctorId(e.target.value)}
-                  className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none">
-                  <option value="">— Choose a doctor —</option>
-                  {allDoctors
-                    .filter(d => d.doctor_id !== referItem.doctor_id)
-                    .map(d => (
-                      <option key={d.doctor_id} value={d.doctor_id}>
-                        {d.name}{d.specialization ? ` — ${d.specialization}` : ''}
-                      </option>
-                    ))}
-                </select>
+                <SearchableSelect
+                  value={referDoctorLabel}
+                  onChange={handleReferDoctorSelect}
+                  suggestions={referDoctorSuggestions}
+                  placeholder="Search doctor..."
+                  allowManualEntry={false}
+                />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">

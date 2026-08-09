@@ -311,7 +311,7 @@ def _enrich_prescription_for_dispensing(db: Session, rx: Prescription) -> dict:
         "created_at": str(rx.created_at),
         "hospital_id": str(rx.hospital_id),
         "patient_id": str(rx.patient_id),
-        "doctor_id": str(rx.doctor_id),
+        "doctor_id": str(rx.doctor_id) if rx.doctor_id else None,
         "appointment_id": str(rx.appointment_id) if rx.appointment_id else None,
         "diagnosis": rx.diagnosis,
         "clinical_notes": rx.clinical_notes,

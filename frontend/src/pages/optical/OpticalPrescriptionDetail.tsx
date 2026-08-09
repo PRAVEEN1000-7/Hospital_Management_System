@@ -241,7 +241,7 @@ const OpticalPrescriptionDetail: React.FC = () => {
 
         <div className="flex justify-end pt-4 border-t border-slate-100">
           <div className="text-right text-sm">
-            <p className="font-semibold text-slate-900">{rx.doctor_name || 'Prescribing Doctor'}</p>
+            <p className="font-semibold text-slate-900">{rx.doctor_name || 'No doctor assigned'}</p>
             {rx.valid_until && <p className="text-slate-500">Valid until {format(new Date(rx.valid_until), 'dd MMM yyyy')}</p>}
           </div>
         </div>

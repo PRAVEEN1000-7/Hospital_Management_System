@@ -181,9 +181,10 @@ const InvoiceCreate: React.FC = () => {
       });
   }, []);
 
-  // Search patients (debounced)
+  // Search patients (debounced). An empty query still resolves — most-
+  // recently-registered patients — so opening the dropdown on focus has
+  // something to browse, not only once the user has started typing.
   const searchPatients = useCallback(async (q: string) => {
-    if (q.length < 2) { setPatientResults([]); return; }
     try {
       const res = await patientService.getPatients(1, 6, q);
       setPatientResults(res.data);
@@ -191,9 +192,10 @@ const InvoiceCreate: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const t = setTimeout(() => searchPatients(patientSearch), 280);
+    if (!showPatientDrop) { setPatientResults([]); return; }
+    const t = setTimeout(() => searchPatients(patientSearch.trim()), 280);
     return () => clearTimeout(t);
-  }, [patientSearch, searchPatients]);
+  }, [patientSearch, showPatientDrop, searchPatients]);
 
   const selectPatient = (p: Patient) => {
     setSelectedPatient(p);
@@ -319,6 +321,19 @@ const InvoiceCreate: React.FC = () => {
         setMedicineSuggestOpen(prev => ({ ...prev, [lineKey]: false }));
       }
     }, 250);
+  };
+
+  // Focusing an empty medicine-description field browses the pharmacy
+  // catalog (first page) instead of showing nothing until the user types.
+  const browseMedicineSuggestions = async (lineKey: string) => {
+    try {
+      const res = await pharmacyService.getMedicines(1, 20, '', '', true);
+      setMedicineSuggestions(prev => ({ ...prev, [lineKey]: res.data }));
+      setMedicineSuggestOpen(prev => ({ ...prev, [lineKey]: res.data.length > 0 }));
+      setMedicineActiveIdx(prev => ({ ...prev, [lineKey]: -1 }));
+    } catch {
+      setMedicineSuggestions(prev => ({ ...prev, [lineKey]: [] }));
+    }
   };
 
   const handleSelectMedicineSuggestion = async (idx: number, lineKey: string, med: Medicine) => {
@@ -609,15 +624,20 @@ const InvoiceCreate: React.FC = () => {
                   value={patientSearch}
                   onChange={e => { setPatientSearch(e.target.value); setShowPatientDrop(true); }}
                   onFocus={() => setShowPatientDrop(true)}
+                  onBlur={() => window.setTimeout(() => setShowPatientDrop(false), 150)}
                   onKeyDown={patientNav.onKeyDown}
                   className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
                 />
                 {showPatientDrop && patientResults.length > 0 && (
                   <div className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                    {!patientSearch.trim() && (
+                      <p className="px-4 py-1.5 text-[10px] font-bold text-slate-400 uppercase border-b border-slate-100">Recent patients</p>
+                    )}
                     {patientResults.map((p, idx) => (
                       <button
                         key={p.id}
                         type="button"
+                        onMouseDown={(e) => e.preventDefault()}
                         onClick={() => selectPatient(p)}
                         onMouseEnter={() => patientNav.setActiveIndex(idx)}
                         className={`w-full text-left px-4 py-2.5 text-sm ${idx === patientNav.activeIndex ? 'bg-primary/10' : 'hover:bg-slate-50'}`}
@@ -702,7 +722,7 @@ const InvoiceCreate: React.FC = () => {
                     <div className="flex gap-1 items-end relative">
                       <input
                         type="text"
-                        placeholder={line.item_type === 'medicine' ? 'Medicine name or ID' : 'Item description'}
+                        placeholder={line.item_type === 'medicine' ? 'Type, or click to browse medicines' : 'Item description'}
                         value={line.description}
                         onChange={e => {
                           if (line.item_type === 'medicine') {
@@ -712,8 +732,11 @@ const InvoiceCreate: React.FC = () => {
                           }
                         }}
                         onFocus={() => {
-                          if (line.item_type === 'medicine' && (medicineSuggestions[line.key]?.length || 0) > 0) {
+                          if (line.item_type !== 'medicine') return;
+                          if ((medicineSuggestions[line.key]?.length || 0) > 0) {
                             setMedicineSuggestOpen(prev => ({ ...prev, [line.key]: true }));
+                          } else if (!line.description.trim()) {
+                            browseMedicineSuggestions(line.key);
                           }
                         }}
                         onBlur={() => {
@@ -730,6 +753,9 @@ const InvoiceCreate: React.FC = () => {
                       />
                       {line.item_type === 'medicine' && medicineSuggestOpen[line.key] && (medicineSuggestions[line.key]?.length || 0) > 0 && (
                         <div className="absolute z-20 left-0 right-16 top-full mt-1 bg-white border border-slate-200 rounded shadow-lg max-h-44 overflow-y-auto">
+                          {!line.description.trim() && (
+                            <p className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase border-b border-slate-100">Browse medicines</p>
+                          )}
                           {(medicineSuggestions[line.key] || []).map((m, mIdx) => (
                             <button
                               key={m.id}

@@ -87,7 +87,7 @@ export interface LabOrder {
   hospital_id: string;
   order_number: string;
   patient_id: string;
-  doctor_id: string;
+  doctor_id: string | null;
   appointment_id?: string | null;
   prescription_id?: string | null;
   notes?: string | null;
@@ -157,6 +157,29 @@ export interface LabSale {
   status: string;
   created_at: string;
   updated_at?: string | null;
+}
+
+// Row shape for the standalone Lab Billing worklist (LabBilling.tsx) —
+// mirrors backend schemas.lab.LabBillingItemResponse.
+export interface LabBillingItem {
+  id: string;
+  order_number: string;
+  patient_id: string;
+  patient_name?: string | null;
+  total_amount: number;
+  paid_amount: number;
+  balance_amount: number;
+  payment_status: string;
+  report_status: LabReportStatus;
+  created_at: string;
+}
+
+export interface LabBillingListResponse {
+  total: number;
+  page: number;
+  limit: number;
+  total_pages: number;
+  data: LabBillingItem[];
 }
 
 export interface LabDashboard {

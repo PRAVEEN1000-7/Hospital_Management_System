@@ -3,6 +3,7 @@ import opticalService from '../../services/opticalService';
 import type { OpticalStockAdjustment } from '../../types/optical';
 import { useToast } from '../../contexts/ToastContext';
 import { format } from 'date-fns';
+import SearchableSelect, { type SuggestionOption } from '../../components/common/SearchableSelect';
 
 const ADJ_TYPE_COLORS: Record<string, string> = {
   damage: 'bg-red-100 text-red-700',
@@ -23,6 +24,7 @@ const OpticalStockAdjustments: React.FC = () => {
   const [products, setProducts] = useState<any[]>([]);
   const [batches, setBatches] = useState<any[]>([]);
   const [productId, setProductId] = useState('');
+  const [productLabel, setProductLabel] = useState('');
   const [batchId, setBatchId] = useState('');
   const [adjustmentType, setAdjustmentType] = useState<'damage' | 'expired' | 'correction' | 'return'>('damage');
   const [quantity, setQuantity] = useState(1);
@@ -59,6 +61,16 @@ const OpticalStockAdjustments: React.FC = () => {
     setBatchId('');
   }, [productId]);
 
+  const productSuggestions: SuggestionOption[] = products.map(p => ({
+    id: p.id,
+    label: `${p.name}${p.brand ? ` (${p.brand})` : ''}`,
+    metadata: { id: p.id },
+  }));
+  const handleProductSelect = (value: string, metadata?: Record<string, unknown>) => {
+    setProductLabel(value);
+    setProductId(metadata?.id ? (metadata.id as string) : '');
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!productId) { toast.error('Select a product'); return; }
@@ -76,7 +88,7 @@ const OpticalStockAdjustments: React.FC = () => {
       });
       toast.success('Stock adjustment created');
       setShowForm(false);
-      setProductId(''); setBatchId(''); setQuantity(1); setReason('');
+      setProductId(''); setProductLabel(''); setBatchId(''); setQuantity(1); setReason('');
       fetchAdjustments();
     } catch {
       toast.error('Failed to create stock adjustment');
@@ -101,11 +113,13 @@ const OpticalStockAdjustments: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Product *</label>
-              <select value={productId} onChange={e => setProductId(e.target.value)} required
-                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary">
-                <option value="">Select</option>
-                {products.map(p => <option key={p.id} value={p.id}>{p.name}{p.brand ? ` (${p.brand})` : ''}</option>)}
-              </select>
+              <SearchableSelect
+                value={productLabel}
+                onChange={handleProductSelect}
+                suggestions={productSuggestions}
+                placeholder="Search product..."
+                allowManualEntry={false}
+              />
             </div>
             <div>
               <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Batch</label>

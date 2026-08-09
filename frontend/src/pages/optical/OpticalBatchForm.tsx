@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import opticalService from '../../services/opticalService';
 import type { OpticalProduct, OpticalBatchCreateData } from '../../types/optical';
 import { useToast } from '../../contexts/ToastContext';
+import SearchableSelect, { type SuggestionOption } from '../../components/common/SearchableSelect';
 
 // Only contact lenses meaningfully expire — frames/solutions/accessories don't.
 const EXPIRING_CATEGORIES = ['contact_lens'];
@@ -25,13 +26,33 @@ const OpticalBatchForm: React.FC = () => {
     mrp: 0,
   });
   const [saving, setSaving] = useState(false);
+  const [productLabel, setProductLabel] = useState('');
 
   useEffect(() => {
     opticalService.getProducts(1, 500).then(r => setProducts(r.data)).catch(() => {});
   }, []);
 
+  // Pre-fill the product search label once its catalog entry loads, so a
+  // ?product_id=... deep link (e.g. "Add Batch" from a product's page)
+  // shows a readable name instead of a blank search box.
+  useEffect(() => {
+    if (!preselectedProduct || productLabel) return;
+    const p = products.find(x => x.id === preselectedProduct);
+    if (p) setProductLabel(`${p.name}${p.brand ? ` (${p.brand})` : ''}`);
+  }, [products, preselectedProduct, productLabel]);
+
   const selectedProduct = products.find(p => p.id === form.product_id);
   const expiryRequired = selectedProduct ? EXPIRING_CATEGORIES.includes(selectedProduct.category) : false;
+
+  const productSuggestions: SuggestionOption[] = products.map(p => ({
+    id: p.id,
+    label: `${p.name}${p.brand ? ` (${p.brand})` : ''}`,
+    metadata: { id: p.id },
+  }));
+  const handleProductSelect = (value: string, metadata?: Record<string, unknown>) => {
+    setProductLabel(value);
+    setForm(prev => ({ ...prev, product_id: metadata?.id ? (metadata.id as string) : '' }));
+  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
@@ -80,11 +101,13 @@ const OpticalBatchForm: React.FC = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Product *</label>
-            <select name="product_id" value={form.product_id} onChange={handleChange} required
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary">
-              <option value="">Select</option>
-              {products.map(p => <option key={p.id} value={p.id}>{p.name} {p.brand ? `(${p.brand})` : ''}</option>)}
-            </select>
+            <SearchableSelect
+              value={productLabel}
+              onChange={handleProductSelect}
+              suggestions={productSuggestions}
+              placeholder="Search product..."
+              allowManualEntry={false}
+            />
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Batch Number *</label>

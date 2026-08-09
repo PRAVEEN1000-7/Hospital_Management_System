@@ -60,7 +60,7 @@ class Prescription(Base):
     prescription_number = Column(String(30), unique=True, nullable=False, index=True)
     appointment_id = Column(UUID(as_uuid=True), ForeignKey("appointments.id"), nullable=True)
     patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id"), nullable=False)
-    doctor_id = Column(UUID(as_uuid=True), ForeignKey("doctors.id"), nullable=False)
+    doctor_id = Column(UUID(as_uuid=True), ForeignKey("doctors.id"), nullable=True)
     diagnosis = Column(Text)
     clinical_notes = Column(Text)
     advice = Column(Text)

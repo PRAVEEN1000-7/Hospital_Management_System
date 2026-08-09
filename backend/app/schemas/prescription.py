@@ -256,7 +256,7 @@ class PrescriptionResponse(BaseModel):
     prescription_number: str
     appointment_id: Optional[str] = None
     patient_id: str
-    doctor_id: str
+    doctor_id: Optional[str] = None
     diagnosis: Optional[str] = None
     clinical_notes: Optional[str] = None
     advice: Optional[str] = None
@@ -315,7 +315,7 @@ class PrescriptionListItem(BaseModel):
     id: str
     prescription_number: str
     patient_id: str
-    doctor_id: str
+    doctor_id: Optional[str] = None
     diagnosis: Optional[str] = None
     status: str = "draft"
     is_finalized: bool = False

@@ -3,6 +3,7 @@ import pharmacyService from '../../services/pharmacyService';
 import type { StockAdjustment as PharmacyStockAdjustment } from '../../types/pharmacy';
 import { useToast } from '../../contexts/ToastContext';
 import { format } from 'date-fns';
+import SearchableSelect, { type SuggestionOption } from '../../components/common/SearchableSelect';
 
 const ADJ_TYPE_COLORS: Record<string, string> = {
   damage: 'bg-red-100 text-red-700',
@@ -24,6 +25,7 @@ const StockAdjustments: React.FC = () => {
   const [medicines, setMedicines] = useState<any[]>([]);
   const [batches, setBatches] = useState<any[]>([]);
   const [medicineId, setMedicineId] = useState('');
+  const [medicineLabel, setMedicineLabel] = useState('');
   const [batchId, setBatchId] = useState('');
   const [adjustmentType, setAdjustmentType] = useState<'damage' | 'expired' | 'correction' | 'return'>('damage');
   const [quantity, setQuantity] = useState(1);
@@ -60,6 +62,17 @@ const StockAdjustments: React.FC = () => {
     setBatchId('');
   }, [medicineId]);
 
+  const medicineSuggestions: SuggestionOption[] = medicines.map(m => ({
+    id: m.id,
+    label: `${m.name}${m.strength ? ` (${m.strength})` : ''}`,
+    sublabel: m.generic_name || undefined,
+    metadata: { id: m.id },
+  }));
+  const handleMedicineSelect = (value: string, metadata?: Record<string, unknown>) => {
+    setMedicineLabel(value);
+    setMedicineId(metadata?.id ? (metadata.id as string) : '');
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!medicineId) { toast.error('Select a medicine'); return; }
@@ -77,7 +90,7 @@ const StockAdjustments: React.FC = () => {
       });
       toast.success('Stock adjustment created');
       setShowForm(false);
-      setMedicineId(''); setBatchId(''); setQuantity(1); setReason('');
+      setMedicineId(''); setMedicineLabel(''); setBatchId(''); setQuantity(1); setReason('');
       fetchAdjustments();
     } catch {
       toast.error('Failed to create stock adjustment');
@@ -103,11 +116,13 @@ const StockAdjustments: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Medicine *</label>
-              <select value={medicineId} onChange={e => setMedicineId(e.target.value)} required
-                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary">
-                <option value="">Select</option>
-                {medicines.map(m => <option key={m.id} value={m.id}>{m.name} {m.strength ? `(${m.strength})` : ''}</option>)}
-              </select>
+              <SearchableSelect
+                value={medicineLabel}
+                onChange={handleMedicineSelect}
+                suggestions={medicineSuggestions}
+                placeholder="Search medicine..."
+                allowManualEntry={false}
+              />
             </div>
             <div>
               <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Batch</label>

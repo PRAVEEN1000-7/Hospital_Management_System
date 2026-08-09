@@ -105,11 +105,18 @@ def _validate_medicine_stock(
     if not medicine:
         raise ValueError(f"Medicine not found or inactive: {medicine_id}")
     
+    # `MedicineBatch.is_expired` is a stored flag nothing in this codebase ever
+    # sets to True (it only ever keeps its default False) — filtering on it was
+    # a no-op that let truly expired batches be billed with no warning.
+    # Compare the real expiry_date against the invoice's own hospital-local
+    # "today" instead, same as dispensing_service/pharmacy_service's FEFO
+    # pickers.
+    today = hospital_today_by_id(db, getattr(invoice, "hospital_id", None))
     batch = db.query(MedicineBatch).filter(
         MedicineBatch.medicine_id == medicine_id,
         MedicineBatch.batch_number == invoice_item_data.batch_number,
         MedicineBatch.is_active == True,
-        MedicineBatch.is_expired == False,
+        MedicineBatch.expiry_date >= today,
     ).first()
     if not batch:
         raise ValueError(
@@ -687,6 +694,13 @@ def _deduct_invoice_medicine_stock(db: Session, invoice: Invoice) -> None:
         medicine_id = line.reference_id
         remaining = int(qty_decimal)
 
+        # `MedicineBatch.is_expired` is a stored flag nothing in this codebase
+        # ever sets to True — filtering on it below was a no-op that let
+        # already-expired batches be deducted from on invoice issue with no
+        # warning. Compare the real expiry_date against this invoice's
+        # hospital-local "today" instead.
+        today = hospital_today_by_id(db, invoice.hospital_id)
+
         batch_num = (line.batch_number or "").strip()
         if batch_num:
             # Specific batch requested — row-lock it (FOR UPDATE) to prevent
@@ -695,7 +709,7 @@ def _deduct_invoice_medicine_stock(db: Session, invoice: Invoice) -> None:
                 MedicineBatch.medicine_id == medicine_id,
                 MedicineBatch.batch_number == batch_num,
                 MedicineBatch.is_active == True,
-                MedicineBatch.is_expired == False,
+                MedicineBatch.expiry_date >= today,
             ).with_for_update().all()
             if not batches:
                 raise ValueError(
@@ -706,7 +720,7 @@ def _deduct_invoice_medicine_stock(db: Session, invoice: Invoice) -> None:
             batches = db.query(MedicineBatch).filter(
                 MedicineBatch.medicine_id == medicine_id,
                 MedicineBatch.is_active == True,
-                MedicineBatch.is_expired == False,
+                MedicineBatch.expiry_date >= today,
                 MedicineBatch.quantity > 0,
             ).with_for_update().order_by(MedicineBatch.expiry_date.asc()).all()
             if not batches:

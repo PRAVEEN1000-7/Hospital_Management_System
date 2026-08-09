@@ -332,35 +332,13 @@ const AdjustmentsPage: React.FC = () => {
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-500 mb-1.5">Item *</label>
-                {/* Both selection methods enabled side by side: type to search
-                    (autocomplete), or pick straight from a plain dropdown —
-                    either one sets the same item_id via handleItemSelect. */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <SearchableSelect
-                    value={itemLabel}
-                    onChange={handleItemSelect}
-                    suggestions={itemSuggestions}
-                    placeholder={formData.item_type === 'medicine' ? 'Search medicine...' : 'Search optical product...'}
-                    allowManualEntry={false}
-                  />
-                  <select
-                    value={formData.item_id || ''}
-                    onChange={e => {
-                      const selected = itemSuggestions.find(s => s.id === e.target.value);
-                      if (selected) handleItemSelect(selected.label, selected.metadata);
-                    }}
-                    className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm bg-slate-50 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                  >
-                    <option value="">
-                      {itemSuggestions.length === 0
-                        ? `No ${formData.item_type === 'medicine' ? 'medicines' : 'optical products'} available`
-                        : '— Or choose from dropdown —'}
-                    </option>
-                    {itemSuggestions.map(s => (
-                      <option key={s.id} value={s.id}>{s.label}</option>
-                    ))}
-                  </select>
-                </div>
+                <SearchableSelect
+                  value={itemLabel}
+                  onChange={handleItemSelect}
+                  suggestions={itemSuggestions}
+                  placeholder={formData.item_type === 'medicine' ? 'Search medicine...' : 'Search optical product...'}
+                  allowManualEntry={false}
+                />
                 {currentStock !== null && (
                   <p className="text-xs text-slate-400 mt-1">
                     Current stock: <span className="font-semibold text-slate-600">{currentStock}</span>

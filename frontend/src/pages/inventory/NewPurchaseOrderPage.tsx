@@ -92,6 +92,17 @@ const NewPurchaseOrderPage: React.FC = () => {
 
   // Get selected supplier's product categories for item type dropdown
   const selectedSupplier = useMemo(() => suppliers.find(s => s.id === supplierId), [suppliers, supplierId]);
+
+  // Suggestions for the supplier searchable select (browse + type-to-search in one field)
+  const supplierSuggestions: SuggestionOption[] = useMemo(() => suppliers.map(s => ({
+    id: s.id,
+    label: `${s.name} (${s.code})`,
+    metadata: { id: s.id },
+  })), [suppliers]);
+
+  const handleSupplierSelect = (_value: string, metadata?: Record<string, unknown>) => {
+    setSupplierId((metadata && metadata.id) ? (metadata.id as string) : '');
+  };
   
   const availableItemTypes = useMemo(() => {
     const categories = selectedSupplier?.product_categories || [];
@@ -414,11 +425,13 @@ const NewPurchaseOrderPage: React.FC = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="sm:col-span-2">
             <label className="block text-xs font-semibold text-slate-500 mb-1.5">Supplier *</label>
-            <select value={supplierId} onChange={e => setSupplierId(e.target.value)}
-              className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm bg-slate-50 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none">
-              <option value="">Select supplier...</option>
-              {suppliers.map(s => <option key={s.id} value={s.id}>{s.name} ({s.code})</option>)}
-            </select>
+            <SearchableSelect
+              value={selectedSupplier ? `${selectedSupplier.name} (${selectedSupplier.code})` : ''}
+              onChange={handleSupplierSelect}
+              suggestions={supplierSuggestions}
+              placeholder="Search supplier..."
+              allowManualEntry={false}
+            />
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-500 mb-1.5">Order Date *</label>

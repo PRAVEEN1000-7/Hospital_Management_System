@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate, useSearchParams, useParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import prescriptionService from '../services/prescriptionService';
@@ -133,14 +133,34 @@ const createBlock = (diagnosis = '', items?: PrescriptionItemCreate[]): Diagnosi
 
 const PrescriptionBuilder: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { id: editId } = useParams<{ id: string }>();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user, isModuleEnabled } = useAuth();
   const { showToast } = useToast();
 
   const isEditMode = Boolean(editId);
   const pharmacyEnabled = isModuleEnabled('pharmacy');
   const opticalModuleEnabled = isModuleEnabled('optical');
+  // Walk-in-at-the-pharmacy-counter flow: a pharmacist (no linked Doctor row)
+  // authoring a prescription directly may optionally pick which real doctor
+  // to file it under — doctor_id is nullable on the backend
+  // (prescription_service.py no longer requires it), so leaving this blank
+  // just persists doctor_id = NULL. Doctors/visiting_doctors keep the
+  // existing behavior of the backend auto-resolving their own Doctor row.
+  const userRoles = useMemo(() => (user?.roles || []).map(r => String(r).toLowerCase()), [user?.roles]);
+  const isPharmacistUser = userRoles.includes('pharmacist');
+  const isDoctorRole = userRoles.includes('doctor') || userRoles.includes('visiting_doctor');
+  const needsDoctorPicker = !isEditMode && !isDoctorRole;
+  const [pharmacistDoctors, setPharmacistDoctors] = useState<DoctorOption[]>([]);
+  const [selectedDoctorId, setSelectedDoctorId] = useState<string>(
+    () => (needsDoctorPicker ? sessionStorage.getItem('pharmacistRxDoctorId') || '' : ''),
+  );
+
+  useEffect(() => {
+    if (!needsDoctorPicker) return;
+    scheduleService.getDoctors().then(setPharmacistDoctors).catch(() => {});
+  }, [needsDoctorPicker]);
   // Lab tests apply to every hospital type (not eye-specific), so this card is
   // gated by the module flag alone — unlike the optical card's isEyeHospital.
   const labModuleEnabled = isModuleEnabled('lab');
@@ -243,6 +263,9 @@ const PrescriptionBuilder: React.FC = () => {
   const [patientSearch, setPatientSearch] = useState('');
   const [patientResults, setPatientResults] = useState<Patient[]>([]);
   const [showPatientSearch, setShowPatientSearch] = useState(!patientId);
+  // Lets the dropdown open on focus, before any typing — otherwise the only
+  // way to pick a patient is to already know something to search for.
+  const [patientFocused, setPatientFocused] = useState(false);
 
   // Medicine search — scoped to a specific block + item
   const [medicineSearch, setMedicineSearch] = useState('');
@@ -336,6 +359,32 @@ const PrescriptionBuilder: React.FC = () => {
         .catch(() => showToast('error', 'Patient not found'));
     }
   }, [patientId, isEyeHospital, editId]);
+
+  // Returning from the full Patient Registration form (Register.tsx) after
+  // registering a walk-in patient who wasn't found in search below — same
+  // sessionStorage 'walkInReturnUrl' + '?new_patient_id=' round trip already
+  // used by WalkInRegistration.tsx, reused as-is rather than inventing a
+  // second mechanism. Just feeds the new id into the existing patientId
+  // effect above instead of duplicating its fetch/autofill logic.
+  useEffect(() => {
+    const newPatientId = searchParams.get('new_patient_id');
+    if (!newPatientId) return;
+    setPatientId(newPatientId);
+    setShowPatientSearch(false);
+    searchParams.delete('new_patient_id');
+    setSearchParams(searchParams, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const goToRegisterPatient = () => {
+    // Register.tsx appends "?new_patient_id=..." to this on return, so it
+    // must be the bare pathname (matches WalkInRegistration.tsx's contract) —
+    // appending location.search here would produce a malformed double "?".
+    // The doctor picked above (if any) survives the round trip via the
+    // 'pharmacistRxDoctorId' sessionStorage key set on selection, not via URL.
+    sessionStorage.setItem('walkInReturnUrl', location.pathname);
+    navigate('/register');
+  };
 
   // Load referral context, if this consultation was reached via a referral —
   // previously nothing here ever fetched the appointment record at all, so a
@@ -460,9 +509,10 @@ const PrescriptionBuilder: React.FC = () => {
     resetReferAvailability();
   };
 
-  // Patient search
+  // Patient search — empty query still resolves (most-recently-registered
+  // patients) so focusing the field shows something to browse, not only
+  // once the user has started typing.
   const searchPatients = useCallback(async (q: string) => {
-    if (q.length < 2) { setPatientResults([]); return; }
     try {
       const res = await patientService.getPatients(1, 5, q);
       setPatientResults(res.data);
@@ -470,13 +520,15 @@ const PrescriptionBuilder: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const timer = setTimeout(() => searchPatients(patientSearch), 300);
+    if (!patientFocused) { setPatientResults([]); return; }
+    const timer = setTimeout(() => searchPatients(patientSearch.trim()), 300);
     return () => clearTimeout(timer);
-  }, [patientSearch, searchPatients]);
+  }, [patientSearch, patientFocused, searchPatients]);
 
-  // Medicine search
+  // Medicine search — an empty query still resolves (first page of the
+  // formulary), so focusing an empty medicine-name field can browse the
+  // catalog instead of requiring the user to already know what to type.
   const searchMedicines = useCallback(async (q: string) => {
-    if (q.length < 2) { setMedicineResults([]); return; }
     try {
       const res = await prescriptionService.getMedicines(1, 20, q);
       setMedicineResults(res.data);
@@ -762,6 +814,9 @@ const PrescriptionBuilder: React.FC = () => {
     silent: boolean = false,
   ): Promise<string | null> => {
     if (!patient) { showToast('error', 'Please select a patient'); return null; }
+    // A pharmacist (or any non-doctor) authoring a NEW prescription may
+    // optionally attribute it to a doctor — doctor_id is nullable on the
+    // backend now, so an empty pick is fine and simply persists as NULL.
 
     // Flatten blocks into single diagnosis string & ordered items for the API
     const allDiagnoses = blocks.map(b => b.diagnosis.trim()).filter(Boolean).join('; ');
@@ -819,6 +874,7 @@ const PrescriptionBuilder: React.FC = () => {
         // Create new prescription
         const rx = await prescriptionService.createPrescription({
           patient_id: patient.id,
+          doctor_id: needsDoctorPicker ? (selectedDoctorId || undefined) : undefined,
           appointment_id: appointmentId || undefined,
           queue_id: queueId || undefined,
           diagnosis: allDiagnoses || undefined,
@@ -985,6 +1041,45 @@ const PrescriptionBuilder: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* Left: Form — expanded to take 3/4 width */}
         <div className="lg:col-span-3 space-y-6">
+          {/* Prescribing Doctor — pharmacist (or any non-doctor reaching this
+              route) may optionally attribute the prescription to a real
+              doctor; POST /prescriptions accepts an omitted doctor_id and
+              persists doctor_id = NULL. */}
+          {needsDoctorPicker && (
+            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+              <h3 className="font-semibold mb-4 flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-sm">stethoscope</span> Prescribing Doctor
+              </h3>
+              <label className="block text-xs font-bold text-slate-500 mb-2">
+                File this prescription under (optional)
+              </label>
+              <select
+                value={selectedDoctorId}
+                onChange={(e) => {
+                  setSelectedDoctorId(e.target.value);
+                  if (e.target.value) {
+                    sessionStorage.setItem('pharmacistRxDoctorId', e.target.value);
+                  } else {
+                    sessionStorage.removeItem('pharmacistRxDoctorId');
+                  }
+                }}
+                className="input-field"
+              >
+                <option value="">Select doctor (optional)...</option>
+                {pharmacistDoctors.map(d => (
+                  <option key={d.doctor_id} value={d.doctor_id}>
+                    {d.name}{d.specialization ? ` — ${d.specialization}` : ''}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-slate-400 mt-2">
+                {isPharmacistUser
+                  ? 'Optionally file this prescription under a licensed doctor at this hospital.'
+                  : 'Optionally select the doctor this prescription should be attributed to.'}
+              </p>
+            </div>
+          )}
+
           {/* Patient Selection */}
           <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
             <h3 className="font-semibold mb-4 flex items-center gap-2">
@@ -1022,7 +1117,9 @@ const PrescriptionBuilder: React.FC = () => {
                     value={patientSearch}
                     onChange={e => setPatientSearch(e.target.value)}
                     onKeyDown={patientNav.onKeyDown}
-                    placeholder="Search patient by name, phone, or PRN..."
+                    onFocus={() => setPatientFocused(true)}
+                    onBlur={() => window.setTimeout(() => setPatientFocused(false), 150)}
+                    placeholder="Search by name, phone, or PRN... or click to browse recent patients"
                     className="input-field pl-10 pr-9"
                     autoFocus
                   />
@@ -1032,11 +1129,16 @@ const PrescriptionBuilder: React.FC = () => {
                     </button>
                   )}
                 </div>
-                {patientResults.length > 0 && (
+                {patientFocused && patientResults.length > 0 && (
                   <div className="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    {!patientSearch.trim() && (
+                      <p className="px-4 py-1.5 text-[10px] font-bold text-slate-400 uppercase border-b border-slate-100">Recent patients</p>
+                    )}
                     {patientResults.map((p, idx) => (
                       <button
                         key={p.id}
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
                         onClick={() => selectPatient(p)}
                         onMouseEnter={() => patientNav.setActiveIndex(idx)}
                         className={`w-full text-left px-4 py-3 border-b border-slate-100 last:border-0 ${
@@ -1050,6 +1152,30 @@ const PrescriptionBuilder: React.FC = () => {
                       </button>
                     ))}
                   </div>
+                )}
+                {patientFocused && patientSearch.trim().length >= 2 && patientResults.length === 0 && (
+                  <div className="mt-2 bg-slate-50 rounded-lg px-3 py-3 space-y-1.5">
+                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                      <span className="material-symbols-outlined text-base">search_off</span>
+                      No patient found for "<span className="font-semibold text-slate-700">{patientSearch}</span>"
+                    </div>
+                    <button
+                      type="button"
+                      onClick={goToRegisterPatient}
+                      className="flex items-center gap-1 text-xs text-primary font-semibold hover:underline pl-6"
+                    >
+                      <span className="material-symbols-outlined text-sm">person_add</span>
+                      Register as new patient
+                    </button>
+                  </div>
+                )}
+                {!patientSearch && !patientFocused && (
+                  <p className="text-xs text-slate-400 mt-2">
+                    Search for a patient or{' '}
+                    <button type="button" onClick={goToRegisterPatient} className="text-primary font-semibold hover:underline">
+                      register a new one
+                    </button>
+                  </p>
                 )}
               </div>
             )}
@@ -1328,11 +1454,18 @@ const PrescriptionBuilder: React.FC = () => {
                                     activeMedInputRef.current = e.currentTarget;
                                     setActiveMedBlockIdx(blockIdx);
                                     setActiveMedItemIdx(itemIdx);
+                                    // Focusing an empty field browses the formulary
+                                    // (first page) instead of showing nothing until typed.
+                                    if (!item.medicine_name.trim()) {
+                                      setMedicineSearch('');
+                                      setActiveMedResultIdx(-1);
+                                      searchMedicines('');
+                                    }
                                   }}
                                   onBlur={() => setTimeout(() => { setActiveMedBlockIdx(null); setActiveMedItemIdx(null); }, 400)}
                                   onKeyDown={(e) => handleMedicineInputKeyDown(e, blockIdx, itemIdx)}
                                   className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                                  placeholder="Type medicine name..."
+                                  placeholder="Type, or click to browse formulary..."
                                 />
                               </div>
 
@@ -1476,11 +1609,18 @@ const PrescriptionBuilder: React.FC = () => {
                               activeMedInputRef.current = e.currentTarget;
                               setActiveMedBlockIdx(blockIdx);
                               setActiveMedItemIdx(itemIdx);
+                              // Focusing an empty field browses the formulary
+                              // (first page) instead of showing nothing until typed.
+                              if (!item.medicine_name.trim()) {
+                                setMedicineSearch('');
+                                setActiveMedResultIdx(-1);
+                                searchMedicines('');
+                              }
                             }}
                             onBlur={() => setTimeout(() => { setActiveMedBlockIdx(null); setActiveMedItemIdx(null); }, 400)}
                             onKeyDown={(e) => handleMedicineInputKeyDown(e, blockIdx, itemIdx)}
                             className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                            placeholder="Type medicine name..."
+                            placeholder="Type, or click to browse formulary..."
                           />
                         </div>
 
@@ -1769,10 +1909,35 @@ const PrescriptionBuilder: React.FC = () => {
                     {labTestGroups.length === 0 ? (
                       <p className="text-sm text-slate-400">No tests match "{labTestSearch}".</p>
                     ) : (
-                      labTestGroups.map(({ category, tests }) => (
+                      labTestGroups.map(({ category, tests }) => {
+                        // "Select all" toggles every test in this one category
+                        // group at once — for a patient who needs the whole
+                        // panel (e.g. all Liver Function Tests) — without
+                        // disturbing the existing per-test checkboxes, which
+                        // still work individually exactly as before.
+                        const groupIds = tests.map(t => t.id);
+                        const allChecked = groupIds.length > 0 && groupIds.every(id => selectedLabTestIds.includes(id));
+                        const someChecked = groupIds.some(id => selectedLabTestIds.includes(id));
+                        return (
                         <div key={category}>
-                          <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">
-                            {category}
+                          <div className="flex items-center justify-between mb-1.5">
+                            <div className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                              {category}
+                            </div>
+                            <label className="flex items-center gap-1.5 text-xs font-semibold text-primary cursor-pointer select-none">
+                              <input
+                                type="checkbox"
+                                checked={allChecked}
+                                ref={el => { if (el) el.indeterminate = someChecked && !allChecked; }}
+                                onChange={() => setSelectedLabTestIds(prev =>
+                                  allChecked
+                                    ? prev.filter(id => !groupIds.includes(id))
+                                    : [...new Set([...prev, ...groupIds])]
+                                )}
+                                className="accent-primary"
+                              />
+                              Select all
+                            </label>
                           </div>
                           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                             {tests.map(t => {
@@ -1803,7 +1968,8 @@ const PrescriptionBuilder: React.FC = () => {
                             })}
                           </div>
                         </div>
-                      ))
+                        );
+                      })
                     )}
                   </div>
                   <div>
@@ -2239,6 +2405,9 @@ const PrescriptionBuilder: React.FC = () => {
             style={{ position: 'fixed', top: medDropdownPos.top, left: medDropdownPos.left, width: medDropdownPos.width, zIndex: 9999 }}
             className="bg-white border border-slate-200 rounded-lg shadow-xl max-h-48 overflow-y-auto"
           >
+            {!medicineSearch.trim() && (
+              <p className="px-3 py-1.5 text-[10px] font-bold text-slate-400 uppercase border-b border-slate-100">Formulary — browse or type to search</p>
+            )}
             {medicineResults.map((med, idx) => {
               const isOutOfStock = (med.total_stock ?? 0) <= 0;
               return (

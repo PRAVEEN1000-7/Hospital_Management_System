@@ -7,6 +7,7 @@ import type { Patient } from '../../types/patient';
 import { useToast } from '../../contexts/ToastContext';
 import { format } from 'date-fns';
 import { useListKeyboardNav } from '../../hooks/useListKeyboardNav';
+import SearchableSelect, { type SuggestionOption } from '../../components/common/SearchableSelect';
 
 const RX_REQUIRED_CATEGORIES = ['lens', 'contact_lens'];
 
@@ -27,6 +28,17 @@ const NewOpticalSale: React.FC = () => {
   const [batchMap, setBatchMap] = useState<Record<string, OpticalBatch[]>>({});
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedProduct, setSelectedProduct] = useState('');
+  const [productLabel, setProductLabel] = useState('');
+  const productSuggestions: SuggestionOption[] = products.map(p => ({
+    id: p.id,
+    label: `${p.name}${p.brand ? ` (${p.brand})` : ''}`,
+    sublabel: `Stock: ${p.total_stock ?? 'N/A'}`,
+    metadata: { id: p.id },
+  }));
+  const handleProductSelect = (value: string, metadata?: Record<string, unknown>) => {
+    setProductLabel(value);
+    setSelectedProduct(metadata?.id ? (metadata.id as string) : '');
+  };
 
   const [patients, setPatients] = useState<Patient[]>([]);
   const [patientSearch, setPatientSearch] = useState('');
@@ -120,6 +132,7 @@ const NewOpticalSale: React.FC = () => {
       expiry_date: batch?.expiry_date,
     }]);
     setSelectedProduct('');
+    setProductLabel('');
   };
 
   const quickAddByCategory = async (category: string) => {
@@ -265,6 +278,7 @@ const NewOpticalSale: React.FC = () => {
                   )}
                   {patients.map((p, idx) => (
                     <button key={p.id} type="button"
+                      onMouseDown={(e) => e.preventDefault()}
                       onClick={() => selectPatient(p)}
                       onMouseEnter={() => patientNav.setActiveIndex(idx)}
                       className={`w-full text-left px-3 py-2 text-sm ${idx === patientNav.activeIndex ? 'bg-primary/10' : 'hover:bg-slate-50'}`}>
@@ -310,15 +324,15 @@ const NewOpticalSale: React.FC = () => {
           </div>
 
           <div className="flex gap-2">
-            <select value={selectedProduct} onChange={e => setSelectedProduct(e.target.value)}
-              className="flex-1 px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary">
-              <option value="">Select product to add...</option>
-              {products.map(p => (
-                <option key={p.id} value={p.id}>
-                  {p.name}{p.brand ? ` (${p.brand})` : ''} — Stock: {p.total_stock ?? 'N/A'}
-                </option>
-              ))}
-            </select>
+            <div className="flex-1">
+              <SearchableSelect
+                value={productLabel}
+                onChange={handleProductSelect}
+                suggestions={productSuggestions}
+                placeholder="Search product..."
+                allowManualEntry={false}
+              />
+            </div>
             <button type="button" onClick={addToCart} disabled={!selectedProduct}
               className="px-4 py-2 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 disabled:opacity-50">
               Add

@@ -292,7 +292,7 @@ const PrescriptionDetail: React.FC = () => {
               {/* Doctor */}
               <div>
                 <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Doctor</h4>
-                <p className="text-sm font-semibold text-slate-900">{rx.doctor_name || rx.doctor_id}</p>
+                <p className="text-sm font-semibold text-slate-900">{rx.doctor_name || 'No doctor assigned'}</p>
               </div>
             </div>
 

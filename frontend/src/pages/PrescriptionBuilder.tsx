@@ -16,6 +16,7 @@ import type { OpticalPrescriptionCreateData } from '../types/optical';
 import type { LabTest, PatientLabResult } from '../types/lab';
 import type { Patient } from '../types/patient';
 import type { DoctorOption } from '../types/appointment';
+import SearchableSelect, { type SuggestionOption } from '../components/common/SearchableSelect';
 import { genId } from '../utils/id';
 import { canEdit } from '../config/modulePermissions';
 import AvailabilityCalendar from '../components/common/AvailabilityCalendar';
@@ -155,6 +156,9 @@ const PrescriptionBuilder: React.FC = () => {
   const [pharmacistDoctors, setPharmacistDoctors] = useState<DoctorOption[]>([]);
   const [selectedDoctorId, setSelectedDoctorId] = useState<string>(
     () => (needsDoctorPicker ? sessionStorage.getItem('pharmacistRxDoctorId') || '' : ''),
+  );
+  const [doctorLabel, setDoctorLabel] = useState<string>(
+    () => (needsDoctorPicker ? sessionStorage.getItem('pharmacistRxDoctorLabel') || '' : ''),
   );
 
   useEffect(() => {
@@ -1053,25 +1057,32 @@ const PrescriptionBuilder: React.FC = () => {
               <label className="block text-xs font-bold text-slate-500 mb-2">
                 File this prescription under (optional)
               </label>
-              <select
-                value={selectedDoctorId}
-                onChange={(e) => {
-                  setSelectedDoctorId(e.target.value);
-                  if (e.target.value) {
-                    sessionStorage.setItem('pharmacistRxDoctorId', e.target.value);
+              <SearchableSelect
+                value={doctorLabel}
+                onChange={(value, metadata) => {
+                  const id = metadata?.id ? (metadata.id as string) : '';
+                  setDoctorLabel(value);
+                  setSelectedDoctorId(id);
+                  // Persisted so the doctor pick survives the /register round
+                  // trip (component remounts on navigation) — same technique
+                  // used by NewLabOrder.tsx / NewOpticalPrescription.tsx.
+                  if (id) {
+                    sessionStorage.setItem('pharmacistRxDoctorId', id);
+                    sessionStorage.setItem('pharmacistRxDoctorLabel', value);
                   } else {
                     sessionStorage.removeItem('pharmacistRxDoctorId');
+                    sessionStorage.removeItem('pharmacistRxDoctorLabel');
                   }
                 }}
-                className="input-field"
-              >
-                <option value="">Select doctor (optional)...</option>
-                {pharmacistDoctors.map(d => (
-                  <option key={d.doctor_id} value={d.doctor_id}>
-                    {d.name}{d.specialization ? ` — ${d.specialization}` : ''}
-                  </option>
-                ))}
-              </select>
+                suggestions={pharmacistDoctors.map((d): SuggestionOption => ({
+                  id: d.doctor_id,
+                  label: d.name,
+                  sublabel: d.specialization || undefined,
+                  metadata: { id: d.doctor_id },
+                }))}
+                placeholder="Search doctor (optional)..."
+                allowManualEntry={false}
+              />
               <p className="text-[11px] text-slate-400 mt-2">
                 {isPharmacistUser
                   ? 'Optionally file this prescription under a licensed doctor at this hospital.'

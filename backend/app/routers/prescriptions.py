@@ -67,21 +67,22 @@ rx_new_edit_guard = require_permission("rx.new", "edit")
 
 
 def _rx_new_or_pharmacist_guard(level: str):
-    """Narrow carve-out letting a pharmacist author a walk-in prescription
-    directly (attributed to a doctor they explicitly pick from the roster —
-    see PrescriptionCreate.doctor_id / prescription_service.create_prescription,
-    which already requires an explicit doctor_id from any caller with no
-    linked Doctor row) without granting the pharmacist the full "rx.new"
-    edit right.
+    """Narrow carve-out letting a pharmacist OR admin author a walk-in
+    prescription directly (attributed to a doctor they explicitly pick from
+    the roster — see PrescriptionCreate.doctor_id /
+    prescription_service.create_prescription, which already requires an
+    explicit doctor_id from any caller with no linked Doctor row) without
+    granting either the full "rx.new" edit right.
 
-    "rx.new" is deliberately NOT extended to pharmacist in module_roles.py's
-    MODULE_ROLES matrix, because that same key also gates the medicine
-    formulary CRUD (create_new_medicine/update_med below) and prescription
-    template CRUD (templates_router below) — a plain matrix edit would hand
-    pharmacists edit rights over both of those too, which was never asked
-    for and isn't safe to add as a side effect here. Only the two endpoints
-    a pharmacist actually needs (create a prescription; search the medicine
-    list while building one) use this guard instead.
+    "rx.new" is deliberately NOT extended to pharmacist/admin in
+    module_roles.py's MODULE_ROLES matrix (admin only has "view" there),
+    because that same key also gates the medicine formulary CRUD
+    (create_new_medicine/update_med below) and prescription template CRUD
+    (templates_router below) — a plain matrix edit would hand them edit
+    rights over both of those too, which was never asked for and isn't safe
+    to add as a side effect here. Only the two endpoints a pharmacist/admin
+    actually need (create a prescription; search the medicine list while
+    building one) use this guard instead.
 
     Mirrors the `adjustment_create_roles` carve-out pattern already used in
     inventory.py for the same kind of narrowly-scoped role addition.
@@ -94,12 +95,12 @@ def _rx_new_or_pharmacist_guard(level: str):
         db: Session = Depends(get_db),
     ):
         roles = {str(r).strip().lower() for r in (current_user.roles or [])}
-        if "pharmacist" in roles:
+        if "pharmacist" in roles or "admin" in roles:
             return current_user
         if check_permission(db, current_user, "rx.new", level):
             return current_user
         logger.warning(
-            "RBAC deny (rx.new/pharmacist carve-out) user=%s roles=%s level=%s",
+            "RBAC deny (rx.new/pharmacist/admin carve-out) user=%s roles=%s level=%s",
             getattr(current_user, "username", "unknown"), roles, level,
         )
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role permissions")

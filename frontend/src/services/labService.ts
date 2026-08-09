@@ -36,8 +36,17 @@ export const labService = {
     return res.data;
   },
 
+  /** Deactivates the test (hides it from new orders) — history referencing
+   * it is untouched. See permanentlyDeleteTest for a full removal. */
   async deleteTest(id: string): Promise<void> {
     await api.delete(`/lab/tests/${id}`);
+  },
+
+  /** Completely removes the catalog entry. Backend rejects this with a 409
+   * if the test has ever been used in a lab order — deactivate it instead
+   * in that case. */
+  async permanentlyDeleteTest(id: string): Promise<void> {
+    await api.delete(`/lab/tests/${id}/permanent`);
   },
 
   // ═══ Orders ═══

@@ -115,6 +115,39 @@ async def deactivate_lab_test(
     svc.deactivate_lab_test(db, test_id, hospital_id=current_user.hospital_id)
 
 
+@router.delete("/tests/{test_id}/permanent", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_lab_test_permanently(
+    test_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Completely remove a catalog entry — distinct from the deactivate
+    endpoint above, which just hides it from new orders. Blocked with a 409
+    (not a raw FK error) if any lab order has ever used this test; the
+    correct action there is to deactivate it instead."""
+    _require(current_user, LAB_STAFF_ROLES)
+    existing = svc.get_lab_test_by_id(db, test_id, hospital_id=current_user.hospital_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Lab test not found")
+    if svc.is_lab_test_in_use(db, existing.id):
+        raise HTTPException(
+            status_code=409,
+            detail="This test has been used in one or more lab orders and cannot be deleted. Deactivate it instead.",
+        )
+
+    test_name, test_code = existing.name, existing.code
+    svc.delete_lab_test(db, existing)
+
+    AuditLogger.log(
+        action=AuditAction.LAB_TEST_DELETE,
+        user=current_user,
+        tenant=None,
+        resource_type="lab_test",
+        resource_id=test_id,
+        old_values={"name": test_name, "code": test_code},
+    )
+
+
 # ═══ Orders ═══
 @router.post("/orders", response_model=LabOrderResponse, status_code=status.HTTP_201_CREATED)
 async def create_lab_order(

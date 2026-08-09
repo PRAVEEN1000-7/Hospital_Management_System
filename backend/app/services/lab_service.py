@@ -103,6 +103,25 @@ def deactivate_lab_test(db: Session, test_id: str | uuid.UUID, hospital_id: Opti
     return True
 
 
+def is_lab_test_in_use(db: Session, test_id: str | uuid.UUID) -> bool:
+    """LabOrderItem.lab_test_id has no ON DELETE clause, so the DB itself
+    would already reject deleting a test that's been ordered at least
+    once — checked explicitly by the router first so it can return a clear
+    409 instead of a raw FK violation (same reasoning as
+    is_lab_order_billed)."""
+    return db.query(LabOrderItem).filter(LabOrderItem.lab_test_id == test_id).first() is not None
+
+
+def delete_lab_test(db: Session, test: LabTest) -> None:
+    """Hard-deletes a catalog entry. Unlike deactivate_lab_test (which just
+    hides it from new orders while every past LabOrderItem snapshot still
+    resolves its name/price independently), this permanently removes the
+    row — only safe once is_lab_test_in_use has confirmed nothing still
+    references it."""
+    db.delete(test)
+    db.commit()
+
+
 def is_lab_order_billed(db: Session, order_id: str | uuid.UUID) -> bool:
     """LabSale.lab_order_id has no ON DELETE clause, so the DB itself would
     already reject deleting a billed order — checked explicitly by the

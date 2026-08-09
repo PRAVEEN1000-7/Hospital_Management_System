@@ -96,6 +96,20 @@ const LabTestCatalog: React.FC = () => {
     }
   };
 
+  const handleDelete = async (t: LabTest) => {
+    if (!window.confirm(
+      `Permanently delete "${t.name}"? This completely removes it from the catalog and cannot be undone. ` +
+      `If it's ever been ordered, this will be blocked — deactivate it instead in that case.`
+    )) return;
+    try {
+      await labService.permanentlyDeleteTest(t.id);
+      showToast('success', 'Test deleted');
+      load();
+    } catch (err: any) {
+      showToast('error', err?.response?.data?.detail || 'Failed to delete test');
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -171,6 +185,9 @@ const LabTestCatalog: React.FC = () => {
                           <span className="material-symbols-outlined text-lg">block</span>
                         </button>
                       )}
+                      <button onClick={() => handleDelete(t)} className="text-slate-400 hover:text-red-600 p-1" title="Delete permanently">
+                        <span className="material-symbols-outlined text-lg">delete</span>
+                      </button>
                     </td>
                   </tr>
                 ))}

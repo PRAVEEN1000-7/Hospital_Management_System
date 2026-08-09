@@ -62,6 +62,25 @@ export async function htmlStringToPdf(
     const contentHeight = Math.max(doc.body.scrollHeight, doc.documentElement.scrollHeight);
     iframe.style.height = `${contentHeight}px`;
 
+    // Row/atomic-element boundaries (DOM CSS px, relative to <body>'s top)
+    // that must never be sliced across a page boundary — read BEFORE
+    // rasterising, while the iframe's DOM is still queryable. `tr` covers
+    // every tabular report this app generates (attendance, payroll,
+    // invoices, PO/GRN, lab); `.avoid-break` covers non-<tr> blocks such as
+    // a signature section. CSS `page-break-inside: avoid` only affects an
+    // actual browser print — this raster path has no page concept at all
+    // until we build one here, so a naive fixed-height slice otherwise cuts
+    // straight through a row (e.g. an attendance employee's name sitting
+    // right at a page boundary).
+    const bodyTop = doc.body.getBoundingClientRect().top;
+    const domSegments = Array.from(doc.querySelectorAll<HTMLElement>('tr, .avoid-break'))
+      .map((el) => {
+        const r = el.getBoundingClientRect();
+        return { top: r.top - bodyTop, bottom: r.bottom - bodyTop };
+      })
+      .filter((s) => s.bottom > s.top)
+      .sort((a, b) => a.top - b.top);
+
     const canvas = await html2canvas(doc.body, {
       // Higher scale → sharper text/logo in the downloaded/printed PDF.
       scale: Math.min(3, (window.devicePixelRatio || 1) * 2),
@@ -76,22 +95,69 @@ export async function htmlStringToPdf(
     const pageW = pdf.internal.pageSize.getWidth();
     const pageH = pdf.internal.pageSize.getHeight();
     const imgW = pageW;
-    const imgH = (canvas.height * imgW) / canvas.width;
-    const imgData = canvas.toDataURL('image/png');
 
-    let heightLeft = imgH;
-    let position = 0;
-    pdf.addImage(imgData, 'PNG', 0, position, imgW, imgH);
-    heightLeft -= pageH;
+    // html2canvas scales the DOM uniformly, so one factor converts canvas px
+    // to output mm on both axes, and another converts the DOM measurements
+    // above (taken pre-rasterisation, in CSS px) into that same canvas-px space.
+    const canvasPxPerMm = canvas.width / imgW;
+    const domPxToCanvasPx = canvas.height / contentHeight;
+    const pageHeightPx = pageH * canvasPxPerMm;
+    const segments = domSegments.map((s) => ({
+      top: s.top * domPxToCanvasPx,
+      bottom: s.bottom * domPxToCanvasPx,
+    }));
 
-    // Only add another page when a meaningful amount of content remains; a few
-    // millimetres of remainder (canvas-scale rounding, font-metric variance) is
-    // never real content and must not spawn a near-blank trailing page.
-    while (heightLeft > 6) {
-      position -= pageH;
-      pdf.addPage();
-      pdf.addImage(imgData, 'PNG', 0, position, imgW, imgH);
-      heightLeft -= pageH;
+    // Walk the content in page-sized chunks, nudging each cut back to the
+    // nearest row boundary instead of a blind fixed interval. A nudge is
+    // only taken when it leaves a non-trivial amount of content on the page
+    // being closed off — otherwise (e.g. a single row taller than a page,
+    // or one sitting right at the very top) fall back to the plain cut
+    // rather than emit a near-empty page or loop without progress.
+    const MIN_SLICE_PX = pageHeightPx * 0.25;
+    const sliceBoundaries: number[] = [0];
+    let cursor = 0;
+    // Stop once only a negligible sliver of content remains — a few px of
+    // canvas-scale rounding is never real content and must not spawn a
+    // near-blank trailing page — then close out with the true content end,
+    // which also covers the common case of everything fitting on one page
+    // (the loop body never runs at all, and this is the only boundary added
+    // after the initial 0).
+    while (canvas.height - cursor > 6 * canvasPxPerMm) {
+      let end = Math.min(cursor + pageHeightPx, canvas.height);
+      const straddling = segments.find((s) => s.top > cursor && s.top < end && s.bottom > end);
+      if (straddling && straddling.top - cursor >= MIN_SLICE_PX) {
+        end = straddling.top;
+      }
+      sliceBoundaries.push(end);
+      cursor = end;
+    }
+    if (sliceBoundaries[sliceBoundaries.length - 1] < canvas.height - 0.5) {
+      sliceBoundaries.push(canvas.height);
+    }
+
+    // Each page gets an explicitly-cropped slice of the source canvas (via a
+    // scratch canvas) rather than one shared image nudged up/down per page —
+    // that's what makes uneven, row-aligned slice heights safe: there's no
+    // risk of a page boundary's natural clip re-showing (or hiding) a few
+    // pixels of the row it was nudged away from.
+    for (let i = 0; i < sliceBoundaries.length - 1; i++) {
+      const sliceTop = sliceBoundaries[i];
+      const sliceBottom = sliceBoundaries[i + 1];
+      const sliceHeightPx = sliceBottom - sliceTop;
+      if (sliceHeightPx <= 0) continue;
+
+      const sliceCanvas = document.createElement('canvas');
+      sliceCanvas.width = canvas.width;
+      sliceCanvas.height = sliceHeightPx;
+      const ctx = sliceCanvas.getContext('2d');
+      if (!ctx) continue;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+      ctx.drawImage(canvas, 0, sliceTop, canvas.width, sliceHeightPx, 0, 0, canvas.width, sliceHeightPx);
+
+      if (i > 0) pdf.addPage();
+      const sliceHeightMm = sliceHeightPx / canvasPxPerMm;
+      pdf.addImage(sliceCanvas.toDataURL('image/png'), 'PNG', 0, 0, imgW, sliceHeightMm);
     }
 
     pdf.save(filename.endsWith('.pdf') ? filename : `${filename}.pdf`);

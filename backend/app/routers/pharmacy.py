@@ -213,7 +213,12 @@ async def list_batches(
     if not med_check:
         raise HTTPException(status_code=404, detail="Medicine not found")
     batches = svc.list_batches(db, medicine_id, active_only)
-    return [BatchResponse.model_validate(b) for b in batches]
+    responses = []
+    for b in batches:
+        resp = BatchResponse.model_validate(b)
+        resp.supplier_name = b.supplier.name if b.supplier else None
+        responses.append(resp)
+    return responses
 
 
 @router.post("/batches", response_model=BatchResponse, status_code=status.HTTP_201_CREATED)
@@ -234,7 +239,9 @@ async def create_batch(
         if not med_check:
             raise HTTPException(status_code=404, detail="Medicine not found")
         batch = svc.create_batch(db, data.model_dump())
-        return BatchResponse.model_validate(batch)
+        resp = BatchResponse.model_validate(batch)
+        resp.supplier_name = batch.supplier.name if batch.supplier else None
+        return resp
     except HTTPException:
         raise
     except IntegrityError:
@@ -275,7 +282,9 @@ async def update_batch(
         )
         if not batch:
             raise HTTPException(status_code=404, detail="Batch not found")
-        return BatchResponse.model_validate(batch)
+        resp = BatchResponse.model_validate(batch)
+        resp.supplier_name = batch.supplier.name if batch.supplier else None
+        return resp
     except HTTPException:
         raise
     except ValueError as e:

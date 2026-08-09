@@ -11,10 +11,12 @@ import doctorService from '../services/doctorService';
 import walkInService from '../services/walkInService';
 import waitlistService from '../services/waitlistService';
 import appointmentService, { type DoctorTodaySummary } from '../services/appointmentService';
+import reportsApi from '../services/reportsApi';
 import { useToast } from '../contexts/ToastContext';
 import PatientTrendChart from '../components/dashboard/PatientTrendChart';
 import type { DoctorProfile } from '../types/doctor';
 import type { QueueItem } from '../types/appointment';
+import type { PaymentStatusSummary } from '../types/analytics.types';
 
 /* ────────────────────────────── helpers ────────────────────────────── */
 
@@ -42,6 +44,7 @@ const dashboardTitles: Record<string, string> = {
   super_admin:       'Admin Dashboard Overview',
   admin:             'Admin Dashboard Overview',
   doctor:            'Doctor Dashboard',
+  visiting_doctor:   'Doctor Dashboard',
   nurse:             'Nursing Dashboard',
   receptionist:      'Reception Dashboard',
   pharmacist:        'Pharmacy & Billing Dashboard',
@@ -65,6 +68,7 @@ function getQuickActions(role: string, isSuperAdmin: boolean): QuickAction[] {
           { icon: 'cloud', iconColor: 'text-indigo-500', label: 'Super Admin Panel', desc: 'Manage multi-tenant platform', to: '/superadmin' }
         ] : []),
       ];
+    case 'visiting_doctor':
     case 'doctor':
       return [
         { icon: 'queue', iconColor: 'text-amber-500', label: 'My Queue', desc: 'View your patient queue', to: '/appointments/queue' },
@@ -133,6 +137,7 @@ function getQuickLinks(role: string): QuickLink[] {
         { icon: 'queue', iconColor: 'text-blue-400', label: 'Walk-in Queue', to: '/appointments/queue' },
         { icon: 'analytics', iconColor: 'text-emerald-400', label: 'Reports', to: '/appointments/reports' },
       ];
+    case 'visiting_doctor':
     case 'doctor':
       return [
         { icon: 'queue', iconColor: 'text-amber-400', label: 'Walk-in Queue', to: '/appointments/queue' },
@@ -190,6 +195,7 @@ const Dashboard: React.FC = () => {
   const [queueCompleted, setQueueCompleted] = useState<number>(0);
   const [waitlistWaiting, setWaitlistWaiting] = useState<number>(0);
   const [doctorTodaySummary, setDoctorTodaySummary] = useState<DoctorTodaySummary | null>(null);
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatusSummary | null>(null);
   // Assigned/upcoming patient details for the doctor's dashboard — previously
   // this screen only ever showed queue *counts*, never the actual patients,
   // so a doctor logging in had no way to see who they're assigned to or what's
@@ -199,11 +205,12 @@ const Dashboard: React.FC = () => {
   const [upcomingTotal, setUpcomingTotal] = useState<number>(0);
 
   const role = user?.roles?.[0] || '';
-  const isDoctor = role === 'doctor';
+  const isDoctor = role === 'doctor' || role === 'visiting_doctor';
   const isNurse = role === 'nurse';
   const isAdmin = role === 'admin' || role === 'super_admin';
   const isReceptionist = role === 'receptionist';
   const isPharmacist = role === 'pharmacist';
+  const isCashier = role === 'cashier';
   // The patient endpoints are guarded by view_roles('general.patients'), which
   // has no pharmacist entry — the local list allowed one, and checking only
   // roles[0] denied users whose patient-capable role isn't listed first.
@@ -288,6 +295,16 @@ const Dashboard: React.FC = () => {
         try { const wlStats = await waitlistService.getStats(); setWaitlistWaiting(wlStats.total_waiting || 0); } catch { /* silent */ }
       }
 
+      // Cashier: real billing state (pending/partial/paid invoice counts &
+      // amounts) instead of the static placeholder cards this dashboard used
+      // to show before cashier could actually reach it.
+      if (isCashier) {
+        try {
+          const summary = await reportsApi.getPaymentStatusSummary();
+          setPaymentStatus(summary);
+        } catch { /* silent */ }
+      }
+
       // Admin-only: user count (requires super_admin or admin)
       if (isAdmin) {
         try {
@@ -308,11 +325,12 @@ const Dashboard: React.FC = () => {
     };
 
     fetchDashboardData();
-  }, [isDoctor, isNurse, isReceptionist, isAdmin, canAccessPatients, refreshTrigger]);
+  }, [isDoctor, isNurse, isReceptionist, isAdmin, isCashier, canAccessPatients, refreshTrigger]);
 
   /* ── stat cards per role ── */
   const getStatCards = (): StatCard[] => {
     switch (role) {
+      case 'visiting_doctor':
       case 'doctor':
         return [
           { label: 'Queue Waiting', value: queueWaiting.toString(), icon: 'hourglass_top', iconColor: 'text-amber-500' },
@@ -348,11 +366,18 @@ const Dashboard: React.FC = () => {
           { label: 'System Status', value: 'Online', icon: 'check_circle', iconColor: 'text-emerald-500' },
           { label: 'Billing Access', value: 'Active', icon: 'receipt_long', iconColor: 'text-green-500' },
         ];
-      case 'cashier':
+      case 'cashier': {
+        const notPaid = paymentStatus?.not_paid;
+        const partial = paymentStatus?.partially_paid;
+        const paid = paymentStatus?.paid;
+        const outstanding = (notPaid?.total_amount || 0) + (partial?.total_amount || 0);
         return [
-          { label: 'Billing Console', value: 'Ready', icon: 'payments', iconColor: 'text-blue-500' },
-          { label: 'System Status', value: 'Online', icon: 'check_circle', iconColor: 'text-emerald-500' },
+          { label: 'Pending Invoices', value: (notPaid?.count ?? 0).toLocaleString(), icon: 'pending_actions', iconColor: 'text-amber-500' },
+          { label: 'Partially Paid', value: (partial?.count ?? 0).toLocaleString(), icon: 'hourglass_top', iconColor: 'text-blue-500' },
+          { label: 'Outstanding Amount', value: `₹${outstanding.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`, icon: 'currency_rupee', iconColor: 'text-red-500' },
+          { label: 'Fully Paid', value: (paid?.count ?? 0).toLocaleString(), icon: 'task_alt', iconColor: 'text-emerald-500' },
         ];
+      }
       case 'optical_staff':
         return [
           { label: 'Optical Console', value: 'Ready', icon: 'visibility', iconColor: 'text-blue-500' },

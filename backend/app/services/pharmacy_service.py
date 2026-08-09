@@ -8,8 +8,9 @@ from decimal import Decimal
 from math import ceil
 from datetime import date, timedelta, datetime, timezone
 from typing import Optional
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, or_, and_, case
+from sqlalchemy.exc import IntegrityError
 
 from ..models.prescription import Medicine
 from ..models.pharmacy import (
@@ -111,14 +112,32 @@ def create_medicine(db: Session, hospital_id: uuid.UUID, data: dict, user_id: uu
         payload["generic_name"] = payload.get("name", "")
     if not payload.get("unit_of_measure"):
         payload["unit_of_measure"] = "Nos"
-    # Medicine code is always server-generated — never trust/keep a
-    # client-supplied sku, so codes stay unique and in the QXMDT_001 format.
-    payload["sku"] = generate_medicine_code(db, hospital_id, payload.get("category"))
-    med = Medicine(hospital_id=hospital_id, **payload)
-    db.add(med)
-    db.commit()
-    db.refresh(med)
-    return med
+
+    # generate_medicine_code's own collision guard only re-checks the DB at
+    # the moment it's called — under genuinely concurrent requests (the bulk
+    # Excel upload fires every row's create in parallel), two requests can
+    # both read the same "next" code before either has committed, and both
+    # then try to insert it. Retry on the resulting uniqueness violation,
+    # regenerating the code fresh each time so the retry sees the other
+    # request's now-committed row — same pattern as create_lab_order's
+    # order-number retry loop.
+    last_error: Exception | None = None
+    for _ in range(5):
+        # Medicine code is always server-generated — never trust/keep a
+        # client-supplied sku, so codes stay unique and in the QXMDT_001 format.
+        payload["sku"] = generate_medicine_code(db, hospital_id, payload.get("category"))
+        med = Medicine(hospital_id=hospital_id, **payload)
+        db.add(med)
+        try:
+            db.commit()
+        except IntegrityError as e:
+            db.rollback()
+            last_error = e
+            continue
+        db.refresh(med)
+        return med
+
+    raise last_error
 
 
 def get_medicine_by_id(
@@ -264,7 +283,7 @@ def delete_medicine(db: Session, medicine_id: str | uuid.UUID) -> bool:
 
 def create_batch(db: Session, data: dict) -> MedicineBatch:
     # Convert string UUIDs
-    for fk in ("medicine_id", "grn_id"):
+    for fk in ("medicine_id", "grn_id", "supplier_id"):
         if data.get(fk):
             data[fk] = uuid.UUID(data[fk])
 
@@ -286,7 +305,11 @@ def list_batches(
 ) -> list[MedicineBatch]:
     if isinstance(medicine_id, str):
         medicine_id = uuid.UUID(medicine_id)
-    query = db.query(MedicineBatch).filter(MedicineBatch.medicine_id == medicine_id)
+    query = (
+        db.query(MedicineBatch)
+        .options(joinedload(MedicineBatch.supplier))
+        .filter(MedicineBatch.medicine_id == medicine_id)
+    )
     if active_only:
         query = query.filter(MedicineBatch.is_active == True)
     return query.order_by(MedicineBatch.expiry_date).all()

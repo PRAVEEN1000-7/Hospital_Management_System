@@ -344,12 +344,12 @@ async def get_marking_pdf(
     STATUS_LABEL = {"present": "P", "absent": "A", "half_day": "H", "holiday": "WO",
                      "festival": "F", "na": "NA", "unmarked": ""}
     STATUS_STYLE = {
-        "present":   "background:#d1fae5;color:#047857;",
-        "absent":    "background:#fee2e2;color:#b91c1c;",
-        "half_day":  "background:#fef3c7;color:#b45309;",
-        "holiday":   "background:#ffe4e6;color:#be123c;",
-        "festival":  "background:#ccfbf1;color:#0f766e;",
-        "na":        "background:#f1f5f9;color:#94a3b8;",
+        "present":   "color:#047857;",
+        "absent":    "color:#b91c1c;",
+        "half_day":  "color:#b45309;",
+        "holiday":   "color:#be123c;",
+        "festival":  "color:#0f766e;",
+        "na":        "color:#94a3b8;",
     }
     weekday_short = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
@@ -406,8 +406,8 @@ th.daycol .wd {{ display: block; font-weight: 400; text-transform: none; color: 
 th.empcol {{ background: #f8fafc; color: #64748b; font-weight: 700; border-bottom: 2px solid #e2e8f0; border-right: 2px solid #e2e8f0; text-align: left; padding: 6px 8px; }}
 tbody tr {{ border-bottom: 1px solid #f1f5f9; }}
 tbody tr:nth-child(even) {{ background: #fafbfc; }}
-td.empcol {{ text-align: left; padding: 7px 8px; font-size: 10px; font-weight: 600; border-right: 2px solid #e2e8f0; white-space: nowrap; }}
-td.empcol .muted {{ display: block; color: #94a3b8; font-size: 8px; font-weight: 400; margin-top: 1px; }}
+td.empcol {{ text-align: left; padding: 7px 8px; font-size: 10px; font-weight: 600; border-right: 2px solid #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+td.empcol .muted {{ display: block; color: #94a3b8; font-size: 8px; font-weight: 400; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
 td.daycol {{ text-align: center; padding: 4px 1px; font-size: 9px; }}
 .pill {{ display: inline-block; min-width: 16px; padding: 1px 3px; border-radius: 4px; font-weight: 700; line-height: 14px; }}
 .signature-row {{ display: flex; justify-content: flex-end; margin-top: 30px; page-break-inside: avoid; }}
@@ -424,12 +424,12 @@ td.daycol {{ text-align: center; padding: 4px 1px; font-size: 9px; }}
 {header_html}
 <div class="title-row">Attendance Marking — {_esc(month_label)}</div>
 <div class="legend">
-    <span style="background:#d1fae5;color:#047857;">P Present</span>
-    <span style="background:#fee2e2;color:#b91c1c;">A Absent</span>
-    <span style="background:#fef3c7;color:#b45309;">H Half Day</span>
-    <span style="background:#ffe4e6;color:#be123c;">WO Week-Off</span>
-    <span style="background:#ccfbf1;color:#0f766e;">F Festival</span>
-    <span style="background:#f1f5f9;color:#94a3b8;">NA Not Applicable</span>
+    <span style="color:#047857;">P Present</span>
+    <span style="color:#b91c1c;">A Absent</span>
+    <span style="color:#b45309;">H Half Day</span>
+    <span style="color:#be123c;">WO Week-Off</span>
+    <span style="color:#0f766e;">F Festival</span>
+    <span style="color:#94a3b8;">NA Not Applicable</span>
 </div>
 <table>
     <thead><tr><th class="empcol">Employee</th>{day_headers}</tr></thead>

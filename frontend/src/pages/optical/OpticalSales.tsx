@@ -138,15 +138,15 @@ const OpticalSales: React.FC = () => {
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <th className="px-4 py-3 font-semibold text-slate-600">Invoice #</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Sale Date</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Patient</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Item Count</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Total Amount</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Amount Collected</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Payment Status</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Order Status</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Actions</th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600">Invoice #</th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600">Sale Date</th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600">Patient</th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600">Item Count</th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600">Total Amount</th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600">Amount Collected</th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600">Payment Status</th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600">Order Status</th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">

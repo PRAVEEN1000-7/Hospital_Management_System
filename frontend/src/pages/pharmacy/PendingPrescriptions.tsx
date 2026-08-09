@@ -206,28 +206,28 @@ const PendingPrescriptions: React.FC = () => {
             <table className="w-full">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider w-16">
+                  <th className="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider w-16">
                     Priority
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">
                     Prescription
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">
                     Patient
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">
                     Doctor
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider w-32">
+                  <th className="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider w-32">
                     Items
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider w-28">
+                  <th className="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider w-28">
                     Status
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider w-24">
+                  <th className="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider w-24">
                     Wait Time
                   </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider w-40">
+                  <th className="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider w-40">
                     Actions
                   </th>
                 </tr>

@@ -360,7 +360,10 @@ const MedicineList: React.FC = () => {
       if (rowErrors.length > 0) {
         const preview = rowErrors.slice(0, 5).join(' ');
         const suffix = rowErrors.length > 5 ? ` (+${rowErrors.length - 5} more)` : '';
-        const hint = ' Valid categories: tablet, capsule, syrup, injection, cream, ointment, drops, inhaler, powder, other.';
+        // Derived from VALID_CATEGORIES (not hardcoded) so this never drifts from the
+        // Field Guide sheet again — it previously omitted "eye drops"/"eye ointment"
+        // after those categories were added, wrongly implying they weren't supported.
+        const hint = ` Valid categories: ${VALID_CATEGORIES.join(', ')}.`;
         toast.error(`Template validation failed. ${preview}${suffix}.${hint}`);
         return;
       }

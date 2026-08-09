@@ -704,21 +704,13 @@ const DispensingScreen: React.FC = () => {
 
       showToast('success', result.message);
 
-      // Navigate to billing page with dispensing details
-      if (result.data && result.data.dispensing_id) {
-        // Fetch full dispensing details for billing
-        const dispensingDetails = await pharmacyService.getDispensingRecord(result.data.dispensing_id);
-        
-        // Navigate to billing page
-        navigate(`/pharmacy/dispensing/${result.data.dispensing_id}/billing`, {
-          state: {
-            dispensingData: dispensingDetails,
-          },
-        });
-      } else {
-        // Fallback: navigate to pending prescriptions
-        navigate('/pharmacy/pending-prescriptions');
-      }
+      // Dispensing is now a standalone action — it no longer forces the user
+      // into a one-shot billing page. Payment for the resulting sale (created
+      // pending, see dispense_prescription) is collected any time afterward
+      // from the persistent Sales worklist (SalesList.tsx "Receive Payment"),
+      // so a refresh/network drop right after dispensing no longer strands
+      // the sale on an unreachable payment screen.
+      navigate('/pharmacy/pending-prescriptions');
     } catch (err: any) {
       showToast(
         'error',

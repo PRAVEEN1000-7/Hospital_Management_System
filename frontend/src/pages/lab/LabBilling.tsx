@@ -100,15 +100,15 @@ const LabBilling: React.FC = () => {
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <th className="px-4 py-3 font-semibold text-slate-600">Order #</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Order Date</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Patient</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Total Amount</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Amount Collected</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Balance</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Payment Status</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Report Status</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Actions</th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600">Order #</th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600">Order Date</th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600">Patient</th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600">Total Amount</th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600">Amount Collected</th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600">Balance</th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600">Payment Status</th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600">Report Status</th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">

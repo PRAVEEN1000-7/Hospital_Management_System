@@ -7,6 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { canEdit } from '../../config/modulePermissions';
 import { format } from 'date-fns';
 import DateRangeFilter from '../../components/common/DateRangeFilter';
+import { htmlStringToPdf } from '../../utils/pdf';
 
 const PAYMENT_STATUS_COLORS: Record<string, string> = {
   paid: 'bg-green-100 text-green-700',
@@ -70,6 +71,7 @@ const SalesList: React.FC = () => {
   const [payAmount, setPayAmount] = useState(0);
   const [payMethod, setPayMethod] = useState('cash');
   const [paySaving, setPaySaving] = useState(false);
+  const [downloadingSaleId, setDownloadingSaleId] = useState<string | null>(null);
 
   // Post-finalization correction modal — reopens an already-dispensed sale
   // so a pharmacist can fix a miskeyed dispensed quantity (reconciling stock
@@ -183,6 +185,18 @@ const SalesList: React.FC = () => {
       toast.error(err?.response?.data?.detail || 'Failed to record payment');
     } finally {
       setPaySaving(false);
+    }
+  };
+
+  const handleDownloadInvoice = async (sale: Sale) => {
+    setDownloadingSaleId(sale.id);
+    try {
+      const html = await pharmacyService.getSalePdfHtml(sale.id);
+      await htmlStringToPdf(html, `Invoice_${sale.invoice_number}.pdf`);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to download invoice');
+    } finally {
+      setDownloadingSaleId(null);
     }
   };
 
@@ -330,14 +344,14 @@ const SalesList: React.FC = () => {
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <th className="px-4 py-3 font-semibold text-slate-600">Invoice #</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Date</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Patient</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Items</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Total</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Payment</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Status</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Actions</th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600">Invoice #</th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600">Date</th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600">Patient</th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600">Items</th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600">Total</th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600">Payment</th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600">Status</th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -367,6 +381,14 @@ const SalesList: React.FC = () => {
                           Receive Payment
                         </button>
                       )}
+                      <button
+                        onClick={() => handleDownloadInvoice(s)}
+                        disabled={downloadingSaleId === s.id}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 disabled:opacity-50"
+                      >
+                        <span className="material-symbols-outlined text-sm">download</span>
+                        {downloadingSaleId === s.id ? 'Preparing…' : 'Download Invoice'}
+                      </button>
                       {canCorrectSale && s.status === 'dispensed' && (
                         <button
                           onClick={() => openCorrectSale(s)}
@@ -376,9 +398,6 @@ const SalesList: React.FC = () => {
                           <span className="material-symbols-outlined text-sm">edit_note</span>
                           {correctingLoadingId === s.id ? 'Loading…' : 'Correct'}
                         </button>
-                      )}
-                      {!(canReceivePayment && s.payment_status !== 'paid') && !(canCorrectSale && s.status === 'dispensed') && (
-                        <span className="text-xs text-slate-400">—</span>
                       )}
                     </div>
                   </td>
@@ -463,11 +482,11 @@ const SalesList: React.FC = () => {
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
-                    <th className="px-3 py-2 text-left font-semibold text-slate-600">Medicine</th>
-                    <th className="px-3 py-2 text-left font-semibold text-slate-600">Batch</th>
-                    <th className="px-3 py-2 text-right font-semibold text-slate-600">Qty</th>
-                    <th className="px-3 py-2 text-right font-semibold text-slate-600">Unit Price</th>
-                    <th className="px-3 py-2 text-right font-semibold text-slate-600">Total</th>
+                    <th className="px-3 py-2 text-center font-semibold text-slate-600">Medicine</th>
+                    <th className="px-3 py-2 text-center font-semibold text-slate-600">Batch</th>
+                    <th className="px-3 py-2 text-center font-semibold text-slate-600">Qty</th>
+                    <th className="px-3 py-2 text-center font-semibold text-slate-600">Unit Price</th>
+                    <th className="px-3 py-2 text-center font-semibold text-slate-600">Total</th>
                     <th className="px-3 py-2"></th>
                   </tr>
                 </thead>

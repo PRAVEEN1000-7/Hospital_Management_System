@@ -202,6 +202,11 @@ export const pharmacyService = {
     return res.data;
   },
 
+  async getSalePdfHtml(id: string): Promise<string> {
+    const res = await api.get(`/pharmacy/sales/${id}/pdf`, { responseType: 'text' });
+    return res.data;
+  },
+
   async createSale(data: SaleCreateData): Promise<Sale> {
     const res = await api.post<Sale>('/pharmacy/sales', data);
     return res.data;

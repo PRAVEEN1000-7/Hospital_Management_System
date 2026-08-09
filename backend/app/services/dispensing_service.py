@@ -858,6 +858,19 @@ def dispense_prescription(
     dispensing.tax_amount = tax_amount
     dispensing.net_amount = total_amount
 
+    # Payment for a prescription-driven dispense is always collected
+    # afterward (via SalesList's "Receive Payment", now that dispensing no
+    # longer forces a same-flow billing page) — nothing has been tendered
+    # yet, so this sale must start life as genuinely "pending" with the full
+    # amount owed. Without this, paid_amount/balance_amount/payment_status
+    # were left at their column defaults (0/0/"pending"), so the sale looked
+    # pending but showed a ₹0.00 balance due and couldn't actually be paid.
+    from .billing_queue_service import compute_payment_breakdown
+    breakdown = compute_payment_breakdown(total_amount, amount_tendered=dispensing.amount_tendered)
+    dispensing.paid_amount = breakdown["paid_amount"]
+    dispensing.balance_amount = breakdown["balance_amount"]
+    dispensing.payment_status = breakdown["payment_status"]
+
     # Pharmacy Queue (BRD v1.1 PQ-04) — auto-advance the matching queue entry
     # (if any) to Collected and link it to this bill, now that dispensing is done.
     from .billing_queue_service import link_pharmacy_queue_entry_to_sale

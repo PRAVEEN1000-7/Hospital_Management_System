@@ -128,6 +128,12 @@ class LabResultEntry(BaseModel):
     result_notes: Optional[str] = None
 
 
+class LabOrderItemTestUpdate(BaseModel):
+    """Swap which catalog test an order item bills for — see
+    lab_service.update_lab_order_item_test for the edit-boundary rule."""
+    lab_test_id: str = Field(..., min_length=1)
+
+
 class LabOrderItemResponse(BaseModel):
     id: str
     lab_order_id: str

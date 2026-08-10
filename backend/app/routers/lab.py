@@ -20,7 +20,7 @@ from ..dependencies import get_current_active_user
 from ..core.audit_logger import AuditLogger, AuditAction
 from ..schemas.lab import (
     LabTestCreate, LabTestUpdate, LabTestResponse, LabTestListResponse,
-    LabOrderCreate, LabOrderResponse, LabResultEntry,
+    LabOrderCreate, LabOrderResponse, LabResultEntry, LabOrderItemTestUpdate,
     LabQueueEntryResponse, LabQueueStatusUpdate,
     LabSaleResponse, LabMarkPaidRequest,
     LabBillingItemResponse, LabBillingListResponse,
@@ -516,6 +516,37 @@ async def record_lab_result(
         raise HTTPException(status_code=400, detail=str(e))
     if not item:
         raise HTTPException(status_code=404, detail="Lab order item not found")
+    db.refresh(order)
+    return svc._enrich_order(db, order)
+
+
+@router.put("/orders/{order_id}/items/{item_id}/test", response_model=LabOrderResponse)
+async def update_lab_order_item_test(
+    order_id: str,
+    item_id: str,
+    data: LabOrderItemTestUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Swap which catalog test an order item bills for — reached from the
+    fee-collection screen (LabCollectPayment.tsx) when staff picked the
+    wrong test at order time. Pre-payment only: blocked with a 409 once the
+    report is finalized or once any payment has been collected against the
+    order — see lab_service.update_lab_order_item_test for the full
+    reasoning behind that boundary."""
+    _require(current_user, LAB_STAFF_ROLES)
+    order = svc.get_lab_order_by_id(db, order_id, hospital_id=current_user.hospital_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Lab order not found")
+    try:
+        item = svc.update_lab_order_item_test(
+            db, order, item_id, data.lab_test_id, hospital_id=current_user.hospital_id,
+        )
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(e))
+    if not item:
+        raise HTTPException(status_code=404, detail="Lab order item or lab test not found")
     db.refresh(order)
     return svc._enrich_order(db, order)
 

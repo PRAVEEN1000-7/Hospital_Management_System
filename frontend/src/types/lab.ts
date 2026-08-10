@@ -124,6 +124,10 @@ export interface LabResultEntryData {
   result_notes?: string;
 }
 
+export interface LabOrderItemTestUpdateData {
+  lab_test_id: string;
+}
+
 export interface LabQueueEntry {
   id: string;
   order_number: string;

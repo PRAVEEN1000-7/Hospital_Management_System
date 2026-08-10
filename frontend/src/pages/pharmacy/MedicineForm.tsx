@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import pharmacyService from '../../services/pharmacyService';
 import { useToast } from '../../contexts/ToastContext';
 import type { MedicineCreateData, MedicineBatch } from '../../types/pharmacy';
+import SearchableSelect, { type SuggestionOption } from '../../components/common/SearchableSelect';
 
 interface OpeningBatchForm {
   batch_number: string;
@@ -67,6 +68,20 @@ const MedicineForm: React.FC = () => {
   // stock" lives on batches, so editing stock means editing batch quantities).
   const [editBatches, setEditBatches] = useState<MedicineBatch[]>([]);
   const [editedQty, setEditedQty] = useState<Record<string, number>>({});
+
+  // Brand / manufacturer suggestions drawn from values already in the
+  // catalog, so admins match an existing one instead of free-typing
+  // near-duplicates — manual entry still allowed for a genuinely new value.
+  const [brandSuggestions, setBrandSuggestions] = useState<SuggestionOption[]>([]);
+  const [manufacturerSuggestions, setManufacturerSuggestions] = useState<SuggestionOption[]>([]);
+  useEffect(() => {
+    pharmacyService.getMedicines(1, 200, '', '', false).then((res) => {
+      const brands = Array.from(new Set(res.data.map((m) => m.brand).filter((b): b is string => !!b)));
+      setBrandSuggestions(brands.sort().map((b) => ({ id: b, label: b })));
+      const manufacturers = Array.from(new Set(res.data.map((m) => m.manufacturer).filter((m): m is string => !!m)));
+      setManufacturerSuggestions(manufacturers.sort().map((m) => ({ id: m, label: m })));
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (id) {
@@ -228,11 +243,19 @@ const MedicineForm: React.FC = () => {
                 </div>
                 <div>
                   <label className={labelClass}>Brand</label>
-                  <input name="brand" value={form.brand} onChange={handleChange} className={fieldClass} />
+                  <SearchableSelect
+                    value={form.brand || ''}
+                    onChange={(val) => setForm((prev) => ({ ...prev, brand: val }))}
+                    suggestions={brandSuggestions}
+                  />
                 </div>
                 <div>
                   <label className={labelClass}>Manufacturer</label>
-                  <input name="manufacturer" value={form.manufacturer} onChange={handleChange} className={fieldClass} />
+                  <SearchableSelect
+                    value={form.manufacturer || ''}
+                    onChange={(val) => setForm((prev) => ({ ...prev, manufacturer: val }))}
+                    suggestions={manufacturerSuggestions}
+                  />
                 </div>
                 <div>
                   <label className={labelClass}>Category</label>

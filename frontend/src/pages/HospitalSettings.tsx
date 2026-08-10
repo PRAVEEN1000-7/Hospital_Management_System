@@ -8,6 +8,7 @@ import HospitalLogo from '../components/common/HospitalLogo';
 import type { HospitalDetails, HospitalSettings as HospitalSettingsType } from '../services/hospitalService';
 import type { DoctorOption } from '../types/appointment';
 import { canEdit } from '../config/modulePermissions';
+import SearchableSelect, { type SuggestionOption } from '../components/common/SearchableSelect';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -724,24 +725,24 @@ const SystemSettingsTab: React.FC = () => {
           {/* Doctor columns */}
           <div className="px-5 py-4 border-b border-slate-100 grid grid-cols-1 sm:grid-cols-2 gap-5">
             <FormField label="Doctor 1 Column" hint="Shown as the first doctor column on the display">
-              <select
-                value={editValues.queue_display_doctor1_id || ''}
-                onChange={e => handleChange('queue_display_doctor1_id', e.target.value || '')}
-                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none bg-white"
-              >
-                <option value="">Not set — shows "Doctor 1"</option>
-                {doctors.map(d => <option key={d.doctor_id} value={d.doctor_id}>{d.name}</option>)}
-              </select>
+              <SearchableSelect
+                value={doctors.find(d => d.doctor_id === editValues.queue_display_doctor1_id)?.name || ''}
+                onChange={(_, metadata) => handleChange('queue_display_doctor1_id', (metadata?.id as string) || '')}
+                suggestions={doctors.map((d): SuggestionOption => ({ id: d.doctor_id, label: d.name, sublabel: d.specialization || undefined, metadata: { id: d.doctor_id } }))}
+                placeholder='Not set — shows "Doctor 1"'
+                allowManualEntry={false}
+                disabled={!canEditSettings}
+              />
             </FormField>
             <FormField label="Doctor 2 Column" hint="Shown as the second doctor column, if enabled below">
-              <select
-                value={editValues.queue_display_doctor2_id || ''}
-                onChange={e => handleChange('queue_display_doctor2_id', e.target.value || '')}
-                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none bg-white"
-              >
-                <option value="">Not set — shows "Doctor 2"</option>
-                {doctors.map(d => <option key={d.doctor_id} value={d.doctor_id}>{d.name}</option>)}
-              </select>
+              <SearchableSelect
+                value={doctors.find(d => d.doctor_id === editValues.queue_display_doctor2_id)?.name || ''}
+                onChange={(_, metadata) => handleChange('queue_display_doctor2_id', (metadata?.id as string) || '')}
+                suggestions={doctors.map((d): SuggestionOption => ({ id: d.doctor_id, label: d.name, sublabel: d.specialization || undefined, metadata: { id: d.doctor_id } }))}
+                placeholder='Not set — shows "Doctor 2"'
+                allowManualEntry={false}
+                disabled={!canEditSettings}
+              />
             </FormField>
           </div>
 

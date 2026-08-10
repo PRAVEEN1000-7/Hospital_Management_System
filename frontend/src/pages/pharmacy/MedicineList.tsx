@@ -128,7 +128,7 @@ const MedicineList: React.FC = () => {
       'batch_number',
       'mfg_date',
       'expiry_date',
-      'quantity',
+      'opening_stock_quantity',
       'purchase_price',
       'selling_price',
       'supplier_name',
@@ -151,12 +151,12 @@ const MedicineList: React.FC = () => {
         allowed_values: 'true/false, yes/no, 1/0',
       },
       {
-        field: 'quantity',
-        allowed_values: 'Opening stock for this medicine. Leave blank or 0 to create the medicine with no stock batch.',
+        field: 'opening_stock_quantity',
+        allowed_values: 'Same as the "Add Opening Stock Batch" section on the single Add Medicine form — fill this in to give the medicine real, sellable stock right away. Leave blank or 0 to create a catalog-only entry with no stock (you can add stock for it later from the medicine\'s own page).',
       },
       {
         field: 'expiry_date',
-        allowed_values: 'Format YYYY-MM-DD. Required only when quantity is greater than 0.',
+        allowed_values: 'Format YYYY-MM-DD. Required only when opening_stock_quantity is greater than 0.',
       },
       {
         field: 'batch_number / mfg_date',
@@ -176,14 +176,31 @@ const MedicineList: React.FC = () => {
       },
     ];
 
-    // Eye hospitals get two filled-in example rows showing the "Eye Drops" /
-    // "Eye Ointment" categories in use, so the new categories aren't just
-    // names in the Field Guide — general hospitals get a blank template.
+    // Every hospital gets a fully filled-in example row that actually sets
+    // opening_stock_quantity — the earlier version of this template left
+    // opening stock blank even in its own example rows (and general
+    // hospitals got no example at all), so the column read as decorative
+    // rather than something the upload genuinely acts on. This one row
+    // shows the whole opening-stock block (batch/expiry/quantity/prices)
+    // filled in together, exactly mirroring what "Add Opening Stock Batch"
+    // does on the single Add Medicine form.
+    const genericExampleRow = {
+      name: 'Paracetamol 500mg', generic_name: 'Paracetamol', category: 'tablet',
+      strength: '500mg', unit: 'Strip', requires_prescription: 'false',
+      batch_number: 'BATCH-001', expiry_date: '2027-12-31',
+      opening_stock_quantity: '100', purchase_price: '2.50', selling_price: '5.00',
+    };
+    // Eye hospitals get two additional examples showing the "Eye Drops" /
+    // "Eye Ointment" categories in use, so those categories aren't just
+    // names in the Field Guide — one of the two also carries opening stock,
+    // the other is left blank to show that's equally valid (catalog-only).
     const eyeExampleRows = isEyeHospitalFeatureEnabled
       ? [
           {
             name: 'Tropicamide Eye Drops', generic_name: 'Tropicamide', category: 'eye drops',
             strength: '0.8%', unit: 'Bottle', requires_prescription: 'true',
+            batch_number: 'BATCH-002', expiry_date: '2027-12-31',
+            opening_stock_quantity: '50', purchase_price: '30.00', selling_price: '60.00',
           },
           {
             name: 'Moxifloxacin Eye Ointment', generic_name: 'Moxifloxacin', category: 'eye ointment',
@@ -191,7 +208,7 @@ const MedicineList: React.FC = () => {
           },
         ]
       : [];
-    const exampleRows = eyeExampleRows.map((row) =>
+    const exampleRows = [genericExampleRow, ...eyeExampleRows].map((row) =>
       medicineHeaders.map((h) => (row as Record<string, string>)[h] ?? '')
     );
 
@@ -330,15 +347,17 @@ const MedicineList: React.FC = () => {
             side_effects: asOptionalText(row.side_effects),
           };
 
-          // Opening stock is optional and only attempted when a quantity is supplied —
-          // without this, every bulk-uploaded medicine would land with zero stock and
-          // zero price, indistinguishable from a catalog-only placeholder.
-          const quantity = Math.floor(asOptionalNumber(row.quantity) ?? 0);
+          // Opening stock is optional and only attempted when opening_stock_quantity
+          // is supplied — without this, every bulk-uploaded medicine would land with
+          // zero stock and zero price, indistinguishable from a catalog-only
+          // placeholder. Mirrors the single Add Medicine form's "Add Opening Stock
+          // Batch" section exactly — same fields, same optionality.
+          const quantity = Math.floor(asOptionalNumber(row.opening_stock_quantity) ?? 0);
           let batch: Omit<BatchCreateData, 'medicine_id'> | null = null;
           if (quantity > 0) {
             const expiryDate = asDateString(row.expiry_date);
             if (!expiryDate) {
-              rowErrors.push(`Row ${rowNumber}: 'expiry_date' is required when 'quantity' is provided.`);
+              rowErrors.push(`Row ${rowNumber}: 'expiry_date' is required when 'opening_stock_quantity' is provided.`);
               return null;
             }
             const supplierName = asOptionalText(row.supplier_name);

@@ -751,6 +751,93 @@ def record_lab_result(
     return item
 
 
+def update_lab_order_item_test(
+    db: Session,
+    order: LabOrder,
+    item_id: str | uuid.UUID,
+    lab_test_id: str,
+    hospital_id: uuid.UUID,
+) -> Optional[LabOrderItem]:
+    """Swap an order item to a different catalog test — for the fee-collection
+    screen (LabCollectPayment.tsx), when staff picked the wrong test at order
+    time and need to correct it before payment is collected.
+
+    Safe editing boundary (raises ValueError, which the router turns into a
+    409 — distinct from the 404s below, which mean "doesn't exist"):
+
+    - Blocked once order.report_status == 'finalized': that's a locked
+      clinical record, same rule record_lab_result already enforces for
+      result entry (see above).
+    - Blocked once ANY payment has been collected against the order
+      (sale.paid_amount > 0), including partial. This is deliberately
+      stricter than _resync_unpaid_item_prices, which keeps re-syncing a
+      snapshot to a corrected *catalog price* even under partial payment —
+      that's safe because it's still pricing the same test. Swapping *which*
+      test an item bills for after money has changed hands means the
+      patient's payment receipt would no longer describe what was actually
+      paid for — a real audit-trail problem, not just an arithmetic one — so
+      this function refuses outright rather than trying to recompute its way
+      around it.
+
+    Returns None if the item or the target test doesn't exist (scoped to
+    this hospital/order) — the router turns that into a 404.
+    """
+    if isinstance(item_id, str):
+        try:
+            item_id = uuid.UUID(item_id)
+        except ValueError:
+            return None
+
+    item = (
+        db.query(LabOrderItem)
+        .filter(LabOrderItem.id == item_id, LabOrderItem.lab_order_id == order.id)
+        .first()
+    )
+    if not item:
+        return None
+
+    if order.report_status == "finalized":
+        raise ValueError("Report already finalized; items are locked")
+
+    sale = db.query(LabSale).filter(LabSale.lab_order_id == order.id).first()
+    if sale and (sale.paid_amount or Decimal("0")) > 0:
+        raise ValueError("Cannot change items after payment has been collected against this order")
+
+    try:
+        test_uuid = uuid.UUID(lab_test_id)
+    except ValueError:
+        return None
+    test = (
+        db.query(LabTest)
+        .filter(LabTest.id == test_uuid, LabTest.hospital_id == hospital_id)
+        .first()
+    )
+    if not test:
+        return None
+
+    item.lab_test_id = test.id
+    item.test_name = test.name
+    item.price = test.price or Decimal("0")
+    db.commit()
+    db.refresh(item)
+    db.refresh(order)
+
+    # get_or_create_lab_sale already self-heals a sale's totals from current
+    # LabOrderItem rows on its next call (see there), which is enough for
+    # the fee-collection screen's own re-fetch — but syncing here too means
+    # any other reader of LabSale sees the corrected total immediately, not
+    # only after that explicit re-fetch.
+    if sale:
+        total = sum((i.price or Decimal("0")) for i in (order.items or []))
+        if sale.total_amount != total:
+            sale.subtotal = total
+            sale.total_amount = total
+            sale.balance_amount = max(Decimal("0"), total - (sale.paid_amount or Decimal("0")))
+            db.commit()
+
+    return item
+
+
 def finalize_lab_report(
     db: Session,
     order_id: str | uuid.UUID,

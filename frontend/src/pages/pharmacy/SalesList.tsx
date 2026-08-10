@@ -483,7 +483,15 @@ const SalesList: React.FC = () => {
                 <span className="text-slate-500">Amount Received Now</span>
                 <input type="number" min={0.01} max={Number(payingSale.balance_amount) || undefined} step={0.01}
                   value={payAmount || ''}
-                  onChange={(e) => setPayAmount(parseFloat(e.target.value) || 0)}
+                  onChange={(e) => {
+                    // The `max` attribute above is a visual hint only — a
+                    // browser number input never actually blocks typing past
+                    // it, so this has to be enforced here or a user can key
+                    // in more than is owed and submit it.
+                    const typed = parseFloat(e.target.value) || 0;
+                    const cap = Number(payingSale.balance_amount) || 0;
+                    setPayAmount(Math.min(typed, cap));
+                  }}
                   className="w-28 px-2 py-1 text-sm text-right border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
               </div>
               <div className="flex justify-between text-sm font-semibold pt-2 border-t border-slate-200">

@@ -378,7 +378,7 @@ const SalesList: React.FC = () => {
                           className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100"
                         >
                           <span className="material-symbols-outlined text-sm">payments</span>
-                          Receive Payment
+                          Payment
                         </button>
                       )}
                       <button
@@ -387,7 +387,7 @@ const SalesList: React.FC = () => {
                         className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 disabled:opacity-50"
                       >
                         <span className="material-symbols-outlined text-sm">download</span>
-                        {downloadingSaleId === s.id ? 'Preparing…' : 'Download Invoice'}
+                        {downloadingSaleId === s.id ? 'Preparing…' : 'Invoice'}
                       </button>
                       {canCorrectSale && s.status === 'dispensed' && (
                         <button

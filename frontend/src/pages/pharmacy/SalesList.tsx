@@ -226,6 +226,10 @@ const SalesList: React.FC = () => {
 
   useEffect(() => { fetchSales(); }, [fetchSales]);
 
+  const remainingAfterPayment = payingSale
+    ? Math.max(0, (Number(payingSale.balance_amount) || 0) - payAmount)
+    : 0;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -426,12 +430,43 @@ const SalesList: React.FC = () => {
         )}
       </div>
 
-      {/* Receive Payment Modal */}
+      {/* Receive Payment Modal — mirrors the checkout summary format used
+          when dispensing an optical sale (NewOpticalSale.tsx) and the Lab
+          Billing collect-payment flow: a real Subtotal/Tax/Discount/Grand
+          Total/Already Paid breakdown instead of just a bare amount field. */}
       {payingSale && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setPayingSale(null)}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-bold text-slate-900 mb-1">Receive Payment</h3>
-            <p className="text-sm text-slate-500 mb-4">{payingSale.invoice_number} — balance due ₹{Number(payingSale.balance_amount || 0).toFixed(2)}</p>
+            <p className="text-sm text-slate-500 mb-4">{payingSale.invoice_number}</p>
+
+            <div className="space-y-2 mb-4 pb-4 border-b border-slate-200">
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-500">Subtotal</span>
+                <span className="font-medium text-slate-700">₹{Number(payingSale.subtotal || 0).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-500">Tax</span>
+                <span className="font-medium text-slate-700">₹{Number(payingSale.tax_amount || 0).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-500">Discount</span>
+                <span className="font-medium text-slate-700">₹{Number(payingSale.discount_amount || 0).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-base font-bold pt-2 border-t border-slate-200">
+                <span>Grand Total</span>
+                <span className="text-primary">₹{Number(payingSale.total_amount || 0).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-sm pt-2 border-t border-slate-200">
+                <span className="text-slate-500">Already Paid</span>
+                <span className="font-medium text-slate-700">₹{Number(payingSale.paid_amount || 0).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-sm font-semibold">
+                <span>Balance Due</span>
+                <span className="text-primary">₹{Number(payingSale.balance_amount || 0).toFixed(2)}</span>
+              </div>
+            </div>
+
             <div className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-500 mb-1">Payment Method</label>
@@ -444,12 +479,16 @@ const SalesList: React.FC = () => {
                   <option value="insurance">Insurance</option>
                 </select>
               </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1">Amount Received</label>
+              <div className="flex justify-between text-sm items-center">
+                <span className="text-slate-500">Amount Received Now</span>
                 <input type="number" min={0.01} max={Number(payingSale.balance_amount) || undefined} step={0.01}
                   value={payAmount || ''}
                   onChange={(e) => setPayAmount(parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
+                  className="w-28 px-2 py-1 text-sm text-right border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
+              </div>
+              <div className="flex justify-between text-sm font-semibold pt-2 border-t border-slate-200">
+                <span className={remainingAfterPayment > 0 ? 'text-red-500' : 'text-slate-500'}>Remaining Amount</span>
+                <span className={remainingAfterPayment > 0 ? 'text-red-600' : 'text-emerald-600'}>₹{remainingAfterPayment.toFixed(2)}</span>
               </div>
             </div>
             <div className="flex justify-end gap-3 mt-5">

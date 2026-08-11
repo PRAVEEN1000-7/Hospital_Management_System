@@ -9,6 +9,7 @@ import type { HospitalDetails, HospitalSettings as HospitalSettingsType } from '
 import type { DoctorOption } from '../types/appointment';
 import { canEdit } from '../config/modulePermissions';
 import SearchableSelect, { type SuggestionOption } from '../components/common/SearchableSelect';
+import PatientBulkUploadPanel from '../components/patients/PatientBulkUploadPanel';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -842,6 +843,7 @@ const SystemSettingsTab: React.FC = () => {
 // ── Main Page ────────────────────────────────────────────────────────────────
 
 const HospitalSettings: React.FC = () => {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>('profile');
   const [brand, setBrand] = useState<{ name: string; logo_url: string | null }>({ name: '', logo_url: null });
 
@@ -879,20 +881,25 @@ const HospitalSettings: React.FC = () => {
         </div>
       </div>
 
-      {/* Tab bar */}
-      <div className="flex gap-2 mb-6 bg-slate-100 rounded-xl p-1.5 w-fit">
-        <TabButton
-          label="Hospital Profile"
-          icon="local_hospital"
-          active={activeTab === 'profile'}
-          onClick={() => setActiveTab('profile')}
-        />
-        <TabButton
-          label="System Settings"
-          icon="settings"
-          active={activeTab === 'system'}
-          onClick={() => setActiveTab('system')}
-        />
+      {/* Tab bar — Patient Data bulk upload/template sit next to the System
+          Settings tab itself (not inside its section content) since they're
+          a standalone action, not a persisted setting. */}
+      <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
+        <div className="flex gap-2 bg-slate-100 rounded-xl p-1.5 w-fit">
+          <TabButton
+            label="Hospital Profile"
+            icon="local_hospital"
+            active={activeTab === 'profile'}
+            onClick={() => setActiveTab('profile')}
+          />
+          <TabButton
+            label="System Settings"
+            icon="settings"
+            active={activeTab === 'system'}
+            onClick={() => setActiveTab('system')}
+          />
+        </div>
+        {activeTab === 'system' && canEdit('general.patients', user?.roles) && <PatientBulkUploadPanel />}
       </div>
 
       {/* Tab content */}

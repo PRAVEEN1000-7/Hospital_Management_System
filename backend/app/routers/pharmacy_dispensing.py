@@ -327,9 +327,20 @@ async def dispense_prescription(
         # Notification is sent inside dispense_prescription() itself — a
         # second call here duplicated "Prescription Dispensed" for every dispense.
 
+        # Items that failed during this call (most commonly a stock race —
+        # see dispense_prescription's failed_items comment) no longer abort
+        # the whole request; they're reported back here so the frontend can
+        # show a popup naming exactly which items didn't go through, while
+        # every other item in the same confirm still dispensed successfully.
+        failed_items = result.get("failed_items") or []
+        message = f"Dispensing completed. Status: {result['status']}."
+        if failed_items:
+            names = ", ".join(f"{f['medicine_name']} ({f['reason']})" for f in failed_items)
+            message += f" {len(failed_items)} item(s) could not be dispensed: {names}"
+
         return {
             "success": True,
-            "message": f"Dispensing completed. Status: {result['status']}",
+            "message": message,
             "data": result,
         }
 

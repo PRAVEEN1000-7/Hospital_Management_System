@@ -10,6 +10,14 @@ export interface PatientTrendBucket {
   /** Distinct patients with a still-booked (not completed/cancelled), not-yet-passed
    * appointment in this bucket — always 0 for a bucket entirely in the past. */
   upcoming_patients: number;
+  /** Breakdown of returning_patients by follow-up chain position (see backend
+   * appointment_service.compute_follow_up_label): mc1 = first within-a-month
+   * return, mc2_plus = second-or-later consecutive within-a-month return,
+   * mcr = "Renewal" (first return after a 30+ day gap). These three always
+   * sum to returning_patients. */
+  mc1_count: number;
+  mc2_plus_count: number;
+  mcr_count: number;
 }
 
 export type PatientTrendGranularity = 'day' | 'week' | 'month' | 'custom';

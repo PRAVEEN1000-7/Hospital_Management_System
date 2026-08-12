@@ -702,7 +702,13 @@ const DispensingScreen: React.FC = () => {
         combinedNotes || undefined
       );
 
-      showToast('success', result.message);
+      // A stock race on one item (another sale/dispense consumed the batch
+      // between this screen loading and Confirm being clicked) no longer
+      // aborts the whole dispense — the backend still commits every other
+      // item and reports the miss back here as a popup only, so it never
+      // blocks dispensing the rest of the prescription.
+      const failedItems = result.data?.failed_items || [];
+      showToast(failedItems.length > 0 ? 'warning' : 'success', result.message);
 
       // Dispensing is now a standalone action — it no longer forces the user
       // into a one-shot billing page. Payment for the resulting sale (created

@@ -33,6 +33,7 @@ from ..services.appointment_service import (
     enrich_appointment,
     enrich_appointments,
     get_doctor_today_summary,
+    compute_follow_up_label,
 )
 from ..services.schedule_service import is_doctor_on_leave_at, get_available_slots
 from ..services.notification_service import notify_hospital_users
@@ -153,6 +154,26 @@ async def list_all_appointments(
         total=total, page=pg, limit=lim, total_pages=tp,
         data=[AppointmentListItem(**a) for a in enriched],
     )
+
+
+@router.get("/follow-up-label-preview")
+async def preview_follow_up_label(
+    patient_id: str,
+    appointment_date: date,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(appt_view_guard),
+):
+    """Preview the auto-computed MC1/MC2/.../MCR label for a NOT-YET-CREATED
+    appointment — backs the OPD Assignment dropdown in AppointmentBooking.tsx,
+    which pre-selects this value once patient + date are both chosen and lets
+    staff override it before confirming the booking."""
+    import uuid as _uuid
+    try:
+        patient_uuid = _uuid.UUID(patient_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid patient ID")
+    label = compute_follow_up_label(db, current_user.hospital_id, patient_uuid, appointment_date)
+    return {"follow_up_label": label}
 
 
 @router.get("/my-appointments", response_model=PaginatedAppointmentResponse)

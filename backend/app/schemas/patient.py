@@ -327,6 +327,12 @@ class PatientTrendBucket(BaseModel):
     new_patients: int
     returning_patients: int
     upcoming_patients: int
+    # Breakdown of returning_patients by follow-up chain position — see
+    # appointment_service.compute_follow_up_label. mc1 + mc2_plus + mcr adds
+    # up to returning_patients (every returning patient has some label).
+    mc1_count: int
+    mc2_plus_count: int
+    mcr_count: int
 
 
 class PatientTrendResponse(BaseModel):

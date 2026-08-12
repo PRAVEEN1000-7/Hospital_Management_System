@@ -72,6 +72,16 @@ const appointmentService = {
     return res.data;
   },
 
+  /** Preview the auto-computed MC1/MC2/.../MCR label for a not-yet-created
+   * appointment — backs the OPD Assignment dropdown in AppointmentBooking.tsx.
+   * Returns null for a patient's first-ever visit (nothing to compute). */
+  async previewFollowUpLabel(patientId: string, appointmentDate: string): Promise<string | null> {
+    const res = await api.get<{ follow_up_label: string | null }>('/appointments/follow-up-label-preview', {
+      params: { patient_id: patientId, appointment_date: appointmentDate },
+    });
+    return res.data.follow_up_label;
+  },
+
   async createAppointment(data: AppointmentCreate): Promise<Appointment> {
     const cleaned: Record<string, unknown> = {};
     Object.entries(data).forEach(([k, v]) => {

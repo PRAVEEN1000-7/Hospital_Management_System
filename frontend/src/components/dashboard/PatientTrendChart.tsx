@@ -35,7 +35,10 @@ const ChartTooltip = ({ active, payload, label }: any) => {
 
 /** New vs Returning vs Upcoming patient trend — Doctor + Admin dashboards only.
  * "New" = patients whose registration falls in the same period as their visit;
- * "Returning" = patients who already existed before that period and visited again;
+ * "Returning" = patients who already existed before that period and visited again —
+ * shown as a stacked bar broken into MC1 (first within-a-month return since their
+ * previous visit) / MC2+ (second-or-later consecutive within-a-month return) /
+ * MCR (Renewal — first return after a 30+ day gap since their previous visit);
  * "Upcoming" = distinct patients with a still-booked, not-yet-happened appointment
  * in that bucket — always 0 for a bucket entirely in the past (e.g. last month),
  * since nothing there can still be upcoming.
@@ -95,12 +98,17 @@ const PatientTrendChart: React.FC = () => {
   const chartData = data?.buckets.map(b => ({
     label: b.label,
     New: b.new_patients,
-    Returning: b.returning_patients,
+    MC1: b.mc1_count,
+    'MC2+': b.mc2_plus_count,
+    MCR: b.mcr_count,
     Upcoming: b.upcoming_patients,
   })) ?? [];
 
   const totalNew = data?.buckets.reduce((s, b) => s + b.new_patients, 0) ?? 0;
   const totalReturning = data?.buckets.reduce((s, b) => s + b.returning_patients, 0) ?? 0;
+  const totalMc1 = data?.buckets.reduce((s, b) => s + b.mc1_count, 0) ?? 0;
+  const totalMc2Plus = data?.buckets.reduce((s, b) => s + b.mc2_plus_count, 0) ?? 0;
+  const totalMcr = data?.buckets.reduce((s, b) => s + b.mcr_count, 0) ?? 0;
   const totalUpcoming = data?.buckets.reduce((s, b) => s + b.upcoming_patients, 0) ?? 0;
   const hasData = totalNew > 0 || totalReturning > 0 || totalUpcoming > 0;
 
@@ -168,16 +176,29 @@ const PatientTrendChart: React.FC = () => {
 
       {/* Summary chips */}
       {!loading && !error && !showingCustomPrompt && (
-        <div className="flex items-center gap-4 mb-4 mt-3">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mb-4 mt-3">
           <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600">
             <span className="w-2.5 h-2.5 rounded-sm bg-primary inline-block" />
             New: {totalNew.toLocaleString()}
           </span>
           <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600">
-            <span className="w-2.5 h-2.5 rounded-sm bg-emerald-400 inline-block" />
+            <span className="w-2.5 h-2.5 rounded-sm border-2 border-emerald-400 inline-block" />
             Returning: {totalReturning.toLocaleString()}
           </span>
-          <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600">
+          <span className="text-slate-300">·</span>
+          <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-500">
+            <span className="w-2 h-2 rounded-sm bg-emerald-300 inline-block" />
+            MC1: {totalMc1.toLocaleString()}
+          </span>
+          <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-500">
+            <span className="w-2 h-2 rounded-sm bg-emerald-400 inline-block" />
+            MC2+: {totalMc2Plus.toLocaleString()}
+          </span>
+          <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-500">
+            <span className="w-2 h-2 rounded-sm bg-teal-700 inline-block" />
+            MCR: {totalMcr.toLocaleString()}
+          </span>
+          <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600 ml-auto">
             <span className="w-2.5 h-2.5 rounded-sm bg-amber-400 inline-block" />
             Upcoming: {totalUpcoming.toLocaleString()}
           </span>
@@ -228,7 +249,12 @@ const PatientTrendChart: React.FC = () => {
             <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(0,0,0,0.03)' }} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
             <Bar dataKey="New" fill="#2563eb" radius={[3, 3, 0, 0]} />
-            <Bar dataKey="Returning" fill="#34d399" radius={[3, 3, 0, 0]} />
+            {/* "Returning" is this stack of three — MC1/MC2+/MCR sum to the
+                same total the single Returning bar used to show, just broken
+                into follow-up chain position. */}
+            <Bar dataKey="MC1" stackId="returning" fill="#6ee7b7" />
+            <Bar dataKey="MC2+" stackId="returning" fill="#34d399" />
+            <Bar dataKey="MCR" stackId="returning" fill="#0f766e" radius={[3, 3, 0, 0]} />
             <Bar dataKey="Upcoming" fill="#fbbf24" radius={[3, 3, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>

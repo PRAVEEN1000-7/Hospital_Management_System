@@ -98,6 +98,27 @@ def _require_billing_staff_or_lab_invoice(db: Session, current_user: User, invoi
                         detail="Billing staff access required")
 
 
+# GET /invoices/{id} needs the same narrow receptionist exception as the
+# consultation-invoice creation and payment endpoints above. WalkInQueue.tsx
+# and AppointmentManagement.tsx's Collect Fee modal both re-fetch the invoice
+# immediately after recording payment (to refresh the balance shown to the
+# user) — without this carve-out that refresh 403's for a receptionist even
+# though the payment itself just succeeded via
+# payments.py's _require_billing_staff_or_consultation_payment, surfacing as
+# a misleading "Failed to record payment" error on a charge that actually
+# went through. Scoped identically to that payment carve-out: only the
+# consultation/OPD invoice tied to an appointment, plus the matching lab
+# carve-out for lab_technician (LabOrderDetail.tsx's Collect Payment flow).
+def _require_billing_view_or_consultation_invoice(db: Session, current_user: User, invoice) -> None:
+    if check_permission(db, current_user, "billing", "view"):
+        return
+    if _has_any_role(current_user, {"receptionist"}) and invoice.invoice_type == "opd" and invoice.appointment_id is not None:
+        return
+    if _has_any_role(current_user, {"lab_technician"}) and invoice.invoice_type == "lab":
+        return
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+
 @router.get("/config/item-type-mapping", tags=["Billing — Invoices"])
 async def get_invoice_item_mapping(
     current_user: User = Depends(get_current_active_user),
@@ -369,10 +390,10 @@ async def get_invoice(
     current_user: User = Depends(get_current_active_user),
 ):
     """Get full invoice details including line items and payments."""
-    _require_billing_view(db, current_user)
     invoice = get_invoice_by_id(db, invoice_id)
     if not invoice or str(invoice.hospital_id) != str(current_user.hospital_id):
         raise HTTPException(status_code=404, detail="Invoice not found")
+    _require_billing_view_or_consultation_invoice(db, current_user, invoice)
     return InvoiceResponse.model_validate(invoice)
 
 

@@ -4,6 +4,7 @@ Handles CRUD, double-booking prevention, reschedule/cancel, and stats.
 """
 import uuid
 import logging
+import re
 from datetime import date, datetime, timezone, time
 from decimal import Decimal
 from math import ceil
@@ -106,6 +107,63 @@ def generate_appointment_number(appointment_type: str = "scheduled") -> str:
     return f"APT-{today}-{unique_part}"
 
 
+# ── Follow-up label (MC1/MC2/.../MCR) ───────────────────────────────────────
+# See models/appointment.py's follow_up_label column comment for the full
+# rule. Only ever looks at KEPT appointments (not cancelled/rescheduled) —
+# same exclusion the new-vs-returning dashboard trend uses — so a cancelled
+# visit never counts as a "return" for this purpose.
+_FOLLOW_UP_CHAIN_BROKEN_STATUSES = ("cancelled", "rescheduled")
+_FOLLOW_UP_WINDOW_DAYS = 30
+
+
+def compute_follow_up_label(
+    db: Session,
+    hospital_id: uuid.UUID,
+    patient_id: uuid.UUID,
+    appointment_date: date,
+    exclude_appointment_id: Optional[uuid.UUID] = None,
+) -> Optional[str]:
+    """MC1/MC2/.../MCR for an appointment on `appointment_date`, based on the
+    patient's most recent PRIOR kept appointment (strictly before this date).
+    Returns None if this is the patient's first-ever visit (no prior kept
+    appointment to measure a gap against) — that case is already covered by
+    the dashboard's separate "New" classification.
+
+    - Gap since the previous kept appointment > 30 days: the follow-up chain
+      lapsed, so this visit is 'MCR' (Renewal) and restarts the chain.
+    - Gap <= 30 days: this continues the chain — 'MC1' if the previous visit
+      had no label or was itself an 'MCR' (i.e., this is the first return
+      since the chain started/reset), otherwise 'MC{n+1}' where the previous
+      visit was 'MC{n}'.
+    """
+    query = db.query(Appointment).filter(
+        Appointment.hospital_id == hospital_id,
+        Appointment.patient_id == patient_id,
+        Appointment.appointment_date < appointment_date,
+        Appointment.status.notin_(_FOLLOW_UP_CHAIN_BROKEN_STATUSES),
+        Appointment.is_deleted == False,
+    )
+    if exclude_appointment_id is not None:
+        query = query.filter(Appointment.id != exclude_appointment_id)
+    previous = query.order_by(Appointment.appointment_date.desc()).first()
+
+    if previous is None:
+        return None  # first-ever visit
+
+    gap_days = (appointment_date - previous.appointment_date).days
+    if gap_days > _FOLLOW_UP_WINDOW_DAYS:
+        return "MCR"
+
+    prev_label = previous.follow_up_label
+    if not prev_label or prev_label == "MCR":
+        return "MC1"
+
+    match = re.match(r"^MC(\d+)$", prev_label)
+    if not match:
+        return "MC1"
+    return f"MC{int(match.group(1)) + 1}"
+
+
 # ── Create ─────────────────────────────────────────────────────────────────
 
 def create_appointment(
@@ -170,6 +228,17 @@ def create_appointment(
     if start_time is None:
         start_time = hospital_now_by_id(db, hospital_id).time().replace(microsecond=0)
 
+    # An explicit value (staff override via the OPD Assignment dropdown —
+    # see AppointmentBooking.tsx) wins; a malformed one is treated the same
+    # as "not provided" rather than silently persisting garbage. Otherwise
+    # auto-compute from the patient's visit history.
+    appointment_date_value = data.get("appointment_date")
+    follow_up_label = data.get("follow_up_label")
+    if follow_up_label and not re.match(r"^(MC\d+|MCR)$", follow_up_label):
+        follow_up_label = None
+    if not follow_up_label and appointment_date_value:
+        follow_up_label = compute_follow_up_label(db, hospital_id, patient_id, appointment_date_value)
+
     appt = Appointment(
         hospital_id=hospital_id,
         appointment_number=appt_number,
@@ -177,7 +246,7 @@ def create_appointment(
         doctor_id=doctor_id,
         department_id=department_id,
         parent_appointment_id=parent_appointment_id,
-        appointment_date=data.get("appointment_date"),
+        appointment_date=appointment_date_value,
         start_time=start_time,
         end_time=data.get("end_time"),
         appointment_type=appointment_type,
@@ -187,6 +256,7 @@ def create_appointment(
         chief_complaint=data.get("chief_complaint"),
         consultation_fee=resolve_new_appointment_fee(doctor, data.get("consultation_fee")),
         notes=data.get("notes"),
+        follow_up_label=follow_up_label,
         created_by=created_by,
     )
     db.add(appt)

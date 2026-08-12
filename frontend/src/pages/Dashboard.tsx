@@ -493,8 +493,13 @@ const Dashboard: React.FC = () => {
         ))}
       </div>
 
-      {/* Patient Registration Trend — Doctor + Admin dashboards only */}
-      {(isDoctor || isAdmin) && <PatientTrendChart />}
+      {/* Patient Registration Trend — analytics content, so it follows the
+          same rule as the dedicated Analytics module (general.analytics):
+          full doctors and admins see it, visiting doctors do not. Deliberately
+          NOT gated by isDoctor (which also covers visiting_doctor, correct
+          for operational widgets like the profile card above) — this one
+          specifically checks role === 'doctor'. */}
+      {(role === 'doctor' || isAdmin) && <PatientTrendChart />}
 
       {/* Quick Actions — full width */}
       <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm mb-8">

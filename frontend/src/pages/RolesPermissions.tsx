@@ -44,7 +44,10 @@ const RolesPermissions: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
   const [showOnlyCustom, setShowOnlyCustom] = useState(false);
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  // Every category starts collapsed — an admin sees only the section
+  // headers at first and expands one by clicking it, rather than the full
+  // permission matrix rendering open by default.
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set(CATEGORY_ORDER));
   // pending edits, keyed by cellId — cleared on load/save/discard
   const [pending, setPending] = useState<Record<string, AccessLevel>>({});
 

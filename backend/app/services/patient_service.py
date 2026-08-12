@@ -580,7 +580,10 @@ def get_new_vs_returning_trend(
     range_start, range_end = buckets[0][0], buckets[-1][1]
 
     query = (
-        db.query(Appointment.patient_id, Appointment.appointment_date, Appointment.status, Patient.created_at)
+        db.query(
+            Appointment.patient_id, Appointment.appointment_date, Appointment.status,
+            Appointment.follow_up_label, Patient.created_at,
+        )
         .join(Patient, Patient.id == Appointment.patient_id)
         .filter(
             Appointment.hospital_id == hospital_id,
@@ -588,6 +591,7 @@ def get_new_vs_returning_trend(
             Appointment.appointment_date <= range_end,
             Appointment.status.notin_(["cancelled", "rescheduled"]),
         )
+        .order_by(Appointment.appointment_date.asc())
     )
     if doctor_id:
         query = query.filter(Appointment.doctor_id == doctor_id)
@@ -603,7 +607,15 @@ def get_new_vs_returning_trend(
     upcoming_sets: dict[date, set] = {b[0]: set() for b in buckets}
     _UPCOMING_STATUSES = {"scheduled", "pending", "confirmed"}
 
-    for patient_id, appt_date, appt_status, created_at in query.all():
+    # Follow-up chain position (MC1/MC2+/MCR — see
+    # appointment_service.compute_follow_up_label) for each RETURNING patient
+    # in each bucket. A patient can have more than one kept appointment in
+    # the same bucket (week/month granularity) — rows are processed oldest
+    # first (order_by above), so the dict ends up holding each patient's
+    # LATEST label in that bucket, the most representative one to report.
+    follow_up_by_patient: dict[date, dict] = {b[0]: {} for b in buckets}
+
+    for patient_id, appt_date, appt_status, follow_up_label, created_at in query.all():
         bucket = next((b for b in buckets if b[0] <= appt_date <= b[1]), None)
         if not bucket:
             continue
@@ -613,21 +625,38 @@ def get_new_vs_returning_trend(
             new_sets[bucket_start].add(patient_id)
         else:
             returning_sets[bucket_start].add(patient_id)
+            if follow_up_label:
+                follow_up_by_patient[bucket_start][patient_id] = follow_up_label
         if appt_date >= today and appt_status in _UPCOMING_STATUSES:
             upcoming_sets[bucket_start].add(patient_id)
+
+    def _mc_counts(bucket_start: date) -> tuple[int, int, int]:
+        mc1 = mc2_plus = mcr = 0
+        for label in follow_up_by_patient[bucket_start].values():
+            if label == "MCR":
+                mcr += 1
+            elif label == "MC1":
+                mc1 += 1
+            elif label.startswith("MC"):
+                mc2_plus += 1
+        return mc1, mc2_plus, mcr
+
+    def _bucket_dict(start: date, end: date) -> dict:
+        mc1, mc2_plus, mcr = _mc_counts(start)
+        return {
+            "period_start": start.isoformat(),
+            "period_end": end.isoformat(),
+            "label": _trend_bucket_label(granularity, start, end),
+            "new_patients": len(new_sets[start]),
+            "returning_patients": len(returning_sets[start]),
+            "upcoming_patients": len(upcoming_sets[start]),
+            "mc1_count": mc1,
+            "mc2_plus_count": mc2_plus,
+            "mcr_count": mcr,
+        }
 
     return {
         "granularity": granularity,
         "scope": "doctor" if doctor_id else "hospital",
-        "buckets": [
-            {
-                "period_start": start.isoformat(),
-                "period_end": end.isoformat(),
-                "label": _trend_bucket_label(granularity, start, end),
-                "new_patients": len(new_sets[start]),
-                "returning_patients": len(returning_sets[start]),
-                "upcoming_patients": len(upcoming_sets[start]),
-            }
-            for start, end in buckets
-        ],
+        "buckets": [_bucket_dict(start, end) for start, end in buckets],
     }

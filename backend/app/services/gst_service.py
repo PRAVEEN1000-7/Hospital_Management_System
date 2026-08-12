@@ -49,6 +49,19 @@ GSTIN_PATTERN = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-
 VALID_GST_REGISTRATION_STATUSES = {"registered", "unregistered"}
 _TWO_PLACES = Decimal("0.01")
 
+# Standard Indian GST rate slabs — fixed by the GST Council, not something
+# each hospital configures, so they're always valid regardless of whether
+# the hospital has any tax_configurations rows set up. This is the fix for
+# a production/local discrepancy: the PO GST dropdown previously depended
+# entirely on a hospital having configured tax_configurations, so a hospital
+# with none (e.g. a fresh production DB never seeded, unlike the local dev
+# DB) saw an empty dropdown with nothing but 0% to pick. Hardcoding these
+# here means the dropdown and validation always work, with no setup step,
+# in every environment.
+STANDARD_GST_RATES: frozenset[Decimal] = frozenset(
+    Decimal(r) for r in ("0", "5", "12", "18", "28")
+)
+
 
 def validate_gstin(gstin: str) -> bool:
     """15-character Indian GSTIN format check."""
@@ -158,10 +171,12 @@ def compute_line_item_tax(
 
 
 def validate_tax_rate_against_slabs(db: Session, hospital_id: uuid.UUID, gst_rate: Decimal) -> bool:
-    """GST% must match one of the hospital's configured, currently-active tax
-    slabs (tax_configurations — see tax_service.py's admin CRUD for these).
-    0% is always allowed (an exempt/no-tax line needs no slab configured)."""
-    if Decimal(gst_rate) == 0:
+    """GST% must be one of the standard statutory slabs (always valid, no
+    setup required — see STANDARD_GST_RATES above) OR one of the hospital's
+    own configured, currently-active tax_configurations rows, for hospitals
+    that have added extra/custom rates beyond the standard list."""
+    gst_rate = Decimal(gst_rate)
+    if gst_rate in STANDARD_GST_RATES:
         return True
     today = date.today()
     exists = (
@@ -170,7 +185,7 @@ def validate_tax_rate_against_slabs(db: Session, hospital_id: uuid.UUID, gst_rat
             TaxConfiguration.hospital_id == hospital_id,
             TaxConfiguration.is_active == True,
             TaxConfiguration.effective_from <= today,
-            TaxConfiguration.rate_percentage == Decimal(gst_rate),
+            TaxConfiguration.rate_percentage == gst_rate,
         )
         .first()
     )

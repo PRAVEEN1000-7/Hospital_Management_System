@@ -50,6 +50,11 @@ interface PreviousItem {
   usedAt: number;
 }
 
+// Standard non-zero Indian GST slabs — mirrors backend gst_service.py's
+// STANDARD_GST_RATES. 0% is handled separately as its own hardcoded "No
+// Tax" option in the dropdown below, so it isn't repeated here.
+const STANDARD_GST_RATES = [5, 12, 18, 28];
+
 // Items without a catalog id (manually typed) fall back to a name+type key —
 // two catalog-backed entries always key on id, two manual entries with the
 // same name always collide on purpose (they're the same "previous item").
@@ -84,16 +89,20 @@ const NewPurchaseOrderPage: React.FC = () => {
   const [items, setItems] = useState<ItemRow[]>([{ item_type: 'medicine', item_id: '', item_name: '', quantity_ordered: 0, unit_price: 0, discount_percent: 0, gst_rate: 0 }]);
   const [saving, setSaving] = useState(false);
   const [bulkUploading, setBulkUploading] = useState(false);
-  const [searchInputId, setSearchInputId] = useState<string | null>(null);
   const [hospital, setHospital] = useState<HospitalDetails | null>(null);
   const [taxSlabs, setTaxSlabs] = useState<TaxConfig[]>([]);
 
-  // Distinct GST rates from the hospital's active tax slabs, used to power
-  // the per-item GST dropdown below — staff pick a configured slab instead
-  // of typing a raw percentage, so an invalid/unsupported rate can't be
-  // entered in the first place.
+  // GST-rate dropdown options: the standard statutory Indian GST slabs are
+  // hardcoded here — always available, no per-hospital setup required, so
+  // the dropdown can never come up empty (this was the actual bug: it used
+  // to depend entirely on the hospital's tax_configurations rows in the DB,
+  // so a hospital with none configured — e.g. a fresh production DB that
+  // was never seeded — saw nothing but "0% (No Tax)"). Any EXTRA custom
+  // rates a hospital has configured via Settings -> Tax Configuration are
+  // merged in on top, for hospitals that genuinely need a non-standard rate.
   const gstRateOptions = useMemo(() => {
     const seen = new Map<number, string>();
+    for (const rate of STANDARD_GST_RATES) seen.set(rate, `GST ${rate}%`);
     for (const t of taxSlabs) {
       const rate = Number(t.rate_percentage);
       if (!seen.has(rate)) seen.set(rate, t.name);
@@ -327,18 +336,6 @@ const NewPurchaseOrderPage: React.FC = () => {
     // Limit to 50 suggestions for performance
     return suggestions.slice(0, 50);
   }, [previousItems, medicines]);
-
-  const handleMedicineSelect = (idx: number, medicineId: string) => {
-    const selected = medicines.find((m) => m.id === medicineId);
-    const updated = [...items];
-    updated[idx] = {
-      ...updated[idx],
-      item_type: 'medicine',
-      item_id: medicineId,
-      item_name: selected?.name || '',
-    };
-    setItems(updated);
-  };
 
   const handleDownloadTemplate = () => {
     // Example rows covering the two main item types

@@ -7,6 +7,9 @@ export interface PatientTrendBucket {
   label: string;
   new_patients: number;
   returning_patients: number;
+  /** Distinct patients with a still-booked (not completed/cancelled), not-yet-passed
+   * appointment in this bucket — always 0 for a bucket entirely in the past. */
+  upcoming_patients: number;
 }
 
 export type PatientTrendGranularity = 'day' | 'week' | 'month' | 'custom';

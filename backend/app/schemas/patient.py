@@ -326,6 +326,7 @@ class PatientTrendBucket(BaseModel):
     label: str
     new_patients: int
     returning_patients: int
+    upcoming_patients: int
 
 
 class PatientTrendResponse(BaseModel):

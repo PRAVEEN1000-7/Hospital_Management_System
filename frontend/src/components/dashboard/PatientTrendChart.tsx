@@ -33,9 +33,12 @@ const ChartTooltip = ({ active, payload, label }: any) => {
   );
 };
 
-/** New vs Returning patient trend — Doctor + Admin dashboards only.
+/** New vs Returning vs Upcoming patient trend — Doctor + Admin dashboards only.
  * "New" = patients whose registration falls in the same period as their visit;
- * "Returning" = patients who already existed before that period and visited again.
+ * "Returning" = patients who already existed before that period and visited again;
+ * "Upcoming" = distinct patients with a still-booked, not-yet-happened appointment
+ * in that bucket — always 0 for a bucket entirely in the past (e.g. last month),
+ * since nothing there can still be upcoming.
  * Day/Week are single-period snapshots (today only / this week only); Month is a
  * 6-month trend; Custom lets the user pick an explicit date range. */
 const PatientTrendChart: React.FC = () => {
@@ -93,11 +96,13 @@ const PatientTrendChart: React.FC = () => {
     label: b.label,
     New: b.new_patients,
     Returning: b.returning_patients,
+    Upcoming: b.upcoming_patients,
   })) ?? [];
 
   const totalNew = data?.buckets.reduce((s, b) => s + b.new_patients, 0) ?? 0;
   const totalReturning = data?.buckets.reduce((s, b) => s + b.returning_patients, 0) ?? 0;
-  const hasData = totalNew > 0 || totalReturning > 0;
+  const totalUpcoming = data?.buckets.reduce((s, b) => s + b.upcoming_patients, 0) ?? 0;
+  const hasData = totalNew > 0 || totalReturning > 0 || totalUpcoming > 0;
 
   return (
     <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm mb-8">
@@ -172,6 +177,10 @@ const PatientTrendChart: React.FC = () => {
             <span className="w-2.5 h-2.5 rounded-sm bg-emerald-400 inline-block" />
             Returning: {totalReturning.toLocaleString()}
           </span>
+          <span className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600">
+            <span className="w-2.5 h-2.5 rounded-sm bg-amber-400 inline-block" />
+            Upcoming: {totalUpcoming.toLocaleString()}
+          </span>
         </div>
       )}
 
@@ -220,6 +229,7 @@ const PatientTrendChart: React.FC = () => {
             <Legend wrapperStyle={{ fontSize: 11 }} />
             <Bar dataKey="New" fill="#2563eb" radius={[3, 3, 0, 0]} />
             <Bar dataKey="Returning" fill="#34d399" radius={[3, 3, 0, 0]} />
+            <Bar dataKey="Upcoming" fill="#fbbf24" radius={[3, 3, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       )}

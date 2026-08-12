@@ -580,7 +580,7 @@ def get_new_vs_returning_trend(
     range_start, range_end = buckets[0][0], buckets[-1][1]
 
     query = (
-        db.query(Appointment.patient_id, Appointment.appointment_date, Patient.created_at)
+        db.query(Appointment.patient_id, Appointment.appointment_date, Appointment.status, Patient.created_at)
         .join(Patient, Patient.id == Appointment.patient_id)
         .filter(
             Appointment.hospital_id == hospital_id,
@@ -594,8 +594,16 @@ def get_new_vs_returning_trend(
 
     new_sets: dict[date, set] = {b[0]: set() for b in buckets}
     returning_sets: dict[date, set] = {b[0]: set() for b in buckets}
+    # Distinct patients still awaiting that visit as of right now — status
+    # hasn't moved past "booked but not yet seen" AND the date hasn't passed.
+    # Unlike new/returning (which count every booked visit in the bucket,
+    # already-happened or not), this is the one column on this chart that's
+    # inherently "as of today": a bucket entirely in the past (e.g. last
+    # month) will always show 0 here, since nothing there is still upcoming.
+    upcoming_sets: dict[date, set] = {b[0]: set() for b in buckets}
+    _UPCOMING_STATUSES = {"scheduled", "pending", "confirmed"}
 
-    for patient_id, appt_date, created_at in query.all():
+    for patient_id, appt_date, appt_status, created_at in query.all():
         bucket = next((b for b in buckets if b[0] <= appt_date <= b[1]), None)
         if not bucket:
             continue
@@ -605,6 +613,8 @@ def get_new_vs_returning_trend(
             new_sets[bucket_start].add(patient_id)
         else:
             returning_sets[bucket_start].add(patient_id)
+        if appt_date >= today and appt_status in _UPCOMING_STATUSES:
+            upcoming_sets[bucket_start].add(patient_id)
 
     return {
         "granularity": granularity,
@@ -616,6 +626,7 @@ def get_new_vs_returning_trend(
                 "label": _trend_bucket_label(granularity, start, end),
                 "new_patients": len(new_sets[start]),
                 "returning_patients": len(returning_sets[start]),
+                "upcoming_patients": len(upcoming_sets[start]),
             }
             for start, end in buckets
         ],

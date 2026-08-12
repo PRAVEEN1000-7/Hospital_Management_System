@@ -13,6 +13,8 @@ export const VALID_PRODUCT_CATEGORIES = [
 
 export type ProductCategory = typeof VALID_PRODUCT_CATEGORIES[number];
 
+export type GstRegistrationStatus = 'registered' | 'unregistered';
+
 export interface Supplier {
   id: string;
   name: string;
@@ -22,6 +24,10 @@ export interface Supplier {
   email: string | null;
   address: string | null;
   tax_id: string | null;
+  state: string | null;
+  country: string | null;
+  gstin: string | null;
+  gst_registration_status: GstRegistrationStatus | null;
   payment_terms: string | null;
   lead_time_days: number | null;
   rating: number | null;
@@ -39,6 +45,14 @@ export interface SupplierCreate {
   email?: string;
   address?: string;
   tax_id?: string;
+  // state/country determine place of supply against the hospital's own
+  // state/country (intra-state / inter-state / Union Territory / export).
+  // gstin is only required by the backend when gst_registration_status is
+  // 'registered' and country is India.
+  state?: string;
+  country?: string;
+  gstin?: string;
+  gst_registration_status?: GstRegistrationStatus;
   payment_terms?: string;
   lead_time_days?: number;
   rating?: number;
@@ -52,6 +66,10 @@ export interface SupplierUpdate {
   email?: string;
   address?: string;
   tax_id?: string;
+  state?: string;
+  country?: string;
+  gstin?: string;
+  gst_registration_status?: GstRegistrationStatus;
   payment_terms?: string;
   lead_time_days?: number;
   rating?: number;
@@ -61,6 +79,9 @@ export interface SupplierUpdate {
 
 /* ── Purchase Orders ───────────────────────────────────────────────────── */
 
+/** 'intra_state' (CGST+SGST) | 'inter_state' (IGST) | 'union_territory' (CGST+UGST) | 'export' (zero-rated) */
+export type PlaceOfSupplyType = 'intra_state' | 'inter_state' | 'union_territory' | 'export';
+
 export interface PurchaseOrderItem {
   id: string;
   item_type: string;
@@ -69,6 +90,14 @@ export interface PurchaseOrderItem {
   quantity_ordered: number;
   quantity_received: number;
   unit_price: number;
+  discount_percent: number;
+  discount_amount: number;
+  gst_rate: number;
+  taxable_amount: number;
+  cgst_amount: number;
+  sgst_amount: number;
+  igst_amount: number;
+  ugst_amount: number;
   total_price: number;
 }
 
@@ -78,7 +107,11 @@ export interface PurchaseOrderItemCreate {
   item_name?: string;
   quantity_ordered: number;
   unit_price: number;
-  total_price: number;
+  discount_percent?: number;
+  /** Must match one of the hospital's configured tax slabs (Settings → Tax
+   * Configuration) — the backend rejects an unrecognized rate. 0 = no tax. */
+  gst_rate?: number;
+  // total_price is intentionally NOT sent — the backend always recomputes it.
 }
 
 export interface PurchaseOrder {
@@ -91,6 +124,14 @@ export interface PurchaseOrder {
   status: string;
   total_amount: number;
   tax_amount: number;
+  subtotal: number;
+  discount_amount: number;
+  taxable_amount: number;
+  cgst_amount: number;
+  sgst_amount: number;
+  igst_amount: number;
+  ugst_amount: number;
+  place_of_supply_type: PlaceOfSupplyType | null;
   notes: string | null;
   payment_status: 'completed' | 'incomplete' | 'partial';
   total_paid: number;

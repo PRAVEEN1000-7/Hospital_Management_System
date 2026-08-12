@@ -20,6 +20,16 @@ const rolePermissionService = {
   async resetCell(key: string, role: string): Promise<void> {
     await api.post('/roles-permissions/reset', { key, role });
   },
+
+  async resetCategory(category: string): Promise<{ removed: number }> {
+    const response = await api.post<{ removed: number }>('/roles-permissions/reset-category', { category });
+    return response.data;
+  },
+
+  async resetAll(): Promise<{ removed: number }> {
+    const response = await api.post<{ removed: number }>('/roles-permissions/reset-all');
+    return response.data;
+  },
 };
 
 export default rolePermissionService;

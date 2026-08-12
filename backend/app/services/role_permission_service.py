@@ -146,3 +146,45 @@ def reset_cell(db: Session, hospital_id: uuid.UUID, key: str, role: str) -> None
     ).delete()
     db.commit()
     invalidate_hospital_matrix_cache(hospital_id)
+
+
+def _category_of(key: str) -> str:
+    """Mirrors the frontend's categoryOf() (RolesPermissions.tsx) exactly —
+    the section a permission key is grouped under in the admin UI (general/
+    appt/rx/system), or 'modules' for the dot-less bare module keys
+    (billing, inventory, optical, pharmacy)."""
+    dot = key.find(".")
+    return "modules" if dot == -1 else key[:dot]
+
+
+def reset_category(db: Session, hospital_id: uuid.UUID, category: str) -> int:
+    """Drop every override for this hospital whose key falls in `category` —
+    reverts a whole admin-UI section (e.g. all of "Appointments") to default
+    in one action, across every role at once."""
+    rows = (
+        db.query(HospitalPermissionOverride)
+        .filter(HospitalPermissionOverride.hospital_id == hospital_id)
+        .all()
+    )
+    to_delete = [r for r in rows if _category_of(r.permission_key) == category]
+    for r in to_delete:
+        db.delete(r)
+    db.commit()
+    invalidate_hospital_matrix_cache(hospital_id)
+    return len(to_delete)
+
+
+def reset_all(db: Session, hospital_id: uuid.UUID) -> int:
+    """Drop every override for this hospital — the whole permission matrix
+    reverts to the global default. Always safe: the global default already
+    keeps admin's own edit access on system.user_management (the one
+    self-lockout guard update_matrix enforces), so removing overrides can
+    never produce a lockout."""
+    count = (
+        db.query(HospitalPermissionOverride)
+        .filter(HospitalPermissionOverride.hospital_id == hospital_id)
+        .delete()
+    )
+    db.commit()
+    invalidate_hospital_matrix_cache(hospital_id)
+    return count

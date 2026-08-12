@@ -1,15 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
 import inventoryService from '../../services/inventoryService';
-import SearchableSelect, { type SuggestionOption } from '../../components/common/SearchableSelect';
+import { PO_PREFILL_KEY, type PoPrefillItem } from './NewPurchaseOrderPage';
 import type { LowStockItem } from '../../types/inventory';
-
-interface SupplierOption {
-  id: string;
-  name: string;
-}
 
 interface ReorderSuggestion extends LowStockItem {
   suggestedQuantity: number;
@@ -28,16 +23,10 @@ const LowStockAlertsPage: React.FC = () => {
   
   const [items, setItems] = useState<LowStockItem[]>([]);
   const [suggestions, setSuggestions] = useState<ReorderSuggestion[]>([]);
-  const [suppliers, setSuppliers] = useState<SupplierOption[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadingSuppliers, setLoadingSuppliers] = useState(false);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = useState<'stock' | 'variance' | 'name'>('stock');
   const [filterSeverity, setFilterSeverity] = useState<'all' | 'critical' | 'warning'>('all');
-  const [showCreatePO, setShowCreatePO] = useState(false);
-  const [selectedSupplier, setSelectedSupplier] = useState('');
-  const [creating, setCreating] = useState(false);
-  const [customQuantities, setCustomQuantities] = useState<Map<string, number>>(new Map());
 
   // Fetch low stock items
   const fetchLowStockItems = useCallback(async () => {
@@ -68,35 +57,9 @@ const LowStockAlertsPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Fetch suppliers
-  const fetchSuppliers = useCallback(async () => {
-    setLoadingSuppliers(true);
-    try {
-      const res = await inventoryService.getSuppliers(1, 100, '', true);
-      setSuppliers(res.data.map(s => ({ id: s.id, name: s.name })));
-    } catch (err: any) {
-      console.error(err);
-      setSuppliers([]);
-      if (err?.response?.status === 403) {
-        toast.error('You do not have permission to load suppliers');
-      } else {
-        toast.error('Failed to load suppliers');
-      }
-    } finally {
-      setLoadingSuppliers(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   useEffect(() => {
     fetchLowStockItems();
   }, [fetchLowStockItems]);
-
-  useEffect(() => {
-    if (!showCreatePO) return;
-    if (suppliers.length > 0) return;
-    fetchSuppliers();
-  }, [showCreatePO, suppliers.length, fetchSuppliers]);
 
   // Filter and sort items
   const filteredItems = suggestions
@@ -139,72 +102,31 @@ const LowStockAlertsPage: React.FC = () => {
     }
   };
 
-  // Create PO from selected items
-  const handleCreatePO = async () => {
-    if (!selectedSupplier) {
-      toast.error('Please select a supplier');
-      return;
-    }
-
+  // Create PO from selected items — hands the selected items off to the
+  // single, shared PO-creation page (NewPurchaseOrderPage) instead of
+  // building a separate form here, so every "Create PO" entry point in the
+  // app produces the exact same GST-aware purchase order. Quantities,
+  // supplier selection, discount%, and GST% are all set on that page.
+  const handleCreatePO = () => {
     if (selectedItems.size === 0) {
       toast.error('Please select at least one item');
       return;
     }
-
-    setCreating(true);
-    try {
-      const selectedSuggestions = suggestions.filter(s => selectedItems.has(s.item_id));
-      const items = selectedSuggestions.map(s => {
-        const quantity = customQuantities.get(s.item_id) || s.suggestedQuantity;
-        return {
-          // Low-stock alerts include both medicines AND optical products — hardcoding
-          // 'medicine' here mislabeled optical reorders, which later crashed with a
-          // foreign-key violation when the resulting GRN was accepted (the backend
-          // would try to create a MedicineBatch pointing at an optical product's id).
-          item_type: (s.item_type as 'medicine' | 'optical_product') || 'medicine',
-          item_id: s.item_id,
-          item_name: s.item_name,
-          quantity_ordered: quantity,
-          unit_price: s.purchase_price || 0,
-          total_price: quantity * (s.purchase_price || 0),
-        };
-      });
-
-      await inventoryService.createPurchaseOrder({
-        supplier_id: selectedSupplier,
-        order_date: new Date().toISOString().split('T')[0],
-        expected_delivery_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        status: 'draft',
-        notes: `Auto-generated reorder for low stock items - ${selectedItems.size} items`,
-        items,
-      });
-
-      toast.success(`Purchase order created for ${selectedItems.size} items`);
-      setSelectedItems(new Set());
-      setShowCreatePO(false);
-      setSelectedSupplier('');
-      setCustomQuantities(new Map());
-      await fetchLowStockItems();
-    } catch (err: any) {
-      console.error(err);
-      toast.error(err.response?.data?.detail || 'Failed to create purchase order');
-    } finally {
-      setCreating(false);
-    }
+    const selectedSuggestions = suggestions.filter(s => selectedItems.has(s.item_id));
+    const prefillItems: PoPrefillItem[] = selectedSuggestions.map(s => ({
+      // Low-stock alerts include both medicines AND optical products — hardcoding
+      // 'medicine' here mislabeled optical reorders, which later crashed with a
+      // foreign-key violation when the resulting GRN was accepted (the backend
+      // would try to create a MedicineBatch pointing at an optical product's id).
+      item_type: s.item_type || 'medicine',
+      item_id: s.item_id,
+      item_name: s.item_name || '',
+      quantity_ordered: s.suggestedQuantity,
+      unit_price: s.purchase_price || 0,
+    }));
+    sessionStorage.setItem(PO_PREFILL_KEY, JSON.stringify(prefillItems));
+    navigate('/inventory/purchase-orders/new');
   };
-
-  const totalQtyToOrder = Array.from(selectedItems).reduce((sum, itemId) => {
-    const item = suggestions.find(s => s.item_id === itemId);
-    const qty = customQuantities.get(itemId) ?? item?.suggestedQuantity ?? 0;
-    return sum + qty;
-  }, 0);
-
-  const totalEstimatedCost = Array.from(selectedItems).reduce((sum, itemId) => {
-    const item = suggestions.find(s => s.item_id === itemId);
-    const qty = customQuantities.get(itemId) ?? item?.suggestedQuantity ?? 0;
-    const price = item?.purchase_price || 0;
-    return sum + (qty * price);
-  }, 0);
 
   const getSeverityColor = (item: LowStockItem) => {
     if (item.current_stock === 0) return 'bg-red-50 border-red-200';
@@ -228,10 +150,7 @@ const LowStockAlertsPage: React.FC = () => {
         </div>
         {hasInventoryAccess && (
           <button
-            onClick={() => {
-              setSelectedSupplier('');
-              setShowCreatePO(true);
-            }}
+            onClick={handleCreatePO}
             disabled={selectedItems.size === 0}
             className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
@@ -354,135 +273,6 @@ const LowStockAlertsPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Create PO Modal */}
-          {showCreatePO && (
-            <div className="fixed inset-0 bg-black/50 z-40 flex items-center justify-center p-4">
-              <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto">
-                <div className="p-6 border-b border-slate-200 flex items-center justify-between sticky top-0 bg-white">
-                  <h2 className="text-lg font-bold text-slate-900">Create Purchase Order</h2>
-                  <button
-                    onClick={() => {
-                      setShowCreatePO(false);
-                      setCustomQuantities(new Map());
-                    }}
-                    className="p-1 hover:bg-slate-100 rounded-lg transition-colors"
-                  >
-                    <span className="material-symbols-outlined">close</span>
-                  </button>
-                </div>
-                <div className="p-6 space-y-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-900 mb-2">Select Supplier</label>
-                    <SearchableSelect
-                      value={suppliers.find(s => s.id === selectedSupplier)?.name || ''}
-                      onChange={(_value, metadata) => setSelectedSupplier((metadata && metadata.id) ? (metadata.id as string) : '')}
-                      suggestions={suppliers.map((s): SuggestionOption => ({ id: s.id, label: s.name, metadata: { id: s.id } }))}
-                      placeholder={loadingSuppliers ? 'Loading suppliers...' : suppliers.length === 0 ? 'No suppliers available' : 'Search supplier...'}
-                      disabled={loadingSuppliers || suppliers.length === 0}
-                      allowManualEntry={false}
-                    />
-                    {!loadingSuppliers && suppliers.length === 0 && (
-                      <p className="text-xs text-amber-600 mt-1">No active suppliers found. Add suppliers first to create a PO.</p>
-                    )}
-                  </div>
-
-                  {/* Items with Editable Quantities */}
-                  <div className="border border-slate-200 rounded-lg">
-                    <div className="bg-slate-50 px-4 py-3 border-b border-slate-200">
-                      <h3 className="text-sm font-semibold text-slate-900">Items to Order</h3>
-                    </div>
-                    <div className="divide-y divide-slate-200">
-                      {Array.from(selectedItems).map(itemId => {
-                        const item = suggestions.find(s => s.item_id === itemId);
-                        if (!item) return null;
-                        const qty = customQuantities.get(itemId) ?? item.suggestedQuantity;
-                        const cost = qty * (item.purchase_price || 0);
-                        return (
-                          <div key={itemId} className="p-4 space-y-3">
-                            <div className="flex items-center justify-between">
-                              <div className="flex-1">
-                                <p className="font-medium text-slate-900">{item.item_name}</p>
-                                <p className="text-xs text-slate-500">Current: {item.current_stock} | Reorder: {item.reorder_level}</p>
-                              </div>
-                              <span className="text-xs font-semibold px-2 py-1 rounded-full bg-blue-100 text-blue-700">₹{(item.purchase_price || 0).toFixed(2)}/unit</span>
-                            </div>
-                            <div className="grid grid-cols-3 gap-3">
-                              <div>
-                                <label className="block text-xs text-slate-600 mb-1">Suggested Qty</label>
-                                <input
-                                  type="number"
-                                  disabled
-                                  value={item.suggestedQuantity}
-                                  className="w-full px-2 py-2 text-sm border border-slate-200 rounded-lg bg-slate-50 text-slate-600"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-xs text-slate-600 mb-1">Quantity to Order *</label>
-                                <input
-                                  type="number"
-                                  min={1}
-                                  value={qty}
-                                  onChange={(e) => {
-                                    const newQty = Math.max(1, parseInt(e.target.value) || 0);
-                                    setCustomQuantities(prev => new Map(prev).set(itemId, newQty));
-                                  }}
-                                  className="w-full px-2 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-xs text-slate-600 mb-1">Est. Cost</label>
-                                <input
-                                  type="text"
-                                  disabled
-                                  value={`₹${cost.toFixed(2)}`}
-                                  className="w-full px-2 py-2 text-sm border border-slate-200 rounded-lg bg-slate-50 text-slate-900 font-semibold"
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Summary */}
-                  <div className="bg-slate-50 p-4 rounded-lg space-y-2 border border-slate-200">
-                    <div className="flex justify-between">
-                      <span className="text-sm text-slate-600">Items to Order:</span>
-                      <span className="font-bold text-slate-900">{selectedItems.size}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm text-slate-600">Total Quantity:</span>
-                      <span className="font-bold text-slate-900">{totalQtyToOrder}</span>
-                    </div>
-                    <div className="flex justify-between border-t border-slate-200 pt-2 mt-2">
-                      <span className="font-semibold text-slate-900">Est. Amount:</span>
-                      <span className="font-bold text-primary text-lg">₹{totalEstimatedCost.toFixed(2)}</span>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => {
-                        setShowCreatePO(false);
-                        setCustomQuantities(new Map());
-                      }}
-                      className="flex-1 px-4 py-2 border border-slate-200 text-slate-700 rounded-lg text-sm font-semibold hover:bg-slate-50 transition-colors"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={handleCreatePO}
-                      disabled={creating || !selectedSupplier || loadingSuppliers || suppliers.length === 0}
-                      className="flex-1 px-4 py-2.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 transition-colors"
-                    >
-                      {creating ? 'Creating...' : 'Create Order'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
         </>
       )}
     </div>

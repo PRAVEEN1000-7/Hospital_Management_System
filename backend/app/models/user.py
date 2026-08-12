@@ -35,6 +35,13 @@ class Hospital(Base):
     timezone = Column(String(50), default="UTC")
     default_currency = Column(String(3), default="INR")
     tax_id = Column(String(50))
+    # GSTIN — distinct from the generic tax_id above: validated to the
+    # 15-character Indian GSTIN format (see services/gst_service.py) and only
+    # required when gst_registration_status == 'registered'. Used as the
+    # hospital's own party data for the PO/GRN place-of-supply calculation
+    # (compared against each supplier's state/country).
+    gstin = Column(String(15))
+    gst_registration_status = Column(String(20), default="registered")  # 'registered' | 'unregistered'
     registration_number = Column(String(50))
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

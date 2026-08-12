@@ -41,3 +41,11 @@ class MatrixUpdateResponse(BaseModel):
 class ResetCellRequest(BaseModel):
     key: str
     role: str
+
+
+class ResetCategoryRequest(BaseModel):
+    category: str
+
+
+class ResetResponse(BaseModel):
+    removed: int  # number of override rows dropped

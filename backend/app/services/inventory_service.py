@@ -31,6 +31,8 @@ from ..schemas.inventory import (
     CycleCountCreate, CycleCountUpdate,
     PurchaseOrderPaymentCreate,
 )
+from . import gst_service
+from decimal import Decimal
 
 logger = logging.getLogger(__name__)
 
@@ -505,6 +507,10 @@ def create_supplier(db: Session, data: SupplierCreate, hospital_id: uuid.UUID) -
         email=data.email,
         address=data.address,
         tax_id=data.tax_id,
+        state=data.state,
+        country=data.country or "India",
+        gstin=data.gstin,
+        gst_registration_status=data.gst_registration_status or "unregistered",
         payment_terms=data.payment_terms,
         lead_time_days=data.lead_time_days,
         rating=data.rating,
@@ -570,12 +576,61 @@ def delete_supplier(db: Session, supplier_id: uuid.UUID) -> bool:
 #  PURCHASE ORDERS
 # ═══════════════════════════════════════════════════════════════════════════
 
+def _determine_place_of_supply(db: Session, hospital_id: uuid.UUID, supplier: Supplier) -> str:
+    """Compares the hospital's own state/country against the supplier's to
+    classify this Purchase Order — see gst_service.determine_place_of_supply
+    for the full rule (intra-state / inter-state / Union Territory / export)."""
+    hospital = db.query(Hospital).filter(Hospital.id == hospital_id).first()
+    return gst_service.determine_place_of_supply(
+        hospital_state=hospital.state_province if hospital else None,
+        hospital_country=hospital.country if hospital else None,
+        supplier_state=supplier.state,
+        supplier_country=supplier.country,
+    )
+
+
+def _compute_gst_lines(
+    db: Session, hospital_id: uuid.UUID, place_of_supply_type: str, items: list,
+) -> list[dict]:
+    """Runs gst_service.compute_line_item_tax for every Purchase Order item,
+    after validating each line's gst_rate against the hospital's configured
+    tax slabs (see gst_service.validate_tax_rate_against_slabs) — an
+    unrecognized rate raises ValueError rather than silently taxing at a
+    rate nobody configured. GST is scoped to Purchase Orders only — GRN
+    stays a plain quantity/unit_price/total_price receipt record."""
+    results = []
+    for item in items:
+        gst_rate = Decimal(str(item.gst_rate or 0))
+        if not gst_service.validate_tax_rate_against_slabs(db, hospital_id, gst_rate):
+            raise ValueError(
+                f"GST rate {gst_rate}% is not one of this hospital's configured tax slabs "
+                f"(Settings → Tax Configuration) for item '{item.item_name or item.item_type}'."
+            )
+        results.append(gst_service.compute_line_item_tax(
+            unit_price=Decimal(str(item.unit_price)),
+            quantity=Decimal(str(item.quantity_ordered)),
+            discount_percent=Decimal(str(item.discount_percent or 0)),
+            gst_rate=gst_rate,
+            place_of_supply_type=place_of_supply_type,
+        ))
+    return results
+
+
 def create_purchase_order(
     db: Session, data: PurchaseOrderCreate,
     hospital_id: uuid.UUID, user_id: uuid.UUID,
 ) -> PurchaseOrder:
     po_number = _generate_number(db, "PO", PurchaseOrder, "po_number")
-    total = sum(item.total_price for item in data.items)
+
+    supplier = db.query(Supplier).filter(
+        Supplier.id == uuid.UUID(data.supplier_id), Supplier.hospital_id == hospital_id,
+    ).first()
+    if not supplier:
+        raise ValueError("Supplier not found")
+
+    place_of_supply_type = _determine_place_of_supply(db, hospital_id, supplier)
+    gst_lines = _compute_gst_lines(db, hospital_id, place_of_supply_type, data.items)
+    doc_totals = gst_service.aggregate_document_totals(gst_lines)
 
     po = PurchaseOrder(
         hospital_id=hospital_id,
@@ -584,14 +639,23 @@ def create_purchase_order(
         order_date=data.order_date,
         expected_delivery_date=data.expected_delivery_date,
         status=data.status or "draft",
-        total_amount=total,
+        total_amount=doc_totals["total_price"],
+        tax_amount=doc_totals["gst_amount"],
+        subtotal=doc_totals["base_amount"],
+        discount_amount=doc_totals["discount_amount"],
+        taxable_amount=doc_totals["taxable_amount"],
+        cgst_amount=doc_totals["cgst_amount"],
+        sgst_amount=doc_totals["sgst_amount"],
+        igst_amount=doc_totals["igst_amount"],
+        ugst_amount=doc_totals["ugst_amount"],
+        place_of_supply_type=place_of_supply_type,
         notes=data.notes,
         created_by=user_id,
     )
     db.add(po)
     db.flush()
 
-    for item in data.items:
+    for item, calc in zip(data.items, gst_lines):
         po_item = PurchaseOrderItem(
             purchase_order_id=po.id,
             item_type=item.item_type,
@@ -603,7 +667,15 @@ def create_purchase_order(
             ),
             quantity_ordered=item.quantity_ordered,
             unit_price=item.unit_price,
-            total_price=item.total_price,
+            discount_percent=item.discount_percent,
+            discount_amount=calc["discount_amount"],
+            gst_rate=item.gst_rate,
+            taxable_amount=calc["taxable_amount"],
+            cgst_amount=calc["cgst_amount"],
+            sgst_amount=calc["sgst_amount"],
+            igst_amount=calc["igst_amount"],
+            ugst_amount=calc["ugst_amount"],
+            total_price=calc["total_price"],
         )
         db.add(po_item)
 
@@ -622,7 +694,7 @@ def create_purchase_order(
         )
     except Exception:
         logger.warning("Failed to send purchase order creation notification", exc_info=True)
-    logger.info("Purchase order created: %s (total=%.2f)", po.po_number, total)
+    logger.info("Purchase order created: %s (total=%.2f)", po.po_number, float(doc_totals["total_price"]))
     return po
 
 
@@ -757,6 +829,14 @@ def _format_po_response(po: PurchaseOrder, db: Session) -> dict:
             "quantity_ordered": it.quantity_ordered,
             "quantity_received": it.quantity_received or 0,
             "unit_price": float(it.unit_price),
+            "discount_percent": float(it.discount_percent or 0),
+            "discount_amount": float(it.discount_amount or 0),
+            "gst_rate": float(it.gst_rate or 0),
+            "taxable_amount": float(it.taxable_amount or 0),
+            "cgst_amount": float(it.cgst_amount or 0),
+            "sgst_amount": float(it.sgst_amount or 0),
+            "igst_amount": float(it.igst_amount or 0),
+            "ugst_amount": float(it.ugst_amount or 0),
             "total_price": float(it.total_price),
         })
     return {
@@ -769,6 +849,14 @@ def _format_po_response(po: PurchaseOrder, db: Session) -> dict:
         "status": po.status,
         "total_amount": float(po.total_amount or 0),
         "tax_amount": float(po.tax_amount or 0),
+        "subtotal": float(po.subtotal or 0),
+        "discount_amount": float(po.discount_amount or 0),
+        "taxable_amount": float(po.taxable_amount or 0),
+        "cgst_amount": float(po.cgst_amount or 0),
+        "sgst_amount": float(po.sgst_amount or 0),
+        "igst_amount": float(po.igst_amount or 0),
+        "ugst_amount": float(po.ugst_amount or 0),
+        "place_of_supply_type": po.place_of_supply_type,
         "notes": po.notes,
         "payment_status": _po_payment_status(total_paid, float(po.total_amount or 0)),
         "total_paid": total_paid,

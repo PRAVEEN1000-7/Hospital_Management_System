@@ -10,10 +10,13 @@ import type { DoctorOption } from '../types/appointment';
 import { canEdit } from '../config/modulePermissions';
 import SearchableSelect, { type SuggestionOption } from '../components/common/SearchableSelect';
 import PatientBulkUploadPanel from '../components/patients/PatientBulkUploadPanel';
+import { validateGstin } from '../utils/gst';
+import taxService from '../services/taxService';
+import type { TaxConfig, TaxConfigCreateData } from '../types/billing';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = 'profile' | 'system';
+type Tab = 'profile' | 'system' | 'tax';
 
 // ── Operational setting groups (same config as AppointmentSettings) ──────────
 
@@ -190,6 +193,15 @@ const ProfileTab: React.FC = () => {
       toast.error('Hospital name is required');
       return;
     }
+    if (profile.gstin && !validateGstin(profile.gstin)) {
+      toast.error('GSTIN must be a valid 15-character Indian GSTIN');
+      return;
+    }
+    const isIndia = (profile.country || '').trim().toLowerCase() === 'india';
+    if ((profile.gst_registration_status || 'registered') === 'registered' && isIndia && !profile.gstin) {
+      toast.error('GSTIN is required when GST registration is set to Registered');
+      return;
+    }
     setSaving(true);
     try {
       const updated = await hospitalService.updateHospitalDetails(profile);
@@ -265,14 +277,35 @@ const ProfileTab: React.FC = () => {
               placeholder="e.g. REG-2024-001"
             />
           </FormField>
-          <FormField label="Tax / GST ID">
+          <FormField label="Tax ID (Other)">
             <input
               value={profile.tax_id || ''}
               onChange={e => set('tax_id', e.target.value)}
               className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-              placeholder="e.g. 22AAAAA0000A1Z5"
+              placeholder="Any other tax reference, if applicable"
             />
           </FormField>
+          <FormField label="GST Registration" hint="Used to determine intra-state vs inter-state GST on Purchase Orders / GRN">
+            <select
+              value={profile.gst_registration_status || 'registered'}
+              onChange={e => set('gst_registration_status', e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+            >
+              <option value="registered">Registered</option>
+              <option value="unregistered">Unregistered</option>
+            </select>
+          </FormField>
+          {(profile.gst_registration_status || 'registered') === 'registered' && (
+            <FormField label="GSTIN" required={profile.country?.trim().toLowerCase() === 'india'}>
+              <input
+                value={profile.gstin || ''}
+                onChange={e => set('gstin', e.target.value.toUpperCase().slice(0, 15))}
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                placeholder="22AAAAA0000A1Z5"
+                maxLength={15}
+              />
+            </FormField>
+          )}
           <FormField label="Hospital Logo" hint="PNG, JPG or SVG up to 2MB. Shown in the sidebar and on documents.">
             <div className="flex items-center gap-4">
               <HospitalLogo
@@ -840,6 +873,260 @@ const SystemSettingsTab: React.FC = () => {
   );
 };
 
+// ── Tax Configuration Tab ───────────────────────────────────────────────────
+// GST/tax slabs (TaxConfiguration) are per-hospital and feed every GST-rate
+// dropdown in the app (Purchase Orders, Invoices — see gst_service.py). This
+// tab is the only place they can be created or toggled; without at least one
+// active slab here, those dropdowns have nothing to offer but 0%.
+
+const STANDARD_GST_RATES: { rate: number; code: string; name: string }[] = [
+  { rate: 0, code: 'GST0', name: 'GST 0%' },
+  { rate: 5, code: 'GST5', name: 'GST 5%' },
+  { rate: 12, code: 'GST12', name: 'GST 12%' },
+  { rate: 18, code: 'GST18', name: 'GST 18%' },
+  { rate: 28, code: 'GST28', name: 'GST 28%' },
+];
+
+const emptyTaxForm: TaxConfigCreateData = {
+  name: '', code: '', rate_percentage: 0, applies_to: 'both',
+  effective_from: new Date().toISOString().split('T')[0],
+};
+
+const TaxConfigTab: React.FC = () => {
+  const toast = useToast();
+  const { user } = useAuth();
+  const canEditSettings = canEdit('system.settings', user?.roles);
+
+  const [configs, setConfigs] = useState<TaxConfig[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState<TaxConfigCreateData>(emptyTaxForm);
+  const [saving, setSaving] = useState(false);
+  const [seeding, setSeeding] = useState(false);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    taxService.list(1, 100, false)
+      .then(res => setConfigs(res.items))
+      .catch(() => toast.error('Failed to load tax configurations'))
+      .finally(() => setLoading(false));
+  }, [toast]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const missingStandardRates = STANDARD_GST_RATES.filter(
+    s => !configs.some(c => Number(c.rate_percentage) === s.rate)
+  );
+
+  const handleSeedStandard = async () => {
+    if (missingStandardRates.length === 0) return;
+    setSeeding(true);
+    let created = 0;
+    for (const s of missingStandardRates) {
+      try {
+        await taxService.create({
+          name: s.name, code: s.code, rate_percentage: s.rate,
+          applies_to: 'both', effective_from: new Date().toISOString().split('T')[0],
+        });
+        created++;
+      } catch {
+        // code collision or similar for this one slab — skip, don't block the rest
+      }
+    }
+    setSeeding(false);
+    if (created > 0) {
+      toast.success(`Added ${created} standard GST slab${created === 1 ? '' : 's'} (0/5/12/18/28%)`);
+    } else {
+      toast.error('Could not add standard GST slabs');
+    }
+    load();
+  };
+
+  const handleCreate = async () => {
+    if (!form.name.trim() || !form.code.trim()) {
+      toast.error('Name and code are required');
+      return;
+    }
+    setSaving(true);
+    try {
+      await taxService.create(form);
+      toast.success(`Tax slab "${form.name}" added`);
+      setForm(emptyTaxForm);
+      setShowForm(false);
+      load();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to create tax slab');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleToggle = async (cfg: TaxConfig) => {
+    try {
+      await taxService.toggle(cfg.id);
+      load();
+    } catch {
+      toast.error('Failed to update tax slab status');
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex justify-center py-16">
+        <span className="material-symbols-outlined animate-spin text-3xl text-slate-300">progress_activity</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="flex items-center justify-between gap-3 px-5 py-4 bg-slate-50/50 border-b border-slate-100 flex-wrap">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+              <span className="material-symbols-outlined text-primary text-lg">percent</span>
+            </div>
+            <div>
+              <h2 className="font-bold text-slate-900">GST / Tax Slabs</h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Rates configured here power every GST-rate dropdown in the app — Purchase Orders, Invoices, etc.
+              </p>
+            </div>
+          </div>
+          {canEditSettings && (
+            <div className="flex items-center gap-2">
+              {missingStandardRates.length > 0 && (
+                <button
+                  onClick={handleSeedStandard}
+                  disabled={seeding}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 border border-primary/30 text-primary rounded-lg text-xs font-semibold hover:bg-primary/5 transition-colors disabled:opacity-50"
+                  title="Add the standard Indian GST slabs (0%, 5%, 12%, 18%, 28%) that aren't configured yet"
+                >
+                  <span className="material-symbols-outlined text-base">auto_awesome</span>
+                  {seeding ? 'Adding…' : 'Add Standard GST Slabs'}
+                </button>
+              )}
+              <button
+                onClick={() => setShowForm(v => !v)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 bg-primary text-white rounded-lg text-xs font-semibold hover:bg-primary/90 transition-colors"
+              >
+                <span className="material-symbols-outlined text-base">add</span>
+                Add Tax Slab
+              </button>
+            </div>
+          )}
+        </div>
+
+        {showForm && canEditSettings && (
+          <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/30">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              <div className="sm:col-span-2">
+                <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1">Name</label>
+                <input
+                  type="text" value={form.name}
+                  onChange={e => setForm({ ...form, name: e.target.value })}
+                  placeholder="e.g. GST 18%"
+                  className="w-full px-2 py-2 border border-slate-200 rounded-lg text-sm bg-white"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1">Code</label>
+                <input
+                  type="text" value={form.code}
+                  onChange={e => setForm({ ...form, code: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '') })}
+                  placeholder="GST18"
+                  className="w-full px-2 py-2 border border-slate-200 rounded-lg text-sm bg-white"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1">Rate %</label>
+                <input
+                  type="number" min={0} max={100} step="0.01"
+                  value={form.rate_percentage === 0 ? '' : form.rate_percentage}
+                  onChange={e => setForm({ ...form, rate_percentage: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) })}
+                  placeholder="0"
+                  className="w-full px-2 py-2 border border-slate-200 rounded-lg text-sm text-right bg-white"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1">Applies To</label>
+                <select
+                  value={form.applies_to}
+                  onChange={e => setForm({ ...form, applies_to: e.target.value as TaxConfigCreateData['applies_to'] })}
+                  className="w-full px-2 py-2 border border-slate-200 rounded-lg text-sm bg-white"
+                >
+                  <option value="both">Both</option>
+                  <option value="product">Product</option>
+                  <option value="service">Service</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 mt-3">
+              <button
+                onClick={() => { setShowForm(false); setForm(emptyTaxForm); }}
+                className="px-3 py-1.5 text-xs font-semibold text-slate-500 hover:text-slate-700"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreate}
+                disabled={saving}
+                className="px-4 py-1.5 bg-primary text-white rounded-lg text-xs font-semibold hover:bg-primary/90 disabled:opacity-50"
+              >
+                {saving ? 'Saving…' : 'Save Slab'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {configs.length === 0 ? (
+          <div className="px-5 py-10 text-center text-sm text-slate-400">
+            No tax slabs configured yet. {canEditSettings ? 'Add one above, or use "Add Standard GST Slabs" for a quick start.' : 'Ask an admin to configure GST rates.'}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-100 text-left text-[11px] font-bold text-slate-400 uppercase">
+                  <th className="px-5 py-2.5">Name</th>
+                  <th className="px-3 py-2.5">Code</th>
+                  <th className="px-3 py-2.5 text-right">Rate</th>
+                  <th className="px-3 py-2.5">Applies To</th>
+                  <th className="px-3 py-2.5">Effective From</th>
+                  <th className="px-5 py-2.5 text-right">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {configs
+                  .slice()
+                  .sort((a, b) => Number(a.rate_percentage) - Number(b.rate_percentage))
+                  .map(cfg => (
+                  <tr key={cfg.id} className={!cfg.is_active ? 'opacity-50' : ''}>
+                    <td className="px-5 py-3 font-medium text-slate-900">{cfg.name}</td>
+                    <td className="px-3 py-3 text-slate-500 font-mono text-xs">{cfg.code}</td>
+                    <td className="px-3 py-3 text-right font-semibold text-slate-700">{Number(cfg.rate_percentage)}%</td>
+                    <td className="px-3 py-3 text-slate-500 capitalize">{cfg.applies_to}</td>
+                    <td className="px-3 py-3 text-slate-500">{cfg.effective_from}</td>
+                    <td className="px-5 py-3 text-right">
+                      <button
+                        onClick={() => canEditSettings && handleToggle(cfg)}
+                        disabled={!canEditSettings}
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold ${cfg.is_active ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400'} ${canEditSettings ? 'cursor-pointer hover:opacity-80' : ''}`}
+                      >
+                        {cfg.is_active ? 'Active' : 'Inactive'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 // ── Main Page ────────────────────────────────────────────────────────────────
 
 const HospitalSettings: React.FC = () => {
@@ -898,12 +1185,18 @@ const HospitalSettings: React.FC = () => {
             active={activeTab === 'system'}
             onClick={() => setActiveTab('system')}
           />
+          <TabButton
+            label="Tax Configuration"
+            icon="percent"
+            active={activeTab === 'tax'}
+            onClick={() => setActiveTab('tax')}
+          />
         </div>
         {activeTab === 'system' && canEdit('general.patients', user?.roles) && <PatientBulkUploadPanel />}
       </div>
 
       {/* Tab content */}
-      {activeTab === 'profile' ? <ProfileTab /> : <SystemSettingsTab />}
+      {activeTab === 'profile' ? <ProfileTab /> : activeTab === 'system' ? <SystemSettingsTab /> : <TaxConfigTab />}
     </div>
   );
 };

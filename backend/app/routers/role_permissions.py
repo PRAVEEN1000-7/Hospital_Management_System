@@ -16,8 +16,12 @@ from ..schemas.role_permission import (
     MatrixUpdateRequest,
     MatrixUpdateResponse,
     ResetCellRequest,
+    ResetCategoryRequest,
+    ResetResponse,
 )
-from ..services.role_permission_service import get_matrix, update_matrix, reset_cell
+from ..services.role_permission_service import (
+    get_matrix, update_matrix, reset_cell, reset_category, reset_all,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -73,3 +77,34 @@ async def reset_permission_cell(
 ):
     """Drop a single (key, role) override, reverting that cell to the default."""
     reset_cell(db, current_user.hospital_id, payload.key, payload.role)
+
+
+@router.post("/reset-category", response_model=ResetResponse)
+async def reset_permission_category(
+    payload: ResetCategoryRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(_edit_guard),
+):
+    """Drop every override in one admin-UI section (e.g. all of "Appointments"),
+    across every role — reverts that whole area to the default in one action."""
+    removed = reset_category(db, current_user.hospital_id, payload.category)
+    logger.info(
+        "Roles & Permissions category reset by user=%s hospital=%s category=%s removed=%d",
+        current_user.username, current_user.hospital_id, payload.category, removed,
+    )
+    return ResetResponse(removed=removed)
+
+
+@router.post("/reset-all", response_model=ResetResponse)
+async def reset_permission_matrix(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(_edit_guard),
+):
+    """Drop every override for this hospital — the whole matrix reverts to
+    the global default."""
+    removed = reset_all(db, current_user.hospital_id)
+    logger.info(
+        "Roles & Permissions FULL reset by user=%s hospital=%s removed=%d",
+        current_user.username, current_user.hospital_id, removed,
+    )
+    return ResetResponse(removed=removed)

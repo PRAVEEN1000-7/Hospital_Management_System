@@ -252,7 +252,11 @@ async def create_purchase_order(
     current_user: User = Depends(inventory_manage_roles),
 ):
     """Create a new purchase order."""
-    po = svc.create_purchase_order(db, payload, current_user.hospital_id, current_user.id)
+    try:
+        po = svc.create_purchase_order(db, payload, current_user.hospital_id, current_user.id)
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
     full_po = svc.get_purchase_order(db, po.id)
     # Notification is sent inside create_purchase_order() itself — a second
     # call here duplicated "Purchase Order Created" for admin/inventory_manager.
@@ -313,8 +317,16 @@ async def get_purchase_order_pdf(
     hosp_state = _esc(hospital.state_province if hospital else "")
     hosp_phone = _esc(hospital.phone if hospital else "")
     hosp_email = _esc(hospital.email if hospital else "")
+    hosp_gstin = _esc(hospital.gstin if hospital else "")
 
-    subtotal = sum(float(it.total_price or 0) for it in po.items)
+    subtotal = float(po.subtotal or 0)
+    place_of_supply_labels = {
+        "intra_state": "Intra-State (CGST + SGST)",
+        "inter_state": "Inter-State (IGST)",
+        "union_territory": "Union Territory (CGST + UGST)",
+        "export": "Export (Zero-Rated)",
+    }
+    place_of_supply_label = place_of_supply_labels.get(po.place_of_supply_type or "", "—")
 
     rows = "".join(
         f"""<tr>
@@ -323,6 +335,9 @@ async def get_purchase_order_pdf(
             <td class="right">{it.quantity_ordered}</td>
             <td class="right">{it.quantity_received or 0}</td>
             <td class="right">₹{fmt_money(it.unit_price)}</td>
+            <td class="right">{fmt_money(it.discount_percent)}%</td>
+            <td class="right">₹{fmt_money(it.taxable_amount)}</td>
+            <td class="right">{fmt_money(it.gst_rate)}%</td>
             <td class="right"><strong>₹{fmt_money(it.total_price)}</strong></td>
         </tr>"""
         for it in po.items
@@ -366,7 +381,7 @@ th {{ color: #64748b; font-weight: 600; font-size: 12px; background: #f8fafc; }}
 <div class="header">
     <h1>{hosp_name}</h1>
     <p>{hosp_address}, {hosp_city}, {hosp_state}</p>
-    <p>Phone: {hosp_phone} | Email: {hosp_email}</p>
+    <p>Phone: {hosp_phone} | Email: {hosp_email}{f' | GSTIN: {hosp_gstin}' if hosp_gstin else ''}</p>
 </div>
 <div class="po-number">Purchase Order #{_esc(po.po_number)}</div>
 <div class="meta">
@@ -378,19 +393,26 @@ th {{ color: #64748b; font-weight: 600; font-size: 12px; background: #f8fafc; }}
 <table>
     <tr><th style="width:160px;">Supplier</th><td>{_esc(supplier.name) if supplier else '—'}</td></tr>
     <tr><th>Contact</th><td>{_esc(supplier.contact_person) if supplier else '—'} {f'· {_esc(supplier.phone)}' if supplier and supplier.phone else ''}</td></tr>
-    <tr><th>Address</th><td>{_esc(supplier.address) if supplier else '—'}</td></tr>
+    <tr><th>Address</th><td>{_esc(supplier.address) if supplier else '—'}{f', {_esc(supplier.state)}' if supplier and supplier.state else ''}</td></tr>
+    <tr><th>GSTIN</th><td>{_esc(supplier.gstin) if supplier and supplier.gstin else '—'} {'(Unregistered)' if supplier and supplier.gst_registration_status != 'registered' else ''}</td></tr>
+    <tr><th>Place of Supply</th><td>{_esc(place_of_supply_label)}</td></tr>
     <tr><th>Approval Status</th><td><span class="status {'approval-yes' if po.approved_by else 'approval-no'}">{'Approved' if po.approved_by else 'Not Approved'}</span></td></tr>
 </table>
 <p class="section-title">Items</p>
 <table>
     <thead>
-        <tr><th>Item</th><th class="right">Qty Ordered</th><th class="right">Qty Received</th><th class="right">Unit Price</th><th class="right">Total</th></tr>
+        <tr><th>Item</th><th class="right">Qty Ordered</th><th class="right">Qty Received</th><th class="right">Unit Price</th><th class="right">Disc%</th><th class="right">Taxable</th><th class="right">GST%</th><th class="right">Total</th></tr>
     </thead>
     <tbody>{rows}</tbody>
 </table>
 <div class="summary">
     <div class="summary-row"><span>Subtotal</span><span>₹{fmt_money(subtotal)}</span></div>
-    <div class="summary-row"><span>Tax</span><span>₹{fmt_money(po.tax_amount)}</span></div>
+    <div class="summary-row"><span>Discount</span><span>₹{fmt_money(po.discount_amount)}</span></div>
+    <div class="summary-row"><span>Taxable Amount</span><span>₹{fmt_money(po.taxable_amount)}</span></div>
+    {f'<div class="summary-row"><span>CGST</span><span>₹{fmt_money(po.cgst_amount)}</span></div><div class="summary-row"><span>SGST</span><span>₹{fmt_money(po.sgst_amount)}</span></div>' if float(po.cgst_amount or 0) > 0 else ''}
+    {f'<div class="summary-row"><span>CGST</span><span>₹{fmt_money(po.cgst_amount)}</span></div><div class="summary-row"><span>UGST</span><span>₹{fmt_money(po.ugst_amount)}</span></div>' if float(po.ugst_amount or 0) > 0 else ''}
+    {f'<div class="summary-row"><span>IGST</span><span>₹{fmt_money(po.igst_amount)}</span></div>' if float(po.igst_amount or 0) > 0 else ''}
+    <div class="summary-row"><span>Total Tax</span><span>₹{fmt_money(po.tax_amount)}</span></div>
     <div class="summary-row summary-total"><span>Total</span><span>₹{fmt_money(po.total_amount)}</span></div>
 </div>
 {f'<p class="section-title">Notes</p><p style="font-size:13px;">{_esc(po.notes)}</p>' if po.notes else ''}
@@ -534,7 +556,11 @@ async def create_grn(
     current_user: User = Depends(grn_verify_roles),
 ):
     """Create a new goods receipt note."""
-    grn = svc.create_grn(db, payload, current_user.hospital_id, current_user.id)
+    try:
+        grn = svc.create_grn(db, payload, current_user.hospital_id, current_user.id)
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
     full_grn = svc.get_grn(db, grn.id)
     # Notification is sent inside create_grn() itself — a second call here
     # duplicated "Goods Receipt Note Created" for admin/inventory_manager.

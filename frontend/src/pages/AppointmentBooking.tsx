@@ -656,6 +656,12 @@ const AppointmentBooking: React.FC = () => {
                   <p className="text-[11px] text-slate-400 mt-1">
                     Auto-calculated from {selectedPatient?.first_name || 'the patient'}'s visit history — change it if needed.
                   </p>
+                  {followUpLabel && followUpLabel !== 'MCR' && followUpLabel.startsWith('MC') && (
+                    <p className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2.5 py-1">
+                      <span className="material-symbols-outlined text-[13px]">verified</span>
+                      Free consultation — within the follow-up window, no fee will be collected
+                    </p>
+                  )}
                 </>
               )}
             </div>

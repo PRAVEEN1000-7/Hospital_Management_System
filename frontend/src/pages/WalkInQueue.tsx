@@ -286,17 +286,25 @@ const WalkInQueue: React.FC = () => {
 
   const submitCollectFee = async () => {
     if (!collectItem || !collectInvoice) return;
-    const balance = Number(collectInvoice.balance_amount || 0);
-    if (balance <= 0) {
-      toast.info('Consultation invoice is already paid');
+    if (collectInvoice.status === 'paid') {
+      toast.info('Consultation invoice is already fully collected');
       closeCollectFee();
       return;
     }
-    if (collectAmount <= 0) {
+    const balance = Number(collectInvoice.balance_amount || 0);
+    const isFreeConsultation = balance <= 0;
+    // A free (₹0-balance) consultation only ever accepts a ₹0 confirmation
+    // payment, which is what moves it from "issued" to "paid" — see
+    // payment_service.record_payment on the backend for the matching rule.
+    if (isFreeConsultation) {
+      if (collectAmount !== 0) {
+        toast.error('This is a free consultation — nothing to collect');
+        return;
+      }
+    } else if (collectAmount <= 0) {
       toast.error('Payment amount must be greater than zero');
       return;
-    }
-    if (collectAmount > balance) {
+    } else if (collectAmount > balance) {
       toast.error(`Amount cannot exceed balance (Rs ${collectInvoice.balance_amount})`);
       return;
     }
@@ -318,7 +326,9 @@ const WalkInQueue: React.FC = () => {
       setCollectInvoice(refreshed);
       setCollectAmount(Number(refreshed.balance_amount || 0));
       toast.success(
-        Number(refreshed.balance_amount || 0) <= 0
+        isFreeConsultation
+          ? 'Free consultation confirmed — complete'
+          : Number(refreshed.balance_amount || 0) <= 0
           ? 'Consultation fee fully collected'
           : 'Payment recorded (partial)'
       );
@@ -1957,6 +1967,15 @@ const WalkInQueue: React.FC = () => {
               </div>
             ) : collectInvoice ? (
               <>
+                {Number(collectInvoice.total_amount || 0) <= 0 && (
+                  <div className="mb-4">
+                    <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700">
+                      <span className="material-symbols-outlined text-sm">verified</span>
+                      FREE — no fee to collect
+                    </span>
+                  </div>
+                )}
+
                 <div className="bg-slate-50 rounded-xl p-4 mb-4 text-sm space-y-2">
                   <div className="flex justify-between"><span className="text-slate-500">Token</span><span className="font-medium text-slate-900">#{collectItem.queue_number}</span></div>
                   <div className="flex justify-between"><span className="text-slate-500">Patient</span><span className="font-medium text-slate-900">{collectItem.patient_name || '—'}</span></div>
@@ -1964,7 +1983,14 @@ const WalkInQueue: React.FC = () => {
                   <div className="flex justify-between"><span className="text-slate-500">Invoice</span><span className="font-medium text-slate-900">{collectInvoice.invoice_number}</span></div>
                   <div className="flex justify-between"><span className="text-slate-500">Total</span><span className="font-semibold text-slate-900">Rs {Number(collectInvoice.total_amount || 0).toFixed(2)}</span></div>
                   <div className="flex justify-between"><span className="text-slate-500">Paid</span><span className="font-semibold text-emerald-700">Rs {Number(collectInvoice.paid_amount || 0).toFixed(2)}</span></div>
-                  <div className="flex justify-between"><span className="text-slate-500">Balance</span><span className="font-bold text-red-600">Rs {Number(collectInvoice.balance_amount || 0).toFixed(2)}</span></div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">{collectInvoice.status === 'paid' ? 'Status' : 'Balance'}</span>
+                    {collectInvoice.status === 'paid' ? (
+                      <span className="font-bold text-emerald-600">Complete</span>
+                    ) : (
+                      <span className="font-bold text-red-600">Rs {Number(collectInvoice.balance_amount || 0).toFixed(2)}</span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
@@ -1972,16 +1998,17 @@ const WalkInQueue: React.FC = () => {
                     <label className="block text-xs font-medium text-slate-500 mb-1">Amount</label>
                     <input
                       type="number"
-                      min="0.01"
+                      min="0"
                       max={Number(collectInvoice.balance_amount || 0)}
                       step="0.01"
+                      disabled={collectInvoice.status === 'paid'}
                       value={collectAmount || ''}
                       onChange={(e) => {
                         const balance = Number(collectInvoice.balance_amount || 0);
                         const raw = parseFloat(e.target.value) || 0;
                         setCollectAmount(Math.min(Math.max(0, raw), balance));
                       }}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none disabled:opacity-50"
                     />
                     <p className="text-[11px] text-slate-400 mt-1">
                       {collectAmount < Number(collectInvoice.balance_amount || 0)
@@ -2052,10 +2079,14 @@ const WalkInQueue: React.FC = () => {
                   <button onClick={closeCollectFee} className="px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 rounded-lg">Close</button>
                   <button
                     onClick={submitCollectFee}
-                    disabled={collectSaving || Number(collectInvoice.balance_amount || 0) <= 0}
+                    disabled={collectSaving || collectInvoice.status === 'paid'}
                     className="px-4 py-2 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50"
                   >
-                    {collectSaving ? 'Recording...' : 'Record Payment'}
+                    {collectSaving
+                      ? 'Recording...'
+                      : Number(collectInvoice.balance_amount || 0) <= 0 && collectInvoice.status !== 'paid'
+                      ? 'Confirm Free Consultation'
+                      : 'Record Payment'}
                   </button>
                 </div>
               </>

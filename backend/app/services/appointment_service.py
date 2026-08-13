@@ -123,18 +123,23 @@ def compute_follow_up_label(
     appointment_date: date,
     exclude_appointment_id: Optional[uuid.UUID] = None,
 ) -> Optional[str]:
-    """MC1/MC2/.../MCR for an appointment on `appointment_date`, based on the
-    patient's most recent PRIOR kept appointment (strictly before this date).
-    Returns None if this is the patient's first-ever visit (no prior kept
-    appointment to measure a gap against) — that case is already covered by
-    the dashboard's separate "New" classification.
+    """MC1/MC2/.../MCR for an appointment on `appointment_date`.
 
-    - Gap since the previous kept appointment > 30 days: the follow-up chain
-      lapsed, so this visit is 'MCR' (Renewal) and restarts the chain.
-    - Gap <= 30 days: this continues the chain — 'MC1' if the previous visit
-      had no label or was itself an 'MCR' (i.e., this is the first return
-      since the chain started/reset), otherwise 'MC{n+1}' where the previous
-      visit was 'MC{n}'.
+    The free-follow-up window is anchored ONCE to the patient's very first
+    kept appointment (their initial registration visit) — client-confirmed:
+    "the 30 days free for the new patient only... if the patient comes today
+    for the first time, they have free consultation for the next 30 days,
+    then have to pay for n number of times." It does NOT reset on each
+    visit or each renewal.
+
+    - No prior kept appointment: this IS the first-ever visit — returns
+      None (covered by the dashboard's separate "New" classification).
+    - Within 30 days of that first visit: free — 'MC{n}' where n is how
+      many prior kept visits this patient has (2nd visit ever = MC1, 3rd =
+      MC2, ...).
+    - More than 30 days after that first visit: the one-time free window
+      has permanently lapsed — 'MCR' (Renewal, a normal paid visit), for
+      this and every subsequent visit.
     """
     query = db.query(Appointment).filter(
         Appointment.hospital_id == hospital_id,
@@ -145,23 +150,17 @@ def compute_follow_up_label(
     )
     if exclude_appointment_id is not None:
         query = query.filter(Appointment.id != exclude_appointment_id)
-    previous = query.order_by(Appointment.appointment_date.desc()).first()
+    prior_visits = query.order_by(Appointment.appointment_date.asc()).all()
 
-    if previous is None:
+    if not prior_visits:
         return None  # first-ever visit
 
-    gap_days = (appointment_date - previous.appointment_date).days
-    if gap_days > _FOLLOW_UP_WINDOW_DAYS:
+    first_visit_date = prior_visits[0].appointment_date
+    gap_from_first = (appointment_date - first_visit_date).days
+    if gap_from_first > _FOLLOW_UP_WINDOW_DAYS:
         return "MCR"
 
-    prev_label = previous.follow_up_label
-    if not prev_label or prev_label == "MCR":
-        return "MC1"
-
-    match = re.match(r"^MC(\d+)$", prev_label)
-    if not match:
-        return "MC1"
-    return f"MC{int(match.group(1)) + 1}"
+    return f"MC{len(prior_visits)}"
 
 
 # ── Create ─────────────────────────────────────────────────────────────────

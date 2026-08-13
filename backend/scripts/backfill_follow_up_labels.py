@@ -15,13 +15,17 @@ Run once per environment, any time after the migration has been applied:
     cd backend
     venv/Scripts/python.exe scripts/backfill_follow_up_labels.py
 
-Safe to re-run — it always recomputes the whole chain from scratch per
-patient, so a partial prior run or new appointments added since don't cause
-drift.
+Safe to re-run — it always recomputes every patient's labels from scratch,
+so a partial prior run or new appointments added since don't cause drift.
+
+The free-follow-up window is anchored ONCE to each patient's very first
+kept appointment (client-confirmed: "the 30 days free for the new patient
+only... then have to pay for n number of times") — it does NOT reset on
+each visit or each renewal. Matches
+appointment_service.compute_follow_up_label exactly.
 """
 import sys
 import os
-import re
 from collections import defaultdict
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -32,17 +36,6 @@ from app.models.appointment import Appointment
 
 _CHAIN_BROKEN_STATUSES = ("cancelled", "rescheduled")
 _WINDOW_DAYS = 30
-
-
-def _next_label(prev_label: str | None, gap_days: int) -> str:
-    if gap_days > _WINDOW_DAYS:
-        return "MCR"
-    if not prev_label or prev_label == "MCR":
-        return "MC1"
-    match = re.match(r"^MC(\d+)$", prev_label)
-    if not match:
-        return "MC1"
-    return f"MC{int(match.group(1)) + 1}"
 
 
 def main() -> None:
@@ -64,18 +57,17 @@ def main() -> None:
 
         updated = 0
         for patient_id, appts in by_patient.items():
-            prev_date = None
-            prev_label = None
-            for appt in appts:
-                if prev_date is None:
+            first_visit_date = None
+            for idx, appt in enumerate(appts):
+                if first_visit_date is None:
                     label = None
+                    first_visit_date = appt.appointment_date
                 else:
-                    gap_days = (appt.appointment_date - prev_date).days
-                    label = _next_label(prev_label, gap_days)
+                    gap_from_first = (appt.appointment_date - first_visit_date).days
+                    label = "MCR" if gap_from_first > _WINDOW_DAYS else f"MC{idx}"
                 if appt.follow_up_label != label:
                     appt.follow_up_label = label
                     updated += 1
-                prev_date, prev_label = appt.appointment_date, label
 
         db.commit()
         print(f"Backfilled {updated} appointment(s) across {len(by_patient)} patient(s) "

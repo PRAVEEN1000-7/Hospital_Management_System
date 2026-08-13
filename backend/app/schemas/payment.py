@@ -13,7 +13,12 @@ VALID_PAYMENT_STATUSES = ["pending", "completed", "failed", "reversed"]
 class PaymentCreate(BaseModel):
     invoice_id: str
     patient_id: str
-    amount: Decimal = Field(..., gt=0, decimal_places=2)
+    # ge=0, not gt=0 — a ₹0 confirmation payment is valid, but ONLY when the
+    # invoice's balance is already ₹0 (a free consultation); enforced in
+    # payment_service.record_payment, which has the invoice loaded to check
+    # against. A real invoice with a genuine balance still requires > 0
+    # there — this schema alone can't see the invoice to make that call.
+    amount: Decimal = Field(..., ge=0, decimal_places=2)
     payment_mode: str = Field(..., description="cash | upi | debit_card | credit_card | insurance")
     payment_reference: Optional[str] = Field(None, max_length=100)
     payment_date: Optional[date] = None   # defaults to today

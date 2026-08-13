@@ -31,6 +31,8 @@ from ..schemas.inventory import (
     CycleCountCreate, CycleCountUpdate,
     PurchaseOrderPaymentCreate,
 )
+from . import gst_service
+from decimal import Decimal
 
 logger = logging.getLogger(__name__)
 
@@ -505,6 +507,10 @@ def create_supplier(db: Session, data: SupplierCreate, hospital_id: uuid.UUID) -
         email=data.email,
         address=data.address,
         tax_id=data.tax_id,
+        state=data.state,
+        country=data.country or "India",
+        gstin=data.gstin,
+        gst_registration_status=data.gst_registration_status or "unregistered",
         payment_terms=data.payment_terms,
         lead_time_days=data.lead_time_days,
         rating=data.rating,
@@ -570,12 +576,59 @@ def delete_supplier(db: Session, supplier_id: uuid.UUID) -> bool:
 #  PURCHASE ORDERS
 # ═══════════════════════════════════════════════════════════════════════════
 
+def _determine_place_of_supply(db: Session, hospital_id: uuid.UUID, supplier: Supplier) -> str:
+    """Compares the hospital's own state/country against the supplier's to
+    classify this Purchase Order — see gst_service.determine_place_of_supply
+    for the full rule (intra-state / inter-state / Union Territory / export)."""
+    hospital = db.query(Hospital).filter(Hospital.id == hospital_id).first()
+    return gst_service.determine_place_of_supply(
+        hospital_state=hospital.state_province if hospital else None,
+        hospital_country=hospital.country if hospital else None,
+        supplier_state=supplier.state,
+        supplier_country=supplier.country,
+    )
+
+
+def _compute_gst_lines(place_of_supply_type: str, items: list) -> list[dict]:
+    """Runs gst_service.compute_line_item_tax for every Purchase Order item,
+    after validating each line's gst_rate against the standard, hardcoded
+    GST slabs (see gst_service.STANDARD_GST_RATES) — an unrecognized rate
+    raises ValueError rather than silently taxing at a rate that isn't a
+    real statutory slab. GST is scoped to Purchase Orders only — GRN stays
+    a plain quantity/unit_price/total_price receipt record."""
+    results = []
+    for item in items:
+        gst_rate = Decimal(str(item.gst_rate or 0))
+        if not gst_service.validate_tax_rate_against_slabs(gst_rate):
+            raise ValueError(
+                f"GST rate {gst_rate}% is not a valid GST slab (0/5/12/18/28%) "
+                f"for item '{item.item_name or item.item_type}'."
+            )
+        results.append(gst_service.compute_line_item_tax(
+            unit_price=Decimal(str(item.unit_price)),
+            quantity=Decimal(str(item.quantity_ordered)),
+            discount_percent=Decimal(str(item.discount_percent or 0)),
+            gst_rate=gst_rate,
+            place_of_supply_type=place_of_supply_type,
+        ))
+    return results
+
+
 def create_purchase_order(
     db: Session, data: PurchaseOrderCreate,
     hospital_id: uuid.UUID, user_id: uuid.UUID,
 ) -> PurchaseOrder:
     po_number = _generate_number(db, "PO", PurchaseOrder, "po_number")
-    total = sum(item.total_price for item in data.items)
+
+    supplier = db.query(Supplier).filter(
+        Supplier.id == uuid.UUID(data.supplier_id), Supplier.hospital_id == hospital_id,
+    ).first()
+    if not supplier:
+        raise ValueError("Supplier not found")
+
+    place_of_supply_type = _determine_place_of_supply(db, hospital_id, supplier)
+    gst_lines = _compute_gst_lines(place_of_supply_type, data.items)
+    doc_totals = gst_service.aggregate_document_totals(gst_lines)
 
     po = PurchaseOrder(
         hospital_id=hospital_id,
@@ -584,14 +637,23 @@ def create_purchase_order(
         order_date=data.order_date,
         expected_delivery_date=data.expected_delivery_date,
         status=data.status or "draft",
-        total_amount=total,
+        total_amount=doc_totals["total_price"],
+        tax_amount=doc_totals["gst_amount"],
+        subtotal=doc_totals["base_amount"],
+        discount_amount=doc_totals["discount_amount"],
+        taxable_amount=doc_totals["taxable_amount"],
+        cgst_amount=doc_totals["cgst_amount"],
+        sgst_amount=doc_totals["sgst_amount"],
+        igst_amount=doc_totals["igst_amount"],
+        ugst_amount=doc_totals["ugst_amount"],
+        place_of_supply_type=place_of_supply_type,
         notes=data.notes,
         created_by=user_id,
     )
     db.add(po)
     db.flush()
 
-    for item in data.items:
+    for item, calc in zip(data.items, gst_lines):
         po_item = PurchaseOrderItem(
             purchase_order_id=po.id,
             item_type=item.item_type,
@@ -603,7 +665,15 @@ def create_purchase_order(
             ),
             quantity_ordered=item.quantity_ordered,
             unit_price=item.unit_price,
-            total_price=item.total_price,
+            discount_percent=item.discount_percent,
+            discount_amount=calc["discount_amount"],
+            gst_rate=item.gst_rate,
+            taxable_amount=calc["taxable_amount"],
+            cgst_amount=calc["cgst_amount"],
+            sgst_amount=calc["sgst_amount"],
+            igst_amount=calc["igst_amount"],
+            ugst_amount=calc["ugst_amount"],
+            total_price=calc["total_price"],
         )
         db.add(po_item)
 
@@ -622,7 +692,7 @@ def create_purchase_order(
         )
     except Exception:
         logger.warning("Failed to send purchase order creation notification", exc_info=True)
-    logger.info("Purchase order created: %s (total=%.2f)", po.po_number, total)
+    logger.info("Purchase order created: %s (total=%.2f)", po.po_number, float(doc_totals["total_price"]))
     return po
 
 
@@ -757,6 +827,14 @@ def _format_po_response(po: PurchaseOrder, db: Session) -> dict:
             "quantity_ordered": it.quantity_ordered,
             "quantity_received": it.quantity_received or 0,
             "unit_price": float(it.unit_price),
+            "discount_percent": float(it.discount_percent or 0),
+            "discount_amount": float(it.discount_amount or 0),
+            "gst_rate": float(it.gst_rate or 0),
+            "taxable_amount": float(it.taxable_amount or 0),
+            "cgst_amount": float(it.cgst_amount or 0),
+            "sgst_amount": float(it.sgst_amount or 0),
+            "igst_amount": float(it.igst_amount or 0),
+            "ugst_amount": float(it.ugst_amount or 0),
             "total_price": float(it.total_price),
         })
     return {
@@ -769,6 +847,14 @@ def _format_po_response(po: PurchaseOrder, db: Session) -> dict:
         "status": po.status,
         "total_amount": float(po.total_amount or 0),
         "tax_amount": float(po.tax_amount or 0),
+        "subtotal": float(po.subtotal or 0),
+        "discount_amount": float(po.discount_amount or 0),
+        "taxable_amount": float(po.taxable_amount or 0),
+        "cgst_amount": float(po.cgst_amount or 0),
+        "sgst_amount": float(po.sgst_amount or 0),
+        "igst_amount": float(po.igst_amount or 0),
+        "ugst_amount": float(po.ugst_amount or 0),
+        "place_of_supply_type": po.place_of_supply_type,
         "notes": po.notes,
         "payment_status": _po_payment_status(total_paid, float(po.total_amount or 0)),
         "total_paid": total_paid,
@@ -1601,8 +1687,14 @@ def get_stock_level(
     return last[0] if last else 0
 
 
-def get_low_stock_items(db: Session, hospital_id: uuid.UUID, limit: int = 20) -> list:
-    """Return medicines below reorder level using batch totals (same source as medicine inventory)."""
+def _compute_low_stock_items(db: Session, hospital_id: uuid.UUID) -> list:
+    """Every medicine/optical product at or below its reorder level (which
+    always includes anything genuinely out of stock, since 0 <= any reorder
+    level), using batch totals — same source as medicine inventory. Returns
+    the FULL sorted list, uncapped; get_low_stock_items() below slices it for
+    display. Callers that need a true count (not a display-limited preview)
+    must use len() on THIS function's result, never on a limit-sliced one —
+    see get_inventory_dashboard's low_stock_count for why that matters."""
     today = hospital_today_by_id(db, hospital_id)
 
     medicines = (
@@ -1718,7 +1810,14 @@ def get_low_stock_items(db: Session, hospital_id: uuid.UUID, limit: int = 20) ->
         db.rollback()
 
     low_stock.sort(key=lambda x: (x["current_stock"], x["item_name"] or ""))
-    return low_stock[:limit]
+    return low_stock
+
+
+def get_low_stock_items(db: Session, hospital_id: uuid.UUID, limit: int = 20) -> list:
+    """Display-limited low-stock list (Low Stock Alerts page, PO quick-reorder,
+    etc.) — for a true count, use len(_compute_low_stock_items(...)), not
+    len() on this."""
+    return _compute_low_stock_items(db, hospital_id)[:limit]
 
 
 def get_expiring_items(db: Session, hospital_id: uuid.UUID, days: int = 90) -> list:
@@ -2110,48 +2209,82 @@ def get_inventory_dashboard(db: Session, hospital_id: uuid.UUID) -> dict:
         StockAdjustment.status == "pending",
     ).scalar() or 0
 
-    low_stock = get_low_stock_items(db, hospital_id, limit=5)
-    expiring = get_expiring_items(db, hospital_id, days=90)
+    # Bug fix: this used to be len(get_low_stock_items(..., limit=5)) — a
+    # count derived from an already-5-item-capped list can never exceed 5,
+    # no matter how many items are actually low/out of stock. Compute the
+    # FULL list once and derive both the true count and the small preview
+    # from it, so they can never disagree.
+    all_low_stock = _compute_low_stock_items(db, hospital_id)
+    low_stock_preview = all_low_stock[:5]
+
+    # Same bug, same fix: get_expiring_items' own query caps at 50 rows, so
+    # len() of its result silently maxes out at 50 too. A dedicated COUNT
+    # query (same filter, no limit) gives the true total.
+    from datetime import timedelta
+    expiring_cutoff = hospital_today_by_id(db, hospital_id) + timedelta(days=90)
+    expiring_count = db.query(func.count(GRNItem.id)).join(GoodsReceiptNote).filter(
+        GoodsReceiptNote.hospital_id == hospital_id,
+        GoodsReceiptNote.status == "accepted",
+        GRNItem.expiry_date != None,
+        GRNItem.expiry_date <= expiring_cutoff,
+    ).scalar() or 0
+    expiring_preview = get_expiring_items(db, hospital_id, days=90)[:5]
 
     return {
         "total_suppliers": total_suppliers,
         "active_purchase_orders": active_pos,
         "pending_grns": pending_grns,
         "pending_adjustments": pending_adjustments,
-        "low_stock_items": low_stock,
-        "expiring_items": expiring[:5],
-        "low_stock_count": len(low_stock),
-        "expiring_count": len(expiring),
+        "low_stock_items": low_stock_preview,
+        "expiring_items": expiring_preview,
+        "low_stock_count": len(all_low_stock),
+        "expiring_count": expiring_count,
     }
 
 
-def get_stock_status_analytics(
-    db: Session, hospital_id: uuid.UUID, limit: int = 50
-) -> list[dict]:
-    """Get stock status for analytics dashboard."""
+def _compute_stock_status_rows(db: Session, hospital_id: uuid.UUID) -> list[dict]:
+    """Stock status for EVERY active medicine — no limit applied here (the
+    analytics summary needs the true total; get_stock_status_analytics below
+    slices this for display). Fixes two bugs the per-medicine-loop version
+    had: (1) it queried total_stock with a separate DB round-trip PER
+    medicine instead of one grouped query, and (2) it re-ran the identical
+    hospital-wide "last restock date" query inside that same per-medicine
+    loop even though the query doesn't depend on the medicine at all — both
+    now run once, outside any loop."""
     today = hospital_today_by_id(db, hospital_id)
 
-    # Get all medicines with their stock levels
     medicines = db.query(Medicine).filter(
         Medicine.hospital_id == hospital_id,
         Medicine.is_active == True,
-    ).limit(limit).all()
+    ).all()
+    med_ids = [m.id for m in medicines]
+
+    stock_map: dict[uuid.UUID, int] = {}
+    if med_ids:
+        # Expired batches excluded — same "available" definition used
+        # everywhere else (dispensing, low-stock).
+        rows = (
+            db.query(MedicineBatch.medicine_id, func.coalesce(func.sum(MedicineBatch.quantity), 0))
+            .filter(
+                MedicineBatch.medicine_id.in_(med_ids),
+                MedicineBatch.is_active == True,
+                MedicineBatch.expiry_date >= today,
+            )
+            .group_by(MedicineBatch.medicine_id)
+            .all()
+        )
+        stock_map = {row[0]: int(row[1]) for row in rows}
+
+    last_grn = db.query(GoodsReceiptNote.receipt_date).filter(
+        GoodsReceiptNote.hospital_id == hospital_id,
+        GoodsReceiptNote.status == "accepted",
+    ).order_by(GoodsReceiptNote.receipt_date.desc()).first()
+    last_restock_date = str(last_grn.receipt_date) if last_grn and last_grn.receipt_date else None
 
     results = []
     for med in medicines:
-        # Calculate total stock from batches — expired batches excluded, same
-        # "available" definition used everywhere else (dispensing, low-stock).
-        total_stock = db.query(
-            func.coalesce(func.sum(MedicineBatch.quantity), 0)
-        ).join(
-            Medicine, Medicine.id == MedicineBatch.medicine_id
-        ).filter(
-            Medicine.id == med.id,
-            MedicineBatch.is_active == True,
-            MedicineBatch.expiry_date >= today,
-        ).scalar() or 0
-        
-        # Determine status
+        total_stock = stock_map.get(med.id, 0)
+
         if total_stock == 0:
             status = "critical"
         elif med.reorder_level is not None and total_stock < med.reorder_level:
@@ -2160,12 +2293,6 @@ def get_stock_status_analytics(
             status = "overstock"
         else:
             status = "ok"
-        
-        # Get last restock date from latest GRN
-        last_grn = db.query(GoodsReceiptNote.receipt_date).filter(
-            GoodsReceiptNote.hospital_id == hospital_id,
-            GoodsReceiptNote.status == "accepted",
-        ).order_by(GoodsReceiptNote.receipt_date.desc()).first()
 
         results.append({
             "item_name": med.name,
@@ -2175,10 +2302,35 @@ def get_stock_status_analytics(
             "min_stock": med.reorder_level or 0,
             "max_stock": med.max_stock_level or 0,
             "status": status,
-            "last_restock_date": str(last_grn.receipt_date) if last_grn and last_grn.receipt_date else None,
+            "last_restock_date": last_restock_date,
         })
-    
+
+    # Most critical (lowest stock) first — this used to have no ordering at
+    # all, so a limit-capped caller got an arbitrary DB-order slice rather
+    # than the items that actually need attention most.
+    results.sort(key=lambda r: r["current_stock"])
     return results
+
+
+def get_stock_status_analytics(
+    db: Session, hospital_id: uuid.UUID, limit: int = 50
+) -> list[dict]:
+    """Display-limited stock status list, most-critical-first. For true
+    aggregate counts (e.g. the Inventory Health panel's summary tiles), use
+    get_stock_status_summary() instead — never len() on this capped list."""
+    return _compute_stock_status_rows(db, hospital_id)[:limit]
+
+
+def get_stock_status_summary(db: Session, hospital_id: uuid.UUID) -> dict:
+    """True counts (critical/low/overstock/ok/total) across the WHOLE active
+    medicine catalog — not derived from any limit-capped list. Backs the
+    Inventory Health analytics panel's summary tiles and pie chart, which
+    previously derived these counts from a list capped at 50 (max 200)."""
+    rows = _compute_stock_status_rows(db, hospital_id)
+    counts = {"ok": 0, "low": 0, "critical": 0, "overstock": 0}
+    for r in rows:
+        counts[r["status"]] = counts.get(r["status"], 0) + 1
+    return {"total": len(rows), **counts}
 
 
 def get_inventory_aging_analytics(

@@ -23,6 +23,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/tax-configurations", tags=["Billing — Tax Configurations"])
 
 BILLING_ADMIN_ROLES = {"super_admin", "admin"}
+# Purchase Order GST is hardcoded (gst_service.STANDARD_GST_RATES) and no
+# longer reads this table — inventory_manager doesn't need access here.
 BILLING_STAFF_ROLES = {"super_admin", "admin", "cashier", "pharmacist"}
 
 

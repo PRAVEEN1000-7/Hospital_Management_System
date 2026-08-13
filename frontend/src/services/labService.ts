@@ -1,7 +1,7 @@
 import api from './api';
 import type {
   LabTest, LabTestCreateData, LabTestListResponse,
-  LabOrder, LabOrderCreateData, LabResultEntryData,
+  LabOrder, LabOrderCreateData, LabResultEntryData, LabOrderItemTestUpdateData,
   LabQueueEntry, LabQueueStatus, LabSale, LabDashboard,
   LabBillingListResponse,
   PatientLabResult, LabReferral, LabReferralCreateData,
@@ -36,8 +36,17 @@ export const labService = {
     return res.data;
   },
 
+  /** Deactivates the test (hides it from new orders) — history referencing
+   * it is untouched. See permanentlyDeleteTest for a full removal. */
   async deleteTest(id: string): Promise<void> {
     await api.delete(`/lab/tests/${id}`);
+  },
+
+  /** Completely removes the catalog entry. Backend rejects this with a 409
+   * if the test has ever been used in a lab order — deactivate it instead
+   * in that case. */
+  async permanentlyDeleteTest(id: string): Promise<void> {
+    await api.delete(`/lab/tests/${id}/permanent`);
   },
 
   // ═══ Orders ═══
@@ -97,6 +106,15 @@ export const labService = {
 
   async recordResult(orderId: string, itemId: string, data: LabResultEntryData): Promise<LabOrder> {
     const res = await api.put<LabOrder>(`/lab/orders/${orderId}/items/${itemId}/result`, data);
+    return res.data;
+  },
+
+  /** Swaps which catalog test an order item bills for — 409s if the report
+   * is finalized or any payment has already been collected against the
+   * order (see backend lab_service.update_lab_order_item_test). */
+  async updateItemTest(orderId: string, itemId: string, labTestId: string): Promise<LabOrder> {
+    const data: LabOrderItemTestUpdateData = { lab_test_id: labTestId };
+    const res = await api.put<LabOrder>(`/lab/orders/${orderId}/items/${itemId}/test`, data);
     return res.data;
   },
 

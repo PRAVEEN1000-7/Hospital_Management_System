@@ -43,8 +43,11 @@ const AppointmentManagement: React.FC = () => {
   const [search, setSearch] = useState(() => searchParams.get('search') || '');
   const [searchInput, setSearchInput] = useState(() => searchParams.get('search') || '');
   const [filterDoctor, setFilterDoctor] = useState<string>('');
-  const [dateFrom, setDateFrom] = useState(today);
-  const [dateTo, setDateTo] = useState(today);
+  // Empty = no date filter — every appointment shows by default; staff can
+  // narrow with the presets/date pickers below (previously defaulted to
+  // "today", which silently hid every other appointment on page load).
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('');
   const [filterType, setFilterType] = useState<string>('');
   const [detailAppt, setDetailAppt] = useState<Appointment | null>(null);
@@ -307,17 +310,27 @@ const AppointmentManagement: React.FC = () => {
 
   const submitCollectFee = async () => {
     if (!collectAppt || !collectInvoice) return;
-    const balance = Number(collectInvoice.balance_amount || 0);
-    if (balance <= 0) {
-      toast.info('Consultation invoice is already paid');
+    if (collectInvoice.status === 'paid') {
+      toast.info('Consultation invoice is already fully collected');
       closeCollectFee();
       return;
     }
-    if (collectAmount <= 0) {
+    const balance = Number(collectInvoice.balance_amount || 0);
+    const isFreeConsultation = balance <= 0;
+    // A free (₹0-balance) consultation — e.g. an MC1/MC2 follow-up within
+    // the free window — only ever accepts a ₹0 confirmation, which is what
+    // moves its invoice from "issued" to "paid" (see
+    // payment_service.record_payment on the backend for the matching rule).
+    // A normal consultation still requires a genuine positive amount.
+    if (isFreeConsultation) {
+      if (collectAmount !== 0) {
+        toast.error('This is a free consultation — nothing to collect');
+        return;
+      }
+    } else if (collectAmount <= 0) {
       toast.error('Payment amount must be greater than zero');
       return;
-    }
-    if (collectAmount > balance) {
+    } else if (collectAmount > balance) {
       toast.error(`Amount cannot exceed balance (Rs ${formatMoney(balance)})`);
       return;
     }
@@ -339,7 +352,9 @@ const AppointmentManagement: React.FC = () => {
       setCollectInvoice(refreshed);
       setCollectAmount(Number(refreshed.balance_amount || 0));
       toast.success(
-        Number(refreshed.balance_amount || 0) <= 0
+        isFreeConsultation
+          ? 'Free consultation confirmed — complete'
+          : Number(refreshed.balance_amount || 0) <= 0
           ? 'Consultation fee fully collected'
           : 'Payment recorded (partial)'
       );
@@ -505,7 +520,6 @@ const AppointmentManagement: React.FC = () => {
             dateFrom={dateFrom}
             dateTo={dateTo}
             onChange={(from, to) => { setDateFrom(from); setDateTo(to); setPage(1); }}
-            hideClear
           />
         </div>
         <div className="flex gap-2 mt-3">
@@ -555,43 +569,41 @@ const AppointmentManagement: React.FC = () => {
                     {appt.appointment_type}
                   </span>
                 </div>
-                <div className="flex items-center gap-1 mt-3 pt-3 border-t border-slate-100">
-                  <button onClick={() => { setDetailAppt(appt); loadPrescriptionsForAppt(appt); }} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg" title="View Details & Prescription">
-                    <span className="material-symbols-outlined text-lg">visibility</span>
+                <div className="flex flex-wrap items-center gap-1.5 mt-3 pt-3 border-t border-slate-100">
+                  <button onClick={() => { setDetailAppt(appt); loadPrescriptionsForAppt(appt); }} className="inline-flex items-center gap-1 px-2 py-1.5 text-[11px] font-semibold text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded-lg" title="View Details & Prescription">
+                    <span className="material-symbols-outlined text-base">visibility</span>
+                    View
                   </button>
                   {canProgressConsultation && appt.status !== 'cancelled' && appt.status !== 'completed' && (
                     <>
                       {(appt.status === 'scheduled' || appt.status === 'pending') && (
-                        <button onClick={() => handleStatusChange(appt.id, 'confirmed')} className="p-1.5 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Confirm">
-                          <span className="material-symbols-outlined text-lg">check_circle</span>
+                        <button onClick={() => handleStatusChange(appt.id, 'confirmed')} className="inline-flex items-center gap-1 px-2 py-1.5 text-[11px] font-semibold text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg" title="Confirm">
+                          <span className="material-symbols-outlined text-base">check_circle</span>
+                          Confirm
                         </button>
                       )}
                       {appt.status === 'confirmed' && (
-                        <button onClick={() => handleStatusChange(appt.id, 'in-progress')} className="p-1.5 text-purple-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg" title="Start">
-                          <span className="material-symbols-outlined text-lg">play_circle</span>
+                        <button onClick={() => handleStatusChange(appt.id, 'in-progress')} className="inline-flex items-center gap-1 px-2 py-1.5 text-[11px] font-semibold text-purple-500 hover:text-purple-700 hover:bg-purple-50 rounded-lg" title="Start Consultation">
+                          <span className="material-symbols-outlined text-base">play_circle</span>
+                          Start
                         </button>
                       )}
                       {appt.status === 'in-progress' && (
-                        <button onClick={() => handleStatusChange(appt.id, 'completed')} className="p-1.5 text-emerald-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg" title="Complete">
-                          <span className="material-symbols-outlined text-lg">task_alt</span>
+                        <button onClick={() => handleStatusChange(appt.id, 'completed')} className="inline-flex items-center gap-1 px-2 py-1.5 text-[11px] font-semibold text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg" title="Complete">
+                          <span className="material-symbols-outlined text-base">task_alt</span>
+                          Complete
                         </button>
                       )}
-                      <button onClick={() => openReschedule(appt)} className="p-1.5 text-amber-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg" title="Reschedule">
-                        <span className="material-symbols-outlined text-lg">event_repeat</span>
-                      </button>
-                      <button onClick={() => { setCancelId(appt.id); setCancelReason(''); }} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Cancel">
-                        <span className="material-symbols-outlined text-lg">cancel</span>
+                      <button onClick={() => { setCancelId(appt.id); setCancelReason(''); }} className="inline-flex items-center gap-1 px-2 py-1.5 text-[11px] font-semibold text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg" title="Cancel">
+                        <span className="material-symbols-outlined text-base">cancel</span>
+                        Cancel
                       </button>
                     </>
                   )}
-                  {appt.status === 'in-progress' && (
-                    <button onClick={() => openPrescription(appt)} className="p-1.5 text-purple-500 hover:text-purple-700 hover:bg-purple-50 rounded-lg" title="Write Prescription">
-                      <span className="material-symbols-outlined text-lg">clinical_notes</span>
-                    </button>
-                  )}
                   {canCollectFee && appt.status === 'completed' && !appt.consultation_fee_collected && (
-                    <button onClick={() => openCollectFee(appt)} className="p-1.5 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg" title="Collect Consultation Fee">
-                      <span className="material-symbols-outlined text-lg">payments</span>
+                    <button onClick={() => openCollectFee(appt)} className="inline-flex items-center gap-1 px-2 py-1.5 text-[11px] font-semibold text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 rounded-lg" title="Collect Consultation Fee">
+                      <span className="material-symbols-outlined text-base">payments</span>
+                      Collect Fee
                     </button>
                   )}
                 </div>
@@ -628,44 +640,42 @@ const AppointmentManagement: React.FC = () => {
                         </span>
                       </td>
                       <td className="px-4 py-3"><AppointmentStatusBadge status={appt.status} /></td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-1">
-                          <button onClick={() => { setDetailAppt(appt); loadPrescriptionsForAppt(appt); }} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg" title="View Details & Prescription">
-                            <span className="material-symbols-outlined text-lg">visibility</span>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="flex flex-nowrap items-center gap-0.5">
+                          <button onClick={() => { setDetailAppt(appt); loadPrescriptionsForAppt(appt); }} className="inline-flex items-center gap-0.5 px-1.5 py-1 text-[11px] font-semibold text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded-lg" title="View Details & Prescription">
+                            <span className="material-symbols-outlined text-sm">visibility</span>
+                            View
                           </button>
                           {canProgressConsultation && appt.status !== 'cancelled' && appt.status !== 'completed' && (
                             <>
                               {(appt.status === 'scheduled' || appt.status === 'pending') && (
-                                <button onClick={() => handleStatusChange(appt.id, 'confirmed')} className="p-1.5 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Confirm">
-                                  <span className="material-symbols-outlined text-lg">check_circle</span>
+                                <button onClick={() => handleStatusChange(appt.id, 'confirmed')} className="inline-flex items-center gap-0.5 px-1.5 py-1 text-[11px] font-semibold text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg" title="Confirm">
+                                  <span className="material-symbols-outlined text-sm">check_circle</span>
+                                  Confirm
                                 </button>
                               )}
                               {appt.status === 'confirmed' && (
-                                <button onClick={() => handleStatusChange(appt.id, 'in-progress')} className="p-1.5 text-purple-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg" title="Start Consultation">
-                                  <span className="material-symbols-outlined text-lg">play_circle</span>
+                                <button onClick={() => handleStatusChange(appt.id, 'in-progress')} className="inline-flex items-center gap-0.5 px-1.5 py-1 text-[11px] font-semibold text-purple-500 hover:text-purple-700 hover:bg-purple-50 rounded-lg" title="Start Consultation">
+                                  <span className="material-symbols-outlined text-sm">play_circle</span>
+                                  Start
                                 </button>
                               )}
                               {appt.status === 'in-progress' && (
-                                <button onClick={() => handleStatusChange(appt.id, 'completed')} className="p-1.5 text-emerald-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg" title="Complete">
-                                  <span className="material-symbols-outlined text-lg">task_alt</span>
+                                <button onClick={() => handleStatusChange(appt.id, 'completed')} className="inline-flex items-center gap-0.5 px-1.5 py-1 text-[11px] font-semibold text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg" title="Complete">
+                                  <span className="material-symbols-outlined text-sm">task_alt</span>
+                                  Complete
                                 </button>
                               )}
-                              <button onClick={() => openReschedule(appt)} className="p-1.5 text-amber-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg" title="Reschedule">
-                                <span className="material-symbols-outlined text-lg">event_repeat</span>
-                              </button>
-                              <button onClick={() => { setCancelId(appt.id); setCancelReason(''); }} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Cancel">
-                                <span className="material-symbols-outlined text-lg">cancel</span>
+                              <button onClick={() => { setCancelId(appt.id); setCancelReason(''); }} className="inline-flex items-center gap-0.5 px-1.5 py-1 text-[11px] font-semibold text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg" title="Cancel">
+                                <span className="material-symbols-outlined text-sm">cancel</span>
+                                Cancel
                               </button>
                             </>
                           )}
-                          {appt.status === 'in-progress' && (
-                            <button onClick={() => openPrescription(appt)} className="p-1.5 text-purple-500 hover:text-purple-700 hover:bg-purple-50 rounded-lg" title="Write Prescription">
-                              <span className="material-symbols-outlined text-lg">clinical_notes</span>
-                            </button>
-                          )}
                           {canCollectFee && appt.status === 'completed' && !appt.consultation_fee_collected && (
-                            <button onClick={() => openCollectFee(appt)} className="p-1.5 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg" title="Collect Consultation Fee">
-                              <span className="material-symbols-outlined text-lg">payments</span>
+                            <button onClick={() => openCollectFee(appt)} className="inline-flex items-center gap-0.5 px-1.5 py-1 text-[11px] font-semibold text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 rounded-lg" title="Collect Consultation Fee">
+                              <span className="material-symbols-outlined text-sm">payments</span>
+                              Collect Fee
                             </button>
                           )}
                         </div>
@@ -833,6 +843,15 @@ const AppointmentManagement: React.FC = () => {
 
             {/* Modal Footer Actions */}
             <div className="px-6 py-4 border-t border-slate-100 flex gap-2 shrink-0">
+              {canProgressConsultation && detailAppt.status !== 'cancelled' && detailAppt.status !== 'completed' && (
+                <button
+                  onClick={() => { openReschedule(detailAppt); setDetailAppt(null); }}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-amber-600 rounded-xl hover:bg-amber-700 transition-colors shadow-sm"
+                >
+                  <span className="material-symbols-outlined text-base">event_repeat</span>
+                  Reschedule
+                </button>
+              )}
               {detailAppt.status === 'in-progress' && (
                 <button
                   onClick={() => { openPrescription(detailAppt); setDetailAppt(null); }}
@@ -934,6 +953,29 @@ const AppointmentManagement: React.FC = () => {
               </div>
             ) : collectInvoice ? (
               <>
+                {(() => {
+                  const label = collectAppt.follow_up_label;
+                  const isFree = Number(collectInvoice.total_amount || 0) <= 0;
+                  const isFreeLabel = !!label && label !== 'MCR' && label.startsWith('MC');
+                  if (!label && !isFree) return null;
+                  return (
+                    <div className="flex flex-wrap items-center gap-2 mb-4">
+                      {label && (
+                        <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-primary/10 text-primary">
+                          <span className="material-symbols-outlined text-sm">event_repeat</span>
+                          {label === 'MCR' ? 'MCR — Renewal' : label}
+                        </span>
+                      )}
+                      {(isFree || isFreeLabel) && (
+                        <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700">
+                          <span className="material-symbols-outlined text-sm">verified</span>
+                          FREE — no fee to collect
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 <div className="bg-slate-50 rounded-xl p-4 mb-4 text-sm space-y-2">
                   <div className="flex justify-between"><span className="text-slate-500">Appointment</span><span className="font-medium text-slate-900">{collectAppt.appointment_number}</span></div>
                   <div className="flex justify-between"><span className="text-slate-500">Patient</span><span className="font-medium text-slate-900">{collectAppt.patient_name || '—'}</span></div>
@@ -941,30 +983,48 @@ const AppointmentManagement: React.FC = () => {
                   <div className="flex justify-between"><span className="text-slate-500">Template</span><span className="font-medium text-slate-900">Consultation Fee</span></div>
                   <div className="flex justify-between"><span className="text-slate-500">Total</span><span className="font-semibold text-slate-900">Rs {formatMoney(Number(collectInvoice.total_amount || 0))}</span></div>
                   <div className="flex justify-between"><span className="text-slate-500">Paid</span><span className="font-semibold text-emerald-700">Rs {formatMoney(Number(collectInvoice.paid_amount || 0))}</span></div>
-                  <div className="flex justify-between"><span className="text-slate-500">Balance</span><span className="font-bold text-red-600">Rs {formatMoney(Number(collectInvoice.balance_amount || 0))}</span></div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">{collectInvoice.status === 'paid' ? 'Status' : 'Balance'}</span>
+                    {collectInvoice.status === 'paid' ? (
+                      <span className="font-bold text-emerald-600">Complete</span>
+                    ) : (
+                      <span className="font-bold text-red-600">Rs {formatMoney(Number(collectInvoice.balance_amount || 0))}</span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
                   <div>
                     <label className="block text-xs font-medium text-slate-500 mb-1">Amount</label>
-                    <input
-                      type="number"
-                      min="0.01"
-                      max={Number(collectInvoice.balance_amount || 0)}
-                      step="0.01"
-                      value={collectAmount || ''}
-                      onChange={(e) => {
-                        const balance = Number(collectInvoice.balance_amount || 0);
-                        const raw = parseFloat(e.target.value) || 0;
-                        setCollectAmount(Math.min(Math.max(0, raw), balance));
-                      }}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                    />
-                    <p className="text-[11px] text-slate-400 mt-1">
-                      {collectAmount < Number(collectInvoice.balance_amount || 0)
-                        ? `Partial payment — Rs ${formatMoney(Number(collectInvoice.balance_amount || 0) - collectAmount)} will remain after this`
-                        : 'Defaults to the full outstanding balance — edit to record a partial payment'}
-                    </p>
+                    {Number(collectInvoice.balance_amount || 0) <= 0 && collectInvoice.status !== 'paid' ? (
+                      <>
+                        <input type="text" disabled value="Rs 0.00 — Free consultation"
+                          className="w-full px-3 py-2 border border-emerald-200 bg-emerald-50 rounded-lg text-sm text-emerald-700 font-semibold" />
+                        <p className="text-[11px] text-slate-400 mt-1">Confirm below to mark this visit complete.</p>
+                      </>
+                    ) : (
+                      <>
+                        <input
+                          type="number"
+                          min="0"
+                          max={Number(collectInvoice.balance_amount || 0)}
+                          step="0.01"
+                          disabled={collectInvoice.status === 'paid'}
+                          value={collectAmount || ''}
+                          onChange={(e) => {
+                            const balance = Number(collectInvoice.balance_amount || 0);
+                            const raw = parseFloat(e.target.value) || 0;
+                            setCollectAmount(Math.min(Math.max(0, raw), balance));
+                          }}
+                          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none disabled:opacity-50"
+                        />
+                        <p className="text-[11px] text-slate-400 mt-1">
+                          {collectAmount < Number(collectInvoice.balance_amount || 0)
+                            ? `Partial payment — Rs ${formatMoney(Number(collectInvoice.balance_amount || 0) - collectAmount)} will remain after this`
+                            : 'Defaults to the full outstanding balance — edit to record a partial payment'}
+                        </p>
+                      </>
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-500 mb-1">Payment Mode</label>
@@ -1029,10 +1089,14 @@ const AppointmentManagement: React.FC = () => {
                   <button onClick={closeCollectFee} className="px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 rounded-lg">Close</button>
                   <button
                     onClick={submitCollectFee}
-                    disabled={collectSaving || Number(collectInvoice.balance_amount || 0) <= 0}
+                    disabled={collectSaving || collectInvoice.status === 'paid'}
                     className="px-4 py-2 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-50"
                   >
-                    {collectSaving ? 'Recording...' : 'Record Payment'}
+                    {collectSaving
+                      ? 'Recording...'
+                      : Number(collectInvoice.balance_amount || 0) <= 0 && collectInvoice.status !== 'paid'
+                      ? 'Confirm Free Consultation'
+                      : 'Record Payment'}
                   </button>
                 </div>
               </>

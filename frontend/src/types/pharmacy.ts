@@ -382,9 +382,20 @@ export interface StockAdjustmentCreate {
 }
 
 // ── Dashboard ──
+export interface OutOfStockMedicinePreview {
+  id: string;
+  name: string;
+  generic_name: string | null;
+  strength: string | null;
+  reorder_level: number | null;
+}
+
 export interface PharmacyDashboard {
   total_medicines: number;
   low_stock_count: number;
+  /** True count across the whole catalog — never derived from a paginated list. */
+  out_of_stock_count: number;
+  out_of_stock_items: OutOfStockMedicinePreview[];
   expiring_soon_count: number;
   expired_count: number;
   today_sales_count: number;

@@ -44,9 +44,20 @@ const RolesPermissions: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
   const [showOnlyCustom, setShowOnlyCustom] = useState(false);
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  // Every category starts collapsed — an admin sees only the section
+  // headers at first and expands one by clicking it, rather than the full
+  // permission matrix rendering open by default.
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set(CATEGORY_ORDER));
   // pending edits, keyed by cellId — cleared on load/save/discard
   const [pending, setPending] = useState<Record<string, AccessLevel>>({});
+  const [resettingAll, setResettingAll] = useState(false);
+  const [resettingCategory, setResettingCategory] = useState<string | null>(null);
+  // Centered confirmation modal (same pattern as the app's Sign Out dialog,
+  // components/common/Layout.tsx) instead of the browser's native
+  // window.confirm().
+  const [confirmState, setConfirmState] = useState<{ title: string; message: string; onConfirm: () => void } | null>(null);
+  const askConfirm = (message: string, onConfirm: () => void, title = 'Are you sure?') =>
+    setConfirmState({ title, message, onConfirm });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -119,14 +130,58 @@ const RolesPermissions: React.FC = () => {
     }
   };
 
-  const handleResetCell = async (key: string, role: string) => {
-    try {
-      await rolePermissionService.resetCell(key, role);
-      toast.success('Reverted to default');
-      await load();
-    } catch {
-      toast.error('Failed to reset');
-    }
+  const handleResetCell = (key: string, role: string, rowLabel: string) => {
+    askConfirm(
+      `Reset "${rowLabel}" for ${roleLabel(role)}?`,
+      async () => {
+        try {
+          await rolePermissionService.resetCell(key, role);
+          toast.success('Reverted to default');
+          await load();
+        } catch {
+          toast.error('Failed to reset');
+        }
+      },
+    );
+  };
+
+  const handleResetAll = () => {
+    askConfirm(
+      'This removes all customizations for this hospital.',
+      async () => {
+        setResettingAll(true);
+        try {
+          const { removed } = await rolePermissionService.resetAll();
+          toast.success(removed > 0 ? `Reset ${removed} customization${removed === 1 ? '' : 's'} to default` : 'Already at default — nothing to reset');
+          await load();
+        } catch {
+          toast.error('Failed to reset the permission matrix');
+        } finally {
+          setResettingAll(false);
+        }
+      },
+      'Reset all to default?',
+    );
+  };
+
+  const handleResetCategory = (cat: string) => {
+    const label = CATEGORY_LABELS[cat] || cat;
+    askConfirm(
+      `This removes all "${label}" customizations.`,
+      async () => {
+        setResettingCategory(cat);
+        try {
+          const { removed } = await rolePermissionService.resetCategory(cat);
+          toast.success(removed > 0 ? `Reset ${removed} customization${removed === 1 ? '' : 's'} in "${label}" to default` : `"${label}" already at default — nothing to reset`);
+          await load();
+        } catch {
+          toast.error(`Failed to reset "${label}"`);
+        } finally {
+          setResettingCategory(null);
+        }
+      },
+      `Reset "${label}" to default?`,
+    );
   };
 
   const toggleCategory = (cat: string) => {
@@ -171,6 +226,20 @@ const RolesPermissions: React.FC = () => {
             Unchanged cells keep using the system default.
           </p>
         </div>
+        <button
+          type="button"
+          onClick={handleResetAll}
+          disabled={resettingAll}
+          className="flex items-center gap-1.5 px-3.5 py-2 text-sm font-semibold bg-red-600 text-white rounded-lg shadow-sm hover:bg-red-700 transition-colors disabled:opacity-50 flex-shrink-0"
+          title="Reset the entire matrix to the system default"
+        >
+          {resettingAll ? (
+            <span className="material-symbols-outlined animate-spin text-[16px]">progress_activity</span>
+          ) : (
+            <span className="material-symbols-outlined text-[16px]">restart_alt</span>
+          )}
+          Reset All to Default
+        </button>
       </div>
 
       <div className="flex items-center gap-3 mb-4 flex-wrap">
@@ -208,16 +277,32 @@ const RolesPermissions: React.FC = () => {
             const isCollapsed = collapsed.has(cat);
             return (
               <div key={cat} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                <button
-                  type="button"
-                  onClick={() => toggleCategory(cat)}
-                  className="w-full flex items-center justify-between px-4 py-3 bg-slate-50/60 border-b border-slate-100 hover:bg-slate-100/60 transition-colors"
-                >
-                  <span className="font-bold text-sm text-slate-800">{CATEGORY_LABELS[cat] || cat}</span>
-                  <span className="material-symbols-outlined text-slate-400 text-lg">
-                    {isCollapsed ? 'expand_more' : 'expand_less'}
-                  </span>
-                </button>
+                <div className="w-full flex items-center justify-between px-4 py-3 bg-slate-50/60 border-b border-slate-100 hover:bg-slate-100/60 transition-colors">
+                  <button
+                    type="button"
+                    onClick={() => toggleCategory(cat)}
+                    className="flex-1 flex items-center justify-between text-left"
+                  >
+                    <span className="font-bold text-sm text-slate-800">{CATEGORY_LABELS[cat] || cat}</span>
+                    <span className="material-symbols-outlined text-slate-400 text-lg">
+                      {isCollapsed ? 'expand_more' : 'expand_less'}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); handleResetCategory(cat); }}
+                    disabled={resettingCategory === cat}
+                    title={`Reset all "${CATEGORY_LABELS[cat] || cat}" permissions to default`}
+                    className="ml-3 flex-shrink-0 flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-red-600 bg-red-50 border border-red-100 rounded-full hover:bg-red-100 hover:border-red-200 transition-colors disabled:opacity-50"
+                  >
+                    {resettingCategory === cat ? (
+                      <span className="material-symbols-outlined animate-spin text-[14px]">progress_activity</span>
+                    ) : (
+                      <span className="material-symbols-outlined text-[14px]">restart_alt</span>
+                    )}
+                    Reset
+                  </button>
+                </div>
 
                 {!isCollapsed && (
                   <div className="overflow-x-auto">
@@ -279,9 +364,9 @@ const RolesPermissions: React.FC = () => {
                                     {cell.is_override && !dirty && !locked && (
                                       <button
                                         type="button"
-                                        onClick={() => handleResetCell(row.key, role)}
+                                        onClick={() => handleResetCell(row.key, role, row.label)}
                                         title="Reset to default"
-                                        className="text-slate-300 hover:text-slate-600 transition-colors"
+                                        className="text-slate-300 hover:text-red-600 transition-colors"
                                       >
                                         <span className="material-symbols-outlined text-[16px]">restart_alt</span>
                                       </button>
@@ -331,6 +416,39 @@ const RolesPermissions: React.FC = () => {
                 )}
                 {saving ? 'Saving…' : 'Save Changes'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation modal — same pattern as the app's Sign Out confirmation
+          (components/common/Layout.tsx): centered card over a blurred
+          backdrop, icon circle, bold title, gray message, Cancel/Confirm
+          buttons. Used in place of window.confirm(). */}
+      {confirmState && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center" role="dialog" aria-modal="true">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setConfirmState(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex flex-col items-center text-center">
+              <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center mb-4">
+                <span className="material-symbols-outlined text-red-500 text-3xl">warning</span>
+              </div>
+              <h3 className="text-lg font-bold text-slate-900 mb-1">{confirmState.title}</h3>
+              <p className="text-sm text-slate-500 mb-6">{confirmState.message}</p>
+              <div className="flex gap-3 w-full">
+                <button
+                  onClick={() => setConfirmState(null)}
+                  className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => { const run = confirmState.onConfirm; setConfirmState(null); run(); }}
+                  className="flex-1 px-4 py-2.5 rounded-lg bg-red-600 text-sm font-semibold text-white hover:bg-red-700 transition-colors active:scale-[0.98]"
+                >
+                  Confirm
+                </button>
+              </div>
             </div>
           </div>
         </div>

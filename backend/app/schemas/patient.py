@@ -19,7 +19,11 @@ ADULT_ONLY_TITLES = ["Mr.", "Mrs.", "Ms.", "Dr.", "Prof."]
 class PatientBase(BaseModel):
     title: Optional[str] = Field(None, max_length=10)
     first_name: str = Field(..., min_length=1, max_length=100, pattern=r"^[A-Za-z][A-Za-z\s'-]*$")
-    last_name: str = Field(..., min_length=3, max_length=100, pattern=r"^[A-Za-z][A-Za-z\s'-]*$")
+    # Optional — stored as "" rather than a true NULL (the column stays
+    # NOT NULL) so every f"{first_name} {last_name}" display site across the
+    # app (invoices, prescriptions, lab reports, emails, etc.) degrades to a
+    # harmless trailing space instead of literally rendering "None".
+    last_name: Optional[str] = Field(default="", max_length=100)
     date_of_birth: Optional[date] = None
     gender: str = Field(..., pattern="^(male|female|other|prefer_not_to_say|Male|Female|Other|Not Disclosed|Unknown)$")
     blood_group: Optional[str] = None
@@ -82,6 +86,15 @@ class PatientBase(BaseModel):
             raise ValueError("Invalid date of birth")
         return v
 
+    @field_validator("last_name")
+    @classmethod
+    def validate_last_name(cls, v: Optional[str]) -> str:
+        import re
+        v = (v or "").strip()
+        if v and not re.match(r"^[A-Za-z][A-Za-z\s'-]*$", v):
+            raise ValueError("Only letters (and spaces/hyphens/apostrophes) allowed — no numbers or symbols")
+        return v
+
     @field_validator("address_line_1")
     @classmethod
     def validate_address(cls, v: Optional[str]) -> Optional[str]:
@@ -125,12 +138,6 @@ class PatientCreate(PatientBase):
 
 
 class PatientUpdate(PatientBase):
-    # Override PatientBase's stricter >2-letter rule (Bug #39, enforced on
-    # PatientCreate) — the edit form resends the full record including an
-    # unchanged last_name, so keeping the strict rule here would permanently
-    # lock a patient with a genuinely short existing surname (e.g. "Li", "Wu")
-    # out of ever being edited again.
-    last_name: str = Field(..., min_length=1, max_length=100, pattern=r"^[A-Za-z][A-Za-z\s'-]*$")
     # Same reasoning for emergency_contact_phone — some existing patients have
     # one stored with a "+<country code>" prefix (pre-dating the exactly-10-
     # digits rule on PatientBase). The edit form resends it unchanged, so
@@ -326,6 +333,13 @@ class PatientTrendBucket(BaseModel):
     label: str
     new_patients: int
     returning_patients: int
+    upcoming_patients: int
+    # Breakdown of returning_patients by follow-up chain position — see
+    # appointment_service.compute_follow_up_label. mc1 + mc2_plus + mcr adds
+    # up to returning_patients (every returning patient has some label).
+    mc1_count: int
+    mc2_plus_count: int
+    mcr_count: int
 
 
 class PatientTrendResponse(BaseModel):

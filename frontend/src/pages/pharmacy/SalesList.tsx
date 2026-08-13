@@ -7,6 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { canEdit } from '../../config/modulePermissions';
 import { format } from 'date-fns';
 import DateRangeFilter from '../../components/common/DateRangeFilter';
+import { htmlStringToPdf } from '../../utils/pdf';
 
 const PAYMENT_STATUS_COLORS: Record<string, string> = {
   paid: 'bg-green-100 text-green-700',
@@ -70,6 +71,7 @@ const SalesList: React.FC = () => {
   const [payAmount, setPayAmount] = useState(0);
   const [payMethod, setPayMethod] = useState('cash');
   const [paySaving, setPaySaving] = useState(false);
+  const [downloadingSaleId, setDownloadingSaleId] = useState<string | null>(null);
 
   // Post-finalization correction modal — reopens an already-dispensed sale
   // so a pharmacist can fix a miskeyed dispensed quantity (reconciling stock
@@ -186,6 +188,18 @@ const SalesList: React.FC = () => {
     }
   };
 
+  const handleDownloadInvoice = async (sale: Sale) => {
+    setDownloadingSaleId(sale.id);
+    try {
+      const html = await pharmacyService.getSalePdfHtml(sale.id);
+      await htmlStringToPdf(html, `Invoice_${sale.invoice_number}.pdf`);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to download invoice');
+    } finally {
+      setDownloadingSaleId(null);
+    }
+  };
+
   const fetchSales = useCallback(async () => {
     setLoading(true);
     try {
@@ -211,6 +225,10 @@ const SalesList: React.FC = () => {
   }, [page, search, dateFrom, dateTo, saleStatus, patientType, sortBy, sortOrder]);
 
   useEffect(() => { fetchSales(); }, [fetchSales]);
+
+  const remainingAfterPayment = payingSale
+    ? Math.max(0, (Number(payingSale.balance_amount) || 0) - payAmount)
+    : 0;
 
   return (
     <div className="space-y-6">
@@ -330,14 +348,14 @@ const SalesList: React.FC = () => {
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <th className="px-4 py-3 font-semibold text-slate-600">Invoice #</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Date</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Patient</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Items</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Total</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Payment</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Status</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Actions</th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600">Invoice #</th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600">Date</th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600">Patient</th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600">Items</th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600">Total</th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600">Payment</th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600">Status</th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -364,9 +382,17 @@ const SalesList: React.FC = () => {
                           className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100"
                         >
                           <span className="material-symbols-outlined text-sm">payments</span>
-                          Receive Payment
+                          Payment
                         </button>
                       )}
+                      <button
+                        onClick={() => handleDownloadInvoice(s)}
+                        disabled={downloadingSaleId === s.id}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 disabled:opacity-50"
+                      >
+                        <span className="material-symbols-outlined text-sm">download</span>
+                        {downloadingSaleId === s.id ? 'Preparing…' : 'Invoice'}
+                      </button>
                       {canCorrectSale && s.status === 'dispensed' && (
                         <button
                           onClick={() => openCorrectSale(s)}
@@ -376,9 +402,6 @@ const SalesList: React.FC = () => {
                           <span className="material-symbols-outlined text-sm">edit_note</span>
                           {correctingLoadingId === s.id ? 'Loading…' : 'Correct'}
                         </button>
-                      )}
-                      {!(canReceivePayment && s.payment_status !== 'paid') && !(canCorrectSale && s.status === 'dispensed') && (
-                        <span className="text-xs text-slate-400">—</span>
                       )}
                     </div>
                   </td>
@@ -407,12 +430,43 @@ const SalesList: React.FC = () => {
         )}
       </div>
 
-      {/* Receive Payment Modal */}
+      {/* Receive Payment Modal — mirrors the checkout summary format used
+          when dispensing an optical sale (NewOpticalSale.tsx) and the Lab
+          Billing collect-payment flow: a real Subtotal/Tax/Discount/Grand
+          Total/Already Paid breakdown instead of just a bare amount field. */}
       {payingSale && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setPayingSale(null)}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-bold text-slate-900 mb-1">Receive Payment</h3>
-            <p className="text-sm text-slate-500 mb-4">{payingSale.invoice_number} — balance due ₹{Number(payingSale.balance_amount || 0).toFixed(2)}</p>
+            <p className="text-sm text-slate-500 mb-4">{payingSale.invoice_number}</p>
+
+            <div className="space-y-2 mb-4 pb-4 border-b border-slate-200">
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-500">Subtotal</span>
+                <span className="font-medium text-slate-700">₹{Number(payingSale.subtotal || 0).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-500">Tax</span>
+                <span className="font-medium text-slate-700">₹{Number(payingSale.tax_amount || 0).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-500">Discount</span>
+                <span className="font-medium text-slate-700">₹{Number(payingSale.discount_amount || 0).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-base font-bold pt-2 border-t border-slate-200">
+                <span>Grand Total</span>
+                <span className="text-primary">₹{Number(payingSale.total_amount || 0).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-sm pt-2 border-t border-slate-200">
+                <span className="text-slate-500">Already Paid</span>
+                <span className="font-medium text-slate-700">₹{Number(payingSale.paid_amount || 0).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-sm font-semibold">
+                <span>Balance Due</span>
+                <span className="text-primary">₹{Number(payingSale.balance_amount || 0).toFixed(2)}</span>
+              </div>
+            </div>
+
             <div className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-500 mb-1">Payment Method</label>
@@ -425,12 +479,24 @@ const SalesList: React.FC = () => {
                   <option value="insurance">Insurance</option>
                 </select>
               </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1">Amount Received</label>
+              <div className="flex justify-between text-sm items-center">
+                <span className="text-slate-500">Amount Received Now</span>
                 <input type="number" min={0.01} max={Number(payingSale.balance_amount) || undefined} step={0.01}
                   value={payAmount || ''}
-                  onChange={(e) => setPayAmount(parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
+                  onChange={(e) => {
+                    // The `max` attribute above is a visual hint only — a
+                    // browser number input never actually blocks typing past
+                    // it, so this has to be enforced here or a user can key
+                    // in more than is owed and submit it.
+                    const typed = parseFloat(e.target.value) || 0;
+                    const cap = Number(payingSale.balance_amount) || 0;
+                    setPayAmount(Math.min(typed, cap));
+                  }}
+                  className="w-28 px-2 py-1 text-sm text-right border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
+              </div>
+              <div className="flex justify-between text-sm font-semibold pt-2 border-t border-slate-200">
+                <span className={remainingAfterPayment > 0 ? 'text-red-500' : 'text-slate-500'}>Remaining Amount</span>
+                <span className={remainingAfterPayment > 0 ? 'text-red-600' : 'text-emerald-600'}>₹{remainingAfterPayment.toFixed(2)}</span>
               </div>
             </div>
             <div className="flex justify-end gap-3 mt-5">
@@ -463,11 +529,11 @@ const SalesList: React.FC = () => {
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
-                    <th className="px-3 py-2 text-left font-semibold text-slate-600">Medicine</th>
-                    <th className="px-3 py-2 text-left font-semibold text-slate-600">Batch</th>
-                    <th className="px-3 py-2 text-right font-semibold text-slate-600">Qty</th>
-                    <th className="px-3 py-2 text-right font-semibold text-slate-600">Unit Price</th>
-                    <th className="px-3 py-2 text-right font-semibold text-slate-600">Total</th>
+                    <th className="px-3 py-2 text-center font-semibold text-slate-600">Medicine</th>
+                    <th className="px-3 py-2 text-center font-semibold text-slate-600">Batch</th>
+                    <th className="px-3 py-2 text-center font-semibold text-slate-600">Qty</th>
+                    <th className="px-3 py-2 text-center font-semibold text-slate-600">Unit Price</th>
+                    <th className="px-3 py-2 text-center font-semibold text-slate-600">Total</th>
                     <th className="px-3 py-2"></th>
                   </tr>
                 </thead>

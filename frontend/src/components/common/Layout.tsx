@@ -437,10 +437,11 @@ const Layout: React.FC = () => {
   // The generic Dashboard was previously shown to every authenticated user
   // unconditionally, but its route (/dashboard in App.tsx) is gated by the
   // shared 'general.dashboard' permission — which lab_technician, pharmacist,
-  // cashier and inventory_manager were never granted (they get their own
-  // module-specific dashboard instead: Lab/Pharmacy/Optical/Inventory "Dashboard"
-  // entries below). Those roles clicking it landed on a page they had no
-  // access to. Only show the link to roles that actually have it.
+  // optical_staff and inventory_manager don't hold (they get their own
+  // module-specific dashboard instead: Lab/Pharmacy/Optical/Inventory
+  // "Dashboard" entries below). cashier and visiting_doctor DO hold it and
+  // land on this same generic Dashboard, role-customized (see Dashboard.tsx).
+  // Only show the link to roles that actually have it.
   const mainNavItems = [
     ...(hasAccess('general.dashboard', effectiveRoles)
       ? [{ to: '/dashboard', label: 'Dashboard', icon: 'dashboard' }]

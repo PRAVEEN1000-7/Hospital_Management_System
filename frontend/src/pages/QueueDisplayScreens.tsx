@@ -7,6 +7,7 @@ import scheduleService from '../services/scheduleService';
 import api from '../services/api';
 import type { QueueDisplayScreen, QueueDisplayScreenCreateData } from '../types/queueScreen';
 import type { DoctorOption } from '../types/appointment';
+import SearchableSelect, { type SuggestionOption } from '../components/common/SearchableSelect';
 
 interface DepartmentOption {
   id: string;
@@ -219,19 +220,23 @@ const QueueDisplayScreens: React.FC = () => {
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Department *</label>
-                <select value={form.department_id} onChange={e => setForm(f => ({ ...f, department_id: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary">
-                  <option value="">Select department…</option>
-                  {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                </select>
+                <SearchableSelect
+                  value={departments.find(d => d.id === form.department_id)?.name || ''}
+                  onChange={(_, metadata) => setForm(f => ({ ...f, department_id: (metadata?.id as string) || '' }))}
+                  suggestions={departments.map((d): SuggestionOption => ({ id: d.id, label: d.name, metadata: { id: d.id } }))}
+                  placeholder="Search department…"
+                  allowManualEntry={false}
+                />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Doctor *</label>
-                <select value={form.doctor_id} onChange={e => setForm(f => ({ ...f, doctor_id: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary">
-                  <option value="">Select doctor…</option>
-                  {doctors.map(d => <option key={d.doctor_id} value={d.doctor_id}>{d.name}</option>)}
-                </select>
+                <SearchableSelect
+                  value={doctors.find(d => d.doctor_id === form.doctor_id)?.name || ''}
+                  onChange={(_, metadata) => setForm(f => ({ ...f, doctor_id: (metadata?.id as string) || '' }))}
+                  suggestions={doctors.map((d): SuggestionOption => ({ id: d.doctor_id, label: d.name, sublabel: d.specialization || undefined, metadata: { id: d.doctor_id } }))}
+                  placeholder="Search doctor…"
+                  allowManualEntry={false}
+                />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Token Format *</label>
@@ -258,11 +263,13 @@ const QueueDisplayScreens: React.FC = () => {
               {form.show_doctor2 && (
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1">2nd Doctor</label>
-                  <select value={form.doctor2_id} onChange={e => setForm(f => ({ ...f, doctor2_id: e.target.value }))}
-                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary">
-                    <option value="">Select doctor…</option>
-                    {doctors.map(d => <option key={d.doctor_id} value={d.doctor_id}>{d.name}</option>)}
-                  </select>
+                  <SearchableSelect
+                    value={doctors.find(d => d.doctor_id === form.doctor2_id)?.name || ''}
+                    onChange={(_, metadata) => setForm(f => ({ ...f, doctor2_id: (metadata?.id as string) || '' }))}
+                    suggestions={doctors.map((d): SuggestionOption => ({ id: d.doctor_id, label: d.name, sublabel: d.specialization || undefined, metadata: { id: d.doctor_id } }))}
+                    placeholder="Search doctor…"
+                    allowManualEntry={false}
+                  />
                 </div>
               )}
               <div>

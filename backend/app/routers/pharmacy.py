@@ -213,7 +213,12 @@ async def list_batches(
     if not med_check:
         raise HTTPException(status_code=404, detail="Medicine not found")
     batches = svc.list_batches(db, medicine_id, active_only)
-    return [BatchResponse.model_validate(b) for b in batches]
+    responses = []
+    for b in batches:
+        resp = BatchResponse.model_validate(b)
+        resp.supplier_name = b.supplier.name if b.supplier else None
+        responses.append(resp)
+    return responses
 
 
 @router.post("/batches", response_model=BatchResponse, status_code=status.HTTP_201_CREATED)
@@ -234,7 +239,9 @@ async def create_batch(
         if not med_check:
             raise HTTPException(status_code=404, detail="Medicine not found")
         batch = svc.create_batch(db, data.model_dump())
-        return BatchResponse.model_validate(batch)
+        resp = BatchResponse.model_validate(batch)
+        resp.supplier_name = batch.supplier.name if batch.supplier else None
+        return resp
     except HTTPException:
         raise
     except IntegrityError:
@@ -275,7 +282,9 @@ async def update_batch(
         )
         if not batch:
             raise HTTPException(status_code=404, detail="Batch not found")
-        return BatchResponse.model_validate(batch)
+        resp = BatchResponse.model_validate(batch)
+        resp.supplier_name = batch.supplier.name if batch.supplier else None
+        return resp
     except HTTPException:
         raise
     except ValueError as e:
@@ -346,6 +355,145 @@ async def get_sale(
     items = svc.get_sale_items(db, sale.id)
     resp.items = [SaleItemResponse.model_validate(i) for i in items]
     return resp
+
+
+@sales_router.get("/{sale_id}/pdf")
+async def get_sale_pdf(
+    sale_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(pharmacy_view_guard),
+):
+    """Generate a downloadable/printable HTML invoice for a pharmacy sale.
+
+    Covers both counter sales (New Sale) and prescription-driven dispenses —
+    same PharmacySale/pharmacy_dispensing row either way. Mirrors the
+    self-contained-HTML-rendered-to-PDF-client-side pattern used by
+    get_invoice_pdf (routers/invoices.py) and get_lab_order_pdf (routers/lab.py).
+    """
+    import html as _html_mod
+    from datetime import datetime
+    from ..models.user import Hospital
+
+    sale = svc.get_sale(db, sale_id)
+    if not sale or str(sale.hospital_id) != str(current_user.hospital_id):
+        raise HTTPException(status_code=404, detail="Sale not found")
+    items = svc.get_sale_items(db, sale.id)
+
+    hospital = db.query(Hospital).filter(Hospital.id == current_user.hospital_id).first()
+    patient = sale.patient
+
+    def _esc(value) -> str:
+        if value is None or value == "":
+            return ""
+        return _html_mod.escape(str(value), quote=True)
+
+    def fmt_money(v) -> str:
+        return f"{float(v or 0):,.2f}"
+
+    def fmt_date(d) -> str:
+        return d.strftime("%B %d, %Y %I:%M %p") if d else "—"
+
+    hosp_name = _esc((hospital.name if hospital else "") or "Hospital")
+    hosp_address = _esc(hospital.address_line_1 if hospital else "")
+    hosp_city = _esc(hospital.city if hospital else "")
+    hosp_state = _esc(hospital.state_province if hospital else "")
+    hosp_phone = _esc(hospital.phone if hospital else "")
+    hosp_email = _esc(hospital.email if hospital else "")
+
+    def _item_batch_number(item) -> Optional[str]:
+        return item.batch.batch_number if item.batch else None
+
+    rows = "".join(
+        f"""<tr>
+            <td>{_esc(item.medicine_name)}{f'<br><span class="muted">Batch {_esc(_item_batch_number(item))}</span>' if _item_batch_number(item) else ''}</td>
+            <td class="right">{int(item.quantity or 0)}</td>
+            <td class="right">₹{fmt_money(item.unit_price)}</td>
+            <td class="right"><strong>₹{fmt_money(item.total_price)}</strong></td>
+        </tr>"""
+        for item in items
+    )
+
+    sale_date = sale.sale_date
+    if sale_date and sale_date.year <= 1971 and sale.created_at:
+        sale_date = sale.created_at
+
+    status_label = (sale.payment_status or "pending").replace("_", " ")
+
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Invoice - {_esc(sale.invoice_number)}</title>
+<style>
+body {{ font-family: Arial, sans-serif; margin: 0; padding: 40px; color: #1e293b; }}
+.header {{ text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 3px solid #0284c7; }}
+.header h1 {{ margin: 0; color: #0284c7; font-size: 28px; }}
+.header p {{ margin: 4px 0 0; color: #64748b; font-size: 14px; }}
+.invoice-number {{ font-size: 20px; font-weight: bold; color: #0284c7; text-align: center; margin: 20px 0; padding: 12px; background: #f0f9ff; border-radius: 8px; }}
+.meta {{ display: flex; justify-content: space-between; margin: 16px 0; font-size: 13px; color: #64748b; }}
+table {{ width: 100%; border-collapse: collapse; margin: 16px 0; }}
+th, td {{ text-align: left; padding: 10px 12px; border-bottom: 1px solid #e2e8f0; font-size: 13px; }}
+th {{ color: #64748b; font-weight: 600; font-size: 12px; background: #f8fafc; }}
+.right {{ text-align: right; }}
+.muted {{ color: #94a3b8; font-size: 11px; }}
+.section-title {{ font-size: 16px; font-weight: bold; color: #0284c7; margin: 24px 0 8px; padding-bottom: 4px; border-bottom: 2px solid #e2e8f0; }}
+.status {{ display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: bold; text-transform: uppercase; }}
+.status-paid {{ background: #dcfce7; color: #166534; }}
+.status-pending {{ background: #fef3c7; color: #92400e; }}
+.status-partially_paid {{ background: #fef3c7; color: #92400e; }}
+.status-cancelled, .status-returned {{ background: #fee2e2; color: #991b1b; }}
+.summary {{ width: 280px; margin-left: auto; margin-top: 16px; }}
+.summary-row {{ display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }}
+.summary-total {{ font-size: 16px; font-weight: bold; border-top: 2px solid #e2e8f0; padding-top: 8px; margin-top: 8px; }}
+.footer {{ margin-top: 40px; text-align: center; color: #94a3b8; font-size: 11px; border-top: 1px solid #e2e8f0; padding-top: 16px; }}
+@media print {{ body {{ padding: 20px; }} }}
+</style>
+</head>
+<body>
+<div class="header">
+    <h1>{hosp_name}</h1>
+    <p>{', '.join(p for p in (hosp_address, hosp_city, hosp_state) if p)}</p>
+    {f'<p>Phone: {hosp_phone} | Email: {hosp_email}</p>' if hosp_phone or hosp_email else ''}
+</div>
+<div class="invoice-number">Invoice #{_esc(sale.invoice_number)}</div>
+<div class="meta">
+    <span>Date: {fmt_date(sale_date)}</span>
+    <span class="status status-{sale.payment_status}">{_esc(status_label)}</span>
+</div>
+<p class="section-title">Bill To</p>
+<table>
+    <tr><th style="width:160px;">Patient</th><td>{_esc(patient.full_name) if patient else 'Walk-in'}</td></tr>
+    {f'<tr><th>PRN</th><td>{_esc(patient.patient_reference_number)}</td></tr>' if patient and patient.patient_reference_number else ''}
+</table>
+<p class="section-title">Items</p>
+<table>
+    <thead>
+        <tr><th>Medicine</th><th class="right">Qty</th><th class="right">Unit Price</th><th class="right">Total</th></tr>
+    </thead>
+    <tbody>{rows or '<tr><td colspan="4" class="muted">No items</td></tr>'}</tbody>
+</table>
+<div class="summary">
+    <div class="summary-row"><span>Subtotal</span><span>₹{fmt_money(sale.subtotal)}</span></div>
+    {f'<div class="summary-row"><span>Discount</span><span>-₹{fmt_money(sale.discount_amount)}</span></div>' if sale.discount_amount else ''}
+    <div class="summary-row"><span>Tax</span><span>₹{fmt_money(sale.tax_amount)}</span></div>
+    <div class="summary-row summary-total"><span>Total</span><span>₹{fmt_money(sale.total_amount)}</span></div>
+    <div class="summary-row"><span>Paid</span><span>₹{fmt_money(sale.paid_amount)}</span></div>
+    <div class="summary-row"><span>Balance Due</span><span>₹{fmt_money(sale.balance_amount)}</span></div>
+</div>
+{f'<p class="section-title">Notes</p><p style="font-size:13px;">{_esc(sale.notes)}</p>' if sale.notes else ''}
+<div class="footer">
+    <p>Generated on {datetime.now().strftime("%B %d, %Y at %I:%M %p")} | {hosp_name}</p>
+    <p>This is a computer-generated document. No signature required.</p>
+</div>
+</body>
+</html>"""
+
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(
+        content=html,
+        media_type="text/html",
+        headers={"Content-Disposition": f'inline; filename="sale_{sale.invoice_number}.html"'},
+    )
 
 
 @sales_router.post("", response_model=SaleResponse, status_code=status.HTTP_201_CREATED)

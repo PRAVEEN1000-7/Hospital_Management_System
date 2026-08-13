@@ -181,6 +181,17 @@ def _esc(value) -> str:
     return _html_mod.escape(str(value), quote=True)
 
 
+def _trunc(value: str, max_chars: int) -> str:
+    """Hard-truncate to a guaranteed-fit length before it ever reaches the
+    template — the downloaded-PDF path rasterises this HTML via html2canvas,
+    which doesn't reliably honor CSS `text-overflow: ellipsis` on table
+    cells, so relying on CSS alone to keep a long name from overlapping the
+    next column only works for the browser-print path, not the download."""
+    if not value or len(value) <= max_chars:
+        return value
+    return value[: max_chars - 1].rstrip() + "…"
+
+
 def _hospital_header_html(db: Session, hospital_id) -> str:
     from ..models.user import Hospital
     hospital = db.query(Hospital).filter(Hospital.id == hospital_id).first()
@@ -387,6 +398,8 @@ async def get_marking_pdf(
 
     def _day_col_width(index: int) -> int:
         return last_day_col_px if index == visible_days - 1 else day_col_px
+    emp_col_pct = 16
+    day_col_pct = round((100 - emp_col_pct) / visible_days, 3)
 
     day_headers = "".join(
         f'<div class="daycol" style="width:{_day_col_width(i)}px">{d}<br><span class="wd">{weekday_short[date_cls(year, month, d).weekday()]}</span></div>'
@@ -408,6 +421,8 @@ async def get_marking_pdf(
     rows = "".join(
         f"""<div class="row body">
             <div class="empcol" style="width:{emp_col_px}px"><span class="dot" style="background:{EMP_DOT_COLOR.get(emp['emp_status'], '#94a3b8')}"></span>{_esc(emp['first_name'])} {_esc(emp['last_name'])}</div>
+        f"""<tr>
+            <td class="empcol" style="width:{emp_col_pct}%">{_esc(_trunc(f"{emp['first_name']} {emp['last_name']}", 22))}<span class="muted">{_esc(_trunc(emp['reference_number'], 16)) if emp['reference_number'] else '—'}</span></td>
             {day_cells(emp['days'][start_day - 1:end_day])}
         </div>"""
         for emp in employees
@@ -438,6 +453,18 @@ body {{ font-family: Arial, sans-serif; margin: 0; padding: 24px; color: #1e293b
 .empcol .dot {{ display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }}
 .row.head .empcol {{ padding: 6px 8px; font-size: 10px; background: #f8fafc; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }}
 .status {{ font-weight: 700; font-size: 9px; }}
+.legend span {{ display: inline-block; padding: 2px 8px; border-radius: 10px; margin-right: 8px; font-weight: 600; }}
+table {{ width: 100%; border-collapse: collapse; table-layout: fixed; }}
+thead th {{ padding: 6px 2px; font-size: 9px; text-align: center; }}
+th.daycol {{ background: #f8fafc; color: #64748b; font-weight: 700; border-bottom: 2px solid #e2e8f0; }}
+th.daycol .wd {{ display: block; font-weight: 400; text-transform: none; color: #94a3b8; }}
+th.empcol {{ background: #f8fafc; color: #64748b; font-weight: 700; border-bottom: 2px solid #e2e8f0; border-right: 2px solid #e2e8f0; text-align: left; padding: 6px 8px; }}
+tbody tr {{ border-bottom: 1px solid #f1f5f9; }}
+tbody tr:nth-child(even) {{ background: #fafbfc; }}
+td.empcol {{ text-align: left; padding: 7px 8px; font-size: 10px; font-weight: 600; border-right: 2px solid #e2e8f0; white-space: nowrap; overflow: hidden; }}
+td.empcol .muted {{ display: block; color: #94a3b8; font-size: 8px; font-weight: 400; margin-top: 1px; white-space: nowrap; overflow: hidden; }}
+td.daycol {{ text-align: center; padding: 4px 1px; font-size: 9px; }}
+.pill {{ display: inline-block; min-width: 16px; padding: 1px 3px; border-radius: 4px; font-weight: 700; line-height: 14px; }}
 .signature-row {{ display: flex; justify-content: flex-end; margin-top: 30px; page-break-inside: avoid; }}
 .signature-block {{ text-align: center; width: 180px; }}
 .signature-block .sig-space {{ height: 36px; }}

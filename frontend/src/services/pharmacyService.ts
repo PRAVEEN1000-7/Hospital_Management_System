@@ -89,6 +89,12 @@ export interface DispensingResult {
   status: string;
   total_amount: number;
   items_dispensed: number;
+  /** Items that couldn't be dispensed THIS call — most commonly a stock race
+   * (another sale/dispense consumed the batch between page-load and confirm).
+   * Every other item in the same confirm still went through; these are
+   * reported back rather than aborting the whole dispense. Retry these
+   * later from the prescription once stock is available again. */
+  failed_items?: { medicine_name: string; reason: string }[];
 }
 
 export interface DispensingPreviewItem {
@@ -199,6 +205,11 @@ export const pharmacyService = {
 
   async getSale(id: string): Promise<Sale> {
     const res = await api.get<Sale>(`/pharmacy/sales/${id}`);
+    return res.data;
+  },
+
+  async getSalePdfHtml(id: string): Promise<string> {
+    const res = await api.get(`/pharmacy/sales/${id}/pdf`, { responseType: 'text' });
     return res.data;
   },
 

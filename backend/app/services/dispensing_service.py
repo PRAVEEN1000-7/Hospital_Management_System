@@ -643,7 +643,18 @@ def dispense_prescription(
     tax_amount = Decimal("0")
     processed_items_count = 0
     skipped_items_count = 0
-    
+
+    # Items that fail during THIS dispense call (most commonly a stock race —
+    # another sale/dispense consumed the batch between the pharmacist loading
+    # this screen and confirming) are collected here rather than aborting the
+    # whole request. Each item's DB work below runs inside its own SAVEPOINT
+    # (db.begin_nested()) specifically so a failure on one item rolls back
+    # only that item's partial writes, not the items already successfully
+    # processed earlier in this same loop — the pharmacist already reviewed
+    # and confirmed the whole batch, so one line losing its stock in the last
+    # few seconds shouldn't cost them the other 13.
+    failed_items: list[dict] = []
+
     seen_prescription_items: set[uuid.UUID] = set()
 
     # Process each item
@@ -672,12 +683,19 @@ def dispense_prescription(
                 Medicine.hospital_id == hospital_id,
             ).first()
             if not medicine:
-                raise ValueError("Selected extra item not found in medicine catalog")
+                failed_items.append({"medicine_name": "Extra item", "reason": "Selected extra item not found in medicine catalog"})
+                continue
 
-            line_total_sum = _allocate_batches_and_create_sale_items(
-                db, hospital_id, dispensing, medicine_id, medicine.name,
-                batch_id, quantity, requested_unit_price, None, user_id,
-            )
+            try:
+                with db.begin_nested():
+                    line_total_sum = _allocate_batches_and_create_sale_items(
+                        db, hospital_id, dispensing, medicine_id, medicine.name,
+                        batch_id, quantity, requested_unit_price, None, user_id,
+                    )
+            except ValueError as item_err:
+                failed_items.append({"medicine_name": medicine.name, "reason": str(item_err)})
+                continue
+
             total_amount += line_total_sum
             processed_items_count += 1
             logger.info(f"Dispensed extra item {medicine.name} (qty {quantity}), not tied to a prescription line")
@@ -688,7 +706,8 @@ def dispense_prescription(
             prescription_item_id = uuid.UUID(prescription_item_id)
 
         if prescription_item_id in seen_prescription_items:
-            raise ValueError("Duplicate prescription item in dispensing request")
+            failed_items.append({"medicine_name": item_data.get("medicine_name") or "Unknown item", "reason": "Duplicate prescription item in dispensing request"})
+            continue
         seen_prescription_items.add(prescription_item_id)
 
         # Get prescription item
@@ -702,13 +721,15 @@ def dispense_prescription(
             continue
 
         if not rx_item.medicine_id:
-            raise ValueError(f"Prescription item {rx_item.medicine_name} is missing medicine linkage")
+            failed_items.append({"medicine_name": rx_item.medicine_name, "reason": "Prescription item is missing medicine linkage"})
+            continue
 
         if rx_item.medicine_id != medicine_id:
-            raise ValueError(
-                f"Medicine mismatch for {rx_item.medicine_name}. "
-                "Selected medicine does not match prescription item."
-            )
+            failed_items.append({
+                "medicine_name": rx_item.medicine_name,
+                "reason": "Selected medicine does not match prescription item.",
+            })
+            continue
 
         # Validate quantity doesn't exceed prescribed quantity.
         # Some older prescriptions may have null/0 quantity and rely on frequency+duration,
@@ -736,38 +757,52 @@ def dispense_prescription(
                 f"(Prescribed: {prescribed_qty}, Dispensed: {already_dispensed})"
             )
             continue
-        
+
         if quantity > remaining_qty:
-            raise ValueError(
-                f"Cannot dispense {quantity} units of {rx_item.medicine_name}. "
-                f"Prescribed: {prescribed_qty}, Already dispensed: {already_dispensed}, "
-                f"Remaining: {remaining_qty}. You can dispense less than or equal to {remaining_qty} units."
-            )
-        
+            failed_items.append({
+                "medicine_name": rx_item.medicine_name,
+                "reason": (
+                    f"Cannot dispense {quantity} units. Prescribed: {prescribed_qty}, "
+                    f"Already dispensed: {already_dispensed}, Remaining: {remaining_qty}. "
+                    f"You can dispense up to {remaining_qty} units."
+                ),
+            })
+            continue
+
         if quantity <= 0:
             logger.warning(f"Skipping item {rx_item.medicine_name} with quantity {quantity}")
             continue
 
-        line_total_sum = _allocate_batches_and_create_sale_items(
-            db, hospital_id, dispensing, medicine_id, rx_item.medicine_name,
-            batch_id, quantity, requested_unit_price, prescription_item_id, user_id,
-        )
+        # Allocation + status update happen inside one SAVEPOINT — see the
+        # failed_items comment above the loop. A stock-allocation failure
+        # here rolls back only this item's batch/sale-item/movement writes
+        # and the dispensed_quantity/is_dispensed flip below, leaving every
+        # earlier-processed item's already-released savepoint untouched.
+        try:
+            with db.begin_nested():
+                line_total_sum = _allocate_batches_and_create_sale_items(
+                    db, hospital_id, dispensing, medicine_id, rx_item.medicine_name,
+                    batch_id, quantity, requested_unit_price, prescription_item_id, user_id,
+                )
+
+                # Update prescription item dispensing status
+                rx_item.dispensed_quantity = already_dispensed + quantity
+
+                # Cap at prescribed quantity and mark as dispensed if complete.
+                # Patient-requested partial closure is allowed: dispensing less than
+                # prescribed quantity can still close the line item.
+                if rx_item.dispensed_quantity >= prescribed_qty:
+                    rx_item.is_dispensed = True
+                    rx_item.dispensed_quantity = prescribed_qty  # Ensure exact match
+                else:
+                    # Close partially dispensed line as patient-requested completion.
+                    rx_item.is_dispensed = True
+        except ValueError as item_err:
+            failed_items.append({"medicine_name": rx_item.medicine_name, "reason": str(item_err)})
+            continue
+
         total_amount += line_total_sum
-
         processed_items_count += 1
-
-        # Update prescription item dispensing status
-        rx_item.dispensed_quantity = already_dispensed + quantity
-
-        # Cap at prescribed quantity and mark as dispensed if complete.
-        # Patient-requested partial closure is allowed: dispensing less than
-        # prescribed quantity can still close the line item.
-        if rx_item.dispensed_quantity >= prescribed_qty:
-            rx_item.is_dispensed = True
-            rx_item.dispensed_quantity = prescribed_qty  # Ensure exact match
-        else:
-            # Close partially dispensed line as patient-requested completion.
-            rx_item.is_dispensed = True
 
         logger.info(
             f"Dispensed {quantity} of {rx_item.medicine_name} "
@@ -847,6 +882,7 @@ def dispense_prescription(
             "status": rx.status,
             "total_amount": 0.0,
             "items_dispensed": 0,
+            "failed_items": failed_items,
         }
 
     # Update prescription status: keep open for pending quantities.
@@ -857,6 +893,19 @@ def dispense_prescription(
     dispensing.subtotal = total_amount
     dispensing.tax_amount = tax_amount
     dispensing.net_amount = total_amount
+
+    # Payment for a prescription-driven dispense is always collected
+    # afterward (via SalesList's "Receive Payment", now that dispensing no
+    # longer forces a same-flow billing page) — nothing has been tendered
+    # yet, so this sale must start life as genuinely "pending" with the full
+    # amount owed. Without this, paid_amount/balance_amount/payment_status
+    # were left at their column defaults (0/0/"pending"), so the sale looked
+    # pending but showed a ₹0.00 balance due and couldn't actually be paid.
+    from .billing_queue_service import compute_payment_breakdown
+    breakdown = compute_payment_breakdown(total_amount, amount_tendered=dispensing.amount_tendered)
+    dispensing.paid_amount = breakdown["paid_amount"]
+    dispensing.balance_amount = breakdown["balance_amount"]
+    dispensing.payment_status = breakdown["payment_status"]
 
     # Pharmacy Queue (BRD v1.1 PQ-04) — auto-advance the matching queue entry
     # (if any) to Collected and link it to this bill, now that dispensing is done.
@@ -900,6 +949,7 @@ def dispense_prescription(
         "total_amount": float(total_amount),
         "items_dispensed": processed_items_count,
         "items_skipped": skipped_items_count,
+        "failed_items": failed_items,
     }
 
 

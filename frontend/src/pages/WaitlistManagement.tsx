@@ -36,6 +36,7 @@ const WaitlistManagement: React.FC = () => {
   // Send to Doctor modal state
   const [sendModalEntry, setSendModalEntry] = useState<WaitlistEntry | null>(null);
   const [sendDoctorId, setSendDoctorId] = useState('');
+  const [sendDoctorSearch, setSendDoctorSearch] = useState('');
   const [sendLoading, setSendLoading] = useState(false);
   const today = new Date().toISOString().split('T')[0];
 
@@ -94,6 +95,7 @@ const WaitlistManagement: React.FC = () => {
   const openSendModal = (entry: WaitlistEntry) => {
     setSendModalEntry(entry);
     setSendDoctorId(entry.doctor_id || '');
+    setSendDoctorSearch('');
   };
 
   const handleSendToDoctor = async () => {
@@ -114,6 +116,12 @@ const WaitlistManagement: React.FC = () => {
       setSendLoading(false);
     }
   };
+
+  const filteredSendDoctors = doctors.filter(doc => {
+    const q = sendDoctorSearch.trim().toLowerCase();
+    if (!q) return true;
+    return doc.name.toLowerCase().includes(q) || (doc.specialization || '').toLowerCase().includes(q);
+  });
 
   const handleCancel = async (entry: WaitlistEntry) => {
     const ok = await confirm({
@@ -503,8 +511,18 @@ const WaitlistManagement: React.FC = () => {
               {/* Doctor selection */}
               <div>
                 <label className="block text-xs font-bold text-slate-500 mb-1.5">Select Doctor <span className="text-red-400">*</span></label>
+                <div className="relative mb-2">
+                  <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-base">search</span>
+                  <input
+                    type="text"
+                    value={sendDoctorSearch}
+                    onChange={e => setSendDoctorSearch(e.target.value)}
+                    placeholder="Search doctor by name or specialization..."
+                    className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                  />
+                </div>
                 <div className="space-y-2 max-h-[240px] overflow-y-auto pr-1">
-                  {doctors.map(doc => {
+                  {filteredSendDoctors.map(doc => {
                     const isOriginal = doc.doctor_id === sendModalEntry.doctor_id;
                     const isSelected = doc.doctor_id === sendDoctorId;
                     return (
@@ -548,8 +566,10 @@ const WaitlistManagement: React.FC = () => {
                       </button>
                     );
                   })}
-                  {doctors.length === 0 && (
-                    <p className="text-xs text-slate-400 text-center py-4">No doctors available</p>
+                  {filteredSendDoctors.length === 0 && (
+                    <p className="text-xs text-slate-400 text-center py-4">
+                      {doctors.length === 0 ? 'No doctors available' : 'No doctors match your search'}
+                    </p>
                   )}
                 </div>
               </div>

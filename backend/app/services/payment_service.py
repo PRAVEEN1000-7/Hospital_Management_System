@@ -76,9 +76,23 @@ def _sync_invoice_after_payment(db: Session, invoice: Invoice) -> None:
     invoice.balance_amount = round((invoice.total_amount or Decimal("0")) - paid_total, 2)
 
     if invoice.status not in ("draft", "void", "cancelled"):
-        if paid_total <= Decimal("0"):
+        total = invoice.total_amount or Decimal("0")
+        # This function only ever runs right after record_payment has just
+        # inserted a new Payment row (see its one call site below) — so by
+        # this point `invoice.payments` always has at least that one entry.
+        # For a ₹0 invoice (free consultation), that means a payment has
+        # just been explicitly recorded (even if its amount is ₹0 — see
+        # record_payment's confirmation-payment handling), which is exactly
+        # the "collected/acknowledged" signal: safe to mark "paid" even
+        # though paid_total is still 0. A ₹0 invoice that has NEVER had a
+        # payment recorded against it stays "issued" (via issue_invoice /
+        # _update_invoice_status, which deliberately do NOT auto-settle it),
+        # so it still shows up as an actionable "Collect Fee" item.
+        if total <= Decimal("0"):
+            invoice.status = "paid"
+        elif paid_total <= Decimal("0"):
             invoice.status = "issued"
-        elif paid_total < (invoice.total_amount or Decimal("0")):
+        elif paid_total < total:
             invoice.status = "partially_paid"
         else:
             invoice.status = "paid"
@@ -121,7 +135,17 @@ def record_payment(
         raise ValueError("Invoice is already fully paid")
 
     current_balance = (invoice.balance_amount or Decimal("0"))
-    if Decimal(str(data.amount)) > current_balance:
+    amount = Decimal(str(data.amount))
+    if current_balance <= Decimal("0"):
+        # A ₹0-balance invoice (a free MC1/MC2 consultation — see
+        # invoice_service.resolve_consultation_fee_amount) only ever needs
+        # this one explicit ₹0 confirmation to move from "issued" to "paid".
+        # Any nonzero amount here would overpay a bill that owes nothing.
+        if amount != Decimal("0"):
+            raise ValueError("This invoice has no balance due — only a ₹0 confirmation payment is valid")
+    elif amount <= Decimal("0"):
+        raise ValueError("Payment amount must be greater than zero")
+    elif amount > current_balance:
         raise ValueError(
             f"Payment amount ₹{data.amount} exceeds the outstanding balance ₹{current_balance}"
         )

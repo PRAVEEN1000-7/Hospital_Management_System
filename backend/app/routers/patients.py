@@ -29,7 +29,7 @@ from ..models.patient import Patient
 from ..models.appointment import Doctor
 from ..models.user import User, Hospital
 from ..dependencies import get_current_active_user, require_any_role
-from ..core.module_roles import require_permission
+from ..core.module_roles import require_permission, check_permission
 from ..core.tenant_security import is_eye_hospital_feature_enabled
 from ..core.audit_logger import AuditLogger, AuditAction
 from ..config import settings
@@ -68,11 +68,47 @@ patient_delete_role_guard = require_permission("general.patients", "edit")
 patient_trend_role_guard = require_any_role("doctor", "admin", "super_admin")
 
 
+def _patient_read_or_write_with_pharmacist(level: str):
+    """Narrow carve-out letting a pharmacist search for/view an existing
+    patient, or register a new one, from the walk-in "New Prescription"
+    flow (PrescriptionBuilder.tsx's patient search + "Register as new
+    patient" round trip via Register.tsx) — without granting the full
+    "general.patients" edit right, which also gates updating and
+    soft-deleting ANY patient's demographic record (patient_update_role_guard
+    / patient_delete_role_guard below, deliberately left untouched by this
+    carve-out). Only the three endpoints a pharmacist actually needs here
+    (list/search, get one, create) use this guard instead.
+
+    Mirrors the rx_new_edit_or_pharmacist_guard carve-out pattern already
+    used in prescriptions.py for the same kind of narrowly-scoped addition.
+    """
+    async def _dependency(
+        current_user: User = Depends(get_current_active_user),
+        db: Session = Depends(get_db),
+    ):
+        roles = {str(r).strip().lower() for r in (current_user.roles or [])}
+        if "pharmacist" in roles:
+            return current_user
+        if check_permission(db, current_user, "general.patients", level):
+            return current_user
+        logger.warning(
+            "RBAC deny (general.patients/pharmacist carve-out) user=%s roles=%s level=%s",
+            getattr(current_user, "username", "unknown"), roles, level,
+        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role permissions")
+
+    return _dependency
+
+
+patient_create_or_pharmacist_guard = _patient_read_or_write_with_pharmacist("edit")
+patient_read_or_pharmacist_guard = _patient_read_or_write_with_pharmacist("view")
+
+
 @router.post("", response_model=PatientResponse, status_code=status.HTTP_201_CREATED)
 async def create_new_patient(
     patient: PatientCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(patient_create_role_guard),
+    current_user: User = Depends(patient_create_or_pharmacist_guard),
 ):
     """Create a new patient with auto-generated PRN"""
     try:
@@ -140,7 +176,7 @@ async def create_new_patient(
 async def get_patient(
     patient_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(patient_read_role_guard),
+    current_user: User = Depends(patient_read_or_pharmacist_guard),
 ):
     """Get patient by ID"""
     patient = get_patient_by_id(db, patient_id, hospital_id=current_user.hospital_id)
@@ -164,7 +200,7 @@ async def list_patients(
     sort_by: Optional[str] = None,
     sort_order: str = Query('desc', pattern='^(asc|desc)$'),
     db: Session = Depends(get_db),
-    current_user: User = Depends(patient_read_role_guard),
+    current_user: User = Depends(patient_read_or_pharmacist_guard),
 ):
     """List all patients with pagination, search, filters and sorting"""
     try:

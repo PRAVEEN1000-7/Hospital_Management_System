@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useDeferredValue } from 'react
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import pharmacyService from '../../services/pharmacyService';
+import inventoryService from '../../services/inventoryService';
 import type { Medicine, MedicineCreateData, BatchCreateData } from '../../types/pharmacy';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -113,7 +114,6 @@ const MedicineList: React.FC = () => {
       'strength',
       'manufacturer',
       'hsn_code',
-      'sku',
       'barcode',
       'unit',
       'description',
@@ -128,10 +128,10 @@ const MedicineList: React.FC = () => {
       'batch_number',
       'mfg_date',
       'expiry_date',
-      'quantity',
+      'opening_stock_quantity',
       'purchase_price',
       'selling_price',
-      'mrp',
+      'supplier_name',
     ];
     const guideRows = [
       {
@@ -151,20 +151,24 @@ const MedicineList: React.FC = () => {
         allowed_values: 'true/false, yes/no, 1/0',
       },
       {
-        field: 'quantity',
-        allowed_values: 'Opening stock for this medicine. Leave blank or 0 to create the medicine with no stock batch.',
+        field: 'opening_stock_quantity',
+        allowed_values: 'Same as the "Add Opening Stock Batch" section on the single Add Medicine form — fill this in to give the medicine real, sellable stock right away. Leave blank or 0 to create a catalog-only entry with no stock (you can add stock for it later from the medicine\'s own page).',
       },
       {
         field: 'expiry_date',
-        allowed_values: 'Format YYYY-MM-DD. Required only when quantity is greater than 0.',
+        allowed_values: 'Format YYYY-MM-DD. Required only when opening_stock_quantity is greater than 0.',
       },
       {
         field: 'batch_number / mfg_date',
         allowed_values: 'Optional. batch_number is auto-generated when left blank.',
       },
       {
-        field: 'purchase_price / selling_price / mrp',
+        field: 'purchase_price / selling_price',
         allowed_values: 'Optional opening-batch pricing. Defaults to 0 when left blank.',
+      },
+      {
+        field: 'supplier_name',
+        allowed_values: 'Optional. Must exactly match an existing supplier\'s name (see Inventory > Suppliers) — unmatched or blank is fine, just leaves the batch supplier unset.',
       },
       {
         field: 'required_field',
@@ -172,14 +176,31 @@ const MedicineList: React.FC = () => {
       },
     ];
 
-    // Eye hospitals get two filled-in example rows showing the "Eye Drops" /
-    // "Eye Ointment" categories in use, so the new categories aren't just
-    // names in the Field Guide — general hospitals get a blank template.
+    // Every hospital gets a fully filled-in example row that actually sets
+    // opening_stock_quantity — the earlier version of this template left
+    // opening stock blank even in its own example rows (and general
+    // hospitals got no example at all), so the column read as decorative
+    // rather than something the upload genuinely acts on. This one row
+    // shows the whole opening-stock block (batch/expiry/quantity/prices)
+    // filled in together, exactly mirroring what "Add Opening Stock Batch"
+    // does on the single Add Medicine form.
+    const genericExampleRow = {
+      name: 'Paracetamol 500mg', generic_name: 'Paracetamol', category: 'tablet',
+      strength: '500mg', unit: 'Strip', requires_prescription: 'false',
+      batch_number: 'BATCH-001', expiry_date: '2027-12-31',
+      opening_stock_quantity: '100', purchase_price: '2.50', selling_price: '5.00',
+    };
+    // Eye hospitals get two additional examples showing the "Eye Drops" /
+    // "Eye Ointment" categories in use, so those categories aren't just
+    // names in the Field Guide — one of the two also carries opening stock,
+    // the other is left blank to show that's equally valid (catalog-only).
     const eyeExampleRows = isEyeHospitalFeatureEnabled
       ? [
           {
             name: 'Tropicamide Eye Drops', generic_name: 'Tropicamide', category: 'eye drops',
             strength: '0.8%', unit: 'Bottle', requires_prescription: 'true',
+            batch_number: 'BATCH-002', expiry_date: '2027-12-31',
+            opening_stock_quantity: '50', purchase_price: '30.00', selling_price: '60.00',
           },
           {
             name: 'Moxifloxacin Eye Ointment', generic_name: 'Moxifloxacin', category: 'eye ointment',
@@ -187,7 +208,7 @@ const MedicineList: React.FC = () => {
           },
         ]
       : [];
-    const exampleRows = eyeExampleRows.map((row) =>
+    const exampleRows = [genericExampleRow, ...eyeExampleRows].map((row) =>
       medicineHeaders.map((h) => (row as Record<string, string>)[h] ?? '')
     );
 
@@ -256,6 +277,15 @@ const MedicineList: React.FC = () => {
         return;
       }
 
+      // Name → id lookup for the optional supplier_name column — matches the
+      // lenient category/unit/schedule_type handling below: an unmatched or
+      // blank name just leaves the batch's supplier unset, it never blocks
+      // the row.
+      const suppliersRes = await inventoryService.getSuppliers(1, 500, '', true).catch(() => null);
+      const supplierByName = new Map<string, string>(
+        (suppliersRes?.data ?? []).map((s) => [s.name.trim().toLowerCase(), s.id])
+      );
+
       const rowErrors: string[] = [];
 
       type BulkRow = {
@@ -304,7 +334,6 @@ const MedicineList: React.FC = () => {
             strength: strengthValue,
             manufacturer: asOptionalText(row.manufacturer),
             hsn_code: asOptionalText(row.hsn_code),
-            sku: asOptionalText(row.sku),
             barcode: asOptionalText(row.barcode),
             unit: matchedUnit || 'Nos',
             description: asOptionalText(row.description),
@@ -318,17 +347,20 @@ const MedicineList: React.FC = () => {
             side_effects: asOptionalText(row.side_effects),
           };
 
-          // Opening stock is optional and only attempted when a quantity is supplied —
-          // without this, every bulk-uploaded medicine would land with zero stock and
-          // zero price, indistinguishable from a catalog-only placeholder.
-          const quantity = Math.floor(asOptionalNumber(row.quantity) ?? 0);
+          // Opening stock is optional and only attempted when opening_stock_quantity
+          // is supplied — without this, every bulk-uploaded medicine would land with
+          // zero stock and zero price, indistinguishable from a catalog-only
+          // placeholder. Mirrors the single Add Medicine form's "Add Opening Stock
+          // Batch" section exactly — same fields, same optionality.
+          const quantity = Math.floor(asOptionalNumber(row.opening_stock_quantity) ?? 0);
           let batch: Omit<BatchCreateData, 'medicine_id'> | null = null;
           if (quantity > 0) {
             const expiryDate = asDateString(row.expiry_date);
             if (!expiryDate) {
-              rowErrors.push(`Row ${rowNumber}: 'expiry_date' is required when 'quantity' is provided.`);
+              rowErrors.push(`Row ${rowNumber}: 'expiry_date' is required when 'opening_stock_quantity' is provided.`);
               return null;
             }
+            const supplierName = asOptionalText(row.supplier_name);
             batch = {
               batch_number: asOptionalText(row.batch_number) || `BULK-${rowNumber}-${Date.now().toString(36)}`,
               mfg_date: asDateString(row.mfg_date),
@@ -336,7 +368,7 @@ const MedicineList: React.FC = () => {
               quantity,
               purchase_price: asOptionalNumber(row.purchase_price) ?? 0,
               selling_price: asOptionalNumber(row.selling_price) ?? 0,
-              mrp: asOptionalNumber(row.mrp),
+              supplier_id: supplierName ? supplierByName.get(supplierName.toLowerCase()) : undefined,
             };
           }
 
@@ -347,7 +379,10 @@ const MedicineList: React.FC = () => {
       if (rowErrors.length > 0) {
         const preview = rowErrors.slice(0, 5).join(' ');
         const suffix = rowErrors.length > 5 ? ` (+${rowErrors.length - 5} more)` : '';
-        const hint = ' Valid categories: tablet, capsule, syrup, injection, cream, ointment, drops, inhaler, powder, other.';
+        // Derived from VALID_CATEGORIES (not hardcoded) so this never drifts from the
+        // Field Guide sheet again — it previously omitted "eye drops"/"eye ointment"
+        // after those categories were added, wrongly implying they weren't supported.
+        const hint = ` Valid categories: ${VALID_CATEGORIES.join(', ')}.`;
         toast.error(`Template validation failed. ${preview}${suffix}.${hint}`);
         return;
       }
@@ -357,30 +392,38 @@ const MedicineList: React.FC = () => {
         return;
       }
 
-      const medicineResults = await Promise.allSettled(
-        parsedRows.map((row) => pharmacyService.createMedicine(row.medicine))
-      );
-      const failedCount = medicineResults.filter((r) => r.status === 'rejected').length;
-
-      // Opening-stock batches must be created after the medicine exists (they need its
-      // generated id), so this runs as a second pass over the medicines that succeeded.
+      // Rows are created ONE AT A TIME, not in parallel — the medicine-code
+      // generator (generate_medicine_code) computes "next sequence" by
+      // reading existing codes, then inserting; firing every row's create
+      // concurrently let multiple rows read the same "next" code before
+      // either had committed, so several rows in the same category collided
+      // on a duplicate SKU and failed outright. Sequential requests mean
+      // each row's insert has fully committed before the next one computes
+      // its code, so this can't happen. Slower for a very large file, but
+      // bulk uploads are infrequent, one-off operations — correctness here
+      // matters far more than shaving a few seconds off the total.
+      let failedCount = 0;
       let createdCount = 0;
       let stockedCount = 0;
       let stockFailedCount = 0;
-      const batchJobs: Promise<void>[] = [];
-      medicineResults.forEach((result, i) => {
-        if (result.status !== 'fulfilled') return;
-        createdCount += 1;
-        const batchInfo = parsedRows[i].batch;
-        if (!batchInfo) return;
-        batchJobs.push(
-          pharmacyService
-            .createBatch({ ...batchInfo, medicine_id: result.value.id })
-            .then(() => { stockedCount += 1; })
-            .catch(() => { stockFailedCount += 1; })
-        );
-      });
-      await Promise.allSettled(batchJobs);
+      for (const row of parsedRows) {
+        let medicineId: string;
+        try {
+          const created = await pharmacyService.createMedicine(row.medicine);
+          medicineId = created.id;
+          createdCount += 1;
+        } catch {
+          failedCount += 1;
+          continue;
+        }
+        if (!row.batch) continue;
+        try {
+          await pharmacyService.createBatch({ ...row.batch, medicine_id: medicineId });
+          stockedCount += 1;
+        } catch {
+          stockFailedCount += 1;
+        }
+      }
 
       if (createdCount > 0) {
         const stockNote = stockedCount > 0 ? `, ${stockedCount} with opening stock` : '';
@@ -506,9 +549,13 @@ const MedicineList: React.FC = () => {
       {/* Mecandria ERP reference layout (BUG-33): Code | Product Name | Batch No |
           MFG Date | EXP Date | HSN | Current Qty | MRP Value | Safety Stock |
           Min Stock | Status. Generic/category/strength moved to the View
-          detail screen — they cluttered the operational list (BUG-32). Safety
-          Stock and Min Stock both read from reorder_level — the schema has
-          one reorder threshold today, not two independent floors. */}
+          detail screen — they cluttered the operational list (BUG-32).
+          Safety Stock = reorder_level (the low-stock alert threshold);
+          Min Stock = max_stock_level (the upper stocking target) — these are
+          two genuinely independent fields (see Medicine Detail's Info Card,
+          which already shows them separately as "Reorder Level"/"Max
+          Stock") — this list previously duplicated reorder_level into both
+          columns instead of reading max_stock_level for the second one. */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -566,7 +613,7 @@ const MedicineList: React.FC = () => {
                     {med.earliest_mrp != null ? `₹${Number(med.earliest_mrp).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
                   </td>
                   <td className="px-3 py-3 text-center text-slate-600">{safety}</td>
-                  <td className="px-3 py-3 text-center text-slate-600">{safety}</td>
+                  <td className="px-3 py-3 text-center text-slate-600">{med.max_stock_level ?? '—'}</td>
                   <td className="px-3 py-3 text-center">
                     <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
                       status === 'out' ? 'bg-red-100 text-red-700' : status === 'low' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'

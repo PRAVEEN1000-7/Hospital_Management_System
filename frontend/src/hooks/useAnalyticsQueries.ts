@@ -22,6 +22,7 @@ export const analyticsKeys = {
   topMedicines: (days: number, limit: number) => [...analyticsKeys.all, 'top-medicines', days, limit] as const,
   pharmacyDashboard: () => [...analyticsKeys.all, 'pharmacy-dashboard'] as const,
   stockStatus: (limit: number) => [...analyticsKeys.all, 'stock-status', limit] as const,
+  stockStatusSummary: () => [...analyticsKeys.all, 'stock-status-summary'] as const,
   inventoryAging: () => [...analyticsKeys.all, 'inventory-aging'] as const,
   inventoryDashboard: () => [...analyticsKeys.all, 'inventory-dashboard'] as const,
   opticalSales: (days: number) => [...analyticsKeys.all, 'optical-sales', days] as const,
@@ -89,6 +90,16 @@ export function useStockStatus(limit = 50) {
   return useQuery({
     queryKey: analyticsKeys.stockStatus(limit),
     queryFn: () => reportsApi.getStockStatus(limit),
+    staleTime: STALE,
+  });
+}
+
+/** True counts across the whole active medicine catalog — use this for
+ * summary tiles/charts; useStockStatus() above is a display-limited list. */
+export function useStockStatusSummary() {
+  return useQuery({
+    queryKey: analyticsKeys.stockStatusSummary(),
+    queryFn: reportsApi.getStockStatusSummary,
     staleTime: STALE,
   });
 }

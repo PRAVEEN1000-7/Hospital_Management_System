@@ -11,6 +11,10 @@ interface OpdAssignConfirmDialogProps {
   asOf: Date;
   lastVisitDate: string | null;
   loadingLastVisit: boolean;
+  // MC1/MC2/.../MCR for today's visit (see appointment_service.compute_follow_up_label)
+  // — null for a genuine first-ever visit or while still loading.
+  followUpLabel: string | null;
+  loadingFollowUpLabel: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -19,12 +23,13 @@ interface OpdAssignConfirmDialogProps {
 // §3.3.2). Verification status is shown but never blocks assignment — the
 // user decided unverified patients are flagged only, per BRD §5.3.
 const OpdAssignConfirmDialog: React.FC<OpdAssignConfirmDialogProps> = ({
-  patient, asOf, lastVisitDate, loadingLastVisit, onConfirm, onCancel,
+  patient, asOf, lastVisitDate, loadingLastVisit, followUpLabel, loadingFollowUpLabel, onConfirm, onCancel,
 }) => {
   const age = patient.age_years ?? (patient.date_of_birth
     ? Math.floor((asOf.getTime() - new Date(patient.date_of_birth).getTime()) / (365.25 * 24 * 3600 * 1000))
     : null);
   const hasFlags = !!(patient.known_allergies?.trim() || patient.chronic_conditions?.trim());
+  const isFreeFollowUp = !!followUpLabel && followUpLabel !== 'MCR' && followUpLabel.startsWith('MC');
 
   return (
     <div
@@ -99,7 +104,22 @@ const OpdAssignConfirmDialog: React.FC<OpdAssignConfirmDialogProps> = ({
                   : lastVisitDate ? format(new Date(lastVisitDate), 'dd MMM yyyy') : 'First visit'}
               </p>
             </div>
+            <div>
+              <p className="text-[10px] font-bold text-slate-400 uppercase">OPD Assignment</p>
+              <p className="text-slate-700">
+                {loadingFollowUpLabel
+                  ? 'Loading…'
+                  : followUpLabel ? (followUpLabel === 'MCR' ? `${followUpLabel} — Renewal` : followUpLabel) : 'First visit'}
+              </p>
+            </div>
           </div>
+
+          {isFreeFollowUp && (
+            <p className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2.5 py-1">
+              <span className="material-symbols-outlined text-[13px]">verified</span>
+              Free consultation ({followUpLabel}) — within the follow-up window, no fee will be collected
+            </p>
+          )}
 
           {hasFlags && (
             <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2.5 space-y-1">

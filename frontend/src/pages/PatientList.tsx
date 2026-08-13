@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import * as XLSX from 'xlsx';
 import patientService from '../services/patientService';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import type { Patient } from '../types/patient';
 import { format } from 'date-fns';
 import VerifiedBadge from '../components/patients/VerifiedBadge';
@@ -10,9 +12,11 @@ import { canEdit } from '../config/modulePermissions';
 const PatientList: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const toast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
   const [search, setSearch] = useState(() => searchParams.get('search') || '');
   const [searchInput, setSearchInput] = useState(() => searchParams.get('search') || '');
   const [page, setPage] = useState(1);
@@ -106,6 +110,60 @@ const PatientList: React.FC = () => {
     return `${p.first_name?.[0] || ''}${p.last_name?.[0] || ''}`.toUpperCase();
   };
 
+  // ── Export: download the currently-filtered patient list as .xlsx ──────
+  // Client-side only (no new backend endpoint) — mirrors the established
+  // "export data already fetched for this page" pattern (e.g.
+  // PurchaseOrdersPage.tsx's handleExportPdf). The list endpoint caps each
+  // page at 100 rows, so this walks every page matching the current filters
+  // (capped at 50 pages / ~5,000 rows) rather than exporting only the 10
+  // rows currently on screen.
+  const handleExportPatients = async () => {
+    setExporting(true);
+    try {
+      const filters = { gender: genderFilter, blood_group: bloodGroupFilter, city: cityFilter, status: statusFilter };
+      const pageSize = 100;
+      const first = await patientService.getPatients(1, pageSize, search, filters, sortBy, sortOrder);
+      const all = [...first.data];
+      const maxPages = Math.min(first.total_pages, 50);
+      for (let p = 2; p <= maxPages; p++) {
+        const next = await patientService.getPatients(p, pageSize, search, filters, sortBy, sortOrder);
+        all.push(...next.data);
+      }
+
+      if (all.length === 0) {
+        toast.error('No patients to export');
+        return;
+      }
+
+      const exportRows = all.map((p) => ({
+        'PRN': p.patient_reference_number,
+        'Title': p.title || '',
+        'First Name': p.first_name,
+        'Last Name': p.last_name,
+        'Gender': p.gender,
+        'Date of Birth': p.date_of_birth ? p.date_of_birth.slice(0, 10) : '',
+        'Age (Years)': p.age_years ?? '',
+        'Blood Group': p.blood_group || '',
+        'Phone': `${p.phone_country_code} ${p.phone_number}`,
+        'Email': p.email || '',
+        'City': p.city || '',
+        'Verified': p.is_verified ? 'Yes' : 'No',
+        'Registered On': p.created_at ? format(new Date(p.created_at), 'yyyy-MM-dd HH:mm') : '',
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(exportRows);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Patients');
+      XLSX.writeFile(workbook, `patient_list_${new Date().toISOString().split('T')[0]}.xlsx`);
+      toast.success(`Exported ${all.length} patient(s)`);
+    } catch (err) {
+      console.error('Patient export failed:', err);
+      toast.error('Failed to export patient list');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const startRecord = (page - 1) * limit + 1;
   const endRecord = Math.min(page * limit, total);
 
@@ -132,15 +190,30 @@ const PatientList: React.FC = () => {
           <h1 className="text-2xl font-bold text-slate-900">Patient Directory</h1>
           <p className="text-slate-500 text-sm">Manage and track all patient records in one place.</p>
         </div>
-        {canRegister && (
+        <div className="flex items-center gap-2 flex-wrap justify-end">
           <button
-            onClick={() => navigate('/register')}
-            className="bg-primary hover:bg-primary/90 text-white px-5 py-2.5 rounded-lg font-semibold flex items-center justify-center gap-2 transition-all shadow-md active:scale-95"
+            type="button"
+            onClick={handleExportPatients}
+            disabled={exporting}
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50"
           >
-            <span className="material-icons text-lg">person_add</span>
-            <span>Register New Patient</span>
+            <span className={`material-icons text-lg ${exporting ? 'animate-spin' : ''}`}>
+              {exporting ? 'progress_activity' : 'file_download'}
+            </span>
+            {exporting ? 'Exporting...' : 'Export'}
           </button>
-        )}
+          {/* Bulk Upload / Download Template moved to Settings → System
+              Settings (see components/patients/PatientBulkUploadPanel.tsx). */}
+          {canRegister && (
+            <button
+              onClick={() => navigate('/register')}
+              className="bg-primary hover:bg-primary/90 text-white px-5 py-2.5 rounded-lg font-semibold flex items-center justify-center gap-2 transition-all shadow-md active:scale-95"
+            >
+              <span className="material-icons text-lg">person_add</span>
+              <span>Register New Patient</span>
+            </button>
+          )}
+        </div>
       </header>
 
       {/* Stats Cards */}

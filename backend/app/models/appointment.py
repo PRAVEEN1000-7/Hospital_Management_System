@@ -148,6 +148,14 @@ class Appointment(Base):
     consultation_end_at = Column(DateTime(timezone=True))
     notes = Column(Text)
     consultation_fee = Column(Numeric(12, 2))
+    # How many times in a row the patient has returned within a rolling
+    # 30-day window: 'MC1' = first within-a-month return since their previous
+    # visit, 'MC2' = second consecutive one, etc. 'MCR' (Renewal) marks the
+    # visit that restarts the chain after a gap of more than 30 days since
+    # the previous visit. NULL = this is the patient's very first-ever visit.
+    # Auto-computed at creation (appointment_service.compute_follow_up_label)
+    # but overridable — see AppointmentBooking.tsx's OPD Assignment dropdown.
+    follow_up_label = Column(String(10))
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))

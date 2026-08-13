@@ -69,6 +69,8 @@ export interface Appointment {
   department_id: string | null;
   appointment_type: AppointmentType;
   visit_type: string | null;
+  /** MC1/MC2/.../MCR, or null for the patient's very first-ever visit. */
+  follow_up_label?: string | null;
   appointment_date: string;
   start_time: string | null;
   end_time: string | null;
@@ -113,6 +115,10 @@ export interface AppointmentCreate {
   chief_complaint?: string;
   priority?: string;
   consultation_fee?: number | null;
+  /** MC1/MC2/.../MCR — omit to auto-compute from the patient's visit history
+   * (see backend appointment_service.compute_follow_up_label); pass to
+   * override the auto-computed value shown in the OPD Assignment dropdown. */
+  follow_up_label?: string | null;
 }
 
 export interface AppointmentUpdate {

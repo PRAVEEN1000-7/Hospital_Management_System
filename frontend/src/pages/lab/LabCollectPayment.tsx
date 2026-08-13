@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import labService from '../../services/labService';
-import type { LabOrder, LabSale } from '../../types/lab';
+import type { LabOrder, LabSale, LabTest } from '../../types/lab';
 import type { PaymentMode } from '../../types/billing';
 import { useToast } from '../../contexts/ToastContext';
+import SearchableSelect, { type SuggestionOption } from '../../components/common/SearchableSelect';
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
@@ -27,6 +28,16 @@ const LabCollectPayment: React.FC = () => {
   const [payReference, setPayReference] = useState('');
   const [payAmount, setPayAmount] = useState(0);
   const [saving, setSaving] = useState(false);
+
+  // ── Item test picker — lets staff correct which catalog test a line was
+  // ordered against, right on this screen, before payment is collected.
+  const [labTests, setLabTests] = useState<LabTest[]>([]);
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [itemSaving, setItemSaving] = useState(false);
+
+  useEffect(() => {
+    labService.getTests(1, 500).then((res) => setLabTests(res.data)).catch(() => { /* catalog picker just won't populate */ });
+  }, []);
 
   useEffect(() => {
     if (!orderId) return;
@@ -53,6 +64,45 @@ const LabCollectPayment: React.FC = () => {
   const remainingAfterPayment = sale
     ? Math.max(0, (Number(sale.balance_amount) || 0) - payAmount)
     : 0;
+
+  // Mirrors the backend's edit-boundary rule exactly (see
+  // lab_service.update_lab_order_item_test) so the edit affordance never
+  // shows for a case the API would reject anyway.
+  const itemEditLockReason = !order
+    ? null
+    : order.report_status === 'finalized'
+      ? 'Report is finalized — items are locked'
+      : sale && (Number(sale.paid_amount) || 0) > 0
+        ? 'Payment has been collected — items are locked'
+        : null;
+  const canEditItems = !itemEditLockReason;
+
+  const handleItemTestChange = async (itemId: string, labTestId: string) => {
+    if (!orderId || !labTestId) return;
+    setItemSaving(true);
+    try {
+      await labService.updateItemTest(orderId, itemId, labTestId);
+      // Re-fetch both the order and the sale (same pair the initial load
+      // effect fetches) so the Items list AND the Subtotal/Grand
+      // Total/Balance summary stay consistent with each other.
+      const [o, s] = await Promise.all([
+        labService.getOrder(orderId),
+        labService.getOrCreateSale(orderId),
+      ]);
+      setOrder(o);
+      setSale(s);
+      // Re-clamp the amount-received-now field to the (possibly changed)
+      // balance — same Math.min pattern the input's onChange uses below, so
+      // it never disagrees with the refreshed summary panel.
+      setPayAmount((prev) => Math.min(prev, Number(s.balance_amount) || 0));
+      toast.success('Item updated');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to update item');
+    } finally {
+      setItemSaving(false);
+      setEditingItemId(null);
+    }
+  };
 
   const handleSubmit = async () => {
     if (!orderId || payAmount <= 0) return;
@@ -106,9 +156,51 @@ const LabCollectPayment: React.FC = () => {
         ) : (
           <div className="divide-y divide-slate-100">
             {order.items.map((item) => (
-              <div key={item.id} className="flex justify-between py-2 text-sm">
-                <span className="text-slate-700">{item.test_name}</span>
-                <span className="font-medium text-slate-900">₹{fmt(item.price)}</span>
+              <div key={item.id} className="py-2 text-sm">
+                {editingItemId === item.id ? (
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1">
+                      <SearchableSelect
+                        value={item.test_name}
+                        onChange={(_value, metadata) => {
+                          const id = metadata?.id ? (metadata.id as string) : '';
+                          if (id) handleItemTestChange(item.id, id);
+                        }}
+                        suggestions={labTests.map((t): SuggestionOption => ({
+                          id: t.id,
+                          label: t.name,
+                          sublabel: `${t.code}${t.price ? ` · ₹${Number(t.price).toFixed(2)}` : ''}`,
+                          metadata: { id: t.id },
+                        }))}
+                        placeholder="Search test to switch to..."
+                        allowManualEntry={false}
+                        disabled={itemSaving}
+                      />
+                    </div>
+                    <button type="button" onClick={() => setEditingItemId(null)} disabled={itemSaving}
+                      className="text-slate-400 hover:text-slate-600 disabled:opacity-50">
+                      <span className="material-symbols-outlined text-lg">close</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-700 flex items-center gap-1.5">
+                      {item.test_name}
+                      <button
+                        type="button"
+                        onClick={() => canEditItems && setEditingItemId(item.id)}
+                        disabled={!canEditItems}
+                        title={itemEditLockReason || 'Change test'}
+                        className={canEditItems
+                          ? 'text-slate-300 hover:text-primary'
+                          : 'text-slate-200 cursor-not-allowed'}
+                      >
+                        <span className="material-symbols-outlined text-base align-middle">edit</span>
+                      </button>
+                    </span>
+                    <span className="font-medium text-slate-900">₹{fmt(item.price)}</span>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -164,7 +256,16 @@ const LabCollectPayment: React.FC = () => {
               <span className="text-slate-500">Amount Received Now</span>
               <input type="number" min={0.01} max={Number(sale.balance_amount) || undefined} step={0.01}
                 value={payAmount || ''}
-                onChange={(e) => setPayAmount(parseFloat(e.target.value) || 0)}
+                onChange={(e) => {
+                  // The `max` attribute above is a visual hint only — a
+                  // browser number input never actually blocks typing past
+                  // it, so this has to be enforced here or a user can key in
+                  // more than is owed and submit it. Clamp to the balance
+                  // due (== the grand total when nothing's been paid yet).
+                  const typed = parseFloat(e.target.value) || 0;
+                  const cap = Number(sale.balance_amount) || 0;
+                  setPayAmount(Math.min(typed, cap));
+                }}
                 className="w-28 px-2 py-1 text-sm text-right border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
             </div>
             <div className="flex justify-between text-sm font-semibold">

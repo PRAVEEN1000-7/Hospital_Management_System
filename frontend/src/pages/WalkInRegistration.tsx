@@ -7,6 +7,7 @@ import { canEdit } from '../config/modulePermissions';
 import walkInService from '../services/walkInService';
 import scheduleService from '../services/scheduleService';
 import patientService from '../services/patientService';
+import appointmentService from '../services/appointmentService';
 import { useListKeyboardNav } from '../hooks/useListKeyboardNav';
 import type { DoctorOption } from '../types/appointment';
 import type { Patient } from '../types/patient';
@@ -14,6 +15,7 @@ import VerifiedBadge from '../components/patients/VerifiedBadge';
 import SearchableSelect, { type SuggestionOption } from '../components/common/SearchableSelect';
 import OpdAssignConfirmDialog from '../components/opd/OpdAssignConfirmDialog';
 import { VISIT_REASON_OPTIONS } from '../utils/constants';
+import { formatLocalDateISO } from '../utils/calendarDate';
 
 const WalkInRegistration: React.FC = () => {
   const toast = useToast();
@@ -55,6 +57,11 @@ const WalkInRegistration: React.FC = () => {
   const [confirmAsOf, setConfirmAsOf] = useState<Date | null>(null);
   const [confirmLastVisit, setConfirmLastVisit] = useState<string | null>(null);
   const [confirmLoadingLastVisit, setConfirmLoadingLastVisit] = useState(false);
+  // MC1/MC2/.../MCR this walk-in would get if assigned today — same preview
+  // AppointmentBooking.tsx uses, so the "free consultation" status is visible
+  // here too, before the visit (and its fee) is actually created.
+  const [confirmFollowUpLabel, setConfirmFollowUpLabel] = useState<string | null>(null);
+  const [confirmLoadingFollowUpLabel, setConfirmLoadingFollowUpLabel] = useState(false);
 
   const selectPatient = (p: Patient) => {
     setConfirmingPatient(p);
@@ -67,6 +74,13 @@ const WalkInRegistration: React.FC = () => {
       .then((res) => setConfirmLastVisit(res.last_visit_date))
       .catch(() => setConfirmLastVisit(null))
       .finally(() => setConfirmLoadingLastVisit(false));
+
+    setConfirmFollowUpLabel(null);
+    setConfirmLoadingFollowUpLabel(true);
+    appointmentService.previewFollowUpLabel(p.id, formatLocalDateISO())
+      .then(setConfirmFollowUpLabel)
+      .catch(() => setConfirmFollowUpLabel(null))
+      .finally(() => setConfirmLoadingFollowUpLabel(false));
   };
   const patientNav = useListKeyboardNav(patients, selectPatient);
 
@@ -536,6 +550,8 @@ const WalkInRegistration: React.FC = () => {
           asOf={confirmAsOf}
           lastVisitDate={confirmLastVisit}
           loadingLastVisit={confirmLoadingLastVisit}
+          followUpLabel={confirmFollowUpLabel}
+          loadingFollowUpLabel={confirmLoadingFollowUpLabel}
           onConfirm={handleConfirmAssign}
           onCancel={handleCancelAssign}
         />

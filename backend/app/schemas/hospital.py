@@ -1,6 +1,7 @@
-from pydantic import BaseModel, EmailStr, Field, model_validator, ConfigDict
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator, ConfigDict
 from typing import Optional, Any
 from datetime import datetime
+from .inventory import _validate_gstin_format, _require_gstin_when_registered, VALID_GST_REGISTRATION_STATUSES
 
 
 class HospitalCreate(BaseModel):
@@ -18,8 +19,31 @@ class HospitalCreate(BaseModel):
     timezone: str = Field(default="Asia/Kolkata", max_length=50)
     default_currency: str = Field(default="INR", max_length=10)
     tax_id: Optional[str] = Field(None, max_length=50)
+    # GSTIN — the hospital's own party data for the Purchase Order
+    # place-of-supply calculation (see gst_service.py). Distinct from the
+    # generic tax_id above: validated to the 15-character Indian GSTIN
+    # format and only required when gst_registration_status == 'registered'.
+    gstin: Optional[str] = Field(None, max_length=15)
+    gst_registration_status: Optional[str] = Field("registered")
     registration_number: Optional[str] = Field(None, max_length=50)
     specialty: str = Field(default="general", pattern="^(general|eye_hospital|multi_specialty)$")
+
+    @field_validator("gst_registration_status")
+    @classmethod
+    def validate_gst_registration_status(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in VALID_GST_REGISTRATION_STATUSES:
+            raise ValueError(f"Must be one of: {', '.join(VALID_GST_REGISTRATION_STATUSES)}")
+        return v
+
+    @field_validator("gstin")
+    @classmethod
+    def validate_gstin_field(cls, v: Optional[str]) -> Optional[str]:
+        return _validate_gstin_format(v)
+
+    @model_validator(mode="after")
+    def check_gstin_required(self) -> "HospitalCreate":
+        _require_gstin_when_registered(self.gstin, self.gst_registration_status, self.country)
+        return self
 
 
 class HospitalUpdate(BaseModel):
@@ -37,10 +61,24 @@ class HospitalUpdate(BaseModel):
     timezone: Optional[str] = Field(None, max_length=50)
     default_currency: Optional[str] = Field(None, max_length=10)
     tax_id: Optional[str] = Field(None, max_length=50)
+    gstin: Optional[str] = Field(None, max_length=15)
+    gst_registration_status: Optional[str] = None
     registration_number: Optional[str] = Field(None, max_length=50)
     specialty: Optional[str] = Field(None, pattern="^(general|eye_hospital|multi_specialty)$")
     # logo_url intentionally excluded — it must only be set via the dedicated
     # file-upload endpoint (POST /hospital/logo/upload), never as a raw string.
+
+    @field_validator("gst_registration_status")
+    @classmethod
+    def validate_gst_registration_status(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in VALID_GST_REGISTRATION_STATUSES:
+            raise ValueError(f"Must be one of: {', '.join(VALID_GST_REGISTRATION_STATUSES)}")
+        return v
+
+    @field_validator("gstin")
+    @classmethod
+    def validate_gstin_field(cls, v: Optional[str]) -> Optional[str]:
+        return _validate_gstin_format(v)
 
 
 class HospitalResponse(BaseModel):
@@ -59,6 +97,8 @@ class HospitalResponse(BaseModel):
     timezone: Optional[str] = None
     default_currency: Optional[str] = None
     tax_id: Optional[str] = None
+    gstin: Optional[str] = None
+    gst_registration_status: Optional[str] = None
     registration_number: Optional[str] = None
     specialty: Optional[str] = None
     logo_url: Optional[str] = None

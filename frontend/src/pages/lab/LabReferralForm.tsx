@@ -165,6 +165,7 @@ const LabReferralForm: React.FC = () => {
                 value={patientSearch}
                 onChange={(e) => { setPatientSearch(e.target.value); setShowPatientDrop(true); }}
                 onFocus={() => setShowPatientDrop(true)}
+                onBlur={() => window.setTimeout(() => setShowPatientDrop(false), 150)}
                 onKeyDown={patientNav.onKeyDown}
                 placeholder="Search, or click to browse recent patients"
                 className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
@@ -178,6 +179,7 @@ const LabReferralForm: React.FC = () => {
                     <button
                       key={p.id}
                       type="button"
+                      onMouseDown={(e) => e.preventDefault()}
                       onClick={() => selectPatient(p)}
                       onMouseEnter={() => patientNav.setActiveIndex(idx)}
                       className={`w-full text-left px-4 py-2.5 text-sm ${idx === patientNav.activeIndex ? 'bg-primary/10' : 'hover:bg-slate-50'}`}

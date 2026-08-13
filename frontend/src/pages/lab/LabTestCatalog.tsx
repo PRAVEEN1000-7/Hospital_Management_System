@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import labService from '../../services/labService';
 import type { LabTest, LabTestCreateData, LabTestParameterTemplate } from '../../types/lab';
 import { useToast } from '../../contexts/ToastContext';
+import SearchableSelect, { type SuggestionOption } from '../../components/common/SearchableSelect';
 
 const emptyForm: LabTestCreateData = {
   name: '', code: '', category: '', sample_type: '', price: 0,
@@ -44,6 +45,19 @@ const LabTestCatalog: React.FC = () => {
     });
     setModalOpen(true);
   };
+
+  // Suggest categories / sample types already in use across the catalog, so
+  // admins match existing taxonomy (e.g. "Hematology") instead of creating
+  // near-duplicate variants by free-typing — while still allowing a brand-new
+  // value to be entered when one genuinely doesn't exist yet.
+  const categorySuggestions: SuggestionOption[] = useMemo(() => {
+    const cats = Array.from(new Set(tests.map((t) => t.category).filter((c): c is string => !!c)));
+    return cats.sort().map((c) => ({ id: c, label: c }));
+  }, [tests]);
+  const sampleTypeSuggestions: SuggestionOption[] = useMemo(() => {
+    const types = Array.from(new Set(tests.map((t) => t.sample_type).filter((s): s is string => !!s)));
+    return types.sort().map((s) => ({ id: s, label: s }));
+  }, [tests]);
 
   const templateRows = form.report_template || [];
   const setTemplateRow = (idx: number, patch: Partial<LabTestParameterTemplate>) =>
@@ -93,6 +107,20 @@ const LabTestCatalog: React.FC = () => {
       load();
     } catch {
       showToast('error', 'Failed to deactivate test');
+    }
+  };
+
+  const handleDelete = async (t: LabTest) => {
+    if (!window.confirm(
+      `Permanently delete "${t.name}"? This completely removes it from the catalog and cannot be undone. ` +
+      `If it's ever been ordered, this will be blocked — deactivate it instead in that case.`
+    )) return;
+    try {
+      await labService.permanentlyDeleteTest(t.id);
+      showToast('success', 'Test deleted');
+      load();
+    } catch (err: any) {
+      showToast('error', err?.response?.data?.detail || 'Failed to delete test');
     }
   };
 
@@ -171,6 +199,9 @@ const LabTestCatalog: React.FC = () => {
                           <span className="material-symbols-outlined text-lg">block</span>
                         </button>
                       )}
+                      <button onClick={() => handleDelete(t)} className="text-slate-400 hover:text-red-600 p-1" title="Delete permanently">
+                        <span className="material-symbols-outlined text-lg">delete</span>
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -202,15 +233,21 @@ const LabTestCatalog: React.FC = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Category</label>
-                <input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}
+                <SearchableSelect
+                  value={form.category || ''}
+                  onChange={(val) => setForm({ ...form, category: val })}
+                  suggestions={categorySuggestions}
                   placeholder="e.g. Hematology"
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Sample Type</label>
-                <input value={form.sample_type} onChange={(e) => setForm({ ...form, sample_type: e.target.value })}
+                <SearchableSelect
+                  value={form.sample_type || ''}
+                  onChange={(val) => setForm({ ...form, sample_type: val })}
+                  suggestions={sampleTypeSuggestions}
                   placeholder="e.g. Blood"
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Price (₹) *</label>

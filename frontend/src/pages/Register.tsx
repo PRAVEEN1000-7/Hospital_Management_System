@@ -303,11 +303,12 @@ const Register: React.FC = () => {
     if (!d.title) e.title = 'Title is required';
     if (!d.first_name.trim()) e.first_name = 'First name is required';
     else if (!/^[A-Za-z]+$/.test(d.first_name.trim())) e.first_name = 'Only letters (A–Z) allowed — no numbers, spaces or symbols';
-    if (!d.last_name.trim()) e.last_name = 'Last name is required';
-    else if (!/^[A-Za-z]+$/.test(d.last_name.trim())) e.last_name = 'Only letters (A–Z) allowed — no numbers, spaces or symbols';
-    // Only enforced for new patients — an existing patient's real (possibly
-    // short, e.g. "Li"/"Wu") last name must not block editing their other fields.
-    else if (!isEditMode && d.last_name.trim().length <= 2) e.last_name = 'Last name must be more than 2 letters';
+    if (d.last_name.trim()) {
+      if (!/^[A-Za-z]+$/.test(d.last_name.trim())) e.last_name = 'Only letters (A–Z) allowed — no numbers, spaces or symbols';
+      // Only enforced for new patients — an existing patient's real (possibly
+      // short, e.g. "Li"/"Wu") last name must not block editing their other fields.
+      else if (!isEditMode && d.last_name.trim().length <= 2) e.last_name = 'Last name must be more than 2 letters';
+    }
     if (!d.date_of_birth) e.date_of_birth = 'Date of birth is required';
     else if (new Date(d.date_of_birth) >= new Date()) e.date_of_birth = 'Date of birth must be in the past';
     if (!d.gender) e.gender = 'Gender is required';
@@ -315,9 +316,10 @@ const Register: React.FC = () => {
     if (!d.phone_number) e.phone_number = 'Phone number is required';
     else if (!/^\d{10}$/.test(d.phone_number)) e.phone_number = 'Must be exactly 10 digits';
     if (d.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email)) e.email = 'Invalid email address';
-    if (!d.address_line_1.trim()) e.address_line_1 = 'Address is required';
-    else if (d.address_line_1.trim().length < 5) e.address_line_1 = 'Address must be at least 5 characters';
-    else if (!/[A-Za-z]/.test(d.address_line_1)) e.address_line_1 = 'Address must contain text, not just numbers';
+    if (d.address_line_1.trim()) {
+      if (d.address_line_1.trim().length < 5) e.address_line_1 = 'Address must be at least 5 characters';
+      else if (!/[A-Za-z]/.test(d.address_line_1)) e.address_line_1 = 'Address must contain text, not just numbers';
+    }
     if (d.pin_code && !/^\d{6}$/.test(d.pin_code)) e.pin_code = 'PIN code must be exactly 6 digits';
     if (d.emergency_contact_phone) {
       // Only enforced for new patients — some existing patients have this
@@ -522,7 +524,7 @@ const Register: React.FC = () => {
                 : <p className={hintClass}>Letters only — must start with an alphabet</p>}
             </div>
             <div>
-              <label className={labelClass}>Last Name <span className="text-red-500">*</span></label>
+              <label className={labelClass}>Last Name</label>
               <input
                 {...register('last_name')}
                 className={fieldErrors.last_name ? inputErrorClass : inputClass}
@@ -740,7 +742,7 @@ const Register: React.FC = () => {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div className="md:col-span-2 lg:col-span-3">
-              <label className={labelClass}>Address Line 1 <span className="text-red-500">*</span></label>
+              <label className={labelClass}>Address Line 1</label>
               <input {...register('address_line_1')} className={fieldErrors.address_line_1 ? inputErrorClass : inputClass} placeholder="Street address" />
               {fieldErrors.address_line_1
                 ? <p className={errorClass}><span className="material-symbols-outlined text-xs">error</span>{fieldErrors.address_line_1}</p>

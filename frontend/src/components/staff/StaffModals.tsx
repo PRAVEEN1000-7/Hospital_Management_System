@@ -11,6 +11,7 @@ import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
 import feLogger from '../../services/loggerService';
 import ImageCropModal from '../common/ImageCropModal';
+import SearchableSelect, { type SuggestionOption } from '../common/SearchableSelect';
 
 // ────────────────────────────────────────
 // Shared schemas — single source of truth for both Staff Directory and
@@ -324,7 +325,9 @@ const DoctorFields: React.FC<{
   specializations: string[];
   variant: 'create' | 'edit';
   departments?: { id: string; name: string }[];
-}> = ({ register, errors, specializations, variant, departments }) => (
+  departmentValue?: string;
+  onDepartmentChange?: (id: string) => void;
+}> = ({ register, errors, specializations, variant, departments, departmentValue, onDepartmentChange }) => (
   <div className={variant === 'create' ? 'space-y-4 mt-2 p-4 bg-blue-50/50 border border-blue-200 rounded-xl' : 'space-y-4'}>
     {variant === 'create' && (
       <p className="text-xs font-bold text-blue-700 uppercase tracking-wider flex items-center gap-1.5">
@@ -363,10 +366,13 @@ const DoctorFields: React.FC<{
             <input {...register('experience_years')} type="number" min="0" className="input-field" placeholder="e.g. 10" />
           </Field>
           <Field label="Department">
-            <select {...register('department_id')} className="input-field">
-              <option value="">Select department</option>
-              {(departments || []).map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-            </select>
+            <SearchableSelect
+              value={(departments || []).find(d => d.id === departmentValue)?.name || ''}
+              onChange={(_, metadata) => onDepartmentChange?.((metadata?.id as string) || '')}
+              suggestions={(departments || []).map((d): SuggestionOption => ({ id: d.id, label: d.name, metadata: { id: d.id } }))}
+              placeholder="Search department..."
+              allowManualEntry={false}
+            />
           </Field>
         </div>
         <div className="grid grid-cols-2 gap-4">
@@ -773,7 +779,7 @@ export const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => 
             </select>
           </Field>
           {isDoctorRole && (
-            <DoctorFields register={register} errors={errors} specializations={specializations} variant="create" departments={departments} />
+            <DoctorFields register={register} errors={errors} specializations={specializations} variant="create" departments={departments} departmentValue={watch('department_id')} onDepartmentChange={(id) => setValue('department_id', id, { shouldValidate: true })} />
           )}
         </section>
 

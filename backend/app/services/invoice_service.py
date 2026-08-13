@@ -198,7 +198,10 @@ def _recalculate_invoice(db: Session, invoice: Invoice) -> None:
 
 
 def _update_invoice_status(db: Session, invoice: Invoice) -> None:
-    """Flip invoice status based on paid vs total amounts."""
+    """Flip invoice status based on paid vs total amounts. Deliberately does
+    NOT special-case total<=0 (a free consultation) as auto-"paid" — same
+    reasoning as issue_invoice: it stays "issued" until the explicit ₹0
+    collection step (see payment_service._sync_invoice_after_payment)."""
     if invoice.status in ("draft", "void", "cancelled"):
         return
     paid = invoice.paid_amount or Decimal("0")
@@ -645,6 +648,12 @@ def issue_invoice(db: Session, invoice: Invoice) -> Invoice:
 
     paid = invoice.paid_amount or Decimal("0")
     total = invoice.total_amount or Decimal("0")
+    # A ₹0 invoice (e.g. a free MC1/MC2 follow-up consultation) is
+    # deliberately left "issued" here, same as any other invoice — it still
+    # needs the explicit ₹0 collection step (payment_service.record_payment)
+    # to reach "paid", so staff get a visible "Collect Fee" action to
+    # acknowledge/confirm the free visit rather than it silently vanishing
+    # from their worklist as already settled.
     if paid <= Decimal("0"):
         invoice.status = "issued"
     elif paid < total:
@@ -879,9 +888,18 @@ def resolve_consultation_fee_amount(
     must never be silently rewritten by a later rate change.
 
     Priority order:
+      - Free follow-up (follow_up_label MC1/MC2/... — a return visit within
+        the hospital's free-follow-up window, see
+        appointment_service.compute_follow_up_label): always 0, overriding
+        every other source below. "MCR" (Renewal, i.e. the free window has
+        lapsed) is a normal paid visit and does NOT get this waiver.
       - Not yet invoiced: doctor's CURRENT rate > frozen appointment snapshot > hospital default.
       - Already invoiced: frozen appointment snapshot (what was actually billed) > doctor's rate > hospital default.
     """
+    label = appointment.follow_up_label
+    if label and label != "MCR" and label.startswith("MC"):
+        return Decimal("0")
+
     if has_invoice is None:
         has_invoice = db.query(Invoice.id).filter(
             Invoice.appointment_id == appointment.id, Invoice.is_deleted == False,

@@ -24,7 +24,9 @@ class Medicine(Base):
     is_global = Column(Boolean, default=False, nullable=False)
     name = Column(String(200), nullable=False)
     generic_name = Column(String(200), nullable=False)
+    brand = Column(String(200))
     category = Column(String(50))  # 'tablet','capsule','syrup','injection','cream','drops'
+    dosage_form = Column(String(100))
     manufacturer = Column(String(200))
     composition = Column(Text)
     strength = Column(String(50))
@@ -35,6 +37,12 @@ class Medicine(Base):
     barcode = Column(String(50))
     requires_prescription = Column(Boolean, default=True)
     is_controlled = Column(Boolean, default=False)
+    # Drug-schedule classification (e.g. India's Schedule H/H1/X) — distinct
+    # from the plain is_controlled flag, which only says yes/no.
+    schedule_type = Column(String(10))
+    rack_location = Column(String(100))
+    drug_interaction_notes = Column(Text)
+    side_effects = Column(Text)
     selling_price = Column(Numeric(12, 2), nullable=False)
     purchase_price = Column(Numeric(12, 2))
     # Keep as plain UUID until tax_configurations model/table is introduced in this codebase.

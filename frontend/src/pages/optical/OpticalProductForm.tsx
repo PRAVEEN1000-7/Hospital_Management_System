@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import opticalService from '../../services/opticalService';
 import { useToast } from '../../contexts/ToastContext';
 import type { OpticalProductCreateData } from '../../types/optical';
+import SearchableSelect, { type SuggestionOption } from '../../components/common/SearchableSelect';
 
 interface OpeningBatchForm {
   batch_number: string;
@@ -54,6 +55,18 @@ const OpticalProductForm: React.FC = () => {
   });
 
   const expiryRequired = EXPIRING_CATEGORIES.includes(form.category);
+
+  // Brand suggestions drawn from brands already used in the catalog, so
+  // admins match an existing brand instead of free-typing near-duplicates
+  // (e.g. "Ray Ban" vs "Ray-Ban") — manual entry still allowed for a brand
+  // that's genuinely new to the catalog.
+  const [brandSuggestions, setBrandSuggestions] = useState<SuggestionOption[]>([]);
+  useEffect(() => {
+    opticalService.getProducts(1, 200, '', '', false).then((res) => {
+      const brands = Array.from(new Set(res.data.map((p) => p.brand).filter((b): b is string => !!b)));
+      setBrandSuggestions(brands.sort().map((b) => ({ id: b, label: b })));
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (id) {
@@ -203,7 +216,12 @@ const OpticalProductForm: React.FC = () => {
                 </div>
                 <div>
                   <label className={labelClass}>Brand</label>
-                  <input name="brand" value={form.brand} onChange={handleChange} className={fieldClass} />
+                  <SearchableSelect
+                    value={form.brand || ''}
+                    onChange={(val) => setForm((prev) => ({ ...prev, brand: val }))}
+                    suggestions={brandSuggestions}
+                    placeholder="e.g. Ray-Ban"
+                  />
                 </div>
                 <div>
                   <label className={labelClass}>Model Number</label>

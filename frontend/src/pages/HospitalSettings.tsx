@@ -8,6 +8,9 @@ import HospitalLogo from '../components/common/HospitalLogo';
 import type { HospitalDetails, HospitalSettings as HospitalSettingsType } from '../services/hospitalService';
 import type { DoctorOption } from '../types/appointment';
 import { canEdit } from '../config/modulePermissions';
+import SearchableSelect, { type SuggestionOption } from '../components/common/SearchableSelect';
+import PatientBulkUploadPanel from '../components/patients/PatientBulkUploadPanel';
+import { validateGstin } from '../utils/gst';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -188,6 +191,15 @@ const ProfileTab: React.FC = () => {
       toast.error('Hospital name is required');
       return;
     }
+    if (profile.gstin && !validateGstin(profile.gstin)) {
+      toast.error('GSTIN must be a valid 15-character Indian GSTIN');
+      return;
+    }
+    const isIndia = (profile.country || '').trim().toLowerCase() === 'india';
+    if ((profile.gst_registration_status || 'registered') === 'registered' && isIndia && !profile.gstin) {
+      toast.error('GSTIN is required when GST registration is set to Registered');
+      return;
+    }
     setSaving(true);
     try {
       const updated = await hospitalService.updateHospitalDetails(profile);
@@ -263,14 +275,35 @@ const ProfileTab: React.FC = () => {
               placeholder="e.g. REG-2024-001"
             />
           </FormField>
-          <FormField label="Tax / GST ID">
+          <FormField label="Tax ID (Other)">
             <input
               value={profile.tax_id || ''}
               onChange={e => set('tax_id', e.target.value)}
               className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-              placeholder="e.g. 22AAAAA0000A1Z5"
+              placeholder="Any other tax reference, if applicable"
             />
           </FormField>
+          <FormField label="GST Registration" hint="Used to determine intra-state vs inter-state GST on Purchase Orders / GRN">
+            <select
+              value={profile.gst_registration_status || 'registered'}
+              onChange={e => set('gst_registration_status', e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+            >
+              <option value="registered">Registered</option>
+              <option value="unregistered">Unregistered</option>
+            </select>
+          </FormField>
+          {(profile.gst_registration_status || 'registered') === 'registered' && (
+            <FormField label="GSTIN" required={profile.country?.trim().toLowerCase() === 'india'}>
+              <input
+                value={profile.gstin || ''}
+                onChange={e => set('gstin', e.target.value.toUpperCase().slice(0, 15))}
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                placeholder="22AAAAA0000A1Z5"
+                maxLength={15}
+              />
+            </FormField>
+          )}
           <FormField label="Hospital Logo" hint="PNG, JPG or SVG up to 2MB. Shown in the sidebar and on documents.">
             <div className="flex items-center gap-4">
               <HospitalLogo
@@ -724,24 +757,24 @@ const SystemSettingsTab: React.FC = () => {
           {/* Doctor columns */}
           <div className="px-5 py-4 border-b border-slate-100 grid grid-cols-1 sm:grid-cols-2 gap-5">
             <FormField label="Doctor 1 Column" hint="Shown as the first doctor column on the display">
-              <select
-                value={editValues.queue_display_doctor1_id || ''}
-                onChange={e => handleChange('queue_display_doctor1_id', e.target.value || '')}
-                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none bg-white"
-              >
-                <option value="">Not set — shows "Doctor 1"</option>
-                {doctors.map(d => <option key={d.doctor_id} value={d.doctor_id}>{d.name}</option>)}
-              </select>
+              <SearchableSelect
+                value={doctors.find(d => d.doctor_id === editValues.queue_display_doctor1_id)?.name || ''}
+                onChange={(_, metadata) => handleChange('queue_display_doctor1_id', (metadata?.id as string) || '')}
+                suggestions={doctors.map((d): SuggestionOption => ({ id: d.doctor_id, label: d.name, sublabel: d.specialization || undefined, metadata: { id: d.doctor_id } }))}
+                placeholder='Not set — shows "Doctor 1"'
+                allowManualEntry={false}
+                disabled={!canEditSettings}
+              />
             </FormField>
             <FormField label="Doctor 2 Column" hint="Shown as the second doctor column, if enabled below">
-              <select
-                value={editValues.queue_display_doctor2_id || ''}
-                onChange={e => handleChange('queue_display_doctor2_id', e.target.value || '')}
-                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none bg-white"
-              >
-                <option value="">Not set — shows "Doctor 2"</option>
-                {doctors.map(d => <option key={d.doctor_id} value={d.doctor_id}>{d.name}</option>)}
-              </select>
+              <SearchableSelect
+                value={doctors.find(d => d.doctor_id === editValues.queue_display_doctor2_id)?.name || ''}
+                onChange={(_, metadata) => handleChange('queue_display_doctor2_id', (metadata?.id as string) || '')}
+                suggestions={doctors.map((d): SuggestionOption => ({ id: d.doctor_id, label: d.name, sublabel: d.specialization || undefined, metadata: { id: d.doctor_id } }))}
+                placeholder='Not set — shows "Doctor 2"'
+                allowManualEntry={false}
+                disabled={!canEditSettings}
+              />
             </FormField>
           </div>
 
@@ -841,6 +874,7 @@ const SystemSettingsTab: React.FC = () => {
 // ── Main Page ────────────────────────────────────────────────────────────────
 
 const HospitalSettings: React.FC = () => {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>('profile');
   const [brand, setBrand] = useState<{ name: string; logo_url: string | null }>({ name: '', logo_url: null });
 
@@ -878,20 +912,25 @@ const HospitalSettings: React.FC = () => {
         </div>
       </div>
 
-      {/* Tab bar */}
-      <div className="flex gap-2 mb-6 bg-slate-100 rounded-xl p-1.5 w-fit">
-        <TabButton
-          label="Hospital Profile"
-          icon="local_hospital"
-          active={activeTab === 'profile'}
-          onClick={() => setActiveTab('profile')}
-        />
-        <TabButton
-          label="System Settings"
-          icon="settings"
-          active={activeTab === 'system'}
-          onClick={() => setActiveTab('system')}
-        />
+      {/* Tab bar — Patient Data bulk upload/template sit next to the System
+          Settings tab itself (not inside its section content) since they're
+          a standalone action, not a persisted setting. */}
+      <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
+        <div className="flex gap-2 bg-slate-100 rounded-xl p-1.5 w-fit">
+          <TabButton
+            label="Hospital Profile"
+            icon="local_hospital"
+            active={activeTab === 'profile'}
+            onClick={() => setActiveTab('profile')}
+          />
+          <TabButton
+            label="System Settings"
+            icon="settings"
+            active={activeTab === 'system'}
+            onClick={() => setActiveTab('system')}
+          />
+        </div>
+        {activeTab === 'system' && canEdit('general.patients', user?.roles) && <PatientBulkUploadPanel />}
       </div>
 
       {/* Tab content */}

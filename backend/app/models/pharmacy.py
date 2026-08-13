@@ -35,6 +35,10 @@ class MedicineBatch(Base):
     quantity = Column("current_quantity", Integer, nullable=False, default=0)
     purchase_price = Column(Numeric(12, 2))
     selling_price = Column(Numeric(12, 2))
+    # Who this batch's opening stock was sourced from — optional, settable
+    # from the medicine form's Opening Stock section and the bulk-upload
+    # Excel template (supplier_name, resolved to this id client-side).
+    supplier_id = Column(UUID(as_uuid=True), ForeignKey("suppliers.id"), nullable=True)
     is_expired = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -52,6 +56,7 @@ class MedicineBatch(Base):
     mrp = synonym("selling_price")
 
     medicine = relationship("Medicine", foreign_keys=[medicine_id])
+    supplier = relationship("Supplier", foreign_keys=[supplier_id])
 
 
 # ──────────────────────────────────────────────────

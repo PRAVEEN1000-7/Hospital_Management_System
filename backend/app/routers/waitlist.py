@@ -32,7 +32,7 @@ from ..services.waitlist_service import (
     check_already_on_waitlist,
     get_waitlist_count_for_doctor,
 )
-from ..services.appointment_service import generate_appointment_number, enrich_appointment
+from ..services.appointment_service import generate_appointment_number, enrich_appointment, compute_follow_up_label
 from ..services.schedule_service import is_doctor_on_leave, get_available_slots
 from pydantic import BaseModel
 
@@ -294,6 +294,12 @@ async def book_from_waitlist(
             check_in_at=now,
             created_by=current_user.id,
             notes=f"Promoted from waitlist (#{entry.position})",
+            # Without this, a waitlist-promoted visit for a returning patient
+            # never gets an MC1/MC2/MCR label — it silently drops out of the
+            # dashboard's Free Count/Returning bars and never gets the free-
+            # follow-up fee waiver, even when it's genuinely within the free
+            # window (see walk_ins.py's walk-in creation for the same fix).
+            follow_up_label=compute_follow_up_label(db, entry.hospital_id, entry.patient_id, today),
         )
         db.add(appt)
         db.flush()

@@ -7,6 +7,19 @@ export interface PatientTrendBucket {
   label: string;
   new_patients: number;
   returning_patients: number;
+  /** Distinct patients with a still-booked (not completed/cancelled), not-yet-passed
+   * appointment in this bucket — always 0 for a bucket entirely in the past. */
+  upcoming_patients: number;
+  /** Breakdown of returning_patients by free-follow-up status (see backend
+   * appointment_service.compute_follow_up_label). The free window is
+   * anchored ONCE to the patient's very first-ever visit, not a rolling
+   * per-visit window: mc1/mc2_plus = a visit within 30 days of that first
+   * visit (free, no consultation fee); mcr = "Renewal" — a visit more than
+   * 30 days after the first visit (a normal paid visit; the free window
+   * never re-opens after this). These three always sum to returning_patients. */
+  mc1_count: number;
+  mc2_plus_count: number;
+  mcr_count: number;
 }
 
 export type PatientTrendGranularity = 'day' | 'week' | 'month' | 'custom';

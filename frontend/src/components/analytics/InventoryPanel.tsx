@@ -12,7 +12,7 @@ import {
   Cell,
 } from 'recharts';
 import PanelCard from './shared/PanelCard';
-import { useStockStatus, useInventoryAging } from '../../hooks/useAnalyticsQueries';
+import { useStockStatusSummary, useInventoryAging } from '../../hooks/useAnalyticsQueries';
 import { downloadCsvSections } from '../../utils/csv';
 
 // ── Currency ─────────────────────────────────────────────────────────────
@@ -64,21 +64,17 @@ const ChartTooltip = ({ active, payload, label }: any) => {
 // ── Panel ────────────────────────────────────────────────────────────────
 
 const InventoryPanel: React.FC = () => {
-  const stock = useStockStatus();
+  // True catalog-wide counts — previously this panel derived its summary
+  // tiles and pie chart from useStockStatus()'s display-limited list
+  // (default 50, max 200), so both silently capped out for any hospital
+  // with more medicines than that. This endpoint returns the real totals.
+  const stock = useStockStatusSummary();
   const aging = useInventoryAging();
   const isLoading = stock.isLoading || aging.isLoading;
   const error = stock.error || aging.error;
 
   // Summary counts — aggregate only, no per-item breakdown shown in this panel.
-  const summary = stock.data
-    ? {
-        total: stock.data.length,
-        ok: stock.data.filter((s) => s.status === 'ok').length,
-        low: stock.data.filter((s) => s.status === 'low').length,
-        critical: stock.data.filter((s) => s.status === 'critical').length,
-        overstock: stock.data.filter((s) => s.status === 'overstock').length,
-      }
-    : null;
+  const summary = stock.data;
 
   const distribution = summary
     ? (['ok', 'low', 'critical', 'overstock'] as const)
@@ -132,7 +128,7 @@ const InventoryPanel: React.FC = () => {
           <h4 className="mb-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
             Stock Status Distribution
           </h4>
-          {stock.data && stock.data.length === 0 && (
+          {summary && summary.total === 0 && (
             <p className="py-10 text-center text-xs text-slate-400">No inventory items yet.</p>
           )}
           {distribution.length > 0 && (

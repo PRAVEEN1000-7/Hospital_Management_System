@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import opticalService from '../../services/opticalService';
-import type { OpticalDashboard as DashboardData, OpticalProduct } from '../../types/optical';
+import type { OpticalDashboard as DashboardData } from '../../types/optical';
 import { useAuth } from '../../contexts/AuthContext';
 
 const OpticalDashboard: React.FC = () => {
@@ -11,24 +11,23 @@ const OpticalDashboard: React.FC = () => {
   // Doctors can view products and prescriptions but not process sales.
   const canManage = hasRole('super_admin', 'admin', 'optical_staff');
   const [stats, setStats] = useState<DashboardData | null>(null);
-  const [outOfStockProducts, setOutOfStockProducts] = useState<OpticalProduct[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const loadDashboard = async () => {
       setLoading(true);
-      const [dashboardRes, pendingRes, productsRes] = await Promise.allSettled([
+      // out_of_stock_count/out_of_stock_items come straight from the
+      // dashboard endpoint (a true catalog-wide count) — previously this was
+      // computed by fetching page 1/limit 100 of the product list and
+      // filtering client-side, which silently undercounted any hospital with
+      // more than 100 active products.
+      const [dashboardRes, pendingRes] = await Promise.allSettled([
         opticalService.getDashboard(),
         opticalService.getPendingPrescriptions(1, 1, 'pending'),
-        opticalService.getProducts(1, 100, '', '', true),
       ]);
       if (dashboardRes.status === 'fulfilled') setStats(dashboardRes.value);
       if (pendingRes.status === 'fulfilled') setPendingCount(pendingRes.value.total);
-      if (productsRes.status === 'fulfilled') {
-        const outOfStock = productsRes.value.data.filter(p => (p.total_stock ?? 0) === 0);
-        setOutOfStockProducts(outOfStock.slice(0, 10));
-      }
       setLoading(false);
     };
 
@@ -56,12 +55,12 @@ const OpticalDashboard: React.FC = () => {
     { label: 'Total Products', value: stats?.total_products ?? 0, icon: 'visibility', color: 'text-blue-500', bg: 'bg-blue-50', to: '/optical/products' },
     {
       label: 'Out of Stock',
-      value: outOfStockProducts.length,
+      value: stats?.out_of_stock_count ?? 0,
       icon: 'inventory_2',
       color: 'text-red-500',
       bg: 'bg-red-50',
       to: '/optical/products',
-      alert: outOfStockProducts.length > 0,
+      alert: (stats?.out_of_stock_count ?? 0) > 0,
     },
     { label: 'Low Stock', value: stats?.low_stock_count ?? 0, icon: 'warning', color: 'text-amber-500', bg: 'bg-amber-50', to: '/optical/products' },
     { label: 'Expiring Soon', value: stats?.expiring_soon_count ?? 0, icon: 'schedule', color: 'text-orange-500', bg: 'bg-orange-50', to: '/optical/products' },
@@ -120,14 +119,14 @@ const OpticalDashboard: React.FC = () => {
       </div>
 
       {/* Out of Stock Alert Section */}
-      {outOfStockProducts.length > 0 && (
+      {(stats?.out_of_stock_items?.length ?? 0) > 0 && (
         <div className="bg-red-50 border-2 border-red-200 rounded-xl p-6">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
               <span className="material-symbols-outlined text-3xl text-red-600">inventory_2</span>
               <div>
                 <h2 className="text-lg font-bold text-red-900">Out of Stock Products</h2>
-                <p className="text-sm text-red-700">{outOfStockProducts.length} products need immediate restocking</p>
+                <p className="text-sm text-red-700">{stats?.out_of_stock_count ?? 0} products need immediate restocking</p>
               </div>
             </div>
             <button
@@ -138,7 +137,7 @@ const OpticalDashboard: React.FC = () => {
             </button>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {outOfStockProducts.map((product) => (
+            {(stats?.out_of_stock_items ?? []).map((product) => (
               <div
                 key={product.id}
                 onClick={() => canManage ? navigate(`/optical/batches/new?product_id=${product.id}`) : undefined}

@@ -1,5 +1,6 @@
 """Pydantic schemas for the Inventory module."""
-from pydantic import BaseModel, Field, field_validator
+import re
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional, List
 from datetime import date, datetime
 import uuid
@@ -17,6 +18,48 @@ def _reject_past_expiry_date(v: Optional[date]) -> Optional[date]:
     return v
 
 
+# ─── GST (shared by Supplier and, via schemas/hospital.py, Hospital) ───────
+# Kept self-contained here (not imported from services/gst_service.py) so
+# schema validation never depends on the service layer.
+
+_GSTIN_PATTERN = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$")
+VALID_GST_REGISTRATION_STATUSES = ["registered", "unregistered"]
+_INDIA_ALIASES = {"india", "in", "ind"}
+
+
+def _validate_gstin_format(gstin: Optional[str]) -> Optional[str]:
+    if gstin is None:
+        return gstin
+    gstin = gstin.strip().upper()
+    if not gstin:
+        return None
+    if not _GSTIN_PATTERN.match(gstin):
+        raise ValueError("GSTIN must be a valid 15-character Indian GSTIN")
+    return gstin
+
+
+def _require_gstin_when_registered(gstin: Optional[str], gst_registration_status: Optional[str], country: Optional[str]) -> None:
+    """GSTIN is required for GST-registered Indian parties; a foreign or
+    unregistered party is never forced to provide one."""
+    is_india = (country or "India").strip().lower() in _INDIA_ALIASES
+    if gst_registration_status == "registered" and is_india and not gstin:
+        raise ValueError("GSTIN is required for a GST-registered Indian party")
+
+
+def _require_state_for_india(state: Optional[str], country: Optional[str]) -> None:
+    """State is required for Indian suppliers — it's what determines
+    intra-state (CGST+SGST) vs inter-state (IGST) for every PO with this
+    supplier. Left blank, place-of-supply silently falls back to
+    'inter_state' (the safe default when it can't be confirmed — see
+    gst_service.determine_place_of_supply), which looks like a bug from the
+    PO screen ("why is this always IGST, never CGST+SGST?") when it's
+    actually just missing supplier data. Not required for foreign suppliers,
+    whose state genuinely may not apply."""
+    is_india = (country or "India").strip().lower() in _INDIA_ALIASES
+    if is_india and not (state or "").strip():
+        raise ValueError("State is required for an Indian supplier — it determines whether GST splits into CGST+SGST or IGST")
+
+
 # ─── Supplier ───────────────────────────────────────────────────────────────
 
 # Valid product categories for suppliers
@@ -31,6 +74,15 @@ class SupplierBase(BaseModel):
     email: Optional[str] = Field(None, max_length=255)
     address: Optional[str] = None
     tax_id: Optional[str] = Field(None, max_length=50)
+    # GST — state/country determine place of supply against the hospital's
+    # own state/country (see gst_service.determine_place_of_supply); gstin is
+    # only required/validated when gst_registration_status == 'registered'
+    # and country is India (foreign or unregistered suppliers are never
+    # forced to provide one).
+    state: Optional[str] = Field(None, max_length=100)
+    country: Optional[str] = Field("India", max_length=100)
+    gstin: Optional[str] = Field(None, max_length=15)
+    gst_registration_status: Optional[str] = Field("unregistered")
     payment_terms: Optional[str] = Field(None, max_length=50)
     lead_time_days: Optional[int] = Field(None, ge=0)
     rating: Optional[float] = Field(None, ge=0, le=5)
@@ -46,8 +98,28 @@ class SupplierBase(BaseModel):
                 raise ValueError(f"Invalid category '{category}'. Must be one of: {', '.join(VALID_PRODUCT_CATEGORIES)}")
         return v
 
+    @field_validator("gst_registration_status")
+    @classmethod
+    def validate_gst_registration_status(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in VALID_GST_REGISTRATION_STATUSES:
+            raise ValueError(f"Must be one of: {', '.join(VALID_GST_REGISTRATION_STATUSES)}")
+        return v
+
+    @field_validator("gstin")
+    @classmethod
+    def validate_gstin_field(cls, v: Optional[str]) -> Optional[str]:
+        return _validate_gstin_format(v)
+
 class SupplierCreate(SupplierBase):
-    pass
+    @model_validator(mode="after")
+    def check_gstin_required(self) -> "SupplierCreate":
+        _require_gstin_when_registered(self.gstin, self.gst_registration_status, self.country)
+        return self
+
+    @model_validator(mode="after")
+    def check_state_required(self) -> "SupplierCreate":
+        _require_state_for_india(self.state, self.country)
+        return self
 
 class SupplierUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=200)
@@ -56,6 +128,10 @@ class SupplierUpdate(BaseModel):
     email: Optional[str] = Field(None, max_length=255)
     address: Optional[str] = None
     tax_id: Optional[str] = Field(None, max_length=50)
+    state: Optional[str] = Field(None, max_length=100)
+    country: Optional[str] = Field(None, max_length=100)
+    gstin: Optional[str] = Field(None, max_length=15)
+    gst_registration_status: Optional[str] = None
     payment_terms: Optional[str] = Field(None, max_length=50)
     lead_time_days: Optional[int] = Field(None, ge=0)
     rating: Optional[float] = Field(None, ge=0, le=5)
@@ -72,6 +148,18 @@ class SupplierUpdate(BaseModel):
                 raise ValueError(f"Invalid category '{category}'. Must be one of: {', '.join(VALID_PRODUCT_CATEGORIES)}")
         return v
 
+    @field_validator("gst_registration_status")
+    @classmethod
+    def validate_gst_registration_status(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in VALID_GST_REGISTRATION_STATUSES:
+            raise ValueError(f"Must be one of: {', '.join(VALID_GST_REGISTRATION_STATUSES)}")
+        return v
+
+    @field_validator("gstin")
+    @classmethod
+    def validate_gstin_field(cls, v: Optional[str]) -> Optional[str]:
+        return _validate_gstin_format(v)
+
 class SupplierResponse(BaseModel):
     id: uuid.UUID
     name: str
@@ -81,6 +169,10 @@ class SupplierResponse(BaseModel):
     email: Optional[str] = None
     address: Optional[str] = None
     tax_id: Optional[str] = None
+    state: Optional[str] = None
+    country: Optional[str] = None
+    gstin: Optional[str] = None
+    gst_registration_status: Optional[str] = None
     payment_terms: Optional[str] = None
     lead_time_days: Optional[int] = None
     rating: Optional[float] = None
@@ -121,7 +213,14 @@ class PurchaseOrderItemCreate(BaseModel):
     item_name: Optional[str] = Field(None, max_length=200)
     quantity_ordered: int = Field(..., gt=0)
     unit_price: float = Field(..., ge=0)
-    total_price: float = Field(..., ge=0)
+    discount_percent: float = Field(0, ge=0, le=100)
+    # GST% for this line — must match one of the hospital's configured tax
+    # slabs (see gst_service.validate_tax_rate_against_slabs); 0 = no tax.
+    gst_rate: float = Field(0, ge=0)
+    # total_price is NOT accepted from the client — the backend always
+    # recomputes it (base, discount, taxable, GST, total) via
+    # gst_service.compute_line_item_tax so a client-side arithmetic bug or
+    # tampered payload can never under/over-charge a supplier's line.
 
 class PurchaseOrderItemResponse(BaseModel):
     id: str
@@ -131,6 +230,14 @@ class PurchaseOrderItemResponse(BaseModel):
     quantity_ordered: int
     quantity_received: int
     unit_price: float
+    discount_percent: float = 0
+    discount_amount: float = 0
+    gst_rate: float = 0
+    taxable_amount: float = 0
+    cgst_amount: float = 0
+    sgst_amount: float = 0
+    igst_amount: float = 0
+    ugst_amount: float = 0
     total_price: float
 
     class Config:
@@ -167,6 +274,14 @@ class PurchaseOrderResponse(BaseModel):
     status: str
     total_amount: float
     tax_amount: float
+    subtotal: float = 0
+    discount_amount: float = 0
+    taxable_amount: float = 0
+    cgst_amount: float = 0
+    sgst_amount: float = 0
+    igst_amount: float = 0
+    ugst_amount: float = 0
+    place_of_supply_type: Optional[str] = None
     notes: Optional[str] = None
     items: List[PurchaseOrderItemResponse] = []
     created_by_name: Optional[str] = None
@@ -475,6 +590,16 @@ class StockStatusAnalytics(BaseModel):
     max_stock: int
     status: str  # 'ok', 'low', 'critical', 'overstock'
     last_restock_date: Optional[str] = None
+
+
+class StockStatusSummary(BaseModel):
+    """True counts across the whole active medicine catalog — never derived
+    from the limit-capped StockStatusAnalytics list above."""
+    total: int = 0
+    ok: int = 0
+    low: int = 0
+    critical: int = 0
+    overstock: int = 0
 
 
 class InventoryAgingAnalytics(BaseModel):

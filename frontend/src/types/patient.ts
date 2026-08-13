@@ -2,6 +2,7 @@ export interface Patient {
   id: string;
   hospital_id: string;
   patient_reference_number: string;
+  title?: string | null;
   first_name: string;
   last_name: string;
   date_of_birth: string;
@@ -82,15 +83,21 @@ export interface PaginatedResponse<T> {
 }
 
 export interface PatientCreateData {
+  title?: string;
   first_name: string;
   last_name: string;
-  date_of_birth: string;
+  // Optional to match backend/app/schemas/patient.py's PatientBase (both are
+  // Optional server-side) — Register.tsx's own form still always supplies
+  // both since its UI requires them; only the bulk-upload template (which
+  // must tolerate a blank cell without failing the whole row) relies on the
+  // optionality here.
+  date_of_birth?: string;
   gender: string;
   blood_group?: string;
   phone_country_code: string;
   phone_number: string;
   email?: string;
-  address_line_1: string;
+  address_line_1?: string;
   address_line_2?: string;
   city?: string;
   state?: string;

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import pharmacyService from '../../services/pharmacyService';
-import type { PharmacyDashboard as DashboardData, Medicine } from '../../types/pharmacy';
+import type { PharmacyDashboard as DashboardData } from '../../types/pharmacy';
 import { useAuth } from '../../contexts/AuthContext';
 
 const PharmacyDashboard: React.FC = () => {
@@ -9,7 +9,6 @@ const PharmacyDashboard: React.FC = () => {
   const { user } = useAuth();
   const [stats, setStats] = useState<DashboardData | null>(null);
   const [pendingCount, setPendingCount] = useState<number>(0);
-  const [outOfStockMedicines, setOutOfStockMedicines] = useState<Medicine[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -25,14 +24,14 @@ const PharmacyDashboard: React.FC = () => {
           pharmacyService.getDashboard(),
           pharmacyService.getPendingPrescriptions(1, 1, 'pending').catch(() => ({ total: 0 })),
         ]);
-        
+
         setStats(dashboard);
         setPendingCount(pendingRes.total || 0);
-
-        // Fetch out-of-stock medicines (stock = 0)
-        const medicinesRes = await pharmacyService.getMedicines(1, 100, '', '', true);
-        const outOfStock = medicinesRes.data.filter(m => (m.total_stock ?? 0) === 0);
-        setOutOfStockMedicines(outOfStock.slice(0, 10)); // Show max 10
+        // out_of_stock_count/out_of_stock_items now come straight from the
+        // dashboard endpoint (a true catalog-wide count) — previously this
+        // was computed by fetching page 1/limit 100 of the medicine list and
+        // filtering client-side, which silently undercounted any hospital
+        // with more than 100 active medicines.
       } catch (err) {
         console.error('Failed to load pharmacy dashboard:', err);
       } finally {
@@ -74,14 +73,14 @@ const PharmacyDashboard: React.FC = () => {
       bg: 'bg-blue-50', 
       to: '/pharmacy/medicines' 
     },
-    { 
-      label: 'Out of Stock', 
-      value: outOfStockMedicines.length, 
-      icon: 'inventory_2', 
-      color: 'text-red-500', 
-      bg: 'bg-red-50', 
+    {
+      label: 'Out of Stock',
+      value: stats?.out_of_stock_count ?? 0,
+      icon: 'inventory_2',
+      color: 'text-red-500',
+      bg: 'bg-red-50',
       to: '/pharmacy/medicines',
-      alert: outOfStockMedicines.length > 0,
+      alert: (stats?.out_of_stock_count ?? 0) > 0,
     },
     { label: 'Low Stock', value: stats?.low_stock_count ?? 0, icon: 'warning', color: 'text-amber-500', bg: 'bg-amber-50', to: '/pharmacy/medicines' },
     { label: 'Expiring Soon', value: stats?.expiring_soon_count ?? 0, icon: 'schedule', color: 'text-orange-500', bg: 'bg-orange-50', to: '/pharmacy/medicines' },
@@ -140,14 +139,14 @@ const PharmacyDashboard: React.FC = () => {
       </div>
 
       {/* Out of Stock Alert Section */}
-      {outOfStockMedicines.length > 0 && (
+      {(stats?.out_of_stock_items?.length ?? 0) > 0 && (
         <div className="bg-red-50 border-2 border-red-200 rounded-xl p-6">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
               <span className="material-symbols-outlined text-3xl text-red-600">inventory_2</span>
               <div>
                 <h2 className="text-lg font-bold text-red-900">⚠️ Out of Stock Medicines</h2>
-                <p className="text-sm text-red-700">{outOfStockMedicines.length} medicines need immediate restocking</p>
+                <p className="text-sm text-red-700">{stats?.out_of_stock_count ?? 0} medicines need immediate restocking</p>
               </div>
             </div>
             <button
@@ -158,7 +157,7 @@ const PharmacyDashboard: React.FC = () => {
             </button>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {outOfStockMedicines.map((med) => (
+            {(stats?.out_of_stock_items ?? []).map((med) => (
               <div
                 key={med.id}
                 onClick={() => navigate(

@@ -431,9 +431,21 @@ class OpticalStockAdjustmentResponse(BaseModel):
 # ══════════════════════════════════════════════════
 # Dashboard / Analytics
 # ══════════════════════════════════════════════════
+class OutOfStockProductPreview(BaseModel):
+    id: str
+    name: str
+    brand: Optional[str] = None
+    category: Optional[str] = None
+    reorder_level: Optional[int] = None
+
+
 class OpticalDashboard(BaseModel):
     total_products: int = 0
     low_stock_count: int = 0
+    # True count across the whole catalog — see optical_service.get_optical_dashboard
+    # for why this must never be derived from a paginated/limited list.
+    out_of_stock_count: int = 0
+    out_of_stock_items: list[OutOfStockProductPreview] = Field(default_factory=list)
     expiring_soon_count: int = 0
     expired_count: int = 0
     today_sales_count: int = 0

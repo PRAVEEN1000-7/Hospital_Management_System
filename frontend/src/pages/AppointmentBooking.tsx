@@ -68,6 +68,16 @@ const AppointmentBooking: React.FC = () => {
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  // OPD Assignment follow-up tag (MC1/MC2/.../MCR — see backend
+  // appointment_service.compute_follow_up_label). Auto-computed once the
+  // patient and date are both known (Confirm step); '' means "None / first
+  // visit" and is sent as no override, letting the backend's own auto-compute
+  // decide (kept in sync so this dropdown never disagrees with what actually
+  // gets saved).
+  const [followUpLabel, setFollowUpLabel] = useState('');
+  const [followUpAuto, setFollowUpAuto] = useState('');
+  const [followUpLoading, setFollowUpLoading] = useState(false);
+
   // Patient search
   const [patientSearch, setPatientSearch] = useState('');
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -244,6 +254,18 @@ const AppointmentBooking: React.FC = () => {
       .finally(() => setSlotsLoading(false));
   }, [selectedDoctor, selectedDate]);
 
+  // Auto-compute the OPD Assignment follow-up tag once we reach Confirm —
+  // both patient and date are guaranteed set there. Re-fetched if the user
+  // goes back and changes either, so it never shows a stale suggestion.
+  useEffect(() => {
+    if (step !== 4 || !selectedPatient || !selectedDate) return;
+    setFollowUpLoading(true);
+    appointmentService.previewFollowUpLabel(selectedPatient.id, selectedDate)
+      .then((label) => { setFollowUpAuto(label || ''); setFollowUpLabel(label || ''); })
+      .catch(() => { setFollowUpAuto(''); setFollowUpLabel(''); })
+      .finally(() => setFollowUpLoading(false));
+  }, [step, selectedPatient, selectedDate]);
+
   const handleBook = async () => {
     if (!selectedPatient || !selectedDoctor || !selectedDate || !selectedTime) return;
     setSubmitting(true);
@@ -256,6 +278,7 @@ const AppointmentBooking: React.FC = () => {
         appointment_date: selectedDate,
         start_time: selectedTime,
         chief_complaint: reason || undefined,
+        follow_up_label: followUpLabel || undefined,
       });
       toast.success('Appointment booked successfully!');
       triggerRefresh();
@@ -605,6 +628,44 @@ const AppointmentBooking: React.FC = () => {
               <div className="flex justify-between"><span className="text-xs font-bold text-slate-400">Type</span><span className="text-sm font-semibold text-slate-900 capitalize">{consultationType}</span></div>
               {reason && <div className="flex justify-between"><span className="text-xs font-bold text-slate-400">Reason</span><span className="text-sm text-slate-700">{reason}</span></div>}
             </div>
+
+            {/* OPD Assignment follow-up tag — auto-computed from the
+                patient's visit history (MC1 = first return within a month of
+                their previous visit, MC2 = second consecutive one, ... MCR =
+                "Renewal", the first return after a 30+ day gap). Staff can
+                override before confirming. */}
+            <div className="mt-4">
+              <label className="block text-xs font-bold text-slate-500 mb-1">Follow-up (OPD Assignment)</label>
+              {followUpLoading ? (
+                <p className="text-xs text-slate-400">Calculating from visit history…</p>
+              ) : (
+                <>
+                  <select
+                    value={followUpLabel}
+                    onChange={(e) => setFollowUpLabel(e.target.value)}
+                    className="w-full sm:w-56 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                  >
+                    <option value="">None (first visit)</option>
+                    {Array.from(new Set([followUpAuto, 'MC1', 'MC2', 'MC3', 'MC4', 'MC5', 'MCR'].filter(Boolean)))
+                      .map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}{opt === 'MCR' ? ' — Renewal' : ''}{opt === followUpAuto ? ' (suggested)' : ''}
+                        </option>
+                      ))}
+                  </select>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Auto-calculated from {selectedPatient?.first_name || 'the patient'}'s visit history — change it if needed.
+                  </p>
+                  {followUpLabel && followUpLabel !== 'MCR' && followUpLabel.startsWith('MC') && (
+                    <p className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2.5 py-1">
+                      <span className="material-symbols-outlined text-[13px]">verified</span>
+                      Free consultation — within the follow-up window, no fee will be collected
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+
             <div className="flex justify-between mt-6">
               <button onClick={() => setStep(3)} className="px-4 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-100 rounded-lg">
                 <span className="material-symbols-outlined text-sm align-middle mr-1">arrow_back</span> Back

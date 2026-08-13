@@ -8,6 +8,7 @@ import DateRangeFilter from '../../components/common/DateRangeFilter';
 import { formatDateOnly } from '../../utils/calendarDate';
 import { htmlStringToPdf } from '../../utils/pdf';
 import { canEdit } from '../../config/modulePermissions';
+import { PLACE_OF_SUPPLY_LABELS } from '../../utils/gst';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-slate-100 text-slate-600',
@@ -440,6 +441,12 @@ td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
                   <p className="text-xs text-slate-400">Total Amount</p>
                   <p className="text-sm font-bold text-slate-900">{formatCurrency(detailPO.total_amount)}</p>
                 </div>
+                {detailPO.place_of_supply_type && (
+                  <div>
+                    <p className="text-xs text-slate-400">Place of Supply</p>
+                    <p className="text-sm font-medium text-slate-900">{PLACE_OF_SUPPLY_LABELS[detailPO.place_of_supply_type]}</p>
+                  </div>
+                )}
               </div>
 
               {detailPO.notes && (
@@ -460,6 +467,9 @@ td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
                         <th className="px-3 py-2.5 text-right text-xs font-bold text-slate-600">Ordered</th>
                         <th className="px-3 py-2.5 text-right text-xs font-bold text-slate-600">Received</th>
                         <th className="px-3 py-2.5 text-right text-xs font-bold text-slate-600">Unit Price</th>
+                        <th className="px-3 py-2.5 text-right text-xs font-bold text-slate-600">Disc%</th>
+                        <th className="px-3 py-2.5 text-right text-xs font-bold text-slate-600">Taxable</th>
+                        <th className="px-3 py-2.5 text-right text-xs font-bold text-slate-600">GST%</th>
                         <th className="px-3 py-2.5 text-right text-xs font-bold text-slate-600">Total</th>
                       </tr>
                     </thead>
@@ -494,11 +504,44 @@ td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
                             </span>
                           </td>
                           <td className="px-3 py-3 text-sm text-right text-slate-700">{formatCurrency(item.unit_price)}</td>
+                          <td className="px-3 py-3 text-sm text-right text-slate-500">{Number(item.discount_percent || 0)}%</td>
+                          <td className="px-3 py-3 text-sm text-right text-slate-700">{formatCurrency(item.taxable_amount)}</td>
+                          <td className="px-3 py-3 text-sm text-right text-slate-500">{Number(item.gst_rate || 0)}%</td>
                           <td className="px-3 py-3 text-sm text-right font-semibold text-slate-900">{formatCurrency(item.total_price)}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
+                </div>
+              </div>
+
+              {/* GST Summary — mirrors the PDF's summary block exactly, so
+                  what's printed matches what's shown on screen. Only the
+                  component(s) that apply to this PO's place of supply are
+                  shown (never CGST+SGST alongside IGST, etc.). */}
+              <div className="flex justify-end">
+                <div className="w-full sm:w-80 space-y-1.5 text-sm bg-slate-50 rounded-lg border border-slate-200 p-4">
+                  <div className="flex justify-between text-slate-500"><span>Subtotal</span><span>{formatCurrency(detailPO.subtotal)}</span></div>
+                  <div className="flex justify-between text-slate-500"><span>Discount</span><span>-{formatCurrency(detailPO.discount_amount)}</span></div>
+                  <div className="flex justify-between text-slate-500 pb-1.5 border-b border-slate-200"><span>Taxable Amount</span><span>{formatCurrency(detailPO.taxable_amount)}</span></div>
+                  {detailPO.place_of_supply_type === 'intra_state' && (
+                    <>
+                      <div className="flex justify-between text-slate-500"><span>CGST</span><span>{formatCurrency(detailPO.cgst_amount)}</span></div>
+                      <div className="flex justify-between text-slate-500"><span>SGST</span><span>{formatCurrency(detailPO.sgst_amount)}</span></div>
+                    </>
+                  )}
+                  {detailPO.place_of_supply_type === 'union_territory' && (
+                    <>
+                      <div className="flex justify-between text-slate-500"><span>CGST</span><span>{formatCurrency(detailPO.cgst_amount)}</span></div>
+                      <div className="flex justify-between text-slate-500"><span>UGST</span><span>{formatCurrency(detailPO.ugst_amount)}</span></div>
+                    </>
+                  )}
+                  {detailPO.place_of_supply_type === 'inter_state' && (
+                    <div className="flex justify-between text-slate-500"><span>IGST</span><span>{formatCurrency(detailPO.igst_amount)}</span></div>
+                  )}
+                  <div className="flex justify-between font-bold text-slate-900 text-base pt-1.5 border-t border-slate-200">
+                    <span>Grand Total</span><span>{formatCurrency(detailPO.total_amount)}</span>
+                  </div>
                 </div>
               </div>
 

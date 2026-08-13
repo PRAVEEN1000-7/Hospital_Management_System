@@ -18,6 +18,7 @@ import type {
   TopSellingMedicine,
   OpticalSales,
   StockStatus,
+  StockStatusSummary,
   InventoryAging,
   CollectionReport,
   OutstandingDues,
@@ -194,6 +195,14 @@ async function getStockStatus(limit = 50): Promise<StockStatus[]> {
   return res.data;
 }
 
+/** True counts (critical/low/overstock/ok/total) across the whole active
+ * medicine catalog — for the Inventory Health panel's summary tiles and pie
+ * chart, which must never be derived from the limit-capped list above. */
+async function getStockStatusSummary(): Promise<StockStatusSummary> {
+  const res = await api.get<StockStatusSummary>(`/inventory/analytics/stock-status-summary`);
+  return res.data;
+}
+
 async function getInventoryAging(): Promise<InventoryAging[]> {
   const res = await api.get<InventoryAging[]>(`/inventory/analytics/aging`);
   return res.data;
@@ -268,6 +277,7 @@ const reportsApi = {
   getPharmacyDashboard,
   // Inventory
   getStockStatus,
+  getStockStatusSummary,
   getInventoryAging,
   getInventoryDashboard,
   // Revenue

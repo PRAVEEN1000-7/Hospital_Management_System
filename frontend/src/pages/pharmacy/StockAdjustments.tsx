@@ -181,11 +181,11 @@ const StockAdjustments: React.FC = () => {
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                <th className="px-4 py-3 font-semibold text-slate-600">Date</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Medicine</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Type</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Quantity</th>
-                <th className="px-4 py-3 font-semibold text-slate-600">Reason</th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600">Date</th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600">Medicine</th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600">Type</th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600">Quantity</th>
+                <th className="px-4 py-3 text-center font-semibold text-slate-600">Reason</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">

@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useToast } from '../../contexts/ToastContext';
 import inventoryService from '../../services/inventoryService';
-import type { Supplier, SupplierCreate, SupplierUpdate } from '../../types/inventory';
+import type { Supplier, SupplierCreate, SupplierUpdate, GstRegistrationStatus } from '../../types/inventory';
+import { validateGstin } from '../../utils/gst';
+import { COUNTRIES, getStatesForCountry } from '../../utils/constants';
 
 const PAYMENT_TERMS = ['Net 15', 'Net 30', 'Net 45', 'Net 60', 'Net 90', 'COD', 'Advance'];
 
@@ -34,6 +36,10 @@ const SupplierModal: React.FC<ModalProps> = ({ supplier, onClose, onSaved }) => 
     email: supplier?.email || '',
     address: supplier?.address || '',
     tax_id: supplier?.tax_id || '',
+    country: supplier?.country || 'India',
+    state: supplier?.state || '',
+    gst_registration_status: (supplier?.gst_registration_status || 'unregistered') as GstRegistrationStatus,
+    gstin: supplier?.gstin || '',
     payment_terms: supplier?.payment_terms || '',
     lead_time_days: supplier?.lead_time_days?.toString() || '',
     rating: supplier?.rating?.toString() || '',
@@ -61,6 +67,19 @@ const SupplierModal: React.FC<ModalProps> = ({ supplier, onClose, onSaved }) => 
       toast.error('Phone number must be exactly 10 digits');
       return;
     }
+    const isIndia = form.country.trim().toLowerCase() === 'india';
+    if (isIndia && !form.state.trim()) {
+      toast.error('State is required for an Indian supplier — it determines CGST+SGST vs IGST on every PO with them');
+      return;
+    }
+    if (form.gstin && !validateGstin(form.gstin)) {
+      toast.error('GSTIN must be a valid 15-character Indian GSTIN');
+      return;
+    }
+    if (form.gst_registration_status === 'registered' && isIndia && !form.gstin) {
+      toast.error('GSTIN is required for a GST-registered Indian supplier');
+      return;
+    }
     setSaving(true);
     try {
       if (isEdit) {
@@ -71,6 +90,10 @@ const SupplierModal: React.FC<ModalProps> = ({ supplier, onClose, onSaved }) => 
           email: form.email || undefined,
           address: form.address || undefined,
           tax_id: form.tax_id || undefined,
+          country: form.country || undefined,
+          state: form.state || undefined,
+          gst_registration_status: form.gst_registration_status,
+          gstin: form.gstin || undefined,
           payment_terms: form.payment_terms || undefined,
           lead_time_days: form.lead_time_days ? parseInt(form.lead_time_days) : undefined,
           rating: form.rating ? parseFloat(form.rating) : undefined,
@@ -86,6 +109,10 @@ const SupplierModal: React.FC<ModalProps> = ({ supplier, onClose, onSaved }) => 
           email: form.email || undefined,
           address: form.address || undefined,
           tax_id: form.tax_id || undefined,
+          country: form.country || undefined,
+          state: form.state || undefined,
+          gst_registration_status: form.gst_registration_status,
+          gstin: form.gstin || undefined,
           payment_terms: form.payment_terms || undefined,
           lead_time_days: form.lead_time_days ? parseInt(form.lead_time_days) : undefined,
           rating: form.rating ? parseFloat(form.rating) : undefined,
@@ -150,9 +177,59 @@ const SupplierModal: React.FC<ModalProps> = ({ supplier, onClose, onSaved }) => 
               <input className={inputClass} value={form.email} onChange={e => set('email', e.target.value)} placeholder="supplier@example.com" type="email" />
             </div>
             <div>
-              <label className={labelClass}>Tax ID / GST</label>
-              <input className={inputClass} value={form.tax_id} onChange={e => set('tax_id', e.target.value)} placeholder="22AAAAA0000A1Z5" />
+              <label className={labelClass}>Tax ID (Other)</label>
+              <input className={inputClass} value={form.tax_id} onChange={e => set('tax_id', e.target.value)} placeholder="Any other tax reference, if applicable" />
             </div>
+            <div>
+              <label className={labelClass}>Country</label>
+              <select
+                className={inputClass + ' cursor-pointer'}
+                value={form.country}
+                onChange={e => setForm(p => ({ ...p, country: e.target.value, state: '' }))}
+              >
+                {COUNTRIES.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className={labelClass}>State {form.country.trim().toLowerCase() === 'india' && <span className="text-red-500">*</span>}</label>
+              {getStatesForCountry(form.country).length > 0 ? (
+                <select className={inputClass + ' cursor-pointer'} value={form.state} onChange={e => set('state', e.target.value)}>
+                  <option value="">Select state</option>
+                  {getStatesForCountry(form.country).map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              ) : (
+                <input className={inputClass} value={form.state} onChange={e => set('state', e.target.value)} placeholder="State / Province" />
+              )}
+              <p className="text-xs text-slate-400 mt-1">Determines CGST+SGST vs IGST on every PO with this supplier — leave it blank and GST always defaults to IGST-only, even if you're actually in the same state.</p>
+            </div>
+            <div>
+              <label className={labelClass}>GST Registration</label>
+              <select
+                className={inputClass + ' cursor-pointer'}
+                value={form.gst_registration_status}
+                onChange={e => setForm(p => ({ ...p, gst_registration_status: e.target.value as GstRegistrationStatus }))}
+              >
+                <option value="unregistered">Unregistered</option>
+                <option value="registered">Registered</option>
+              </select>
+            </div>
+            {form.gst_registration_status === 'registered' && (
+              <div>
+                <label className={labelClass}>
+                  GSTIN {form.country.trim().toLowerCase() === 'india' && <span className="text-red-500">*</span>}
+                </label>
+                <input
+                  className={inputClass}
+                  value={form.gstin}
+                  onChange={e => set('gstin', e.target.value.toUpperCase().slice(0, 15))}
+                  placeholder="22AAAAA0000A1Z5"
+                  maxLength={15}
+                />
+                {form.country.trim().toLowerCase() !== 'india' && (
+                  <p className="text-xs text-slate-400 mt-1">Foreign suppliers are not required to provide an Indian GSTIN.</p>
+                )}
+              </div>
+            )}
             <div>
               <label className={labelClass}>Payment Terms</label>
               <select className={inputClass + ' cursor-pointer'} value={form.payment_terms} onChange={e => set('payment_terms', e.target.value)}>

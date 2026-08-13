@@ -119,14 +119,14 @@ const MedicineDetail: React.FC = () => {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-50 text-left text-xs font-semibold text-slate-500 uppercase">
-                <th className="px-4 py-3">Batch #</th>
-                <th className="px-4 py-3">Mfg Date</th>
-                <th className="px-4 py-3">Expiry</th>
-                <th className="px-4 py-3 text-right">Qty</th>
-                <th className="px-4 py-3 text-right">Purchase ₹</th>
-                <th className="px-4 py-3 text-right">Selling ₹</th>
-                <th className="px-4 py-3 text-right">MRP ₹</th>
-                <th className="px-4 py-3">Supplier</th>
+                <th className="px-4 py-3 text-center">Batch #</th>
+                <th className="px-4 py-3 text-center">Mfg Date</th>
+                <th className="px-4 py-3 text-center">Expiry</th>
+                <th className="px-4 py-3 text-center">Qty</th>
+                <th className="px-4 py-3 text-center">Purchase ₹</th>
+                <th className="px-4 py-3 text-center">Selling ₹</th>
+                <th className="px-4 py-3 text-center">MRP ₹</th>
+                <th className="px-4 py-3 text-center">Supplier</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">

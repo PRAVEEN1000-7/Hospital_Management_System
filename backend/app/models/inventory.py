@@ -27,6 +27,15 @@ class Supplier(Base):
     email = Column(String(255))
     address = Column(Text)
     tax_id = Column(String(50))
+    # GST fields — see services/gst_service.py. state/country determine
+    # place of supply (intra-state / inter-state / Union Territory / export)
+    # against the hospital's own state/country; gstin/gst_registration_status
+    # gate whether a GSTIN is required at all (unregistered or foreign
+    # suppliers are never forced to provide one).
+    state = Column(String(100))
+    country = Column(String(100), default="India")
+    gstin = Column(String(15))
+    gst_registration_status = Column(String(20), default="unregistered")  # 'registered' | 'unregistered'
     payment_terms = Column(String(50))
     lead_time_days = Column(Integer)
     rating = Column(Numeric(3, 1))
@@ -56,6 +65,17 @@ class PurchaseOrder(Base):
     status = Column(String(20), default="draft")  # draft, submitted, approved, partially_received, received, cancelled
     total_amount = Column(Numeric(12, 2), default=0)
     tax_amount = Column(Numeric(12, 2), default=0)
+    # GST breakdown — one aggregate row per document even when line items mix
+    # GST rates (e.g. 12% and 18% items on the same PO). Only the components
+    # matching place_of_supply_type are ever non-zero — see gst_service.py.
+    subtotal = Column(Numeric(12, 2), default=0)
+    discount_amount = Column(Numeric(12, 2), default=0)
+    taxable_amount = Column(Numeric(12, 2), default=0)
+    cgst_amount = Column(Numeric(12, 2), default=0)
+    sgst_amount = Column(Numeric(12, 2), default=0)
+    igst_amount = Column(Numeric(12, 2), default=0)
+    ugst_amount = Column(Numeric(12, 2), default=0)
+    place_of_supply_type = Column(String(20))  # 'intra_state' | 'inter_state' | 'union_territory' | 'export'
     notes = Column(Text)
     approved_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
@@ -80,7 +100,18 @@ class PurchaseOrderItem(Base):
     quantity_ordered = Column(Integer, nullable=False)
     quantity_received = Column(Integer, default=0)
     unit_price = Column(Numeric(12, 2), nullable=False)
+    # total_price = taxable_amount + (cgst+sgst+igst+ugst) — the line's final
+    # cost including GST, same "Total" this column already meant before GST
+    # support existed (was previously just quantity × unit_price).
     total_price = Column(Numeric(12, 2), nullable=False)
+    discount_percent = Column(Numeric(5, 2), default=0)
+    discount_amount = Column(Numeric(12, 2), default=0)
+    gst_rate = Column(Numeric(5, 2), default=0)
+    taxable_amount = Column(Numeric(12, 2), default=0)
+    cgst_amount = Column(Numeric(12, 2), default=0)
+    sgst_amount = Column(Numeric(12, 2), default=0)
+    igst_amount = Column(Numeric(12, 2), default=0)
+    ugst_amount = Column(Numeric(12, 2), default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     purchase_order = relationship("PurchaseOrder", back_populates="items")

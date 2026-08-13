@@ -21,6 +21,7 @@ from ..services.appointment_service import (
     generate_appointment_number,
     enrich_appointment,
     resolve_new_appointment_fee,
+    compute_follow_up_label,
 )
 from ..services.schedule_service import get_available_slots, is_doctor_on_leave
 from ..services.waitlist_service import (
@@ -256,6 +257,12 @@ async def register_walk_in(
             check_in_at=now,
             created_by=current_user.id,
             is_specialist_assignment=bool(data.is_specialist_assignment),
+            # Without this, a walk-in visit for a returning patient never
+            # gets an MC1/MC2/MCR label — it silently drops out of the
+            # dashboard's Free Count/Returning bars AND never gets the free-
+            # follow-up fee waiver (see invoice_service.resolve_consultation_fee_amount),
+            # even when it's genuinely within the free window.
+            follow_up_label=compute_follow_up_label(db, current_user.hospital_id, patient_id, today),
         )
         db.add(appt)
         db.flush()
@@ -1353,6 +1360,11 @@ async def refer_patient_to_doctor(
             notes=f"Referred by {referring_doctor_name}. Reason: {reason_text}",
             check_in_at=now if referral_date == today else None,
             created_by=current_user.id,
+            # Same reasoning as the walk-in appointment above — a referral is
+            # still a real visit for this patient and must get an MC1/MC2/MCR
+            # label, or it silently drops out of the dashboard trend and
+            # never gets the free-follow-up fee waiver when it should.
+            follow_up_label=compute_follow_up_label(db, original_appt.hospital_id, original_appt.patient_id, referral_date),
         )
         db.add(referral_appt)
         db.flush()

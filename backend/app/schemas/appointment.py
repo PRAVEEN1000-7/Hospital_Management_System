@@ -155,6 +155,10 @@ class AppointmentCreate(BaseModel):
     chief_complaint: Optional[str] = None
     priority: Optional[str] = Field(default="normal")
     consultation_fee: Optional[Decimal] = None
+    # MC1/MC2/.../MCR — staff override from the OPD Assignment dropdown
+    # (AppointmentBooking.tsx). Omit to auto-compute from visit history; see
+    # appointment_service.compute_follow_up_label for the full rule.
+    follow_up_label: Optional[str] = None
 
     @field_validator("appointment_type")
     @classmethod
@@ -209,6 +213,7 @@ class AppointmentResponse(BaseModel):
     department_id: Optional[str] = None
     appointment_type: str
     visit_type: Optional[str] = None
+    follow_up_label: Optional[str] = None
     appointment_date: date
     start_time: Optional[time] = None
     end_time: Optional[time] = None

@@ -16,6 +16,11 @@ export interface HospitalDetails {
   timezone: string;
   default_currency: string;
   tax_id: string | null;
+  /** Hospital's own GSTIN — the "recipient" party data for the PO/GRN
+   * place-of-supply calculation (see utils/gst.ts / backend gst_service.py).
+   * Only required when gst_registration_status is 'registered'. */
+  gstin?: string | null;
+  gst_registration_status?: 'registered' | 'unregistered' | null;
   registration_number: string | null;
   logo_url: string | null;
   is_active: boolean;
@@ -98,6 +103,8 @@ export const hospitalService = {
         timezone: 'Asia/Kolkata',
         default_currency: 'INR',
         tax_id: null,
+        gstin: null,
+        gst_registration_status: null,
         registration_number: null,
         logo_url: null,
         is_active: true,

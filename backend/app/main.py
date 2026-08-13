@@ -20,7 +20,7 @@ from .routers import (
     appointments, schedules, appointment_settings, appointment_reports,
     departments, doctors, hospital_settings as hospital_settings_router,
     queue_screens, role_permissions,
-    walk_ins, waitlist, prescriptions, pharmacy, pharmacy_dispensing,
+    walk_ins, waitlist, prescriptions, suggestions, pharmacy, pharmacy_dispensing,
     inventory, notifications, optical, lab,
     # Billing & Invoice module
     invoices, payments, refunds, settlements, tax_configurations,
@@ -40,6 +40,7 @@ logger = get_logger(__name__)
 
 # Import models so they're registered with Base.metadata
 from .models import user, patient, appointment, patient_id_sequence, department, hospital_settings, prescription, inventory as inventory_models, notification, optical as optical_models, lab as lab_models  # noqa: F401
+from .models import ngram as ngram_models  # noqa: F401
 # Ensure PasswordResetToken is registered with SQLAlchemy metadata
 from .models import tax_config, invoice, payment, refund, settlement, insurance  # noqa: F401
 from .models import tenant  # noqa: F401
@@ -277,6 +278,7 @@ _require_attendance    = [Depends(SubscriptionValidator.require_module_access('a
 app.include_router(prescriptions.router, prefix="/api/v1", dependencies=_require_prescriptions)
 app.include_router(prescriptions.medicines_router, prefix="/api/v1", dependencies=_require_prescriptions)
 app.include_router(prescriptions.templates_router, prefix="/api/v1", dependencies=_require_prescriptions)
+app.include_router(suggestions.router, prefix="/api/v1")  # not module-gated — see routers/suggestions.py docstring
 app.include_router(pharmacy.router, prefix="/api/v1", dependencies=_require_pharmacy)
 app.include_router(pharmacy_dispensing.router, prefix="/api/v1", dependencies=_require_pharmacy)
 app.include_router(logs_router.router, prefix="/api/v1")  # POST /api/v1/logs/frontend

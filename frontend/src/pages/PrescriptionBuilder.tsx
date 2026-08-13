@@ -21,6 +21,7 @@ import { canEdit } from '../config/modulePermissions';
 import AvailabilityCalendar from '../components/common/AvailabilityCalendar';
 import { useDoctorMonthAvailability } from '../hooks/useDoctorMonthAvailability';
 import { useListKeyboardNav } from '../hooks/useListKeyboardNav';
+import AutocompleteField from '../components/common/AutocompleteField';
 import { formatLocalDateISO, formatMonthKey } from '../utils/calendarDate';
 import PrescriptionHistoryGrid from '../components/patients/PrescriptionHistoryGrid';
 
@@ -1267,8 +1268,9 @@ const PrescriptionBuilder: React.FC = () => {
                   <label className="block text-sm font-medium text-slate-700 mb-1.5">
                     Diagnosis <span className="text-red-500">*</span>
                   </label>
-                  <input
-                    type="text"
+                  <AutocompleteField
+                    as="input"
+                    field="diagnosis"
                     value={block.diagnosis}
                     onChange={e => updateBlockDiagnosis(blockIdx, e.target.value)}
                     className="input-field"
@@ -1663,7 +1665,9 @@ const PrescriptionBuilder: React.FC = () => {
             <h3 className="font-semibold mb-4 flex items-center gap-2">
               <span className="material-symbols-outlined text-primary text-sm">clinical_notes</span> Clinical Notes
             </h3>
-            <textarea
+            <AutocompleteField
+              as="textarea"
+              field="clinical_notes"
               rows={3}
               value={clinicalNotes}
               onChange={e => setClinicalNotes(e.target.value)}
@@ -1909,7 +1913,7 @@ const PrescriptionBuilder: React.FC = () => {
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Optical Notes</label>
-                    <input value={opticalRx.notes || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, notes: e.target.value }))} className="input-field" />
+                    <AutocompleteField as="input" field="optical_prescription_notes" value={opticalRx.notes || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, notes: e.target.value }))} className="input-field" />
                   </div>
                 </div>
               )}
@@ -1921,7 +1925,9 @@ const PrescriptionBuilder: React.FC = () => {
             <h3 className="font-semibold mb-4 flex items-center gap-2">
               <span className="material-symbols-outlined text-primary text-sm">info</span> Advice
             </h3>
-            <textarea
+            <AutocompleteField
+              as="textarea"
+              field="advice"
               rows={3}
               value={advice}
               onChange={e => setAdvice(e.target.value)}

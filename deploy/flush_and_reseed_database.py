@@ -124,6 +124,8 @@ MIGRATIONS_TO_REPLAY = [
     "11_lab_technician_role.sql",
     "12_lab_test_templates_batch3.sql",
     "13_lab_test_fasting_blood_sugar.sql",
+    "14_clinical_note_ngrams.sql",
+    "15_ngram_field_type_and_medicine_columns.sql",
 ]
 
 # Same fixed IDs already live in the database.

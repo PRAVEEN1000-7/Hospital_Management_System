@@ -732,6 +732,16 @@ def finalize_prescription(
     except Exception:
         logger.warning("Failed to send prescription finalize notification", exc_info=True)
 
+    # Feed the finalized prescription's free-text fields into the autocomplete
+    # model. Non-blocking: a failure here must never break finalization.
+    try:
+        from .ngram_service import index_note
+        index_note(db, rx.hospital_id, "clinical_notes", rx.clinical_notes)
+        index_note(db, rx.hospital_id, "diagnosis", rx.diagnosis)
+        index_note(db, rx.hospital_id, "advice", rx.advice)
+    except Exception:
+        logger.warning("Failed to index prescription text into ngram model", exc_info=True)
+
     _save_version_snapshot(db, rx, performed_by, "Finalized prescription")
     return rx
 

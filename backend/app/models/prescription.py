@@ -50,6 +50,8 @@ class Medicine(Base):
     reorder_level = Column(Integer, default=10)
     max_stock_level = Column(Integer)
     storage_instructions = Column(String(255))
+    drug_interaction_notes = Column(Text)
+    side_effects = Column(Text)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

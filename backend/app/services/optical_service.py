@@ -309,6 +309,12 @@ def create_optical_prescription(
         except Exception:
             logger.warning("Failed to send optical prescription notification", exc_info=True)
 
+        try:
+            from .ngram_service import index_note
+            index_note(db, hospital_id, "optical_prescription_notes", rx.notes)
+        except Exception:
+            logger.warning("Failed to index optical prescription notes into ngram model", exc_info=True)
+
         return rx
     raise last_error
 

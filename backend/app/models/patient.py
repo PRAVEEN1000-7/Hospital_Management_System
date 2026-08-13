@@ -77,11 +77,10 @@ class Patient(Base):
 
     @property
     def full_name(self) -> str:
-        parts = []
-        if self.title:
-            parts.append(self.title)
-        parts.append(self.first_name)
-        parts.append(self.last_name)
+        # last_name is optional (stored as "" when not provided, never a
+        # true NULL) — filter out falsy parts so an empty last_name doesn't
+        # leave a trailing space.
+        parts = [p for p in (self.title, self.first_name, self.last_name) if p]
         return " ".join(parts)
 
 

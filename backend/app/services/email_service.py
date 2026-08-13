@@ -212,7 +212,7 @@ def send_patient_id_card_email(
 def generate_patient_id_card_html(patient, settings_obj=None) -> str:
     """Generate HTML for patient ID card (front + back)"""
     s = settings_obj or settings
-    full_name = f"{patient.title} {patient.first_name} {patient.last_name}"
+    full_name = " ".join(p for p in (patient.title, patient.first_name, patient.last_name) if p)
     dob = patient.date_of_birth.strftime("%d %b %Y") if patient.date_of_birth else "N/A"
 
     # Calculate age

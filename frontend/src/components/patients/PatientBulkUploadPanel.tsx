@@ -108,8 +108,12 @@ const PatientBulkUploadPanel: React.FC = () => {
         allowed_values: 'Format YYYY-MM-DD. REQUIRED (matches the single-patient Register form, which also requires it). Must be a real past date, not more than 150 years ago.',
       },
       {
-        field: 'first_name / last_name',
-        allowed_values: 'Letters only (spaces, apostrophes and hyphens allowed). last_name must be at least 3 characters. Both required.',
+        field: 'first_name',
+        allowed_values: 'Letters only (spaces, apostrophes and hyphens allowed). Required.',
+      },
+      {
+        field: 'last_name',
+        allowed_values: 'Optional. If provided, letters only (spaces, apostrophes and hyphens allowed) — a malformed value rejects the row rather than being dropped.',
       },
       {
         field: 'address_line_1',
@@ -141,7 +145,7 @@ const PatientBulkUploadPanel: React.FC = () => {
       },
       {
         field: 'required_field',
-        allowed_values: 'first_name, last_name, gender, date_of_birth, blood_group, phone_number and title are mandatory — exactly the same fields the single-patient Register form requires. Every other column, including address_line_1, is optional. A row missing a required field, or failing any check above, is marked invalid and skipped during upload — it will not block the rest of the file.',
+        allowed_values: 'first_name, gender, date_of_birth, blood_group, phone_number and title are mandatory — exactly the same fields the single-patient Register form requires. Every other column, including last_name and address_line_1, is optional. A row missing a required field, or failing any check above, is marked invalid and skipped during upload — it will not block the rest of the file.',
       },
     ];
 
@@ -285,14 +289,14 @@ const PatientBulkUploadPanel: React.FC = () => {
     const errors: string[] = [];
     const namePattern = /^[A-Za-z][A-Za-z\s'-]*$/;
 
-    // Register.tsx validateAll: first_name / last_name (letters, last_name > 2 chars)
+    // Register.tsx validateAll: first_name required; last_name optional
     const firstName = String(row.first_name ?? '').trim();
     if (!firstName || !namePattern.test(firstName)) {
       errors.push(`'first_name' is required and must contain letters only.`);
     }
     const lastName = String(row.last_name ?? '').trim();
-    if (!lastName || lastName.length < 3 || !namePattern.test(lastName)) {
-      errors.push(`'last_name' is required, letters only, and at least 3 characters.`);
+    if (lastName && !namePattern.test(lastName)) {
+      errors.push(`'last_name' must contain letters only.`);
     }
 
     // Register.tsx validateAll: date_of_birth is required, must be in the past

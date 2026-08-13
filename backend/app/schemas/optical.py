@@ -235,7 +235,7 @@ class OpticalPrescriptionResponse(BaseModel):
     hospital_id: str
     prescription_number: str
     patient_id: str
-    doctor_id: str
+    doctor_id: Optional[str] = None
     appointment_id: Optional[str] = None
     right_sph: Optional[Decimal] = None
     right_cyl: Optional[Decimal] = None

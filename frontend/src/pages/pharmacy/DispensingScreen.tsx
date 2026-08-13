@@ -297,9 +297,11 @@ const DispensingScreen: React.FC = () => {
     );
   };
 
-  // Debounced medicine search for the "Add Item" control.
+  // Debounced medicine search for the "Add Item" control. An empty query
+  // still resolves (first page of the formulary), so opening the box shows
+  // something to browse immediately instead of nothing until typed.
   useEffect(() => {
-    if (!showExtraItemSearch || !extraItemSearch.trim()) {
+    if (!showExtraItemSearch) {
       setExtraItemResults([]);
       return;
     }
@@ -852,7 +854,7 @@ const DispensingScreen: React.FC = () => {
                 label="Doctor" 
                 value={
                   <div>
-                    <div className="font-medium text-slate-900">{prescription.doctor_name}</div>
+                    <div className="font-medium text-slate-900">{prescription.doctor_name || 'No doctor assigned'}</div>
                     {prescription.doctor_specialization && (
                       <div className="text-xs text-slate-500">{prescription.doctor_specialization}</div>
                     )}
@@ -1394,7 +1396,7 @@ const DispensingScreen: React.FC = () => {
                         value={extraItemSearch}
                         onChange={(e) => setExtraItemSearch(e.target.value)}
                         onKeyDown={extraItemNav.onKeyDown}
-                        placeholder="Search medicine or pharmacy item by name..."
+                        placeholder="Search by name, or browse below..."
                         className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200"
                       />
                       <button
@@ -1406,6 +1408,9 @@ const DispensingScreen: React.FC = () => {
                       </button>
                       {extraItemResults.length > 0 && (
                         <div className="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
+                          {!extraItemSearch.trim() && (
+                            <p className="px-3 py-1.5 text-[10px] font-bold text-slate-400 uppercase border-b border-slate-100">Browse items</p>
+                          )}
                           {extraItemResults.map((med, idx) => (
                             <button
                               key={med.id}

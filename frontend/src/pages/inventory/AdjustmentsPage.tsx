@@ -53,8 +53,19 @@ const AdjustmentsPage: React.FC = () => {
   const [loadingBatches, setLoadingBatches] = useState(false);
 
   useEffect(() => {
-    pharmacyService.getMedicines(1, 500).then(r => setMedicines(r.data)).catch(() => {});
-    opticalService.getProducts(1, 500).then(r => setOpticalProducts(r.data)).catch(() => {});
+    // Previously a silent .catch(() => {}) — if either catalog fails to load
+    // (module not enabled for this hospital's subscription, a permission
+    // gap, network error, etc.) the picker below just looked empty/broken
+    // with no explanation, which is exactly what "can't select a medicine"
+    // and "can't create an adjustment" look like from the outside. Surface
+    // it so the real cause is visible instead of a mysteriously blank list.
+    pharmacyService.getMedicines(1, 500).then(r => setMedicines(r.data)).catch((err: any) => {
+      toast.error(err?.response?.data?.detail || 'Failed to load medicine catalog');
+    });
+    opticalService.getProducts(1, 500).then(r => setOpticalProducts(r.data)).catch((err: any) => {
+      toast.error(err?.response?.data?.detail || 'Failed to load optical product catalog');
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Adjustments must reference a real catalog item — unlike POs/GRNs there's no
@@ -74,8 +85,8 @@ const AdjustmentsPage: React.FC = () => {
       setAdjustments(res.data);
       setTotalPages(res.total_pages);
       setTotal(res.total);
-    } catch {
-      toast.error('Failed to load adjustments');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to load adjustments');
     } finally {
       setLoading(false);
     }
@@ -148,8 +159,11 @@ const AdjustmentsPage: React.FC = () => {
       toast.success('Adjustment created');
       resetForm();
       fetchAdjustments();
-    } catch {
-      toast.error('Failed to create adjustment');
+    } catch (err: any) {
+      // Surface the backend's actual reason (e.g. a 403 permission message,
+      // or "Module 'inventory' is not enabled for your subscription plan")
+      // instead of a generic message that hides why it actually failed.
+      toast.error(err?.response?.data?.detail || 'Failed to create adjustment');
     }
   };
 

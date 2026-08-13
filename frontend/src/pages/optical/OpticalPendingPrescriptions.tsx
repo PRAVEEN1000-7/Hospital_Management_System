@@ -208,7 +208,7 @@ const OpticalPendingPrescriptions: React.FC = () => {
                         )}
                       </td>
                       <td className="px-6 py-4">
-                        <div className="text-sm text-slate-900">{rx.doctor_name}</div>
+                        <div className="text-sm text-slate-900">{rx.doctor_name || 'No doctor assigned'}</div>
                         {rx.doctor_specialization && (
                           <div className="text-xs text-slate-500 mt-0.5">{rx.doctor_specialization}</div>
                         )}
@@ -282,7 +282,7 @@ const OpticalPendingPrescriptions: React.FC = () => {
                     )}
                     <div className="flex justify-between">
                       <span className="text-slate-500">Doctor:</span>
-                      <span className="text-slate-900 text-right">{rx.doctor_name}</span>
+                      <span className="text-slate-900 text-right">{rx.doctor_name || 'No doctor assigned'}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-500">Wait Time:</span>

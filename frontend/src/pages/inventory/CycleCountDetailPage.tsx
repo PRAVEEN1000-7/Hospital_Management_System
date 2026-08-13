@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useToast } from '../../contexts/ToastContext';
 import inventoryService from '../../services/inventoryService';
 import pharmacyService from '../../services/pharmacyService';
+import SearchableSelect, { type SuggestionOption } from '../../components/common/SearchableSelect';
 import type { CycleCount, CycleCountCreate } from '../../types/inventory';
 
 interface CycleCountItem {
@@ -118,6 +119,18 @@ const CycleCountDetail: React.FC = () => {
   // Remove item
   const removeItem = (index: number) => {
     setItems(items.filter((_, i) => i !== index));
+  };
+
+  // Suggestions for the medicine searchable select (browse + type-to-search in one field)
+  const medicineSuggestions: SuggestionOption[] = medicines.map(m => ({
+    id: m.id,
+    label: m.name,
+    sublabel: m.generic_name || m.manufacturer || undefined,
+    metadata: { id: m.id, name: m.name, stock: m.total_stock ?? 0 },
+  }));
+
+  const handleMedicineSelect = (idx: number, _value: string, metadata?: Record<string, unknown>) => {
+    updateItem(idx, 'item_id', (metadata && metadata.id) ? (metadata.id as string) : '');
   };
 
   // Calculate statistics
@@ -348,17 +361,15 @@ const CycleCountDetail: React.FC = () => {
                   return (
                     <tr key={idx} className="border-b border-slate-100 hover:bg-slate-50">
                       <td className="px-4 py-3">
-                        <select
-                          value={item.item_id}
-                          onChange={(e) => updateItem(idx, 'item_id', e.target.value)}
+                        <SearchableSelect
+                          value={item.item_name}
+                          onChange={(val, meta) => handleMedicineSelect(idx, val, meta)}
+                          suggestions={medicineSuggestions}
+                          placeholder="Search medicine..."
                           disabled={isEditMode}
-                          className="w-full px-2 py-1 border border-slate-200 rounded text-xs focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:bg-slate-50"
-                        >
-                          <option value="">-- Select Item --</option>
-                          {medicines.map(m => (
-                            <option key={m.id} value={m.id}>{m.name}</option>
-                          ))}
-                        </select>
+                          allowManualEntry={false}
+                          className="min-w-[180px]"
+                        />
                       </td>
                       <td className="px-4 py-3 text-center font-mono">{item.system_quantity}</td>
                       <td className="px-4 py-3 text-center">

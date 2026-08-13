@@ -23,6 +23,7 @@ from ..models.appointment import Doctor
 from ..models.inventory import StockMovement
 from .prescription_service import calculate_prescribed_quantity
 from .notification_service import notify_hospital_users
+from ..core.hospital_time import hospital_today_by_id
 
 logger = logging.getLogger(__name__)
 
@@ -310,7 +311,7 @@ def _enrich_prescription_for_dispensing(db: Session, rx: Prescription) -> dict:
         "created_at": str(rx.created_at),
         "hospital_id": str(rx.hospital_id),
         "patient_id": str(rx.patient_id),
-        "doctor_id": str(rx.doctor_id),
+        "doctor_id": str(rx.doctor_id) if rx.doctor_id else None,
         "appointment_id": str(rx.appointment_id) if rx.appointment_id else None,
         "diagnosis": rx.diagnosis,
         "clinical_notes": rx.clinical_notes,
@@ -401,12 +402,18 @@ def _enrich_prescription_for_dispensing(db: Session, rx: Prescription) -> dict:
         }
         
         # Get available stock for this medicine across all active batches (FEFO ordered).
+        # Expiry compared against the hospital's own local date, not the
+        # server's — date.today() reads the server process's own timezone,
+        # wrong the moment the server isn't physically in the hospital's
+        # timezone (the normal case). This directly fed the Out of Stock
+        # calculation on the Dispensing screen.
         if item.medicine_id:
+            today = hospital_today_by_id(db, rx.hospital_id)
             batches = db.query(MedicineBatch).filter(
                 MedicineBatch.medicine_id == item.medicine_id,
                 MedicineBatch.is_active == True,
                 MedicineBatch.quantity > 0,
-                MedicineBatch.expiry_date >= date.today(),
+                MedicineBatch.expiry_date >= today,
             ).order_by(MedicineBatch.expiry_date.asc()).all()
 
             if batches:
@@ -471,7 +478,8 @@ def _allocate_batches_and_create_sale_items(
     if not batch:
         raise ValueError(f"Batch not found for medicine {medicine_name}")
 
-    if batch.expiry_date and batch.expiry_date < date.today():
+    today = hospital_today_by_id(db, hospital_id)
+    if batch.expiry_date and batch.expiry_date < today:
         raise ValueError(
             f"Selected batch {batch.batch_number} for {medicine_name} is expired"
         )
@@ -491,7 +499,7 @@ def _allocate_batches_and_create_sale_items(
             MedicineBatch.is_active == True,
             MedicineBatch.id != batch.id,
             MedicineBatch.quantity > 0,
-            MedicineBatch.expiry_date >= date.today(),
+            MedicineBatch.expiry_date >= today,
         ).with_for_update().order_by(MedicineBatch.expiry_date.asc()).all()
 
         for extra_batch in additional_batches:

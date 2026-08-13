@@ -8,6 +8,7 @@ mutates lab state, LAB_VIEW_ROLES for read paths a doctor also needs.
 """
 import logging
 import uuid as uuid_mod
+from datetime import date
 from decimal import Decimal
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -16,11 +17,13 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models.user import User
 from ..dependencies import get_current_active_user
+from ..core.audit_logger import AuditLogger, AuditAction
 from ..schemas.lab import (
     LabTestCreate, LabTestUpdate, LabTestResponse, LabTestListResponse,
     LabOrderCreate, LabOrderResponse, LabResultEntry,
     LabQueueEntryResponse, LabQueueStatusUpdate,
     LabSaleResponse, LabMarkPaidRequest,
+    LabBillingItemResponse, LabBillingListResponse,
     LabReferralCreate, LabReferralResponse,
     LabDashboard,
 )
@@ -32,7 +35,7 @@ router = APIRouter(prefix="/lab", tags=["Laboratory"])
 
 LAB_STAFF_ROLES = {"super_admin", "admin", "lab_technician"}
 LAB_VIEW_ROLES = {"super_admin", "admin", "lab_technician", "doctor"}
-LAB_ORDER_ROLES = {"super_admin", "admin", "doctor"}
+LAB_ORDER_ROLES = {"super_admin", "admin", "doctor", "lab_technician"}
 
 
 def _require(current_user: User, allowed: set) -> None:
@@ -145,6 +148,35 @@ async def get_lab_order(
     return svc._enrich_order(db, order)
 
 
+@router.delete("/orders/{order_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_lab_order(
+    order_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    # Tighter than order creation (LAB_ORDER_ROLES includes doctor) — deleting
+    # a report is a lab-staff/admin action, same tier as the test-catalog delete.
+    _require(current_user, LAB_STAFF_ROLES)
+    order = svc.get_lab_order_by_id(db, order_id, hospital_id=current_user.hospital_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Lab order not found")
+    if svc.is_lab_order_billed(db, order.id):
+        raise HTTPException(status_code=409, detail="This order has already been billed and cannot be deleted")
+
+    order_number = order.order_number
+    patient_id = order.patient_id
+    svc.delete_lab_order(db, order)
+
+    AuditLogger.log(
+        action=AuditAction.LAB_ORDER_DELETE,
+        user=current_user,
+        tenant=None,
+        resource_type="lab_order",
+        resource_id=order_id,
+        old_values={"order_number": order_number, "patient_id": str(patient_id)},
+    )
+
+
 @router.get("/orders/{order_id}/pdf")
 async def get_lab_order_pdf(
     order_id: str,
@@ -218,8 +250,9 @@ async def get_lab_order_pdf(
             return ""
     logo_uri = _logo_data_uri(hospital.logo_url if hospital else "")
 
-    doctor_name = _esc((doctor.user.full_name if doctor and doctor.user else "") or resp.doctor_name or "—")
-    doctor_display = doctor_name if doctor_name.startswith("Dr.") else f"Dr. {doctor_name}"
+    doctor_name = _esc((doctor.user.full_name if doctor and doctor.user else "") or resp.doctor_name or "")
+    doctor_display = doctor_name if (not doctor_name or doctor_name.startswith("Dr.")) else f"Dr. {doctor_name}"
+    doctor_display = doctor_display or "No doctor assigned"
 
     def _item_rows(item) -> str:
         params = item.parameters or []
@@ -351,6 +384,7 @@ async def update_lab_queue_status(
         order = svc.advance_lab_queue_status(db, order_id, data.queue_status, hospital_id=current_user.hospital_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    svc._resync_unpaid_item_prices(db, order)
     total = sum((i.price or Decimal("0")) for i in (order.items or []))
     return {
         "id": str(order.id),
@@ -387,15 +421,46 @@ async def mark_lab_sale_paid(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    """Post-payment sync — the real money is collected via the generic
-    Invoice/Payment path; this keeps the lab sale's status in step."""
+    """Collect a partial or full payment against a lab order's bill — called
+    from the standalone Lab Billing page (LabBilling.tsx), any number of
+    times per order. Reuses one Invoice per order and records the real
+    payment through the generic Invoice/Payment path (see
+    lab_service.collect_lab_sale_payment), which already handles
+    accumulating multiple payments and rejects overpayment."""
     _require(current_user, LAB_STAFF_ROLES)
-    sale = svc.sync_lab_sale_payment_status(
-        db, order_id, current_user.hospital_id, data.amount_paid, data.payment_method,
-    )
+    try:
+        sale = svc.collect_lab_sale_payment(
+            db, order_id, current_user.hospital_id, data.amount_paid, data.payment_method, current_user.id,
+            payment_reference=data.payment_reference,
+        )
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
     if not sale:
         raise HTTPException(status_code=404, detail="Lab order not found")
     return LabSaleResponse.model_validate(sale)
+
+
+@router.get("/billing", response_model=LabBillingListResponse)
+async def list_lab_billing(
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    search: Optional[str] = None,
+    payment_status: Optional[str] = Query(None, description="pending | partial | paid"),
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Billing worklist for the standalone Lab Billing page — every lab
+    order with its payment status, filterable so staff can find unpaid /
+    partially-paid orders to collect against."""
+    _require(current_user, LAB_STAFF_ROLES)
+    result = svc.list_lab_billing(
+        db, current_user.hospital_id, page, limit, search, payment_status, date_from, date_to,
+    )
+    result["data"] = [LabBillingItemResponse.model_validate(r) for r in result["data"]]
+    return result
 
 
 @router.put("/orders/{order_id}/items/{item_id}/result", response_model=LabOrderResponse)

@@ -178,14 +178,25 @@ def list_medicines(
     )
     items = query.order_by(earliest_expiry.asc().nulls_last(), Medicine.created_at.desc()).offset((page - 1) * limit).limit(limit).all()
 
-    # Enrich with total stock
+    # Enrich with total stock. "Today" is resolved once for the whole page in
+    # this hospital's own timezone (all medicines here share hospital_id).
+    today = hospital_today_by_id(db, hospital_id)
     med_ids = [m.id for m in items]
     stock_map: dict[uuid.UUID, int] = {}
     batch_map: dict[uuid.UUID, dict] = {}
     if med_ids:
+        # total_stock feeds the "In Stock / Low Stock / Out of Stock" badge and
+        # filter on the Medicine List page — expired batches are excluded so a
+        # medicine whose only remaining stock has expired shows as out of
+        # stock here too, matching what the Dispensing screen already refuses
+        # to dispense (it never counted expired batches as available).
         stock_rows = (
             db.query(MedicineBatch.medicine_id, func.coalesce(func.sum(MedicineBatch.quantity), 0))
-            .filter(MedicineBatch.medicine_id.in_(med_ids), MedicineBatch.is_active == True)
+            .filter(
+                MedicineBatch.medicine_id.in_(med_ids),
+                MedicineBatch.is_active == True,
+                MedicineBatch.expiry_date >= today,
+            )
             .group_by(MedicineBatch.medicine_id)
             .all()
         )
@@ -200,6 +211,7 @@ def list_medicines(
                 MedicineBatch.medicine_id.in_(med_ids),
                 MedicineBatch.is_active == True,
                 MedicineBatch.quantity > 0,
+                MedicineBatch.expiry_date >= today,
             )
             .order_by(MedicineBatch.medicine_id, MedicineBatch.expiry_date.asc())
             .all()
@@ -346,8 +358,20 @@ def update_batch(
 def create_supplier(db: Session, hospital_id: uuid.UUID, data: dict) -> Supplier:
     payload = _filter_model_data(Supplier, data)
     if not payload.get("code"):
-        count = db.query(func.count(Supplier.id)).filter(Supplier.hospital_id == hospital_id).scalar() or 0
-        payload["code"] = f"SUP-{count + 1:04d}"
+        # MAX(existing seq)+1, not COUNT(*)+1 — a deleted supplier leaves a
+        # numbering gap that COUNT(*) doesn't account for, causing collisions.
+        last = (
+            db.query(Supplier.code)
+            .filter(Supplier.hospital_id == hospital_id)
+            .order_by(Supplier.code.desc())
+            .limit(1)
+            .scalar()
+        )
+        try:
+            seq = int(last.rsplit("-", 1)[-1]) + 1 if last else 1
+        except ValueError:
+            seq = 1
+        payload["code"] = f"SUP-{seq:04d}"
     sup = Supplier(hospital_id=hospital_id, **payload)
     db.add(sup)
     db.commit()
@@ -398,12 +422,22 @@ def delete_supplier(db: Session, supplier_id: str | uuid.UUID) -> bool:
 
 def _generate_po_number(db: Session, hospital_id: uuid.UUID) -> str:
     """Generate next PO number like PO-2026-0001."""
+    # MAX(existing seq)+1, not COUNT(*)+1 — a deleted/voided PO leaves a
+    # numbering gap that COUNT(*) doesn't account for, causing collisions.
     from datetime import date
     year = date.today().strftime("%y")
-    count = db.query(func.count(PurchaseOrder.id)).filter(
-        PurchaseOrder.hospital_id == hospital_id
-    ).scalar() or 0
-    return f"PO-{year}-{count + 1:04d}"
+    last = (
+        db.query(PurchaseOrder.po_number)
+        .filter(PurchaseOrder.hospital_id == hospital_id)
+        .order_by(PurchaseOrder.po_number.desc())
+        .limit(1)
+        .scalar()
+    )
+    try:
+        seq = int(last.rsplit("-", 1)[-1]) + 1 if last else 1
+    except ValueError:
+        seq = 1
+    return f"PO-{year}-{seq:04d}"
 
 
 def create_purchase_order(
@@ -663,10 +697,20 @@ def receive_purchase_order(
 # ══════════════════════════════════════════════════
 
 def _generate_invoice_number(db: Session, hospital_id: uuid.UUID) -> str:
-    count = db.query(func.count(PharmacySale.id)).filter(
-        PharmacySale.hospital_id == hospital_id
-    ).scalar() or 0
-    return f"INV-{count + 1:06d}"
+    # MAX(existing seq)+1, not COUNT(*)+1 — a deleted sale leaves a numbering
+    # gap that COUNT(*) doesn't account for, causing collisions.
+    last = (
+        db.query(PharmacySale.invoice_number)
+        .filter(PharmacySale.hospital_id == hospital_id)
+        .order_by(PharmacySale.invoice_number.desc())
+        .limit(1)
+        .scalar()
+    )
+    try:
+        seq = int(last.rsplit("-", 1)[-1]) + 1 if last else 1
+    except ValueError:
+        seq = 1
+    return f"INV-{seq:06d}"
 
 
 def create_sale(
@@ -766,20 +810,28 @@ def create_sale(
                 MedicineBatch.is_active == True,
             ).first()
         else:
-            # ✅ FIX BUG #7: Add expiry date validation - block expired batches
+            # Expiry compared against the hospital's own local date, not the
+            # server's (date.today() reads the server process's own
+            # timezone — wrong the moment the server isn't physically in the
+            # hospital's timezone, silently including/excluding batches
+            # whose expiry date falls on today per one clock but not the
+            # other). This is the same class of bug fixed elsewhere via
+            # hospital_today_by_id — see core/hospital_time.py.
+            today = hospital_today_by_id(db, hospital_id)
             batch = db.query(MedicineBatch).filter(
                 MedicineBatch.medicine_id == uuid.UUID(item_data["medicine_id"]),
                 MedicineBatch.is_active == True,
                 MedicineBatch.quantity >= qty,
-                MedicineBatch.expiry_date > date.today(),  # ✅ BLOCK EXPIRED BATCHES
+                MedicineBatch.expiry_date > today,  # block expired batches
             ).order_by(MedicineBatch.expiry_date.asc()).first()
             batch_id_uuid = batch.id if batch else None
 
         if not batch or batch.quantity < qty:
-            # ✅ Check if expired batches exist and provide helpful error message
+            # Check if expired batches exist and provide a helpful error message
+            today = hospital_today_by_id(db, hospital_id)
             expired_batch = db.query(MedicineBatch).filter(
                 MedicineBatch.medicine_id == uuid.UUID(item_data["medicine_id"]),
-                MedicineBatch.expiry_date <= date.today(),
+                MedicineBatch.expiry_date <= today,
                 MedicineBatch.quantity > 0,
             ).first()
             
@@ -877,6 +929,278 @@ def get_sale(db: Session, sale_id: str | uuid.UUID) -> Optional[PharmacySale]:
 
 def get_sale_items(db: Session, sale_id: uuid.UUID) -> list[PharmacySaleItem]:
     return db.query(PharmacySaleItem).filter(PharmacySaleItem.sale_id == sale_id).all()
+
+
+# ══════════════════════════════════════════════════
+# Post-finalization corrections
+#
+# Once a sale is fully dispensed there was previously no way to fix a
+# miskeyed dispensed quantity or amount tendered — DispensingScreen.tsx goes
+# fully read-only the moment prescription.status == 'dispensed'. These two
+# functions open a narrow, audited correction path for pharmacist/admin,
+# mirroring the pattern already used for GRN corrections after acceptance
+# (inventory_service.update_grn_item_batch / _reconcile_grn_item_stock_
+# correction): snapshot the old posted quantity before mutating, compute the
+# delta after, and post ONE compensating StockMovement for the net change —
+# raising ValueError instead of ever letting a batch go negative.
+# ══════════════════════════════════════════════════
+
+# Statuses a sale must be in to be eligible for a post-finalization
+# correction. SalesList.tsx's filter dropdown already surfaces 'cancelled'
+# and 'returned' as sale-status values (no backend code currently sets
+# them, but the vocabulary exists) — a void/refund should freeze the sale's
+# figures, not let a quantity correction silently resurrect stock movements
+# against it.
+_CORRECTABLE_SALE_STATUSES = {"dispensed"}
+
+
+def _recompute_sale_item_aggregates(db: Session, sale: PharmacySale) -> None:
+    """Recompute PharmacySale.subtotal/tax_amount/total_amount by summing
+    across its current item rows — the same formula create_sale uses to
+    build these from scratch, so a corrected sale stays internally
+    consistent with how every other sale's totals were derived. Does not
+    touch payment fields — see _resync_sale_balance_after_total_change.
+    """
+    items = db.query(PharmacySaleItem).filter(PharmacySaleItem.sale_id == sale.id).all()
+    subtotal = Decimal("0")
+    line_discount_total = Decimal("0")
+    tax_total = Decimal("0")
+    for it in items:
+        line_subtotal = it.unit_price * it.quantity
+        line_discount = line_subtotal * (it.discount_percent or Decimal("0")) / 100
+        subtotal += line_subtotal
+        tax_total += (it.tax_percent or Decimal("0"))
+        line_discount_total += line_discount
+
+    sale.subtotal = subtotal
+    sale.tax_amount = tax_total
+    sale.total_amount = (
+        subtotal - line_discount_total - (sale.discount_amount or Decimal("0"))
+        + tax_total + (sale.consultation_fee or Decimal("0"))
+    )
+
+
+def _resync_sale_balance_after_total_change(sale: PharmacySale) -> None:
+    """Keep balance_amount/payment_status consistent with the new
+    total_amount after a quantity correction — WITHOUT touching paid_amount.
+
+    paid_amount's source of truth differs by sale_type: for a counter_sale
+    it's derived from amount_tendered via compute_payment_breakdown, but for
+    a prescription-linked sale it's set directly by mark_dispensing_paid
+    once its (separate) Invoice/Payment is settled — amount_tendered is
+    never populated on that path at all. Recomputing paid_amount here from
+    amount_tendered would silently wipe out real payment history recorded
+    through that other path, so only balance/status are re-derived from
+    whatever paid_amount already holds.
+    """
+    paid_amount = sale.paid_amount or Decimal("0")
+    sale.balance_amount = sale.total_amount - paid_amount
+    if paid_amount <= 0:
+        sale.payment_status = "pending"
+    elif sale.balance_amount > 0:
+        sale.payment_status = "partially_paid"
+    else:
+        sale.payment_status = "paid"
+
+
+def update_dispensed_item_quantity(
+    db: Session,
+    hospital_id: uuid.UUID,
+    sale_id: str | uuid.UUID,
+    item_id: str | uuid.UUID,
+    new_quantity: int,
+    current_user=None,
+) -> PharmacySaleItem:
+    """Correct the dispensed quantity on one line item of an already-
+    finalized sale. Increasing it decrements the original batch further
+    (rejecting if that would take the batch negative — e.g. some of it was
+    already re-dispensed/sold elsewhere since); decreasing it credits the
+    difference back to the batch. unit_price/discount_percent/tax_percent
+    are left as-is; only quantity and the derived total_price change.
+    """
+    if isinstance(sale_id, str):
+        sale_id = uuid.UUID(sale_id)
+    if isinstance(item_id, str):
+        item_id = uuid.UUID(item_id)
+    if new_quantity <= 0:
+        raise ValueError("Quantity must be greater than zero")
+
+    sale = db.query(PharmacySale).filter(
+        PharmacySale.id == sale_id,
+        PharmacySale.hospital_id == hospital_id,
+    ).first()
+    if not sale:
+        raise ValueError("Sale not found")
+    if sale.status not in _CORRECTABLE_SALE_STATUSES:
+        raise ValueError(f"Cannot correct a sale with status '{sale.status}'")
+
+    item = db.query(PharmacySaleItem).filter(
+        PharmacySaleItem.id == item_id,
+        PharmacySaleItem.sale_id == sale_id,
+    ).first()
+    if not item:
+        raise ValueError("Sale item not found")
+
+    old_quantity = item.quantity
+    delta = new_quantity - old_quantity
+    if delta == 0:
+        return item
+
+    batch = db.query(MedicineBatch).filter(
+        MedicineBatch.id == item.batch_id,
+        MedicineBatch.medicine_id == item.medicine_id,
+    ).with_for_update().first()
+    if not batch:
+        raise ValueError("Original batch for this line item no longer exists")
+
+    new_batch_qty = (batch.quantity or 0) - delta
+    if new_batch_qty < 0:
+        raise ValueError(
+            f"Cannot increase dispensed quantity by {delta} — only {batch.quantity} unit(s) of "
+            f"batch '{batch.batch_number}' remain in stock."
+        )
+    batch.quantity = new_batch_qty
+
+    # total_price is re-derived using create_sale's own per-line formula.
+    # tax_percent here is an absolute per-line tax AMOUNT computed off the
+    # OLD quantity (see the field's real DB column name "tax_amount") — with
+    # no stored tax rate to scale it by, it's left unchanged, same as
+    # discount_percent/unit_price. In practice every prescription-dispensed
+    # item (the live DispensingScreen.tsx flow) has discount_percent=0 and
+    # tax_percent=0, so this reduces to plain unit_price * new_quantity.
+    line_subtotal = item.unit_price * new_quantity
+    line_discount = line_subtotal * (item.discount_percent or Decimal("0")) / 100
+    item.total_price = line_subtotal - line_discount + (item.tax_percent or Decimal("0"))
+    item.quantity = new_quantity
+
+    db.flush()
+
+    from ..models.inventory import StockMovement
+    balance_after = int(
+        db.query(func.coalesce(func.sum(MedicineBatch.quantity), 0)).filter(
+            MedicineBatch.medicine_id == item.medicine_id,
+            MedicineBatch.is_active == True,
+        ).scalar() or 0
+    )
+    db.add(StockMovement(
+        hospital_id=hospital_id,
+        item_type="medicine",
+        item_id=item.medicine_id,
+        batch_id=batch.id,
+        movement_type="adjustment",
+        reference_type="dispensing",
+        reference_id=sale.id,
+        quantity=-delta,
+        balance_after=balance_after,
+        unit_cost=float(item.unit_price),
+        notes=f"Dispensed quantity corrected on {sale.invoice_number} ({old_quantity} -> {new_quantity})",
+        performed_by=current_user.id if current_user else None,
+    ))
+
+    # Keep the originating prescription line's dispensed_quantity in step —
+    # otherwise "remaining to dispense" for that prescription silently
+    # desyncs from what was actually corrected here.
+    if item.prescription_item_id:
+        from ..models.prescription import PrescriptionItem
+        rx_item = db.query(PrescriptionItem).filter(
+            PrescriptionItem.id == item.prescription_item_id
+        ).first()
+        if rx_item:
+            rx_item.dispensed_quantity = max(0, (rx_item.dispensed_quantity or 0) + delta)
+
+    _recompute_sale_item_aggregates(db, sale)
+    _resync_sale_balance_after_total_change(sale)
+
+    db.commit()
+    db.refresh(item)
+
+    if current_user:
+        from ..core.audit_logger import AuditLogger, AuditAction
+        AuditLogger.log(
+            action=AuditAction.INVENTORY_ADJUST,
+            user=current_user,
+            tenant=None,
+            resource_type="pharmacy_sale_item",
+            resource_id=item.id,
+            old_values={"quantity": str(old_quantity)},
+            new_values={"quantity": str(new_quantity)},
+            metadata={
+                "sale_id": str(sale.id),
+                "invoice_number": sale.invoice_number,
+                "corrected_after_finalization": True,
+            },
+        )
+
+    return item
+
+
+def update_sale_amount_tendered(
+    db: Session,
+    hospital_id: uuid.UUID,
+    sale_id: str | uuid.UUID,
+    new_amount_tendered,
+    current_user=None,
+) -> PharmacySale:
+    """Correct the amount tendered on an already-finalized sale and
+    recompute paid_amount/balance_amount/payment_status via the same
+    compute_payment_breakdown() used at sale-creation time.
+    """
+    if isinstance(sale_id, str):
+        sale_id = uuid.UUID(sale_id)
+    new_amount_tendered = Decimal(str(new_amount_tendered))
+    if new_amount_tendered < 0:
+        raise ValueError("Amount tendered cannot be negative")
+
+    sale = db.query(PharmacySale).filter(
+        PharmacySale.id == sale_id,
+        PharmacySale.hospital_id == hospital_id,
+    ).first()
+    if not sale:
+        raise ValueError("Sale not found")
+    if sale.status not in _CORRECTABLE_SALE_STATUSES:
+        raise ValueError(f"Cannot correct a sale with status '{sale.status}'")
+
+    old_values = {
+        "amount_tendered": str(sale.amount_tendered),
+        "paid_amount": str(sale.paid_amount),
+        "balance_amount": str(sale.balance_amount),
+        "payment_status": sale.payment_status,
+    }
+
+    sale.amount_tendered = new_amount_tendered
+
+    from .billing_queue_service import compute_payment_breakdown
+    breakdown = compute_payment_breakdown(
+        sale.total_amount,
+        advance_amount=sale.advance_amount or Decimal("0"),
+        amount_tendered=new_amount_tendered,
+    )
+    sale.paid_amount = breakdown["paid_amount"]
+    sale.balance_amount = breakdown["balance_amount"]
+    sale.payment_status = breakdown["payment_status"]
+
+    db.commit()
+    db.refresh(sale)
+
+    if current_user:
+        from ..core.audit_logger import AuditLogger, AuditAction
+        AuditLogger.log(
+            action=AuditAction.PAYMENT_PROCESS,
+            user=current_user,
+            tenant=None,
+            resource_type="pharmacy_sale",
+            resource_id=sale.id,
+            old_values=old_values,
+            new_values={
+                "amount_tendered": str(sale.amount_tendered),
+                "paid_amount": str(sale.paid_amount),
+                "balance_amount": str(sale.balance_amount),
+                "payment_status": sale.payment_status,
+            },
+            metadata={"invoice_number": sale.invoice_number, "corrected_after_finalization": True},
+        )
+
+    return sale
 
 
 def list_sales(
@@ -1184,12 +1508,19 @@ def get_pharmacy_dashboard(db: Session, hospital_id: uuid.UUID) -> dict:
     # at or below that medicine's own reorder_level — not a hardcoded "<10" that
     # ignored the per-medicine reorder level set on the medicine form, and not a
     # per-batch check that miscounted medicines split across several batches.
+    # Expired batches are excluded from that on-hand total: they're already
+    # counted below in expired_count, and leaving them in the stock sum let a
+    # medicine whose only stock had expired look adequately stocked here.
     med_ids = [m.id for m in medicines]
     stock_map: dict[uuid.UUID, int] = {}
     if med_ids:
         stock_rows = (
             db.query(MedicineBatch.medicine_id, func.coalesce(func.sum(MedicineBatch.quantity), 0))
-            .filter(MedicineBatch.medicine_id.in_(med_ids), MedicineBatch.is_active == True)
+            .filter(
+                MedicineBatch.medicine_id.in_(med_ids),
+                MedicineBatch.is_active == True,
+                MedicineBatch.expiry_date >= today,
+            )
             .group_by(MedicineBatch.medicine_id)
             .all()
         )

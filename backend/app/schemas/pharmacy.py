@@ -499,6 +499,18 @@ class SaleListResponse(BaseModel):
     data: list[SaleResponse]
 
 
+class SaleItemQuantityUpdate(BaseModel):
+    """Correct the dispensed quantity on a line item of an already-finalized
+    sale — e.g. a miskeyed count that wasn't caught before the sale closed."""
+    quantity: int = Field(..., gt=0)
+
+
+class SaleAmountTenderedUpdate(BaseModel):
+    """Correct the amount tendered/collected on an already-finalized sale;
+    payment_status/paid_amount/balance_amount are recomputed from this."""
+    amount_tendered: Decimal = Field(..., ge=0)
+
+
 # ══════════════════════════════════════════════════
 # Pharmacy Queue — BRD v1.1 PQ-01..06. A token is assigned when a doctor
 # finalizes a prescription with medicines (or staff manually add a walk-in),

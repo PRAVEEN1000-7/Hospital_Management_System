@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
 import inventoryService from '../../services/inventoryService';
+import SearchableSelect, { type SuggestionOption } from '../../components/common/SearchableSelect';
 import type { LowStockItem } from '../../types/inventory';
 
 interface SupplierOption {
@@ -372,19 +373,14 @@ const LowStockAlertsPage: React.FC = () => {
                 <div className="p-6 space-y-4">
                   <div>
                     <label className="block text-sm font-semibold text-slate-900 mb-2">Select Supplier</label>
-                    <select
-                      value={selectedSupplier}
-                      onChange={(e) => setSelectedSupplier(e.target.value)}
+                    <SearchableSelect
+                      value={suppliers.find(s => s.id === selectedSupplier)?.name || ''}
+                      onChange={(_value, metadata) => setSelectedSupplier((metadata && metadata.id) ? (metadata.id as string) : '')}
+                      suggestions={suppliers.map((s): SuggestionOption => ({ id: s.id, label: s.name, metadata: { id: s.id } }))}
+                      placeholder={loadingSuppliers ? 'Loading suppliers...' : suppliers.length === 0 ? 'No suppliers available' : 'Search supplier...'}
                       disabled={loadingSuppliers || suppliers.length === 0}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-                    >
-                      <option value="">
-                        {loadingSuppliers ? 'Loading suppliers...' : suppliers.length === 0 ? 'No suppliers available' : '-- Choose Supplier --'}
-                      </option>
-                      {suppliers.map(s => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
-                      ))}
-                    </select>
+                      allowManualEntry={false}
+                    />
                     {!loadingSuppliers && suppliers.length === 0 && (
                       <p className="text-xs text-amber-600 mt-1">No active suppliers found. Add suppliers first to create a PO.</p>
                     )}

@@ -153,6 +153,32 @@ const GRNReceiptForm: React.FC = () => {
     if (!isEditMode) loadData();
   }, [isEditMode, toast]);
 
+  // Suggestions for the PO reference and supplier searchable selects (browse +
+  // type-to-search in one field each)
+  const poSuggestions: SuggestionOption[] = purchaseOrders.map(p => ({
+    id: p.id,
+    label: `${p.po_number} - ${p.supplier_name}${p.status === 'partially_received' ? ' (balance pending)' : ''}`,
+    metadata: { id: p.id },
+  }));
+
+  const selectedPO = purchaseOrders.find(p => p.id === poId);
+
+  const handlePOSelect = (_value: string, metadata?: Record<string, unknown>) => {
+    handleSelectPO((metadata && metadata.id) ? (metadata.id as string) : '');
+  };
+
+  const supplierSuggestions: SuggestionOption[] = suppliers.map(s => ({
+    id: s.id,
+    label: s.name,
+    metadata: { id: s.id },
+  }));
+
+  const selectedSupplierObj = suppliers.find((s: any) => s.id === supplier);
+
+  const handleSupplierSelect = (_value: string, metadata?: Record<string, unknown>) => {
+    setSupplier((metadata && metadata.id) ? (metadata.id as string) : '');
+  };
+
   // Update PO when selected
   const handleSelectPO = async (selectedPOId: string) => {
     setPOId(selectedPOId);
@@ -386,19 +412,14 @@ const GRNReceiptForm: React.FC = () => {
             {/* Purchase Order */}
             <div>
               <label className="block text-sm font-semibold text-slate-900 mb-2">Purchase Order (Optional)</label>
-              <select
-                value={poId}
-                onChange={(e) => handleSelectPO(e.target.value)}
+              <SearchableSelect
+                value={selectedPO ? `${selectedPO.po_number} - ${selectedPO.supplier_name}${selectedPO.status === 'partially_received' ? ' (balance pending)' : ''}` : ''}
+                onChange={handlePOSelect}
+                suggestions={poSuggestions}
+                placeholder="Search PO (auto-fill items)..."
                 disabled={isEditMode}
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:bg-slate-50"
-              >
-                <option value="">-- Select PO (auto-fill items) --</option>
-                {purchaseOrders.map(po => (
-                  <option key={po.id} value={po.id}>
-                    {po.po_number} - {po.supplier_name}{po.status === 'partially_received' ? ' (balance pending)' : ''}
-                  </option>
-                ))}
-              </select>
+                allowManualEntry={false}
+              />
               {poId && purchaseOrders.find(p => p.id === poId)?.status === 'partially_received' && (
                 <p className="mt-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
                   This PO was partially received earlier — items below are pre-filled with the remaining balance only.
@@ -409,17 +430,14 @@ const GRNReceiptForm: React.FC = () => {
             {/* Supplier */}
             <div>
               <label className="block text-sm font-semibold text-slate-900 mb-2">Supplier *</label>
-              <select
-                value={supplier}
-                onChange={(e) => setSupplier(e.target.value)}
+              <SearchableSelect
+                value={selectedSupplierObj ? (selectedSupplierObj as any).name : ''}
+                onChange={handleSupplierSelect}
+                suggestions={supplierSuggestions}
+                placeholder="Search supplier..."
                 disabled={isEditMode}
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:bg-slate-50"
-              >
-                <option value="">-- Select Supplier --</option>
-                {suppliers.map(s => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
+                allowManualEntry={false}
+              />
             </div>
 
             {/* Receipt Date */}

@@ -87,7 +87,7 @@ class OpticalPrescription(Base):
     hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=False)
     prescription_number = Column(String(30), unique=True, nullable=False, index=True)
     patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id"), nullable=False)
-    doctor_id = Column(UUID(as_uuid=True), ForeignKey("doctors.id"), nullable=False)
+    doctor_id = Column(UUID(as_uuid=True), ForeignKey("doctors.id"), nullable=True)
     appointment_id = Column(UUID(as_uuid=True), ForeignKey("appointments.id"))
     right_sph = Column(Numeric(5, 2))
     right_cyl = Column(Numeric(5, 2))

@@ -41,7 +41,7 @@ def revoke_current_access_token(db: Session, user: User) -> None:
     except ProgrammingError:
         logger.critical(
             "revoked_tokens table is missing — this token could not be revoked. "
-            "Run database_hole/security_updates.sql against this database."
+            "Run database_hole/security_token_revocation_combined.sql against this database."
         )
 
 # Account lockout thresholds (per spec: 5→15min, 10→1hr, 20→indefinite)

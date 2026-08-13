@@ -93,7 +93,7 @@ export interface OpticalPrescription {
   hospital_id: string;
   prescription_number: string;
   patient_id: string;
-  doctor_id: string;
+  doctor_id: string | null;
   appointment_id: string | null;
   right_sph: number | null;
   right_cyl: number | null;

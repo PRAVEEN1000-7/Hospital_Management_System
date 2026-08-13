@@ -103,6 +103,23 @@ def deactivate_lab_test(db: Session, test_id: str | uuid.UUID, hospital_id: Opti
     return True
 
 
+def is_lab_order_billed(db: Session, order_id: str | uuid.UUID) -> bool:
+    """LabSale.lab_order_id has no ON DELETE clause, so the DB itself would
+    already reject deleting a billed order — checked explicitly by the
+    router first so it can return a clear 409 instead of a raw FK
+    violation."""
+    return db.query(LabSale).filter(LabSale.lab_order_id == order_id).first() is not None
+
+
+def delete_lab_order(db: Session, order: LabOrder) -> None:
+    """Hard-deletes a lab order and its items (LabOrderItem cascades via the
+    ORM relationship). Unlike deactivate_lab_test (a catalog entry, kept for
+    historical order references), an order has nothing else pointing at it
+    once billing hasn't started (see is_lab_order_billed)."""
+    db.delete(order)
+    db.commit()
+
+
 # ══════════════════════════════════════════════════
 # Lab Order
 # ══════════════════════════════════════════════════
@@ -111,9 +128,19 @@ def _generate_order_number(db: Session, hospital_id: uuid.UUID) -> str:
     # order_number carries a database-wide UNIQUE constraint (not scoped to
     # hospital_id), so the running count must be global too — see the same
     # reasoning in optical_service._generate_prescription_number.
+    #
+    # MAX(existing seq)+1, not COUNT(*)+1 — a hard-deleted order (e.g. via
+    # the lab-order-deletion feature) leaves a numbering gap, so COUNT(*) of
+    # surviving rows no longer matches the highest number already issued and
+    # collides with a still-existing row (every retry then regenerates the
+    # same colliding value, since the surviving count never changes).
     year = datetime.now(timezone.utc).strftime("%y")
-    count = db.query(func.count(LabOrder.id)).scalar() or 0
-    return f"LAB-{year}-{count + 1:04d}"
+    last = db.query(LabOrder.order_number).order_by(LabOrder.order_number.desc()).limit(1).scalar()
+    try:
+        seq = int(last.rsplit("-", 1)[-1]) + 1 if last else 1
+    except ValueError:
+        seq = 1
+    return f"LAB-{year}-{seq:04d}"
 
 
 def create_lab_order(
@@ -140,17 +167,17 @@ def create_lab_order(
         raise ValueError("Patient not found")
 
     # Resolve doctor: explicit doctor_id, else fall back to logged-in doctor
-    # (matches create_optical_prescription).
+    # (matches create_optical_prescription). If neither is available (e.g. a
+    # lab_technician ordering tests for a walk-in with no consultation),
+    # doctor_id is left as None — doctor_id is nullable precisely for this
+    # case, so this is not an error condition.
+    doctor = None
     if data.get("doctor_id"):
         doctor = db.query(Doctor).filter(Doctor.id == uuid.UUID(data["doctor_id"]), Doctor.hospital_id == hospital_id).first()
         if not doctor:
             raise ValueError("Doctor not found")
-    else:
-        if not created_by:
-            raise ValueError("No doctor_id provided and no logged-in doctor to fall back to")
+    elif created_by:
         doctor = db.query(Doctor).filter(Doctor.user_id == created_by).first()
-        if not doctor:
-            raise ValueError("No doctor_id provided and current user is not a doctor")
 
     # Snapshot each ordered test (name + price) at order time — scoped to this
     # hospital so a test_id from another tenant can't be ordered here.
@@ -168,7 +195,7 @@ def create_lab_order(
             hospital_id=hospital_id,
             order_number=_generate_order_number(db, hospital_id),
             patient_id=patient_id,
-            doctor_id=doctor.id,
+            doctor_id=doctor.id if doctor else None,
             appointment_id=appointment_id,
             prescription_id=prescription_id,
             notes=notes,
@@ -190,6 +217,23 @@ def create_lab_order(
             ))
         db.commit()
         db.refresh(order)
+
+        # Standalone order — no prescription_id, meaning it wasn't created
+        # from the doctor's Prescription Builder (which always passes one;
+        # see PrescriptionBuilder.tsx's labService.createOrder call). That's
+        # the case for a lab_technician (or admin) ordering tests directly
+        # for a walk-in who hasn't seen a doctor: there is no later
+        # finalize_prescription call to finalize+queue it (see that
+        # function's "finalize the linked lab order" step), so without this
+        # it would sit with is_finalized=False and no queue_token forever —
+        # invisible to list_lab_queue, which only shows finalized orders.
+        # Finalize it immediately instead so it enters today's lab queue
+        # right away, same as any other walk-in service.
+        if not prescription_id:
+            order.is_finalized = True
+            enqueue_lab_queue_entry(db, order)
+            db.commit()
+            db.refresh(order)
 
         # Notify lab staff that a new order is ready (matches optical timing).
         try:
@@ -244,11 +288,43 @@ def enqueue_lab_queue_entry(db: Session, lab_order: LabOrder) -> None:
     db.flush()
 
 
+def _resync_unpaid_item_prices(db: Session, order: LabOrder) -> bool:
+    """Keep an order's item price snapshots in step with the live catalog
+    price, for as long as nothing has actually been paid on that order yet.
+
+    LabOrderItem.price is normally a frozen snapshot taken at order-creation
+    time (same pattern as PrescriptionItem.medicine_name — deliberate, so a
+    *paid* bill never silently changes after the fact). But most lab tests
+    in this catalog start out priced at ₹0 and get a real price filled in by
+    admin/lab staff afterward — for any order created before that happened,
+    the snapshot stays frozen at ₹0 forever no matter what the catalog price
+    is corrected to, so the bill total stays ₹0 and there's nothing for the
+    Collect Payment flow to actually collect. Self-heals on every read/
+    billing touch while unpaid; once paid, stops touching it — the paid
+    record is history, same as GRN/dispensing corrections elsewhere.
+    """
+    sale = db.query(LabSale).filter(LabSale.lab_order_id == order.id).first()
+    if sale and sale.payment_status == "paid":
+        return False
+
+    changed = False
+    for item in (order.items or []):
+        test = item.test
+        if test is not None and test.price is not None and item.price != test.price:
+            item.price = test.price
+            changed = True
+    if changed:
+        db.commit()
+        db.refresh(order)
+    return changed
+
+
 def _enrich_order(db: Session, order: LabOrder) -> dict:
     """Serialize an order with items + billing summary for the response."""
     from ..models.user import User
     from ..schemas.lab import LabOrderResponse, LabOrderItemResponse
 
+    _resync_unpaid_item_prices(db, order)
     resp = LabOrderResponse.model_validate(order)
     resp.patient_name = order.patient.full_name if getattr(order, "patient", None) else None
     resp.doctor_name = (
@@ -293,6 +369,7 @@ def list_lab_queue(db: Session, hospital_id: uuid.UUID) -> list[dict]:
     )
     result = []
     for o in orders:
+        _resync_unpaid_item_prices(db, o)
         total = sum((i.price or Decimal("0")) for i in (o.items or []))
         sale = db.query(LabSale).filter(LabSale.lab_order_id == o.id).first()
         result.append({
@@ -337,20 +414,34 @@ def advance_lab_queue_status(
 
 def _generate_sale_number(db: Session, hospital_id: uuid.UUID) -> str:
     # sale_number is database-wide UNIQUE — count globally, same as order_number.
-    count = db.query(func.count(LabSale.id)).scalar() or 0
-    return f"LAB-S-{count + 1:06d}"
+    # MAX(existing seq)+1, not COUNT(*)+1 — see _generate_order_number above.
+    last = db.query(LabSale.sale_number).order_by(LabSale.sale_number.desc()).limit(1).scalar()
+    try:
+        seq = int(last.rsplit("-", 1)[-1]) + 1 if last else 1
+    except ValueError:
+        seq = 1
+    return f"LAB-S-{seq:06d}"
 
 
 def get_or_create_lab_sale(db: Session, order: LabOrder) -> LabSale:
     """Get-or-create the billing header for an order; total is computed from
-    the order's item snapshots."""
+    the order's item snapshots (re-synced from the live catalog price first
+    — see _resync_unpaid_item_prices — so an already-existing-but-unpaid
+    sale's total doesn't stay stuck at whatever it was when first created)."""
     from sqlalchemy.exc import IntegrityError
+
+    _resync_unpaid_item_prices(db, order)
+    total = sum((i.price or Decimal("0")) for i in (order.items or []))
 
     existing = db.query(LabSale).filter(LabSale.lab_order_id == order.id).first()
     if existing:
+        if existing.payment_status != "paid" and existing.total_amount != total:
+            existing.subtotal = total
+            existing.total_amount = total
+            existing.balance_amount = max(Decimal("0"), total - (existing.paid_amount or Decimal("0")))
+            db.commit()
+            db.refresh(existing)
         return existing
-
-    total = sum((i.price or Decimal("0")) for i in (order.items or []))
 
     last_error: Exception | None = None
     for _ in range(5):
@@ -377,26 +468,113 @@ def get_or_create_lab_sale(db: Session, order: LabOrder) -> LabSale:
     raise last_error
 
 
-def sync_lab_sale_payment_status(
+def get_or_create_lab_invoice(
+    db: Session, order: LabOrder, sale: LabSale, user_id: uuid.UUID,
+) -> "Invoice":  # noqa: F821 — typing only, imported below to avoid a cycle
+    """Get-or-create the generic Invoice a lab order's payments are recorded
+    against, reused across every partial-payment collection instead of
+    minting a fresh one each call (that was the original bug in
+    LabOrderDetail.tsx's handleCollectPayment — every click created a brand
+    new invoice). Mirrors
+    invoice_service.get_or_create_consultation_invoice_for_appointment, but
+    keyed off LabSale.invoice_id since a lab order has no direct FK slot on
+    Invoice the way an OPD appointment does."""
+    from ..models.invoice import Invoice
+    from .invoice_service import create_invoice, issue_invoice
+    from ..schemas.invoice import InvoiceCreate, InvoiceItemCreate
+
+    if sale.invoice_id:
+        existing = (
+            db.query(Invoice)
+            .filter(
+                Invoice.id == sale.invoice_id,
+                Invoice.hospital_id == order.hospital_id,
+                Invoice.is_deleted == False,
+                Invoice.status.notin_(["void", "cancelled"]),
+            )
+            .first()
+        )
+        if existing:
+            return existing
+
+    items = [
+        InvoiceItemCreate(
+            item_type="lab_test",
+            reference_id=str(item.lab_test_id),
+            description=item.test_name,
+            quantity=Decimal("1"),
+            unit_price=item.price or Decimal("0"),
+            display_order=idx,
+        )
+        for idx, item in enumerate(order.items or [])
+    ]
+    invoice = create_invoice(
+        db,
+        InvoiceCreate(
+            patient_id=str(order.patient_id),
+            invoice_type="lab",
+            notes=f"Lab order {order.order_number}",
+            items=items,
+        ),
+        user_id=user_id,
+        hospital_id=order.hospital_id,
+    )
+    invoice = issue_invoice(db, invoice)
+    sale.invoice_id = invoice.id
+    db.commit()
+    db.refresh(sale)
+    return invoice
+
+
+def collect_lab_sale_payment(
     db: Session,
     order_id: str | uuid.UUID,
     hospital_id: uuid.UUID,
-    amount_paid: Decimal,
-    payment_method: Optional[str] = None,
+    amount: Decimal,
+    payment_method: Optional[str],
+    user_id: uuid.UUID,
+    payment_reference: Optional[str] = None,
 ) -> Optional[LabSale]:
-    """Non-authoritative post-payment sync — mirrors dispensing_service
-    .mark_dispensing_paid. The real money is collected through the generic
-    Invoice/Payment path; this just keeps the lab sale's denormalized status
-    in step for the worklist view."""
+    """Collect a partial or full payment against a lab order's bill — the
+    real-money counterpart the old sync_lab_sale_payment_status only
+    pretended to be. Reuses one Invoice per order (get_or_create_lab_invoice)
+    and records the payment through the generic Invoice/Payment path
+    (payment_service.record_payment), which already correctly accumulates
+    multiple payments against one invoice and rejects overpayment — then
+    re-syncs the LabSale's denormalized totals from the invoice so the
+    billing worklist / lab dashboard revenue figure stay in step.
+
+    Raises ValueError (surfaced by the router as 400) if the amount would
+    overpay the balance, or the underlying invoice can't accept payment —
+    see payment_service.record_payment.
+    """
+    from .payment_service import record_payment
+    from ..schemas.payment import PaymentCreate
+
     order = get_lab_order_by_id(db, order_id, hospital_id=hospital_id)
     if not order:
         return None
     sale = get_or_create_lab_sale(db, order)
+    invoice = get_or_create_lab_invoice(db, order, sale, user_id)
+
+    record_payment(
+        db,
+        PaymentCreate(
+            invoice_id=str(invoice.id),
+            patient_id=str(order.patient_id),
+            amount=amount,
+            payment_mode=payment_method or "cash",
+            payment_reference=payment_reference,
+        ),
+        user_id=user_id,
+        hospital_id=hospital_id,
+    )
+    db.refresh(invoice)
 
     total = sale.total_amount or Decimal("0")
-    sale.paid_amount = amount_paid
-    sale.balance_amount = max(Decimal("0"), total - amount_paid)
-    sale.payment_status = "paid" if amount_paid >= total else ("partial" if amount_paid > 0 else "pending")
+    sale.paid_amount = invoice.paid_amount or Decimal("0")
+    sale.balance_amount = max(Decimal("0"), total - sale.paid_amount)
+    sale.payment_status = "paid" if sale.paid_amount >= total else ("partial" if sale.paid_amount > 0 else "pending")
     if sale.payment_status == "paid":
         sale.status = "completed"
     if payment_method:
@@ -405,6 +583,82 @@ def sync_lab_sale_payment_status(
     db.commit()
     db.refresh(sale)
     return sale
+
+
+def list_lab_billing(
+    db: Session,
+    hospital_id: uuid.UUID,
+    page: int = 1,
+    limit: int = 20,
+    search: Optional[str] = None,
+    payment_status: Optional[str] = None,
+    date_from=None,
+    date_to=None,
+) -> dict:
+    """Billing worklist for the standalone Lab Billing page (LabBilling.tsx)
+    — every lab order with its payment status, independent of queue/report
+    state. Sourced from LabOrder (not LabSale) since a LabSale doesn't exist
+    until the first payment is collected — see get_or_create_lab_sale — so
+    an unbilled order still needs to show up here as "pending"."""
+    from ..models.patient import Patient
+
+    query = (
+        db.query(LabOrder, LabSale)
+        .outerjoin(LabSale, LabSale.lab_order_id == LabOrder.id)
+        .filter(LabOrder.hospital_id == hospital_id)
+    )
+    if search:
+        s = f"%{search.strip()}%"
+        query = query.join(Patient, LabOrder.patient_id == Patient.id).filter(
+            or_(
+                LabOrder.order_number.ilike(s),
+                Patient.first_name.ilike(s),
+                Patient.last_name.ilike(s),
+                func.concat(Patient.first_name, " ", Patient.last_name).ilike(s),
+            )
+        )
+    if date_from:
+        query = query.filter(func.date(LabOrder.created_at) >= date_from)
+    if date_to:
+        query = query.filter(func.date(LabOrder.created_at) <= date_to)
+    if payment_status:
+        if payment_status == "pending":
+            query = query.filter(or_(LabSale.payment_status == "pending", LabSale.id.is_(None)))
+        else:
+            query = query.filter(LabSale.payment_status == payment_status)
+
+    total = query.count()
+    rows = (
+        query.order_by(LabOrder.created_at.desc())
+        .offset((page - 1) * limit)
+        .limit(limit)
+        .all()
+    )
+
+    data = []
+    for order, sale in rows:
+        _resync_unpaid_item_prices(db, order)
+        order_total = sum((i.price or Decimal("0")) for i in (order.items or []))
+        data.append({
+            "id": str(order.id),
+            "order_number": order.order_number,
+            "patient_id": str(order.patient_id),
+            "patient_name": order.patient.full_name if getattr(order, "patient", None) else None,
+            "total_amount": order_total,
+            "paid_amount": sale.paid_amount if sale else Decimal("0"),
+            "balance_amount": sale.balance_amount if sale else order_total,
+            "payment_status": sale.payment_status if sale else "pending",
+            "report_status": order.report_status,
+            "created_at": order.created_at,
+        })
+
+    return {
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "total_pages": ceil(total / limit) if limit else 1,
+        "data": data,
+    }
 
 
 # ══════════════════════════════════════════════════
@@ -582,9 +836,14 @@ def get_patient_lab_results(db: Session, patient_id: str | uuid.UUID, hospital_i
 def _generate_referral_number(db: Session, hospital_id: uuid.UUID) -> str:
     # referral_number is database-wide UNIQUE — count globally, same reasoning
     # as _generate_order_number/_generate_sale_number above.
+    # MAX(existing seq)+1, not COUNT(*)+1 — see _generate_order_number above.
     year = datetime.now(timezone.utc).strftime("%y")
-    count = db.query(func.count(LabReferral.id)).scalar() or 0
-    return f"LAB-REF-{year}-{count + 1:04d}"
+    last = db.query(LabReferral.referral_number).order_by(LabReferral.referral_number.desc()).limit(1).scalar()
+    try:
+        seq = int(last.rsplit("-", 1)[-1]) + 1 if last else 1
+    except ValueError:
+        seq = 1
+    return f"LAB-REF-{year}-{seq:04d}"
 
 
 def create_lab_referral(

@@ -9,8 +9,10 @@ export interface PatientTrendBucket {
   returning_patients: number;
 }
 
+export type PatientTrendGranularity = 'day' | 'week' | 'month' | 'custom';
+
 export interface PatientTrendResponse {
-  granularity: 'day' | 'week' | 'month';
+  granularity: PatientTrendGranularity;
   scope: 'hospital' | 'doctor';
   buckets: PatientTrendBucket[];
 }
@@ -18,11 +20,21 @@ export interface PatientTrendResponse {
 export const patientService = {
   /** Dashboard chart — New vs Returning patient trend (Doctor + Admin dashboards only).
    * Doctor callers automatically get their own patients only (resolved server-side from
-   * the JWT's role — no doctor_id to pass); admin/super_admin get the whole hospital. */
-  async getNewVsReturningTrend(granularity: 'day' | 'week' | 'month' = 'day'): Promise<PatientTrendResponse> {
-    const response = await api.get<PatientTrendResponse>('/patients/stats/new-vs-returning', {
-      params: { granularity },
-    });
+   * the JWT's role — no doctor_id to pass); admin/super_admin get the whole hospital.
+   * "day"/"week" are single-period snapshots (today only / this week only); "month" is a
+   * 6-month trend; "custom" requires dateFrom/dateTo ("YYYY-MM-DD") and buckets by day
+   * across that explicit range (server caps it at 92 days). */
+  async getNewVsReturningTrend(
+    granularity: PatientTrendGranularity = 'day',
+    dateFrom?: string,
+    dateTo?: string,
+  ): Promise<PatientTrendResponse> {
+    const params: Record<string, string> = { granularity };
+    if (granularity === 'custom' && dateFrom && dateTo) {
+      params.date_from = dateFrom;
+      params.date_to = dateTo;
+    }
+    const response = await api.get<PatientTrendResponse>('/patients/stats/new-vs-returning', { params });
     return response.data;
   },
 

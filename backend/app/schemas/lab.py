@@ -168,7 +168,7 @@ class LabOrderResponse(BaseModel):
     hospital_id: str
     order_number: str
     patient_id: str
-    doctor_id: str
+    doctor_id: Optional[str] = None
     appointment_id: Optional[str] = None
     prescription_id: Optional[str] = None
     notes: Optional[str] = None
@@ -251,8 +251,38 @@ class LabSaleResponse(BaseModel):
 
 
 class LabMarkPaidRequest(BaseModel):
-    amount_paid: Decimal = Field(..., ge=0)
+    # The amount being collected in *this* transaction — not the cumulative
+    # total paid so far. Each call records one Payment against the order's
+    # (reused) invoice; partial/advance collections are made by calling this
+    # repeatedly with successive smaller amounts. See
+    # lab_service.collect_lab_sale_payment.
+    amount_paid: Decimal = Field(..., gt=0)
     payment_method: Optional[str] = None
+    payment_reference: Optional[str] = Field(None, max_length=100)
+
+
+# ══════════════════════════════════════════════════
+# Lab Billing (standalone billing worklist)
+# ══════════════════════════════════════════════════
+class LabBillingItemResponse(BaseModel):
+    id: str
+    order_number: str
+    patient_id: str
+    patient_name: Optional[str] = None
+    total_amount: Decimal = Decimal("0")
+    paid_amount: Decimal = Decimal("0")
+    balance_amount: Decimal = Decimal("0")
+    payment_status: str = "pending"
+    report_status: str = "pending"
+    created_at: datetime
+
+
+class LabBillingListResponse(BaseModel):
+    total: int
+    page: int
+    limit: int
+    total_pages: int
+    data: list[LabBillingItemResponse]
 
 
 # ══════════════════════════════════════════════════

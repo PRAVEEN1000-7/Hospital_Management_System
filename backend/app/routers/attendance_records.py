@@ -13,6 +13,7 @@ from ..models.user import User
 from ..dependencies import get_current_active_user, require_admin_or_super_admin
 from ..schemas.attendance_record import AttendanceMarkRequest, AttendanceReportResponse, LeaveRecord
 from ..services import attendance_service
+from ..core.hospital_time import hospital_now_by_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/attendance-records", tags=["Attendance"])
@@ -111,7 +112,7 @@ async def get_leaves_pdf(
 <title>Leave Management - {_esc(month_label)}</title>
 <style>
 body {{ font-family: Arial, sans-serif; margin: 0; padding: 32px; color: #1e293b; }}
-.header {{ text-Now the frontend: update the service call and the download handler to send the visible range.align: center; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 3px solid #137fec; }}
+.header {{ text-align: center; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 3px solid #137fec; }}
 .header h1 {{ margin: 0; color: #137fec; font-size: 24px; }}
 .header p {{ margin: 4px 0 0; color: #64748b; font-size: 13px; }}
 .title-row {{ display: flex; justify-content: space-between; align-items: center; margin: 18px 0; }}
@@ -158,7 +159,7 @@ th {{ color: #64748b; font-weight: 600; font-size: 11px; background: #f8fafc; te
     </div>
 </div>
 <div class="footer">
-    <p>Generated on {datetime.now().strftime("%B %d, %Y at %I:%M %p")} | {hosp_name}</p>
+    <p>Generated on {hospital_now_by_id(db, current_user.hospital_id).strftime("%B %d, %Y at %I:%M %p")} | {hosp_name}</p>
     <p>This is a computer-generated document.</p>
 </div>
 </body>
@@ -292,7 +293,7 @@ th {{ color: #64748b; font-weight: 600; font-size: 11px; background: #f8fafc; te
     </div>
 </div>
 <div class="footer">
-    <p>Generated on {datetime.now().strftime("%B %d, %Y at %I:%M %p")} | {hosp_name}</p>
+    <p>Generated on {hospital_now_by_id(db, current_user.hospital_id).strftime("%B %d, %Y at %I:%M %p")} | {hosp_name}</p>
     <p>This is a computer-generated document.</p>
 </div>
 </body>
@@ -473,7 +474,7 @@ body {{ font-family: Arial, sans-serif; margin: 0; padding: 24px; color: #1e293b
     </div>
 </div>
 <div class="footer">
-    <p>Generated on {datetime.now().strftime("%B %d, %Y at %I:%M %p")} | {hosp_name}</p>
+    <p>Generated on {hospital_now_by_id(db, current_user.hospital_id).strftime("%B %d, %Y at %I:%M %p")} | {hosp_name}</p>
     <p>This is a computer-generated document.</p>
 </div>
 </body>
@@ -630,7 +631,7 @@ td.mcol.pct-bad {{ color: #b91c1c; }}
     </div>
 </div>
 <div class="footer">
-    <p>Generated on {datetime.now().strftime("%B %d, %Y at %I:%M %p")} | {hosp_name}</p>
+    <p>Generated on {hospital_now_by_id(db, current_user.hospital_id).strftime("%B %d, %Y at %I:%M %p")} | {hosp_name}</p>
     <p>This is a computer-generated document.</p>
 </div>
 </body>

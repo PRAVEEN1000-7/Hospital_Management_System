@@ -174,7 +174,7 @@ async def get_current_superadmin(
                 db.rollback()
                 logger.critical(
                     "revoked_tokens table is missing — superadmin token revocation is NOT enforced. "
-                    "Run database_hole/security_updates.sql against this database."
+                    "Run database_hole/security_token_revocation_combined.sql against this database."
                 )
                 revoked = None
             if revoked:

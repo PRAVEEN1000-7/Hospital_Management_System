@@ -25,6 +25,7 @@ from ..schemas.pharmacy import (
     BatchCreate, BatchUpdate, BatchResponse,
     # Sale
     SaleCreate, SaleResponse, SaleListResponse, SaleItemResponse,
+    SaleItemQuantityUpdate, SaleAmountTenderedUpdate,
     # Stock Adjustment
     StockAdjustmentCreate, StockAdjustmentResponse,
     # Dashboard
@@ -365,6 +366,56 @@ async def create_sale(
         logger.error(f"Error creating sale: {e}", exc_info=True)
         db.rollback()
         raise HTTPException(status_code=500, detail="Failed to create sale")
+
+
+@sales_router.put("/{sale_id}/items/{item_id}", response_model=SaleItemResponse)
+async def update_sale_item_quantity(
+    sale_id: str,
+    item_id: str,
+    data: SaleItemQuantityUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(pharmacy_edit_guard),
+):
+    """Correct the dispensed quantity on a line item of an already-finalized
+    sale (pharmacist/admin only). Reconciles the originating batch's stock
+    and posts a compensating stock movement for the delta — see
+    pharmacy_service.update_dispensed_item_quantity."""
+    try:
+        item = svc.update_dispensed_item_quantity(
+            db, current_user.hospital_id, sale_id, item_id, data.quantity, current_user,
+        )
+        return SaleItemResponse.model_validate(item)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error updating sale item quantity: {e}", exc_info=True)
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to update item quantity")
+
+
+@sales_router.put("/{sale_id}/payment", response_model=SaleResponse)
+async def update_sale_payment(
+    sale_id: str,
+    data: SaleAmountTenderedUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(pharmacy_edit_guard),
+):
+    """Correct the amount tendered on an already-finalized sale
+    (pharmacist/admin only); payment_status/paid/balance are recomputed."""
+    try:
+        sale = svc.update_sale_amount_tendered(
+            db, current_user.hospital_id, sale_id, data.amount_tendered, current_user,
+        )
+        resp = SaleResponse.model_validate(sale)
+        items = svc.get_sale_items(db, sale.id)
+        resp.items = [SaleItemResponse.model_validate(i) for i in items]
+        return resp
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error updating sale payment: {e}", exc_info=True)
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to update payment")
 
 
 # ──────────────────────────────────────────────────

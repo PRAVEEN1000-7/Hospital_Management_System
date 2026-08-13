@@ -4,7 +4,7 @@
 -- Two independent, additive changes bundled together (same-session work):
 --
 -- 1. clinical_note_ngrams.field_type — the statistical autocomplete model
---    (see 14_clinical_note_ngrams.sql) is being extended from one field
+--    (see 15_clinical_note_ngrams.sql) is being extended from one field
 --    (Clinical Notes) to ten: Diagnosis, Advice, Optical Prescription Notes,
 --    Pharmacy/Optical Sale Notes, Medicine Description/Drug Interaction
 --    Notes/Side Effects, and Stock Adjustment Reason. Without a field_type

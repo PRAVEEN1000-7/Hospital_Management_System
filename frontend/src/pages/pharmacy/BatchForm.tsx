@@ -5,6 +5,7 @@ import inventoryService from '../../services/inventoryService';
 import type { Medicine, BatchCreateData } from '../../types/pharmacy';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
+import SearchableSelect, { type SuggestionOption } from '../../components/common/SearchableSelect';
 
 const BatchForm: React.FC = () => {
   const navigate = useNavigate();
@@ -30,6 +31,8 @@ const BatchForm: React.FC = () => {
     supplier_id: undefined,
   });
   const [saving, setSaving] = useState(false);
+  const [medicineLabel, setMedicineLabel] = useState('');
+  const [supplierLabel, setSupplierLabel] = useState('');
 
   useEffect(() => {
     pharmacyService.getMedicines(1, 500).then(r => setMedicines(r.data)).catch(() => {});
@@ -37,6 +40,36 @@ const BatchForm: React.FC = () => {
       inventoryService.getSuppliers(1, 100, '', true).then(r => setSuppliers(r.data)).catch(() => {});
     }
   }, [isModuleEnabled]);
+
+  // Pre-fill the medicine search label once its catalog entry loads, so a
+  // ?medicine_id=... deep link (e.g. "Add Batch" from a medicine's page)
+  // shows a readable name instead of a blank search box.
+  useEffect(() => {
+    if (!preselectedMedicine || medicineLabel) return;
+    const m = medicines.find(x => x.id === preselectedMedicine);
+    if (m) setMedicineLabel(`${m.name}${m.strength ? ` (${m.strength})` : ''}`);
+  }, [medicines, preselectedMedicine, medicineLabel]);
+
+  const medicineSuggestions: SuggestionOption[] = medicines.map(m => ({
+    id: m.id,
+    label: `${m.name}${m.strength ? ` (${m.strength})` : ''}`,
+    sublabel: m.generic_name || undefined,
+    metadata: { id: m.id },
+  }));
+  const handleMedicineSelect = (value: string, metadata?: Record<string, unknown>) => {
+    setMedicineLabel(value);
+    setForm(prev => ({ ...prev, medicine_id: metadata?.id ? (metadata.id as string) : '' }));
+  };
+
+  const supplierSuggestions: SuggestionOption[] = suppliers.map(s => ({
+    id: s.id,
+    label: s.name,
+    metadata: { id: s.id },
+  }));
+  const handleSupplierSelect = (value: string, metadata?: Record<string, unknown>) => {
+    setSupplierLabel(value);
+    setForm(prev => ({ ...prev, supplier_id: metadata?.id ? (metadata.id as string) : undefined }));
+  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
@@ -85,11 +118,13 @@ const BatchForm: React.FC = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Medicine *</label>
-            <select name="medicine_id" value={form.medicine_id} onChange={handleChange} required
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary">
-              <option value="">Select</option>
-              {medicines.map(m => <option key={m.id} value={m.id}>{m.name} {m.strength ? `(${m.strength})` : ''}</option>)}
-            </select>
+            <SearchableSelect
+              value={medicineLabel}
+              onChange={handleMedicineSelect}
+              suggestions={medicineSuggestions}
+              placeholder="Search medicine..."
+              allowManualEntry={false}
+            />
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Batch Number *</label>
@@ -155,11 +190,13 @@ const BatchForm: React.FC = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Supplier</label>
-            <select name="supplier_id" value={form.supplier_id || ''} onChange={handleChange}
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary">
-              <option value="">None</option>
-              {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
+            <SearchableSelect
+              value={supplierLabel}
+              onChange={handleSupplierSelect}
+              suggestions={supplierSuggestions}
+              placeholder="Search supplier..."
+              allowManualEntry={false}
+            />
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Batch Location</label>

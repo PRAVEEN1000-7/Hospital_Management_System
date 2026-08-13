@@ -3,6 +3,7 @@ import type {
   LabTest, LabTestCreateData, LabTestListResponse,
   LabOrder, LabOrderCreateData, LabResultEntryData,
   LabQueueEntry, LabQueueStatus, LabSale, LabDashboard,
+  LabBillingListResponse,
   PatientLabResult, LabReferral, LabReferralCreateData,
 } from '../types/lab';
 
@@ -55,6 +56,11 @@ export const labService = {
     return res.data;
   },
 
+  /** Lab-staff/admin only — 409s if the order has already been billed. */
+  async deleteOrder(id: string): Promise<void> {
+    await api.delete(`/lab/orders/${id}`);
+  },
+
   async updateQueueStatus(orderId: string, queueStatus: LabQueueStatus): Promise<LabQueueEntry> {
     const res = await api.put<LabQueueEntry>(`/lab/orders/${orderId}/queue-status`, { queue_status: queueStatus });
     return res.data;
@@ -65,10 +71,27 @@ export const labService = {
     return res.data;
   },
 
-  async markSalePaid(orderId: string, amountPaid: number, paymentMethod?: string): Promise<LabSale> {
+  /** Collects a payment against a lab order's bill. `amountPaid` is the
+   * amount being collected in THIS call (not the cumulative total) — call
+   * this again with a smaller amount later to collect the remaining
+   * balance. Can be called any number of times until the order is fully paid. */
+  async markSalePaid(orderId: string, amountPaid: number, paymentMethod?: string, paymentReference?: string): Promise<LabSale> {
     const res = await api.put<LabSale>(`/lab/sales/${orderId}/mark-paid`, {
-      amount_paid: amountPaid, payment_method: paymentMethod,
+      amount_paid: amountPaid, payment_method: paymentMethod, payment_reference: paymentReference || undefined,
     });
+    return res.data;
+  },
+
+  // ═══ Billing worklist ═══
+  async getBilling(
+    page = 1, limit = 20, search = '', paymentStatus = '', dateFrom = '', dateTo = '',
+  ): Promise<LabBillingListResponse> {
+    const params: Record<string, string | number> = { page, limit };
+    if (search) params.search = search;
+    if (paymentStatus) params.payment_status = paymentStatus;
+    if (dateFrom) params.date_from = dateFrom;
+    if (dateTo) params.date_to = dateTo;
+    const res = await api.get<LabBillingListResponse>('/lab/billing', { params });
     return res.data;
   },
 

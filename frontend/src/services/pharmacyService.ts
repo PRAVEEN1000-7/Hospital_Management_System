@@ -2,7 +2,7 @@ import api from './api';
 import type {
   Medicine, MedicineCreateData, MedicineListResponse,
   MedicineBatch, BatchCreateData,
-  Sale, SaleCreateData, SaleListResponse,
+  Sale, SaleCreateData, SaleListResponse, SaleItem,
   StockAdjustment, StockAdjustmentCreate,
   PharmacyDashboard,
   PharmacyQueueEntry, PharmacyQueueStatus, PharmacyQueueManualAddData,
@@ -204,6 +204,26 @@ export const pharmacyService = {
 
   async createSale(data: SaleCreateData): Promise<Sale> {
     const res = await api.post<Sale>('/pharmacy/sales', data);
+    return res.data;
+  },
+
+  /**
+   * Correct the dispensed quantity on a line item of an already-finalized
+   * sale (pharmacist/admin only) — reconciles the originating batch's stock
+   * for the delta. Usable even after the sale is fully dispensed, unlike
+   * DispensingScreen's quantity input which locks once dispensed.
+   */
+  async updateSaleItemQuantity(saleId: string, itemId: string, quantity: number): Promise<SaleItem> {
+    const res = await api.put<SaleItem>(`/pharmacy/sales/${saleId}/items/${itemId}`, { quantity });
+    return res.data;
+  },
+
+  /**
+   * Correct the amount tendered on an already-finalized sale (pharmacist/
+   * admin only) — payment_status/paid_amount/balance_amount are recomputed.
+   */
+  async updateSaleAmountTendered(saleId: string, amountTendered: number): Promise<Sale> {
+    const res = await api.put<Sale>(`/pharmacy/sales/${saleId}/payment`, { amount_tendered: amountTendered });
     return res.data;
   },
 

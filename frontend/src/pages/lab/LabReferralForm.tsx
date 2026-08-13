@@ -43,8 +43,10 @@ const LabReferralForm: React.FC = () => {
   }, []);
 
   const searchPatients = useCallback(async (q: string) => {
-    if (q.length < 2) { setPatientResults([]); return; }
     try {
+      // Empty query still resolves — most-recently-registered patients — so
+      // focusing the field alone (before typing anything) already opens a
+      // browsable dropdown instead of requiring 2+ characters first.
       const res = await patientService.getPatients(1, 6, q);
       setPatientResults(res.data);
     } catch { setPatientResults([]); }
@@ -164,11 +166,14 @@ const LabReferralForm: React.FC = () => {
                 onChange={(e) => { setPatientSearch(e.target.value); setShowPatientDrop(true); }}
                 onFocus={() => setShowPatientDrop(true)}
                 onKeyDown={patientNav.onKeyDown}
-                placeholder="Search by name, phone, or Patient ID..."
+                placeholder="Search, or click to browse recent patients"
                 className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
               />
               {showPatientDrop && patientResults.length > 0 && (
                 <div className="absolute z-10 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden">
+                  {!patientSearch.trim() && (
+                    <p className="px-4 py-1.5 text-[11px] font-semibold text-slate-400 uppercase border-b border-slate-100">Recent patients</p>
+                  )}
                   {patientResults.map((p, idx) => (
                     <button
                       key={p.id}

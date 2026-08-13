@@ -69,9 +69,17 @@ const OpticalPrescriptions: React.FC = () => {
           <h1 className="text-2xl font-bold text-slate-900">Eye Prescriptions</h1>
           <p className="mt-1 text-sm text-slate-500">
             Sphere/cylinder/axis/add power and PD measurements per patient. Created from the
-            doctor's Prescription Builder ("Add Optical" option) during a consultation.
+            doctor's Prescription Builder ("Add Optical" option) during a consultation, or
+            recorded directly here for a walk-in who hasn't seen a doctor.
           </p>
         </div>
+        {canDispense && (
+          <button onClick={() => navigate('/optical/prescriptions/new')}
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors shadow-sm">
+            <span className="material-symbols-outlined text-lg">add</span>
+            New Prescription
+          </button>
+        )}
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">

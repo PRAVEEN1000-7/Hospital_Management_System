@@ -1,19 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import labService from '../../services/labService';
-import invoiceService from '../../services/invoiceService';
-import paymentService from '../../services/paymentService';
 import type { LabOrder, LabOrderItem, LabResultFlag, LabQueueStatus } from '../../types/lab';
-import type { PaymentMode } from '../../types/billing';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatDateTime } from '../../utils/calendarDate';
 import { htmlStringToPdf } from '../../utils/pdf';
 
 const STAFF_ROLES = ['super_admin', 'admin', 'lab_technician'];
-
-const fmt = (n: number) =>
-  new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
 
 const flagBadge: Record<string, string> = {
   normal: 'bg-emerald-50 text-emerald-700',
@@ -86,14 +80,12 @@ const LabOrderDetail: React.FC = () => {
 
   const [order, setOrder] = useState<LabOrder | null>(null);
   const [loading, setLoading] = useState(true);
-  const [processing, setProcessing] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
-  const [paymentMode, setPaymentMode] = useState<PaymentMode>('cash');
-  const [paymentRef, setPaymentRef] = useState('');
   const [drafts, setDrafts] = useState<Record<string, ParamDraft[]>>({});
   const [notesDrafts, setNotesDrafts] = useState<Record<string, string>>({});
   const [savingItem, setSavingItem] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     if (!orderId) return;
@@ -123,48 +115,6 @@ const LabOrderDetail: React.FC = () => {
   // report (see canFinalize / finalize_lab_report in lab_service.py).
   const canEditResults = isStaff && !isFinalized;
   const canFinalize = isStaff && !isFinalized && isPaid && allItemsCompleted;
-  const total = Number(order?.total_amount || 0);
-
-  const handleCollectPayment = async () => {
-    if (!order || !orderId) return;
-    setProcessing(true);
-    try {
-      // Same generic billing path as DispensingBilling.tsx: create → issue →
-      // record payment, then sync the lab sale's denormalized status.
-      const invoice = await invoiceService.create({
-        patient_id: order.patient_id,
-        invoice_type: 'lab',
-        notes: `Lab order ${order.order_number}`,
-        items: order.items.map((item, idx) => ({
-          item_type: 'lab_test' as const,
-          reference_id: item.lab_test_id,
-          description: item.test_name,
-          quantity: 1,
-          unit_price: Number(item.price),
-          display_order: idx,
-        })),
-      });
-      await invoiceService.issue(invoice.id);
-      await paymentService.record({
-        invoice_id: invoice.id,
-        patient_id: order.patient_id,
-        amount: total,
-        payment_mode: paymentMode,
-        payment_reference: paymentRef.trim() || undefined,
-      });
-      try {
-        await labService.markSalePaid(orderId, total, paymentMode);
-      } catch {
-        // Non-fatal — invoice/payment already succeeded.
-      }
-      showToast('success', 'Payment recorded');
-      await load();
-    } catch (err: any) {
-      showToast('error', err?.response?.data?.detail || 'Failed to process payment');
-    } finally {
-      setProcessing(false);
-    }
-  };
 
   const handleAdvanceQueue = async (status: LabQueueStatus) => {
     if (!orderId) return;
@@ -265,6 +215,21 @@ const LabOrderDetail: React.FC = () => {
     }
   };
 
+  const handleDelete = async () => {
+    if (!orderId || !order || deleting) return;
+    if (!window.confirm(`Delete lab order ${order.order_number}? This cannot be undone.`)) return;
+    setDeleting(true);
+    try {
+      await labService.deleteOrder(orderId);
+      showToast('success', 'Lab order deleted');
+      if (isStaff) navigate('/lab/queue'); else navigate(-1);
+    } catch (err: any) {
+      showToast('error', err?.response?.data?.detail || 'Failed to delete lab order');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -336,6 +301,16 @@ const LabOrderDetail: React.FC = () => {
               <span className="material-symbols-outlined text-base">download</span>
               {downloading ? 'Preparing…' : 'Download PDF'}
             </button>
+            {/* Hidden once a bill exists (order.sale_id) rather than shown-and-
+                failing — matches the backend guard in DELETE /lab/orders/{id}. */}
+            {isStaff && !order.sale_id && (
+              <button onClick={handleDelete} disabled={deleting}
+                title="Delete this lab order"
+                className="px-3 py-1.5 text-sm font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100 disabled:opacity-50 flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-base">delete</span>
+                {deleting ? 'Deleting…' : 'Delete'}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -393,7 +368,12 @@ const LabOrderDetail: React.FC = () => {
             <p className="text-sm text-slate-500 mb-4 print:hidden">Enter every test's results to enable Finalize Report.</p>
           )}
           {isStaff && !isFinalized && allItemsCompleted && !isPaid && (
-            <p className="text-sm text-slate-500 mb-4 print:hidden">Collect payment above to enable Finalize Report.</p>
+            <p className="text-sm text-slate-500 mb-4 print:hidden">
+              Payment must be collected before finalizing —{' '}
+              <button onClick={() => navigate('/lab/billing')} className="text-primary font-semibold hover:underline">
+                collect it from Lab Billing
+              </button>.
+            </p>
           )}
           <div className="space-y-4">
             {order.items.map((item) => {
@@ -529,77 +509,6 @@ const LabOrderDetail: React.FC = () => {
               );
             })}
           </div>
-        </div>
-
-        {/* Billing */}
-        <div className="bg-white rounded-xl border border-slate-200 p-5 print:hidden">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-slate-900">Billing</h2>
-            <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold capitalize ${
-              isPaid ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'
-            }`}>
-              {order.payment_status || 'pending'}
-            </span>
-          </div>
-
-          <table className="w-full mb-4">
-            <thead>
-              <tr className="text-left text-xs font-semibold text-slate-500 uppercase border-b border-slate-100">
-                <th className="py-2">Test</th>
-                <th className="py-2 text-right">Price</th>
-              </tr>
-            </thead>
-            <tbody>
-              {order.items.map((i) => (
-                <tr key={i.id} className="border-b border-slate-50">
-                  <td className="py-2 text-sm text-slate-900">{i.test_name}</td>
-                  <td className="py-2 text-sm text-slate-900 text-right">₹{fmt(Number(i.price))}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td className="py-2 text-sm font-bold text-slate-900">Total</td>
-                <td className="py-2 text-sm font-bold text-slate-900 text-right">₹{fmt(total)}</td>
-              </tr>
-            </tfoot>
-          </table>
-
-          {isPaid ? (
-            <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 rounded-lg px-4 py-3">
-              <span className="material-symbols-outlined text-lg">check_circle</span>
-              Payment collected.
-            </div>
-          ) : isStaff ? (
-            <>
-              <div className="flex flex-wrap gap-2 mb-3">
-                {(['cash', 'upi', 'debit_card', 'credit_card'] as PaymentMode[]).map((mode) => (
-                  <button key={mode} type="button" onClick={() => setPaymentMode(mode)}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                      paymentMode === mode ? 'bg-primary text-white border-primary'
-                        : 'bg-white text-slate-600 border-slate-200 hover:border-primary/40'
-                    }`}>
-                    {mode === 'cash' ? 'Cash' : mode === 'upi' ? 'UPI' : mode === 'debit_card' ? 'Debit Card' : 'Credit Card'}
-                  </button>
-                ))}
-              </div>
-              {paymentMode !== 'cash' && (
-                <input type="text" value={paymentRef} onChange={(e) => setPaymentRef(e.target.value)}
-                  placeholder={paymentMode === 'upi' ? 'UPI transaction ID' : 'Card / reference number'}
-                  className="w-full max-w-xs mb-3 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
-              )}
-              <button onClick={handleCollectPayment} disabled={processing || total <= 0}
-                className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold disabled:opacity-50 flex items-center gap-2">
-                <span className="material-symbols-outlined text-sm">payment</span>
-                {processing ? 'Processing...' : `Collect ₹${fmt(total)}`}
-              </button>
-            </>
-          ) : (
-            <div className="flex items-center gap-2 text-sm text-slate-500 bg-slate-50 rounded-lg px-4 py-3">
-              <span className="material-symbols-outlined text-lg">schedule</span>
-              Payment pending.
-            </div>
-          )}
         </div>
       </div>
     </div>

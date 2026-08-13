@@ -139,12 +139,12 @@ CREATE INDEX idx_clinical_note_ngrams_lookup
 | `frequency` | How many times this exact sequence has been observed — the ranking/confidence signal. |
 | `updated_at` | Last increment time (bookkeeping; not currently used for recency-weighting). |
 
-Created by `database_hole/14_clinical_note_ngrams.sql`; the `field_type`
+Created by `database_hole/15_clinical_note_ngrams.sql`; the `field_type`
 column (and, in the same migration, `medicines.drug_interaction_notes`/
 `medicines.side_effects` — a pre-existing, unrelated persistence bug fixed
 in the same pass, kept even though those fields no longer feed the ngram
 model, see §8) were added by
-`database_hole/15_ngram_field_type_and_medicine_columns.sql`. Both
+`database_hole/16_ngram_field_type_and_medicine_columns.sql`. Both
 migrations are idempotent and were applied without any data loss to the
 pre-existing Clinical-Notes-only rows (backfilled to
 `field_type = 'clinical_notes'`).

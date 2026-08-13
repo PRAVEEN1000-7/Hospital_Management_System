@@ -5,8 +5,8 @@ Advice, Optical Prescription Notes, Pharmacy/Optical Sale Notes, Medicine
 Description/Drug Interaction Notes/Side Effects, Stock Adjustment Reason),
 trained per-hospital on that hospital's own historical text. field_type keeps
 each field's phrasing in its own pool — see ngram_service.VALID_FIELD_TYPES.
-See database_hole/14_clinical_note_ngrams.sql and
-database_hole/15_ngram_field_type_and_medicine_columns.sql.
+See database_hole/15_clinical_note_ngrams.sql and
+database_hole/16_ngram_field_type_and_medicine_columns.sql.
 """
 import uuid
 from sqlalchemy import Column, String, SmallInteger, Integer, DateTime, ForeignKey, Text, UniqueConstraint

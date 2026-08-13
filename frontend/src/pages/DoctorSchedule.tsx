@@ -9,6 +9,7 @@ import ScheduleMonthCalendar from '../components/appointments/ScheduleMonthCalen
 import type { DoctorSchedule, DoctorScheduleCreate, DoctorLeave, DoctorLeaveCreate, DoctorOption } from '../types/appointment';
 import { formatDateOnly, formatLocalDateISO } from '../utils/calendarDate';
 import { getErrorMessage } from '../utils/errorMessage';
+import SearchableSelect, { type SuggestionOption } from '../components/common/SearchableSelect';
 
 // Backend uses 0=Sunday, 1=Monday ... 6=Saturday
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -23,6 +24,7 @@ const DoctorSchedulePage: React.FC = () => {
 
   const [doctors, setDoctors] = useState<DoctorOption[]>([]);
   const [selectedDoctorId, setSelectedDoctorId] = useState<string | null>(null);
+  const [doctorLabel, setDoctorLabel] = useState('');
   const [schedules, setSchedules] = useState<DoctorSchedule[]>([]);
   const [doctorLeaves, setDoctorLeaves] = useState<DoctorLeave[]>([]);
   const [loading, setLoading] = useState(false);
@@ -374,12 +376,22 @@ const DoctorSchedulePage: React.FC = () => {
 
       {/* Doctor Selector (admin / receptionist) */}
       {canPickAnyDoctor && (
-        <div className="mb-6">
-          <select value={selectedDoctorId || ''} onChange={(e) => setSelectedDoctorId(e.target.value || null)}
-            className="w-full sm:w-80 px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none bg-white">
-            <option value="">Select a doctor...</option>
-            {doctors.map(d => <option key={d.doctor_id} value={d.doctor_id}>{d.name} — {d.specialization || 'N/A'}</option>)}
-          </select>
+        <div className="mb-6 w-full sm:w-80">
+          <SearchableSelect
+            value={doctorLabel}
+            onChange={(value, metadata) => {
+              setDoctorLabel(value);
+              setSelectedDoctorId(metadata?.id ? (metadata.id as string) : null);
+            }}
+            suggestions={doctors.map((d): SuggestionOption => ({
+              id: d.doctor_id,
+              label: d.name,
+              sublabel: d.specialization || undefined,
+              metadata: { id: d.doctor_id },
+            }))}
+            placeholder="Search doctor..."
+            allowManualEntry={false}
+          />
         </div>
       )}
 

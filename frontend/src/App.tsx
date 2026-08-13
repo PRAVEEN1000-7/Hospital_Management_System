@@ -84,6 +84,7 @@ import OpticalPrescriptions from './pages/optical/OpticalPrescriptions';
 import OpticalPrescriptionDetail from './pages/optical/OpticalPrescriptionDetail';
 import OpticalSales from './pages/optical/OpticalSales';
 import NewOpticalSale from './pages/optical/NewOpticalSale';
+import NewOpticalPrescription from './pages/optical/NewOpticalPrescription';
 import OpticalStockAdjustments from './pages/optical/OpticalStockAdjustments';
 import OpticalQueue from './pages/optical/OpticalQueue';
 import OpticalPendingPrescriptions from './pages/optical/OpticalPendingPrescriptions';
@@ -92,7 +93,10 @@ import LabDashboard from './pages/lab/LabDashboard';
 import LabTestCatalog from './pages/lab/LabTestCatalog';
 import LabQueue from './pages/lab/LabQueue';
 import LabOrderDetail from './pages/lab/LabOrderDetail';
+import LabBilling from './pages/lab/LabBilling';
+import LabCollectPayment from './pages/lab/LabCollectPayment';
 import LabReferralForm from './pages/lab/LabReferralForm';
+import NewLabOrder from './pages/lab/NewLabOrder';
 
 // Inventory pages
 import InventoryDashboard from './pages/inventory/InventoryDashboard';
@@ -137,11 +141,11 @@ import Payroll from './pages/Payroll';
 import Allowance from './pages/Allowance';
 
 // Shared role/module permission matrix (see docs/security/ROLE_PERMISSIONS_DECISIONS_2026-07-25.md)
-import { allowedRoles } from './config/modulePermissions';
+import { allowedRoles, getDefaultLandingPath } from './config/modulePermissions';
 
 const DefaultRedirect: React.FC = () => {
   const { user } = useAuth();
-  return <Navigate to={user?.roles?.includes('super_admin') ? '/superadmin' : '/dashboard'} replace />;
+  return <Navigate to={getDefaultLandingPath(user?.roles)} replace />;
 };
 
 // Renders the actual route tree. Calling useAuth() here (not just for `user`)
@@ -392,7 +396,15 @@ const AppWithNotifications: React.FC = () => {
               } />
               <Route path="/prescriptions/new" element={
                 <ProtectedRoute
-                  allowedRoles={allowedRoles('rx.new')}
+                  // Pharmacists don't hold "rx.new" in the shared permission
+                  // matrix (that key also gates the medicine formulary and
+                  // prescription templates — see prescriptions.py's
+                  // rx_new_edit_or_pharmacist_guard for why it isn't just
+                  // added there). They're allowed onto this ONE route as an
+                  // explicit carve-out so they can author a walk-in
+                  // prescription attributed to a doctor they pick — see the
+                  // doctor-picker in PrescriptionBuilder.tsx.
+                  allowedRoles={[...allowedRoles('rx.new'), 'pharmacist']}
                   requiredModule="prescriptions"
                 >
                   <PrescriptionBuilder />
@@ -579,6 +591,18 @@ const AppWithNotifications: React.FC = () => {
                   <OpticalPendingPrescriptions />
                 </ProtectedRoute>
               } />
+              {/* Standalone create form — lets optical_staff record a walk-in eyewear
+                  prescription without a doctor consultation (BRD ask). Placed before the
+                  "/optical/prescriptions" list and ":id" detail routes purely for readability;
+                  React Router ranks the literal "new" segment above ":id" regardless of order. */}
+              <Route path="/optical/prescriptions/new" element={
+                <ProtectedRoute
+                  allowedRoles={allowedRoles('optical', 'edit')}
+                  requiredModule="optical"
+                >
+                  <NewOpticalPrescription />
+                </ProtectedRoute>
+              } />
               <Route path="/optical/prescriptions" element={
                 <ProtectedRoute
                   allowedRoles={allowedRoles('optical')}
@@ -657,12 +681,36 @@ const AppWithNotifications: React.FC = () => {
                   <LabQueue />
                 </ProtectedRoute>
               } />
+              <Route path="/lab/billing" element={
+                <ProtectedRoute
+                  allowedRoles={['super_admin', 'admin', 'lab_technician']}
+                  requiredModule="lab"
+                >
+                  <LabBilling />
+                </ProtectedRoute>
+              } />
+              <Route path="/lab/billing/:orderId/pay" element={
+                <ProtectedRoute
+                  allowedRoles={['super_admin', 'admin', 'lab_technician']}
+                  requiredModule="lab"
+                >
+                  <LabCollectPayment />
+                </ProtectedRoute>
+              } />
               <Route path="/lab/orders/:orderId" element={
                 <ProtectedRoute
                   allowedRoles={['super_admin', 'admin', 'lab_technician', 'doctor']}
                   requiredModule="lab"
                 >
                   <LabOrderDetail />
+                </ProtectedRoute>
+              } />
+              <Route path="/lab/new-order" element={
+                <ProtectedRoute
+                  allowedRoles={['super_admin', 'admin', 'lab_technician']}
+                  requiredModule="lab"
+                >
+                  <NewLabOrder />
                 </ProtectedRoute>
               } />
               <Route path="/lab/referral-form" element={

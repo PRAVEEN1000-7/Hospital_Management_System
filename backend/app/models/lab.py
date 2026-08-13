@@ -60,7 +60,7 @@ class LabOrder(Base):
     hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=False)
     order_number = Column(String(30), unique=True, nullable=False, index=True)
     patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id"), nullable=False)
-    doctor_id = Column(UUID(as_uuid=True), ForeignKey("doctors.id"), nullable=False)
+    doctor_id = Column(UUID(as_uuid=True), ForeignKey("doctors.id"), nullable=True)
     appointment_id = Column(UUID(as_uuid=True), ForeignKey("appointments.id"))
     prescription_id = Column(UUID(as_uuid=True), ForeignKey("prescriptions.id"))
     notes = Column(Text)

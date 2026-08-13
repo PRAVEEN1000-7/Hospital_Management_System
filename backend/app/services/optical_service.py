@@ -92,14 +92,22 @@ def list_optical_products(
     total = query.count()
     items = query.order_by(OpticalProduct.created_at.desc()).offset((page - 1) * limit).limit(limit).all()
 
-    # Enrich with total stock across active batches.
+    # Enrich with total stock across active batches. Expired batches excluded
+    # (null-expiry frames/solutions always count) — same "available" definition
+    # used by sale creation, so this list's stock badge doesn't disagree with
+    # what the sale screen will actually let staff sell.
+    today = hospital_today_by_id(db, hospital_id)
     product_ids = [p.id for p in items]
     stock_map: dict[uuid.UUID, int] = {}
     if product_ids:
         try:
             stock_rows = (
                 db.query(OpticalBatch.product_id, func.coalesce(func.sum(OpticalBatch.quantity), 0))
-                .filter(OpticalBatch.product_id.in_(product_ids), OpticalBatch.is_active == True)
+                .filter(
+                    OpticalBatch.product_id.in_(product_ids),
+                    OpticalBatch.is_active == True,
+                    or_(OpticalBatch.expiry_date.is_(None), OpticalBatch.expiry_date > today),
+                )
                 .group_by(OpticalBatch.product_id)
                 .all()
             )
@@ -200,9 +208,18 @@ def _generate_prescription_number(db: Session, hospital_id: uuid.UUID) -> str:
     # hospital_id), so the running count must be global too — counting only this
     # hospital's rows let two different hospitals generate the same "next" number
     # and collide on insert.
+    #
+    # MAX(existing seq)+1, not COUNT(*)+1 — a deleted prescription leaves a
+    # numbering gap that COUNT(*) doesn't account for, causing collisions.
     year = date.today().strftime("%y")
-    count = db.query(func.count(OpticalPrescription.id)).scalar() or 0
-    return f"OPT-RX-{year}-{count + 1:04d}"
+    last = db.query(OpticalPrescription.prescription_number).order_by(
+        OpticalPrescription.prescription_number.desc()
+    ).limit(1).scalar()
+    try:
+        seq = int(last.rsplit("-", 1)[-1]) + 1 if last else 1
+    except ValueError:
+        seq = 1
+    return f"OPT-RX-{year}-{seq:04d}"
 
 
 def create_optical_prescription(
@@ -230,14 +247,17 @@ def create_optical_prescription(
 
     # No doctor_id provided (e.g. the Prescription Builder's "also create
     # optical prescription" option) — resolve from the logged-in doctor,
-    # matching prescription_service.create_prescription's fallback.
+    # matching prescription_service.create_prescription's fallback. If the
+    # current user isn't a doctor either (e.g. optical_staff creating a
+    # walk-in prescription with no consultation behind it), doctor_id is
+    # left as None — doctor_id is nullable precisely for this case, so this
+    # is not an error condition.
     if not payload.get("doctor_id"):
-        if not created_by:
-            raise ValueError("No doctor_id provided and no logged-in doctor to fall back to")
-        doctor = db.query(Doctor).filter(Doctor.user_id == created_by).first()
-        if not doctor:
-            raise ValueError("No doctor_id provided and current user is not a doctor")
-        payload["doctor_id"] = doctor.id
+        doctor = db.query(Doctor).filter(Doctor.user_id == created_by).first() if created_by else None
+        # Explicitly None (not just left falsy) — payload may still hold a
+        # stray "" from the request body, which would fail UUID coercion in
+        # the model constructor below.
+        payload["doctor_id"] = doctor.id if doctor else None
     else:
         doctor = db.query(Doctor).filter(Doctor.id == payload.get("doctor_id"), Doctor.hospital_id == hospital_id).first()
         if not doctor:
@@ -474,10 +494,20 @@ def finalize_optical_prescription(db: Session, prescription_id: str | uuid.UUID)
 # ══════════════════════════════════════════════════
 
 def _generate_order_number(db: Session, hospital_id: uuid.UUID) -> str:
-    count = db.query(func.count(OpticalSale.id)).filter(
-        OpticalSale.hospital_id == hospital_id
-    ).scalar() or 0
-    return f"OPT-{count + 1:06d}"
+    # MAX(existing seq)+1, not COUNT(*)+1 — a deleted sale leaves a numbering
+    # gap that COUNT(*) doesn't account for, causing collisions.
+    last = (
+        db.query(OpticalSale.invoice_number)
+        .filter(OpticalSale.hospital_id == hospital_id)
+        .order_by(OpticalSale.invoice_number.desc())
+        .limit(1)
+        .scalar()
+    )
+    try:
+        seq = int(last.rsplit("-", 1)[-1]) + 1 if last else 1
+    except ValueError:
+        seq = 1
+    return f"OPT-{seq:06d}"
 
 
 def create_sale(db: Session, hospital_id: uuid.UUID, data: dict, user_id: uuid.UUID) -> OpticalSale:
@@ -594,22 +624,27 @@ def create_sale(db: Session, hospital_id: uuid.UUID, data: dict, user_id: uuid.U
             ).first()
         else:
             # FEFO: earliest real expiry first; null-expiry batches (frames,
-            # solutions) are never blocked and are consumed last.
+            # solutions) are never blocked and are consumed last. Expiry is
+            # compared against the hospital's own local date, not the server's
+            # — same fix applied to dispensing_service/pharmacy_service's FEFO
+            # pickers this session; this optical picker was missed then.
+            today = hospital_today_by_id(db, hospital_id)
             batch = db.query(OpticalBatch).filter(
                 OpticalBatch.product_id == product_uuid,
                 OpticalBatch.is_active == True,
                 OpticalBatch.quantity >= qty,
-                or_(OpticalBatch.expiry_date.is_(None), OpticalBatch.expiry_date > date.today()),
+                or_(OpticalBatch.expiry_date.is_(None), OpticalBatch.expiry_date > today),
             ).order_by(
                 case((OpticalBatch.expiry_date.is_(None), 1), else_=0),
                 OpticalBatch.expiry_date.asc(),
             ).first()
 
         if not batch or batch.quantity < qty:
+            today = hospital_today_by_id(db, hospital_id)
             expired_batch = db.query(OpticalBatch).filter(
                 OpticalBatch.product_id == product_uuid,
                 OpticalBatch.expiry_date.isnot(None),
-                OpticalBatch.expiry_date <= date.today(),
+                OpticalBatch.expiry_date <= today,
                 OpticalBatch.quantity > 0,
             ).first()
             if expired_batch:
@@ -1028,9 +1063,17 @@ def get_optical_dashboard(db: Session, hospital_id: uuid.UUID) -> dict:
     expired = 0
     if product_ids:
         try:
+            # Expired batches excluded from the stock total (null-expiry frames/
+            # solutions always count) — otherwise a product whose only stock had
+            # expired still showed as in-stock/adequately-stocked here even
+            # though sale creation above already refuses to sell it.
             stock_rows = (
                 db.query(OpticalBatch.product_id, func.coalesce(func.sum(OpticalBatch.quantity), 0))
-                .filter(OpticalBatch.product_id.in_(product_ids), OpticalBatch.is_active == True)
+                .filter(
+                    OpticalBatch.product_id.in_(product_ids),
+                    OpticalBatch.is_active == True,
+                    or_(OpticalBatch.expiry_date.is_(None), OpticalBatch.expiry_date > today),
+                )
                 .group_by(OpticalBatch.product_id)
                 .all()
             )

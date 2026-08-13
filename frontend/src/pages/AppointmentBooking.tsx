@@ -72,7 +72,10 @@ const AppointmentBooking: React.FC = () => {
   const [patientSearch, setPatientSearch] = useState('');
   const [patients, setPatients] = useState<Patient[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
-  const selectPatient = (p: Patient) => { setSelectedPatient(p); setPatientSearch(`${p.first_name} ${p.last_name}`); setPatients([]); };
+  // Lets the dropdown open on focus, before any typing — otherwise the only
+  // way to pick a patient is to already know something to search for.
+  const [patientFocused, setPatientFocused] = useState(false);
+  const selectPatient = (p: Patient) => { setSelectedPatient(p); setPatientSearch(`${p.first_name} ${p.last_name}`); setPatients([]); setPatientFocused(false); };
   const patientNav = useListKeyboardNav(patients, selectPatient);
   const [patientLoading, setPatientLoading] = useState(false);
 
@@ -192,19 +195,21 @@ const AppointmentBooking: React.FC = () => {
     }
   }, [regForm.country]);
 
-  // Search patients
+  // Search patients. Empty query still resolves — most-recently-registered
+  // patients — so the dropdown has something to pick from as soon as it's
+  // opened, not only once the user has started typing.
   useEffect(() => {
-    if (patientSearch.length < 2) { setPatients([]); return; }
+    if (selectedPatient || !patientFocused) { setPatients([]); return; }
     const tid = setTimeout(async () => {
       setPatientLoading(true);
       try {
-        const res = await patientService.getPatients(1, 10, patientSearch);
+        const res = await patientService.getPatients(1, 10, patientSearch.trim());
         setPatients(res.data);
       } catch { /* silent */ }
       setPatientLoading(false);
     }, 300);
     return () => clearTimeout(tid);
-  }, [patientSearch]);
+  }, [patientSearch, selectedPatient, patientFocused]);
 
   // Check if selected doctor has any schedule configured
   useEffect(() => {
@@ -337,7 +342,9 @@ const AppointmentBooking: React.FC = () => {
                 value={patientSearch}
                 onChange={(e) => { setPatientSearch(e.target.value); setSelectedPatient(null); }}
                 onKeyDown={patientNav.onKeyDown}
-                placeholder="Search existing patient by name, PRN, or phone..."
+                onFocus={() => setPatientFocused(true)}
+                onBlur={() => window.setTimeout(() => setPatientFocused(false), 150)}
+                placeholder="Search by name, PRN, or phone... or click to browse recent patients"
                 className="w-full pl-10 pr-9 py-3 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
               />
               {patientSearch && (
@@ -348,17 +355,20 @@ const AppointmentBooking: React.FC = () => {
             </div>
             {patientLoading && <p className="text-xs text-slate-400 mt-2">Searching...</p>}
             {/* Divider hint */}
-            {!selectedPatient && patientSearch.length === 0 && (
+            {!selectedPatient && patientSearch.length === 0 && !patientFocused && (
               <div className="mt-3 flex items-center gap-3">
                 <div className="flex-1 h-px bg-slate-100" />
                 <span className="text-[11px] text-slate-400 font-medium">or register a new patient above</span>
                 <div className="flex-1 h-px bg-slate-100" />
               </div>
             )}
-            {patients.length > 0 && !selectedPatient && (
+            {patientFocused && patients.length > 0 && !selectedPatient && (
               <div className="mt-2 border border-slate-200 rounded-lg max-h-60 overflow-y-auto">
+                {!patientSearch.trim() && (
+                  <p className="px-4 py-1.5 text-[10px] font-bold text-slate-400 uppercase border-b border-slate-100">Recent patients</p>
+                )}
                 {patients.map((p, idx) => (
-                  <button key={p.id} onClick={() => selectPatient(p)}
+                  <button key={p.id} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => selectPatient(p)}
                     onMouseEnter={() => patientNav.setActiveIndex(idx)}
                     className={`w-full text-left px-4 py-3 flex items-center gap-3 border-b border-slate-100 last:border-0 ${
                       idx === patientNav.activeIndex ? 'bg-primary/10' : 'hover:bg-slate-50'

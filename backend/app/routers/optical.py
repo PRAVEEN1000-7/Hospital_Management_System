@@ -437,11 +437,16 @@ async def get_optical_prescription_pdf(
             return ""
     logo_uri = _logo_data_uri(hospital.logo_url if hospital else "")
 
-    doctor_name = _esc((doctor.user.full_name if doctor and doctor.user else "") or "—")
+    doctor_name = _esc(doctor.user.full_name if doctor and doctor.user else "")
     doctor_spec = _esc((doctor.specialization if doctor else "") or "")
     doctor_reg = _esc((doctor.registration_number if doctor else "") or "")
     doctor_qual = _esc((doctor.qualification if doctor else "") or "")
-    doctor_display = f"Dr. {doctor_name}" + (f", {doctor_qual}" if doctor_qual else "")
+    # No doctor attached (walk-in record created without one) — show a plain
+    # "No doctor assigned" instead of a bare "Dr." with nothing after it.
+    doctor_display = (
+        f"Dr. {doctor_name}" + (f", {doctor_qual}" if doctor_qual else "")
+        if doctor_name else "No doctor assigned"
+    )
 
     def _compute_age(p):
         if not p:

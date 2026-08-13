@@ -433,9 +433,18 @@ const Layout: React.FC = () => {
   // Receptionist and Doctor get flat appointment links (no dropdown)
   const isFlatNav = hasRole('receptionist', 'doctor');
 
-  // ── Main navigation ── visible to every authenticated user
+  // ── Main navigation ──
+  // The generic Dashboard was previously shown to every authenticated user
+  // unconditionally, but its route (/dashboard in App.tsx) is gated by the
+  // shared 'general.dashboard' permission — which lab_technician, pharmacist,
+  // cashier and inventory_manager were never granted (they get their own
+  // module-specific dashboard instead: Lab/Pharmacy/Optical/Inventory "Dashboard"
+  // entries below). Those roles clicking it landed on a page they had no
+  // access to. Only show the link to roles that actually have it.
   const mainNavItems = [
-    { to: '/dashboard', label: 'Dashboard', icon: 'dashboard' },
+    ...(hasAccess('general.dashboard', effectiveRoles)
+      ? [{ to: '/dashboard', label: 'Dashboard', icon: 'dashboard' }]
+      : []),
   ];
   if (canAccessPatients) {
     mainNavItems.push({ to: '/patients', label: 'Patient Directory', icon: 'group' });
@@ -541,6 +550,11 @@ const Layout: React.FC = () => {
     if (hasRole('pharmacist') && !hasRole('super_admin', 'admin', 'inventory_manager')) {
       // Simplified pharmacy menu for pharmacists - essential items only
       pharmacyItems.push(
+        // Lets a pharmacist author a walk-in prescription directly (no
+        // doctor consultation first), attributed to a doctor they pick —
+        // reuses PrescriptionBuilder via the /prescriptions/new route,
+        // which carves out pharmacist access explicitly (see App.tsx).
+        { to: '/prescriptions/new', label: 'New Prescription', icon: 'note_add' },
         { to: '/pharmacy/medicines', label: 'Medicines', icon: 'medication' },
         {
           to: '/pharmacy/pending-prescriptions',
@@ -584,6 +598,7 @@ const Layout: React.FC = () => {
       { to: '/optical', label: 'Dashboard', icon: 'dashboard' },
       { to: '/optical/products', label: 'Products', icon: 'visibility' },
       { to: '/optical/prescriptions', label: 'Prescriptions', icon: 'description' },
+      { to: '/optical/prescriptions/new', label: 'New Prescription', icon: 'add_circle' },
       { to: '/optical/sales', label: 'Sales', icon: 'point_of_sale' },
       { to: '/optical/queue', label: 'Dispensing Queue', icon: 'queue' },
       { to: '/optical/stock-adjustments', label: 'Stock Adjustments', icon: 'tune' },
@@ -595,7 +610,11 @@ const Layout: React.FC = () => {
   if (canAccessLab) {
     labItems.push(
       { to: '/lab', label: 'Dashboard', icon: 'dashboard' },
+      // New Order — lets lab staff create a walk-in order directly (no prior
+      // doctor visit required), filed under a doctor picked from the roster.
+      { to: '/lab/new-order', label: 'New Order', icon: 'add_circle' },
       { to: '/lab/queue', label: 'Lab Queue', icon: 'queue' },
+      { to: '/lab/billing', label: 'Billing', icon: 'payments' },
       { to: '/lab/tests', label: 'Test Catalog', icon: 'biotech' },
     );
   }

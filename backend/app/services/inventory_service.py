@@ -21,6 +21,7 @@ from ..models.prescription import Medicine
 from ..models.optical import OpticalProduct, OpticalBatch
 from ..models.pharmacy import MedicineBatch
 from ..models.user import User, Role, UserRole, Hospital
+from ..core.hospital_time import hospital_today_by_id
 from .notification_service import notify_hospital_users as _notify_hospital_users_shared
 from ..schemas.inventory import (
     SupplierCreate, SupplierUpdate,
@@ -214,11 +215,24 @@ def _generate_number(db: Session, prefix: str, model_class, number_field: str) -
     return f"{prefix}-{today}-{seq:04d}"
 
 
-def _get_medicine_batch_stock(db: Session, medicine_id: uuid.UUID) -> int:
-    """Single source of truth for medicine stock: sum of active batch quantities."""
+def _get_medicine_batch_stock(
+    db: Session, medicine_id: uuid.UUID, hospital_id: Optional[uuid.UUID] = None,
+) -> int:
+    """Single source of truth for medicine stock: sum of active, non-expired batch
+    quantities — an expired batch still physically sits on the shelf but can never
+    be dispensed or sold (dispensing_service/pharmacy_service already refuse it),
+    so counting it here made this "ground truth" disagree with what's actually
+    available, showing medicines as in-stock/adequately-stocked when the only
+    stock left was expired. "Today" is resolved in the medicine's own hospital's
+    timezone, not the server's — pass hospital_id when already known by the
+    caller to avoid an extra lookup query."""
+    if hospital_id is None:
+        hospital_id = db.query(Medicine.hospital_id).filter(Medicine.id == medicine_id).scalar()
+    today = hospital_today_by_id(db, hospital_id) if hospital_id else date.today()
     total = db.query(func.coalesce(func.sum(MedicineBatch.quantity), 0)).filter(
         MedicineBatch.medicine_id == medicine_id,
         MedicineBatch.is_active == True,
+        MedicineBatch.expiry_date >= today,
     ).scalar() or 0
     return int(total)
 
@@ -301,16 +315,23 @@ def _apply_medicine_batch_delta(
     return None
 
 
-def _get_optical_batch_stock(db: Session, product_id: uuid.UUID) -> int:
-    """Single source of truth for optical product stock: sum of active batch quantities.
-
-    Mirrors _get_medicine_batch_stock — kept as the ground truth so
+def _get_optical_batch_stock(
+    db: Session, product_id: uuid.UUID, hospital_id: Optional[uuid.UUID] = None,
+) -> int:
+    """Single source of truth for optical product stock: sum of active, non-expired
+    batch quantities (null-expiry batches — frames, solutions — never expire and
+    always count). Mirrors _get_medicine_batch_stock — kept as the ground truth so
     get_stock_level(), adjustments, and cycle counts never drift from what
-    optical sales actually deduct from (OpticalBatch.quantity).
+    optical sales actually deduct from (OpticalBatch.quantity), including agreeing
+    on which batches are actually sellable.
     """
+    if hospital_id is None:
+        hospital_id = db.query(OpticalProduct.hospital_id).filter(OpticalProduct.id == product_id).scalar()
+    today = hospital_today_by_id(db, hospital_id) if hospital_id else date.today()
     total = db.query(func.coalesce(func.sum(OpticalBatch.quantity), 0)).filter(
         OpticalBatch.product_id == product_id,
         OpticalBatch.is_active == True,
+        or_(OpticalBatch.expiry_date.is_(None), OpticalBatch.expiry_date >= today),
     ).scalar() or 0
     return int(total)
 
@@ -1233,8 +1254,8 @@ def _reconcile_grn_item_stock_correction(
     net_delta = new_posted_qty - old_posted_qty
     if net_delta != 0:
         balance_after = (
-            _get_medicine_batch_stock(db, item.item_id) if is_medicine
-            else _get_optical_batch_stock(db, item.item_id)
+            _get_medicine_batch_stock(db, item.item_id, grn.hospital_id) if is_medicine
+            else _get_optical_batch_stock(db, item.item_id, grn.hospital_id)
         )
         db.add(StockMovement(
             hospital_id=grn.hospital_id,
@@ -1317,7 +1338,7 @@ def _process_grn_acceptance(db: Session, grn: GoodsReceiptNote):
                 )
                 db.add(batch)
             db.flush()
-            balance_after = _get_medicine_batch_stock(db, item.item_id)
+            balance_after = _get_medicine_batch_stock(db, item.item_id, grn.hospital_id)
         elif item.item_type == "optical_product":
             batch = db.query(OpticalBatch).filter(
                 OpticalBatch.product_id == item.item_id,
@@ -1345,7 +1366,7 @@ def _process_grn_acceptance(db: Session, grn: GoodsReceiptNote):
                 )
                 db.add(batch)
             db.flush()
-            balance_after = _get_optical_batch_stock(db, item.item_id)
+            balance_after = _get_optical_batch_stock(db, item.item_id, grn.hospital_id)
         else:
             last_movement = (
                 db.query(StockMovement)
@@ -1563,9 +1584,9 @@ def get_stock_level(
     Reading the StockMovement chain instead (as this used to for optical_product)
     silently drifted from real stock whenever a batch changed outside that chain."""
     if item_type == "medicine":
-        return _get_medicine_batch_stock(db, item_id)
+        return _get_medicine_batch_stock(db, item_id, hospital_id)
     if item_type == "optical_product":
-        return _get_optical_batch_stock(db, item_id)
+        return _get_optical_batch_stock(db, item_id, hospital_id)
 
     last = (
         db.query(StockMovement.balance_after)
@@ -1582,6 +1603,8 @@ def get_stock_level(
 
 def get_low_stock_items(db: Session, hospital_id: uuid.UUID, limit: int = 20) -> list:
     """Return medicines below reorder level using batch totals (same source as medicine inventory)."""
+    today = hospital_today_by_id(db, hospital_id)
+
     medicines = (
         db.query(Medicine.id, Medicine.name, Medicine.reorder_level, Medicine.purchase_price)
         .filter(Medicine.hospital_id == hospital_id, Medicine.is_active == True)
@@ -1592,11 +1615,17 @@ def get_low_stock_items(db: Session, hospital_id: uuid.UUID, limit: int = 20) ->
     stock_map: dict[uuid.UUID, int] = {}
     batch_map: dict[uuid.UUID, list[str]] = {}
     if med_ids:
+        # Expired batches are excluded — they still occupy shelf space but can
+        # never be dispensed/sold, so counting them here made a medicine whose
+        # only remaining stock had expired show as adequately stocked instead
+        # of the "out of stock"/"low stock" it actually is everywhere else
+        # (dispensing screen, sale creation).
         rows = (
             db.query(MedicineBatch.medicine_id, func.coalesce(func.sum(MedicineBatch.quantity), 0))
             .filter(
                 MedicineBatch.medicine_id.in_(med_ids),
                 MedicineBatch.is_active == True,
+                MedicineBatch.expiry_date >= today,
             )
             .group_by(MedicineBatch.medicine_id)
             .all()
@@ -1612,6 +1641,7 @@ def get_low_stock_items(db: Session, hospital_id: uuid.UUID, limit: int = 20) ->
                 MedicineBatch.medicine_id.in_(med_ids),
                 MedicineBatch.is_active == True,
                 MedicineBatch.quantity > 0,
+                MedicineBatch.expiry_date >= today,
             )
             .all()
         )
@@ -1645,9 +1675,13 @@ def get_low_stock_items(db: Session, hospital_id: uuid.UUID, limit: int = 20) ->
         optical_stock_map: dict[uuid.UUID, int] = {}
         optical_batch_map: dict[uuid.UUID, list[str]] = {}
         if product_ids:
+            # Null-expiry batches (frames, solutions, accessories) never expire
+            # and always count; a real expiry_date in the past is excluded, same
+            # reasoning as the medicine branch above.
+            not_expired = or_(OpticalBatch.expiry_date.is_(None), OpticalBatch.expiry_date >= today)
             rows = (
                 db.query(OpticalBatch.product_id, func.coalesce(func.sum(OpticalBatch.quantity), 0))
-                .filter(OpticalBatch.product_id.in_(product_ids), OpticalBatch.is_active == True)
+                .filter(OpticalBatch.product_id.in_(product_ids), OpticalBatch.is_active == True, not_expired)
                 .group_by(OpticalBatch.product_id)
                 .all()
             )
@@ -1659,6 +1693,7 @@ def get_low_stock_items(db: Session, hospital_id: uuid.UUID, limit: int = 20) ->
                     OpticalBatch.product_id.in_(product_ids),
                     OpticalBatch.is_active == True,
                     OpticalBatch.quantity > 0,
+                    not_expired,
                 )
                 .all()
             )
@@ -1689,7 +1724,7 @@ def get_low_stock_items(db: Session, hospital_id: uuid.UUID, limit: int = 20) ->
 def get_expiring_items(db: Session, hospital_id: uuid.UUID, days: int = 90) -> list:
     """Return GRN items expiring within the given number of days."""
     from datetime import timedelta
-    cutoff = date.today() + timedelta(days=days)
+    cutoff = hospital_today_by_id(db, hospital_id) + timedelta(days=days)
     items = (
         db.query(GRNItem)
         .join(GoodsReceiptNote)
@@ -1796,13 +1831,13 @@ def approve_stock_adjustment(
         movement_batch_id = adj.batch_id
         if adj.item_type == "medicine":
             movement_batch_id = _apply_medicine_batch_delta(db, adj.item_id, qty, adj.batch_id)
-            balance_after = _get_medicine_batch_stock(db, adj.item_id)
+            balance_after = _get_medicine_batch_stock(db, adj.item_id, adj.hospital_id)
         elif adj.item_type == "optical_product":
             # Previously this branch never touched OpticalBatch.quantity — an
             # "approved" adjustment recorded a new balance_after in the movement
             # ledger but left the real, sellable stock completely unchanged.
             movement_batch_id = _apply_optical_batch_delta(db, adj.item_id, qty, adj.batch_id)
-            balance_after = _get_optical_batch_stock(db, adj.item_id)
+            balance_after = _get_optical_batch_stock(db, adj.item_id, adj.hospital_id)
         else:
             current_balance = get_stock_level(db, adj.hospital_id, adj.item_type, adj.item_id)
             balance_after = current_balance + qty
@@ -1978,13 +2013,13 @@ def update_cycle_count(
             movement_batch_id = it.batch_id
             if it.item_type == "medicine":
                 movement_batch_id = _apply_medicine_batch_delta(db, it.item_id, delta, it.batch_id)
-                balance_after = _get_medicine_batch_stock(db, it.item_id)
+                balance_after = _get_medicine_batch_stock(db, it.item_id, cc.hospital_id)
             elif it.item_type == "optical_product":
                 # Same fix as approve_stock_adjustment: without this the "verified"
                 # count recorded a corrected balance in the ledger but never
                 # touched OpticalBatch.quantity, so nothing was actually reconciled.
                 movement_batch_id = _apply_optical_batch_delta(db, it.item_id, delta, it.batch_id)
-                balance_after = _get_optical_batch_stock(db, it.item_id)
+                balance_after = _get_optical_batch_stock(db, it.item_id, cc.hospital_id)
             else:
                 current_balance = get_stock_level(db, cc.hospital_id, it.item_type, it.item_id)
                 balance_after = current_balance + delta
@@ -2094,15 +2129,18 @@ def get_stock_status_analytics(
     db: Session, hospital_id: uuid.UUID, limit: int = 50
 ) -> list[dict]:
     """Get stock status for analytics dashboard."""
+    today = hospital_today_by_id(db, hospital_id)
+
     # Get all medicines with their stock levels
     medicines = db.query(Medicine).filter(
         Medicine.hospital_id == hospital_id,
         Medicine.is_active == True,
     ).limit(limit).all()
-    
+
     results = []
     for med in medicines:
-        # Calculate total stock from batches
+        # Calculate total stock from batches — expired batches excluded, same
+        # "available" definition used everywhere else (dispensing, low-stock).
         total_stock = db.query(
             func.coalesce(func.sum(MedicineBatch.quantity), 0)
         ).join(
@@ -2110,6 +2148,7 @@ def get_stock_status_analytics(
         ).filter(
             Medicine.id == med.id,
             MedicineBatch.is_active == True,
+            MedicineBatch.expiry_date >= today,
         ).scalar() or 0
         
         # Determine status
@@ -2146,7 +2185,7 @@ def get_inventory_aging_analytics(
     db: Session, hospital_id: uuid.UUID
 ) -> list[dict]:
     """Get inventory aging report based on days to expiry."""
-    today = date.today()
+    today = hospital_today_by_id(db, hospital_id)
     
     # Query batches grouped by days to expiry
     results = db.query(
@@ -2229,17 +2268,27 @@ def get_medicine_for_invoice(
         logger.warning(f"Medicine lookup failed: ID {medicine_id} not found or inactive")
         return None
     
-    total_stock = _get_medicine_batch_stock(db, medicine_id)
-    
+    # "Today" in the invoicing hospital's own timezone, not the server's — falls
+    # back to the medicine's own hospital when no invoice hospital context was
+    # given (e.g. a shared/global medicine looked up outside an invoice flow).
+    today = hospital_today_by_id(db, hospital_id or medicine.hospital_id)
+
+    total_stock = _get_medicine_batch_stock(db, medicine_id, hospital_id or medicine.hospital_id)
+
+    # `MedicineBatch.is_expired` is a stored flag that nothing in this codebase
+    # ever sets to True (only ever defaults to False) — filtering on it here was
+    # a no-op that let genuinely expired batches show up as invoiceable stock.
+    # Compare the real expiry_date against hospital-local "today" instead, same
+    # as dispensing_service/pharmacy_service's FEFO pickers.
     batches = db.query(MedicineBatch).filter(
         MedicineBatch.medicine_id == medicine_id,
         MedicineBatch.is_active == True,
-        MedicineBatch.is_expired == False,
+        MedicineBatch.expiry_date >= today,
     ).order_by(
         MedicineBatch.expiry_date.asc(),
         MedicineBatch.created_at.asc(),
     ).all()
-    
+
     batch_list = []
     for batch in batches:
         if (batch.quantity or 0) > 0:
@@ -2250,10 +2299,10 @@ def get_medicine_for_invoice(
                 "manufactured_date": batch.mfg_date,
                 "expiry_date": batch.expiry_date,
                 "days_to_expiry": (
-                    (batch.expiry_date - date.today()).days if batch.expiry_date else None
+                    (batch.expiry_date - today).days if batch.expiry_date else None
                 ),
                 "is_expiring_soon": (
-                    ((batch.expiry_date - date.today()).days <= 30)
+                    ((batch.expiry_date - today).days <= 30)
                     if batch.expiry_date else False
                 ),
                 "selling_price": float(batch.selling_price or 0),

@@ -11,6 +11,7 @@ import { useListKeyboardNav } from '../hooks/useListKeyboardNav';
 import type { DoctorOption } from '../types/appointment';
 import type { Patient } from '../types/patient';
 import VerifiedBadge from '../components/patients/VerifiedBadge';
+import SearchableSelect, { type SuggestionOption } from '../components/common/SearchableSelect';
 import OpdAssignConfirmDialog from '../components/opd/OpdAssignConfirmDialog';
 import { VISIT_REASON_OPTIONS } from '../utils/constants';
 
@@ -29,6 +30,7 @@ const WalkInRegistration: React.FC = () => {
 
   const [doctors, setDoctors] = useState<DoctorOption[]>([]);
   const [selectedDoctorId, setSelectedDoctorId] = useState<string>('');
+  const [doctorLabel, setDoctorLabel] = useState('');
   const [doctorScheduleState, setDoctorScheduleState] = useState<'idle' | 'checking' | 'no_schedule' | 'all_full' | 'available'>('idle');
   const [specialistAssignment, setSpecialistAssignment] = useState(false);
   const [urgencyLevel, setUrgencyLevel] = useState('normal');
@@ -42,6 +44,9 @@ const WalkInRegistration: React.FC = () => {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [patientLoading, setPatientLoading] = useState(false);
+  // Lets the dropdown open on focus, before any typing — otherwise the only
+  // way to pick a patient is to already know something to search for.
+  const [patientFocused, setPatientFocused] = useState(false);
 
   // OPD assignment confirm dialog (BRD_OP_1 §3.3.2) — selecting a patient
   // from search opens this dialog for review; only "Confirm & Assign"
@@ -108,6 +113,17 @@ const WalkInRegistration: React.FC = () => {
 
   useEffect(() => { scheduleService.getDoctors().then(setDoctors).catch(() => {}); }, []);
 
+  const doctorSuggestions: SuggestionOption[] = doctors.map(d => ({
+    id: d.doctor_id,
+    label: d.name,
+    sublabel: d.specialization || 'General',
+    metadata: { id: d.doctor_id },
+  }));
+  const handleDoctorSelect = (value: string, metadata?: Record<string, unknown>) => {
+    setDoctorLabel(value);
+    handleDoctorChange(metadata?.id ? (metadata.id as string) : '');
+  };
+
   const handleDoctorChange = async (doctorId: string) => {
     setSelectedDoctorId(doctorId);
     if (!doctorId) { setDoctorScheduleState('idle'); setSpecialistAssignment(false); return; }
@@ -128,17 +144,20 @@ const WalkInRegistration: React.FC = () => {
   };
 
   useEffect(() => {
-    if (patientSearch.length < 2) { setPatients([]); return; }
+    if (selectedPatient || !patientFocused) { setPatients([]); return; }
     const tid = setTimeout(async () => {
       setPatientLoading(true);
       try {
-        const res = await patientService.getPatients(1, 10, patientSearch);
+        // Empty search still resolves — most-recently-registered patients —
+        // so the dropdown has something to pick from as soon as it's opened,
+        // not only once the user has started typing.
+        const res = await patientService.getPatients(1, 10, patientSearch.trim());
         setPatients(res.data);
       } catch { /* silent */ }
       setPatientLoading(false);
     }, 300);
     return () => clearTimeout(tid);
-  }, [patientSearch]);
+  }, [patientSearch, selectedPatient, patientFocused]);
 
   const handleSubmit = async () => {
     if (!selectedPatient) return;
@@ -184,6 +203,7 @@ const WalkInRegistration: React.FC = () => {
     setSelectedPatient(null);
     setPatientSearch('');
     setSelectedDoctorId('');
+    setDoctorLabel('');
     setDoctorScheduleState('idle');
     setSpecialistAssignment(false);
     setUrgencyLevel('normal');
@@ -323,7 +343,9 @@ const WalkInRegistration: React.FC = () => {
             <input type="text" value={patientSearch}
               onChange={(e) => { setPatientSearch(e.target.value); setSelectedPatient(null); }}
               onKeyDown={patientNav.onKeyDown}
-              placeholder="Search by name, PRN, or phone..."
+              onFocus={() => setPatientFocused(true)}
+              onBlur={() => window.setTimeout(() => setPatientFocused(false), 150)}
+              placeholder="Search by name, PRN, or phone... or click to browse recent patients"
               className="w-full pl-10 pr-9 py-2.5 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
             {patientSearch && (
               <button type="button" onClick={() => { setPatientSearch(''); setSelectedPatient(null); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
@@ -332,10 +354,13 @@ const WalkInRegistration: React.FC = () => {
             )}
           </div>
           {patientLoading && <p className="text-xs text-slate-400 mt-1.5 flex items-center gap-1"><span className="material-symbols-outlined text-sm animate-spin">progress_activity</span>Searching...</p>}
-          {patients.length > 0 && !selectedPatient && (
+          {patientFocused && patients.length > 0 && !selectedPatient && (
             <div className="mt-1.5 border border-slate-200 rounded-lg max-h-52 overflow-y-auto">
+              {!patientSearch.trim() && (
+                <p className="px-4 py-1.5 text-[10px] font-bold text-slate-400 uppercase border-b border-slate-100">Recent patients</p>
+              )}
               {patients.map((p, idx) => (
-                <button key={p.id} onClick={() => selectPatient(p)}
+                <button key={p.id} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => selectPatient(p)}
                   onMouseEnter={() => patientNav.setActiveIndex(idx)}
                   className={`w-full text-left px-4 py-2.5 flex items-center gap-3 border-b border-slate-100 last:border-0 ${
                     idx === patientNav.activeIndex ? 'bg-primary/10' : 'hover:bg-slate-50'
@@ -360,7 +385,7 @@ const WalkInRegistration: React.FC = () => {
               ))}
             </div>
           )}
-          {patientSearch.length >= 2 && !patientLoading && patients.length === 0 && !selectedPatient && (
+          {patientFocused && patientSearch.length >= 2 && !patientLoading && patients.length === 0 && !selectedPatient && (
             <div className="mt-2 bg-slate-50 rounded-lg px-3 py-3 space-y-1.5">
               <div className="flex items-center gap-2 text-xs text-slate-500">
                 <span className="material-symbols-outlined text-base">search_off</span>
@@ -390,7 +415,7 @@ const WalkInRegistration: React.FC = () => {
               </button>
             </div>
           )}
-          {!selectedPatient && patientSearch.length === 0 && (
+          {!selectedPatient && patientSearch.length === 0 && !patientFocused && (
             <div className="mt-3 flex flex-col items-center justify-center py-6 text-slate-300">
               <span className="material-symbols-outlined text-4xl mb-1">person_search</span>
               <p className="text-xs text-slate-400">Search for a patient or <button onClick={goToRegister} className="text-emerald-600 font-semibold hover:underline">register a new one</button></p>
@@ -403,14 +428,13 @@ const WalkInRegistration: React.FC = () => {
           {/* Doctor */}
           <div>
             <label className="block text-xs font-bold text-slate-500 mb-1">Doctor</label>
-            <select
-              value={selectedDoctorId}
-              onChange={(e) => handleDoctorChange(e.target.value)}
-              className={`w-full px-3 py-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none bg-white ${doctorScheduleState === 'no_schedule' ? 'border-red-400' : 'border-slate-200'}`}
-            >
-              <option value="">Choose Doctor</option>
-              {doctors.map(d => <option key={d.doctor_id} value={d.doctor_id}>{d.name} — {d.specialization || 'General'}</option>)}
-            </select>
+            <SearchableSelect
+              value={doctorLabel}
+              onChange={handleDoctorSelect}
+              suggestions={doctorSuggestions}
+              placeholder="Search doctor..."
+              allowManualEntry={false}
+            />
             {doctorScheduleState === 'checking' && (
               <p className="mt-1.5 text-xs text-slate-400 flex items-center gap-1">
                 <span className="material-symbols-outlined text-sm animate-spin">progress_activity</span>

@@ -5,11 +5,9 @@ import { useToast } from '../../contexts/ToastContext';
 import inventoryService from '../../services/inventoryService';
 import pharmacyService from '../../services/pharmacyService';
 import hospitalService, { type HospitalDetails } from '../../services/hospitalService';
-import taxService from '../../services/taxService';
 import SearchableSelect, { type SuggestionOption } from '../../components/common/SearchableSelect';
 import type { Supplier, PurchaseOrderCreate } from '../../types/inventory';
 import type { Medicine } from '../../types/pharmacy';
-import type { TaxConfig } from '../../types/billing';
 import { computeLineItemTax, determinePlaceOfSupply, aggregateDocumentTotals, PLACE_OF_SUPPLY_LABELS } from '../../utils/gst';
 
 interface ItemRow {
@@ -90,33 +88,21 @@ const NewPurchaseOrderPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [bulkUploading, setBulkUploading] = useState(false);
   const [hospital, setHospital] = useState<HospitalDetails | null>(null);
-  const [taxSlabs, setTaxSlabs] = useState<TaxConfig[]>([]);
 
-  // GST-rate dropdown options: the standard statutory Indian GST slabs are
-  // hardcoded here — always available, no per-hospital setup required, so
-  // the dropdown can never come up empty (this was the actual bug: it used
-  // to depend entirely on the hospital's tax_configurations rows in the DB,
-  // so a hospital with none configured — e.g. a fresh production DB that
-  // was never seeded — saw nothing but "0% (No Tax)"). Any EXTRA custom
-  // rates a hospital has configured via Settings -> Tax Configuration are
-  // merged in on top, for hospitals that genuinely need a non-standard rate.
-  const gstRateOptions = useMemo(() => {
-    const seen = new Map<number, string>();
-    for (const rate of STANDARD_GST_RATES) seen.set(rate, `GST ${rate}%`);
-    for (const t of taxSlabs) {
-      const rate = Number(t.rate_percentage);
-      if (!seen.has(rate)) seen.set(rate, t.name);
-    }
-    return Array.from(seen.entries())
-      .sort((a, b) => a[0] - b[0])
-      .map(([rate, name]) => ({ rate, name }));
-  }, [taxSlabs]);
+  // GST-rate dropdown options — the standard statutory Indian GST slabs,
+  // hardcoded (no per-hospital tax-configuration screen or API call
+  // involved) so the dropdown is always available in every environment
+  // with zero setup. See gst_service.STANDARD_GST_RATES on the backend for
+  // the matching, authoritative validation.
+  const gstRateOptions = useMemo(
+    () => STANDARD_GST_RATES.map(rate => ({ rate, name: `GST ${rate}%` })),
+    [],
+  );
 
   useEffect(() => {
     inventoryService.getSuppliers(1, 100, '', true).then(r => setSuppliers(r.data)).catch(() => {});
     pharmacyService.getMedicines(1, 500).then(r => setMedicines(r.data)).catch(() => {});
     hospitalService.getHospitalDetails().then(setHospital).catch(() => {});
-    taxService.list(1, 100, true).then(r => setTaxSlabs(r.items)).catch(() => {});
 
     // Load previously ordered items from localStorage
     try {
@@ -622,10 +608,20 @@ const NewPurchaseOrderPage: React.FC = () => {
           Start typing to search medicines. Select from suggestions to auto-fill price, or type manually for new items.
         </p>
         {supplierId && (
-          <p className="text-xs text-slate-500 mb-3">
+          <p className="text-xs text-slate-500 mb-1">
             Place of supply: <span className="font-semibold text-slate-700">{PLACE_OF_SUPPLY_LABELS[placeOfSupplyType]}</span>
-            {!selectedSupplier?.state && ' — supplier has no state on file, defaulting to Inter-State (IGST). Add it under Suppliers for an accurate CGST/SGST split.'}
           </p>
+        )}
+        {supplierId && (!selectedSupplier?.state || !hospital?.state_province) && (
+          <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3 text-xs text-amber-800">
+            <span className="material-symbols-outlined text-amber-500 text-base flex-shrink-0">warning</span>
+            <span>
+              {!hospital?.state_province
+                ? 'Your hospital has no state set — add it in Settings → Hospital Profile.'
+                : `${selectedSupplier?.name || 'This supplier'} has no state on file — add it under Inventory → Suppliers.`}
+              {' '}Without it, GST always defaults to Inter-State (IGST) here, even if you're actually in the same state and should see a CGST+SGST split.
+            </span>
+          </div>
         )}
 
         {/* One card per line item — each carries its own item picker,

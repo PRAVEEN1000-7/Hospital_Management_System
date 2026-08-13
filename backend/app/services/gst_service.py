@@ -15,18 +15,13 @@ Implements the BRD's GST rules end to end:
   between the parts and the whole).
 - Multi-rate aggregation: a PO with items at different GST rates (e.g. 12%
   and 18%) still rolls up into ONE header row per document.
-- GSTIN format validation, and tax-rate validation against the hospital's
-  configured tax slabs (tax_configurations — see tax_service.py).
+- GSTIN format validation, and tax-rate validation against the standard,
+  hardcoded Indian GST slabs (STANDARD_GST_RATES below) — not a per-hospital
+  configuration screen. See STANDARD_GST_RATES for why.
 """
 import re
-from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Optional
-import uuid
-
-from sqlalchemy.orm import Session
-
-from ..models.tax_config import TaxConfiguration
 
 # Union Territories WITHOUT their own legislature — CGST + UTGST applies when
 # the place of supply is one of these (real Indian GST rule). Delhi,
@@ -170,26 +165,10 @@ def compute_line_item_tax(
     }
 
 
-def validate_tax_rate_against_slabs(db: Session, hospital_id: uuid.UUID, gst_rate: Decimal) -> bool:
-    """GST% must be one of the standard statutory slabs (always valid, no
-    setup required — see STANDARD_GST_RATES above) OR one of the hospital's
-    own configured, currently-active tax_configurations rows, for hospitals
-    that have added extra/custom rates beyond the standard list."""
-    gst_rate = Decimal(gst_rate)
-    if gst_rate in STANDARD_GST_RATES:
-        return True
-    today = date.today()
-    exists = (
-        db.query(TaxConfiguration)
-        .filter(
-            TaxConfiguration.hospital_id == hospital_id,
-            TaxConfiguration.is_active == True,
-            TaxConfiguration.effective_from <= today,
-            TaxConfiguration.rate_percentage == gst_rate,
-        )
-        .first()
-    )
-    return exists is not None
+def validate_tax_rate_against_slabs(gst_rate: Decimal) -> bool:
+    """GST% must be one of the standard, hardcoded statutory slabs — see
+    STANDARD_GST_RATES above. No per-hospital configuration screen."""
+    return Decimal(gst_rate) in STANDARD_GST_RATES
 
 
 _AGGREGATE_KEYS = (

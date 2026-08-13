@@ -315,9 +315,10 @@ const Register: React.FC = () => {
     if (!d.phone_number) e.phone_number = 'Phone number is required';
     else if (!/^\d{10}$/.test(d.phone_number)) e.phone_number = 'Must be exactly 10 digits';
     if (d.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email)) e.email = 'Invalid email address';
-    if (!d.address_line_1.trim()) e.address_line_1 = 'Address is required';
-    else if (d.address_line_1.trim().length < 5) e.address_line_1 = 'Address must be at least 5 characters';
-    else if (!/[A-Za-z]/.test(d.address_line_1)) e.address_line_1 = 'Address must contain text, not just numbers';
+    if (d.address_line_1.trim()) {
+      if (d.address_line_1.trim().length < 5) e.address_line_1 = 'Address must be at least 5 characters';
+      else if (!/[A-Za-z]/.test(d.address_line_1)) e.address_line_1 = 'Address must contain text, not just numbers';
+    }
     if (d.pin_code && !/^\d{6}$/.test(d.pin_code)) e.pin_code = 'PIN code must be exactly 6 digits';
     if (d.emergency_contact_phone) {
       // Only enforced for new patients — some existing patients have this
@@ -740,7 +741,7 @@ const Register: React.FC = () => {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div className="md:col-span-2 lg:col-span-3">
-              <label className={labelClass}>Address Line 1 <span className="text-red-500">*</span></label>
+              <label className={labelClass}>Address Line 1</label>
               <input {...register('address_line_1')} className={fieldErrors.address_line_1 ? inputErrorClass : inputClass} placeholder="Street address" />
               {fieldErrors.address_line_1
                 ? <p className={errorClass}><span className="material-symbols-outlined text-xs">error</span>{fieldErrors.address_line_1}</p>

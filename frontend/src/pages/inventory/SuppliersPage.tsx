@@ -68,6 +68,10 @@ const SupplierModal: React.FC<ModalProps> = ({ supplier, onClose, onSaved }) => 
       return;
     }
     const isIndia = form.country.trim().toLowerCase() === 'india';
+    if (isIndia && !form.state.trim()) {
+      toast.error('State is required for an Indian supplier — it determines CGST+SGST vs IGST on every PO with them');
+      return;
+    }
     if (form.gstin && !validateGstin(form.gstin)) {
       toast.error('GSTIN must be a valid 15-character Indian GSTIN');
       return;
@@ -196,7 +200,7 @@ const SupplierModal: React.FC<ModalProps> = ({ supplier, onClose, onSaved }) => 
               ) : (
                 <input className={inputClass} value={form.state} onChange={e => set('state', e.target.value)} placeholder="State / Province" />
               )}
-              <p className="text-xs text-slate-400 mt-1">Used to determine intra-state vs inter-state GST</p>
+              <p className="text-xs text-slate-400 mt-1">Determines CGST+SGST vs IGST on every PO with this supplier — leave it blank and GST always defaults to IGST-only, even if you're actually in the same state.</p>
             </div>
             <div>
               <label className={labelClass}>GST Registration</label>

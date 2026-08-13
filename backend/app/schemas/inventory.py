@@ -46,6 +46,20 @@ def _require_gstin_when_registered(gstin: Optional[str], gst_registration_status
         raise ValueError("GSTIN is required for a GST-registered Indian party")
 
 
+def _require_state_for_india(state: Optional[str], country: Optional[str]) -> None:
+    """State is required for Indian suppliers — it's what determines
+    intra-state (CGST+SGST) vs inter-state (IGST) for every PO with this
+    supplier. Left blank, place-of-supply silently falls back to
+    'inter_state' (the safe default when it can't be confirmed — see
+    gst_service.determine_place_of_supply), which looks like a bug from the
+    PO screen ("why is this always IGST, never CGST+SGST?") when it's
+    actually just missing supplier data. Not required for foreign suppliers,
+    whose state genuinely may not apply."""
+    is_india = (country or "India").strip().lower() in _INDIA_ALIASES
+    if is_india and not (state or "").strip():
+        raise ValueError("State is required for an Indian supplier — it determines whether GST splits into CGST+SGST or IGST")
+
+
 # ─── Supplier ───────────────────────────────────────────────────────────────
 
 # Valid product categories for suppliers
@@ -100,6 +114,11 @@ class SupplierCreate(SupplierBase):
     @model_validator(mode="after")
     def check_gstin_required(self) -> "SupplierCreate":
         _require_gstin_when_registered(self.gstin, self.gst_registration_status, self.country)
+        return self
+
+    @model_validator(mode="after")
+    def check_state_required(self) -> "SupplierCreate":
+        _require_state_for_india(self.state, self.country)
         return self
 
 class SupplierUpdate(BaseModel):

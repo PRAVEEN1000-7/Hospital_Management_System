@@ -113,7 +113,7 @@ const PatientBulkUploadPanel: React.FC = () => {
       },
       {
         field: 'address_line_1',
-        allowed_values: 'REQUIRED (matches the single-patient Register form, which also requires it). At least 5 characters and must contain letters, not just numbers.',
+        allowed_values: 'Optional. If provided, must be at least 5 characters and must contain letters, not just numbers — a malformed value rejects the row rather than being dropped.',
       },
       {
         field: 'email',
@@ -141,7 +141,7 @@ const PatientBulkUploadPanel: React.FC = () => {
       },
       {
         field: 'required_field',
-        allowed_values: 'first_name, last_name, gender, date_of_birth, blood_group, phone_number, title and address_line_1 are mandatory — exactly the same fields the single-patient Register form requires. Every other column is optional. A row missing a required field, or failing any check above, is marked invalid and skipped during upload — it will not block the rest of the file.',
+        allowed_values: 'first_name, last_name, gender, date_of_birth, blood_group, phone_number and title are mandatory — exactly the same fields the single-patient Register form requires. Every other column, including address_line_1, is optional. A row missing a required field, or failing any check above, is marked invalid and skipped during upload — it will not block the rest of the file.',
       },
     ];
 
@@ -272,7 +272,7 @@ const PatientBulkUploadPanel: React.FC = () => {
   // ── Parse + validate every row (no abort-on-first-error) ────────────────
   // Mirrors Register.tsx's validateAll exactly (the canonical single-patient
   // creation form) — NOT just the backend's more permissive schema. Register
-  // requires title/date_of_birth/blood_group/address_line_1 client-side even
+  // requires title/date_of_birth/blood_group client-side even
   // though the backend schema itself marks them Optional[str], and it BLOCKS
   // submission (rather than silently coercing) on a malformed email/pin_code/
   // emergency_contact_phone. A bulk-uploaded row must be held to the exact
@@ -329,14 +329,14 @@ const PatientBulkUploadPanel: React.FC = () => {
       errors.push(`'email' is not a valid email address.`);
     }
 
-    // Register.tsx validateAll: address_line_1 required, >= 5 chars, must contain a letter
+    // Register.tsx validateAll: address_line_1 optional; when provided, >= 5 chars and must contain a letter
     const addressLine1 = String(row.address_line_1 ?? '').trim();
-    if (!addressLine1) {
-      errors.push(`'address_line_1' is required.`);
-    } else if (addressLine1.length < 5) {
-      errors.push(`'address_line_1' must be at least 5 characters.`);
-    } else if (!/[A-Za-z]/.test(addressLine1)) {
-      errors.push(`'address_line_1' must contain letters, not just numbers.`);
+    if (addressLine1) {
+      if (addressLine1.length < 5) {
+        errors.push(`'address_line_1' must be at least 5 characters.`);
+      } else if (!/[A-Za-z]/.test(addressLine1)) {
+        errors.push(`'address_line_1' must contain letters, not just numbers.`);
+      }
     }
 
     // Register.tsx validateAll: pin_code, only checked when provided

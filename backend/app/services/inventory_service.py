@@ -589,22 +589,20 @@ def _determine_place_of_supply(db: Session, hospital_id: uuid.UUID, supplier: Su
     )
 
 
-def _compute_gst_lines(
-    db: Session, hospital_id: uuid.UUID, place_of_supply_type: str, items: list,
-) -> list[dict]:
+def _compute_gst_lines(place_of_supply_type: str, items: list) -> list[dict]:
     """Runs gst_service.compute_line_item_tax for every Purchase Order item,
-    after validating each line's gst_rate against the hospital's configured
-    tax slabs (see gst_service.validate_tax_rate_against_slabs) — an
-    unrecognized rate raises ValueError rather than silently taxing at a
-    rate nobody configured. GST is scoped to Purchase Orders only — GRN
-    stays a plain quantity/unit_price/total_price receipt record."""
+    after validating each line's gst_rate against the standard, hardcoded
+    GST slabs (see gst_service.STANDARD_GST_RATES) — an unrecognized rate
+    raises ValueError rather than silently taxing at a rate that isn't a
+    real statutory slab. GST is scoped to Purchase Orders only — GRN stays
+    a plain quantity/unit_price/total_price receipt record."""
     results = []
     for item in items:
         gst_rate = Decimal(str(item.gst_rate or 0))
-        if not gst_service.validate_tax_rate_against_slabs(db, hospital_id, gst_rate):
+        if not gst_service.validate_tax_rate_against_slabs(gst_rate):
             raise ValueError(
-                f"GST rate {gst_rate}% is not one of this hospital's configured tax slabs "
-                f"(Settings → Tax Configuration) for item '{item.item_name or item.item_type}'."
+                f"GST rate {gst_rate}% is not a valid GST slab (0/5/12/18/28%) "
+                f"for item '{item.item_name or item.item_type}'."
             )
         results.append(gst_service.compute_line_item_tax(
             unit_price=Decimal(str(item.unit_price)),
@@ -629,7 +627,7 @@ def create_purchase_order(
         raise ValueError("Supplier not found")
 
     place_of_supply_type = _determine_place_of_supply(db, hospital_id, supplier)
-    gst_lines = _compute_gst_lines(db, hospital_id, place_of_supply_type, data.items)
+    gst_lines = _compute_gst_lines(place_of_supply_type, data.items)
     doc_totals = gst_service.aggregate_document_totals(gst_lines)
 
     po = PurchaseOrder(

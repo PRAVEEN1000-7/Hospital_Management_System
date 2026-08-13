@@ -94,6 +94,8 @@ def _require_billing_staff_or_lab_invoice(db: Session, current_user: User, invoi
         return
     if _has_any_role(current_user, {"lab_technician"}) and invoice_type == "lab":
         return
+    if invoice_type == "general" and check_permission(db, current_user, "general_billing", "edit"):
+        return
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                         detail="Billing staff access required")
 
@@ -115,6 +117,8 @@ def _require_billing_view_or_consultation_invoice(db: Session, current_user: Use
     if _has_any_role(current_user, {"receptionist"}) and invoice.invoice_type == "opd" and invoice.appointment_id is not None:
         return
     if _has_any_role(current_user, {"lab_technician"}) and invoice.invoice_type == "lab":
+        return
+    if invoice.invoice_type == "general" and check_permission(db, current_user, "general_billing", "view"):
         return
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
@@ -414,10 +418,10 @@ async def get_invoice_pdf(
     from datetime import datetime
     from ..models.user import Hospital
 
-    _require_billing_view(db, current_user)
     invoice = get_invoice_by_id(db, invoice_id)
     if not invoice or str(invoice.hospital_id) != str(current_user.hospital_id):
         raise HTTPException(status_code=404, detail="Invoice not found")
+    _require_billing_view_or_consultation_invoice(db, current_user, invoice)
 
     hospital = db.query(Hospital).filter(Hospital.id == current_user.hospital_id).first()
     patient = invoice.patient

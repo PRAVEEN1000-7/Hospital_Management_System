@@ -97,6 +97,9 @@ const Layout: React.FC = () => {
   const canAccessPharmacy      = hasAccess('pharmacy', effectiveRoles) && isModuleEnabled('pharmacy');
   const canAccessInventory     = hasAccess('inventory', effectiveRoles) && isModuleEnabled('inventory');
   const canAccessBilling       = hasAccess('billing', effectiveRoles) && isModuleEnabled('billing');
+  // Independent of canAccessBilling — receptionist gets general_billing but
+  // not full billing access, so this must not be nested inside that gate.
+  const canAccessGeneralBilling = hasAccess('general_billing', effectiveRoles) && isModuleEnabled('general_billing');
   // For doctors, additionally require their per-doctor analytics_enabled flag
   // (in-house vs guest doctor, BUG-16) — other roles are unaffected.
   const canAccessAnalytics     = hasAccess('general.analytics', effectiveRoles)
@@ -699,6 +702,9 @@ const Layout: React.FC = () => {
       billingItems.push({ to: '/billing/credit-notes', label: 'Credit Notes', icon: 'credit_score', stub: true });
       billingItems.push({ to: '/billing/insurance-providers', label: 'Insurance Providers', icon: 'domain', stub: true });
     }
+  }
+  if (canAccessGeneralBilling) {
+    billingItems.push({ to: '/billing/general-billing', label: 'General Billing', icon: 'point_of_sale' });
   }
 
   const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path + '/');

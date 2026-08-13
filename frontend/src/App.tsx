@@ -115,6 +115,7 @@ import AdjustmentsPage from './pages/inventory/AdjustmentsPage';
 // Billing pages
 import InvoiceList from './pages/InvoiceList';
 import InvoiceCreate from './pages/InvoiceCreate';
+import NewGeneralBilling from './pages/NewGeneralBilling';
 import InvoiceDetail from './pages/InvoiceDetail';
 import PaymentList from './pages/PaymentList';
 import RefundList from './pages/RefundList';
@@ -861,6 +862,14 @@ const AppWithNotifications: React.FC = () => {
                   requiredModule="billing"
                 >
                   <InvoiceDetail />
+                </ProtectedRoute>
+              } />
+              <Route path="/billing/general-billing" element={
+                <ProtectedRoute
+                  allowedRoles={allowedRoles('general_billing')}
+                  requiredModule="general_billing"
+                >
+                  <NewGeneralBilling />
                 </ProtectedRoute>
               } />
               <Route path="/billing/payments" element={

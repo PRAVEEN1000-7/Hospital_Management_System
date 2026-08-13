@@ -112,6 +112,12 @@ MODULE_ROLES: Dict[str, Dict[str, str]] = {
     "billing": {
         "admin": _EDIT, "cashier": _EDIT,
     },
+    # General Billing — a dependent add-on of "billing" (see the
+    # database_hole/2026-08-13_general_billing_module.sql module row), granted
+    # to receptionist independently of full Billing access.
+    "general_billing": {
+        "admin": _EDIT, "cashier": _EDIT, "receptionist": _EDIT,
+    },
     "system.subscription": {
         "admin": _EDIT,
     },
@@ -145,6 +151,7 @@ PERMISSION_KEY_LABELS: Dict[str, str] = {
     "optical": "Optical Store",
     "inventory": "Inventory",
     "billing": "Billing & Invoices",
+    "general_billing": "General Billing",
     "system.subscription": "Subscription & Modules",
     "system.user_management": "Staff & Role Management",
     "system.settings": "Hospital Settings",

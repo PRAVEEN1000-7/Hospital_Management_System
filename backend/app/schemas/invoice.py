@@ -6,7 +6,7 @@ from typing import Optional, List
 from datetime import date, datetime
 from decimal import Decimal
 
-VALID_INVOICE_TYPES = ["opd", "pharmacy", "optical", "lab", "combined"]
+VALID_INVOICE_TYPES = ["opd", "pharmacy", "optical", "lab", "general", "combined"]
 VALID_INVOICE_STATUSES = ["draft", "issued", "partially_paid", "paid", "overdue", "cancelled", "void"]
 VALID_ITEM_TYPES = ["consultation", "medicine", "optical_product", "lab_test", "service", "procedure", "registration"]
 
@@ -16,6 +16,9 @@ INVOICE_TYPE_ITEM_MAPPING = {
     "pharmacy": ["medicine"],
     "optical": ["optical_product", "service"],
     "lab": ["lab_test", "service"],
+    # General Billing — free-text miscellaneous charges (no product/medicine
+    # catalog lookup), reuses the existing "service" item_type.
+    "general": ["service"],
     "combined": ["consultation", "medicine", "optical_product", "lab_test", "service", "procedure", "registration"],
 }
 

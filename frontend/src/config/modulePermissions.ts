@@ -126,6 +126,12 @@ export const MODULE_ROLES: Record<string, Partial<Record<string, Exclude<AccessL
   billing: {
     admin: 'edit', cashier: 'edit',
   },
+  // General Billing — a dependent add-on of "billing" (see the
+  // database_hole/2026-08-13_general_billing_module.sql module row), granted
+  // to receptionist independently of full Billing access.
+  general_billing: {
+    admin: 'edit', cashier: 'edit', receptionist: 'edit',
+  },
   'system.subscription': {
     admin: 'edit',
   },

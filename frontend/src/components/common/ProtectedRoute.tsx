@@ -25,6 +25,7 @@ const MODULE_LABELS: Record<string, string> = {
   billing:       'Billing & Invoicing',
   analytics:     'Analytics',
   optical:       'Optical Store',
+  general_billing: 'General Billing',
 };
 
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles, requiredModule, requireEyeHospitalFeature }) => {

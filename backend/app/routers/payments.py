@@ -84,6 +84,9 @@ def _require_billing_staff_or_consultation_payment(
         if invoice is not None and invoice.invoice_type == "lab":
             return
 
+    if invoice is not None and invoice.invoice_type == "general" and check_permission(db, current_user, "general_billing", "edit"):
+        return
+
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                         detail="Billing staff access required")
 

@@ -1522,7 +1522,9 @@ def get_pharmacy_dashboard(db: Session, hospital_id: uuid.UUID) -> dict:
     today = hospital_today_by_id(db, hospital_id)
     thirty_days = today + timedelta(days=30)
 
-    medicines = db.query(Medicine.id, Medicine.reorder_level).filter(
+    medicines = db.query(
+        Medicine.id, Medicine.reorder_level, Medicine.name, Medicine.generic_name, Medicine.strength,
+    ).filter(
         Medicine.hospital_id == hospital_id, Medicine.is_active == True
     ).all()
     total_medicines = len(medicines)
@@ -1553,6 +1555,24 @@ def get_pharmacy_dashboard(db: Session, hospital_id: uuid.UUID) -> dict:
         1 for m in medicines
         if 0 < stock_map.get(m.id, 0) <= (m.reorder_level or 10)
     )
+
+    # True out-of-stock total across the WHOLE catalog — deliberately its own
+    # count, not folded into low_stock above (which only counts "some stock
+    # but under reorder" so the two dashboard cards never double-count the
+    # same medicine). Previously there was no backend field for this at all;
+    # the frontend faked it by fetching page 1/limit 100 of the medicine list
+    # and filtering client-side, which silently missed anything past the
+    # 100th medicine in a larger catalog. Computed here from the same
+    # stock_map already built above — no extra query.
+    out_of_stock_medicines = [m for m in medicines if stock_map.get(m.id, 0) == 0]
+    out_of_stock_count = len(out_of_stock_medicines)
+    out_of_stock_preview = [
+        {
+            "id": str(m.id), "name": m.name, "generic_name": m.generic_name,
+            "strength": m.strength, "reorder_level": m.reorder_level,
+        }
+        for m in sorted(out_of_stock_medicines, key=lambda m: m.name or "")[:10]
+    ]
 
     # Expiring within 30 days
     expiring = db.query(func.count(MedicineBatch.id)).join(
@@ -1592,6 +1612,8 @@ def get_pharmacy_dashboard(db: Session, hospital_id: uuid.UUID) -> dict:
     return {
         "total_medicines": total_medicines,
         "low_stock_count": low_stock,
+        "out_of_stock_count": out_of_stock_count,
+        "out_of_stock_items": out_of_stock_preview,
         "expiring_soon_count": expiring,
         "expired_count": expired,
         "today_sales_count": today_sales[0] if today_sales else 0,

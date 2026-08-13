@@ -22,7 +22,7 @@ from ..schemas.inventory import (
     StockAdjustmentCreate, StockAdjustmentUpdate, StockAdjustmentResponse,
     CycleCountCreate, CycleCountUpdate, CycleCountResponse,
     # Analytics
-    StockStatusAnalytics, InventoryAgingAnalytics,
+    StockStatusAnalytics, StockStatusSummary, InventoryAgingAnalytics,
     # PO Payments
     PaymentModeCreate, PurchaseOrderPaymentCreate,
 )
@@ -125,6 +125,17 @@ async def stock_status(
 ):
     """Get stock status for all items for analytics dashboard."""
     return svc.get_stock_status_analytics(db, current_user.hospital_id, limit)
+
+
+@router.get("/analytics/stock-status-summary", response_model=StockStatusSummary)
+async def stock_status_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(inventory_view_roles),
+):
+    """True counts (critical/low/overstock/ok/total) across the whole active
+    medicine catalog — for the Inventory Health panel's summary tiles and
+    pie chart, which must never be derived from the limit-capped list above."""
+    return svc.get_stock_status_summary(db, current_user.hospital_id)
 
 
 @router.get("/analytics/aging", response_model=list[InventoryAgingAnalytics])

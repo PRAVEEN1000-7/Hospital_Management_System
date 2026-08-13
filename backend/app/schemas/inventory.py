@@ -592,6 +592,16 @@ class StockStatusAnalytics(BaseModel):
     last_restock_date: Optional[str] = None
 
 
+class StockStatusSummary(BaseModel):
+    """True counts across the whole active medicine catalog — never derived
+    from the limit-capped StockStatusAnalytics list above."""
+    total: int = 0
+    ok: int = 0
+    low: int = 0
+    critical: int = 0
+    overstock: int = 0
+
+
 class InventoryAgingAnalytics(BaseModel):
     """Inventory aging report for analytics."""
     range: str  # "0-30 days", "31-60 days", etc.

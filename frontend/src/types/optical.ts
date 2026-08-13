@@ -265,9 +265,20 @@ export interface OpticalStockAdjustmentCreate {
 }
 
 // ── Dashboard ──
+export interface OutOfStockProductPreview {
+  id: string;
+  name: string;
+  brand: string | null;
+  category: string | null;
+  reorder_level: number | null;
+}
+
 export interface OpticalDashboard {
   total_products: number;
   low_stock_count: number;
+  /** True count across the whole catalog — never derived from a paginated list. */
+  out_of_stock_count: number;
+  out_of_stock_items: OutOfStockProductPreview[];
   expiring_soon_count: number;
   expired_count: number;
   today_sales_count: number;

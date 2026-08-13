@@ -592,9 +592,21 @@ class StockAdjustmentResponse(BaseModel):
 # ══════════════════════════════════════════════════
 # Dashboard / Summary
 # ══════════════════════════════════════════════════
+class OutOfStockMedicinePreview(BaseModel):
+    id: str
+    name: str
+    generic_name: Optional[str] = None
+    strength: Optional[str] = None
+    reorder_level: Optional[int] = None
+
+
 class PharmacyDashboard(BaseModel):
     total_medicines: int = 0
     low_stock_count: int = 0
+    # True count across the whole catalog — see pharmacy_service.get_pharmacy_dashboard
+    # for why this must never be derived from a paginated/limited list.
+    out_of_stock_count: int = 0
+    out_of_stock_items: list[OutOfStockMedicinePreview] = Field(default_factory=list)
     expiring_soon_count: int = 0
     expired_count: int = 0
     today_sales_count: int = 0

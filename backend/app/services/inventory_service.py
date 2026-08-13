@@ -1687,8 +1687,14 @@ def get_stock_level(
     return last[0] if last else 0
 
 
-def get_low_stock_items(db: Session, hospital_id: uuid.UUID, limit: int = 20) -> list:
-    """Return medicines below reorder level using batch totals (same source as medicine inventory)."""
+def _compute_low_stock_items(db: Session, hospital_id: uuid.UUID) -> list:
+    """Every medicine/optical product at or below its reorder level (which
+    always includes anything genuinely out of stock, since 0 <= any reorder
+    level), using batch totals — same source as medicine inventory. Returns
+    the FULL sorted list, uncapped; get_low_stock_items() below slices it for
+    display. Callers that need a true count (not a display-limited preview)
+    must use len() on THIS function's result, never on a limit-sliced one —
+    see get_inventory_dashboard's low_stock_count for why that matters."""
     today = hospital_today_by_id(db, hospital_id)
 
     medicines = (
@@ -1804,7 +1810,14 @@ def get_low_stock_items(db: Session, hospital_id: uuid.UUID, limit: int = 20) ->
         db.rollback()
 
     low_stock.sort(key=lambda x: (x["current_stock"], x["item_name"] or ""))
-    return low_stock[:limit]
+    return low_stock
+
+
+def get_low_stock_items(db: Session, hospital_id: uuid.UUID, limit: int = 20) -> list:
+    """Display-limited low-stock list (Low Stock Alerts page, PO quick-reorder,
+    etc.) — for a true count, use len(_compute_low_stock_items(...)), not
+    len() on this."""
+    return _compute_low_stock_items(db, hospital_id)[:limit]
 
 
 def get_expiring_items(db: Session, hospital_id: uuid.UUID, days: int = 90) -> list:
@@ -2196,48 +2209,82 @@ def get_inventory_dashboard(db: Session, hospital_id: uuid.UUID) -> dict:
         StockAdjustment.status == "pending",
     ).scalar() or 0
 
-    low_stock = get_low_stock_items(db, hospital_id, limit=5)
-    expiring = get_expiring_items(db, hospital_id, days=90)
+    # Bug fix: this used to be len(get_low_stock_items(..., limit=5)) — a
+    # count derived from an already-5-item-capped list can never exceed 5,
+    # no matter how many items are actually low/out of stock. Compute the
+    # FULL list once and derive both the true count and the small preview
+    # from it, so they can never disagree.
+    all_low_stock = _compute_low_stock_items(db, hospital_id)
+    low_stock_preview = all_low_stock[:5]
+
+    # Same bug, same fix: get_expiring_items' own query caps at 50 rows, so
+    # len() of its result silently maxes out at 50 too. A dedicated COUNT
+    # query (same filter, no limit) gives the true total.
+    from datetime import timedelta
+    expiring_cutoff = hospital_today_by_id(db, hospital_id) + timedelta(days=90)
+    expiring_count = db.query(func.count(GRNItem.id)).join(GoodsReceiptNote).filter(
+        GoodsReceiptNote.hospital_id == hospital_id,
+        GoodsReceiptNote.status == "accepted",
+        GRNItem.expiry_date != None,
+        GRNItem.expiry_date <= expiring_cutoff,
+    ).scalar() or 0
+    expiring_preview = get_expiring_items(db, hospital_id, days=90)[:5]
 
     return {
         "total_suppliers": total_suppliers,
         "active_purchase_orders": active_pos,
         "pending_grns": pending_grns,
         "pending_adjustments": pending_adjustments,
-        "low_stock_items": low_stock,
-        "expiring_items": expiring[:5],
-        "low_stock_count": len(low_stock),
-        "expiring_count": len(expiring),
+        "low_stock_items": low_stock_preview,
+        "expiring_items": expiring_preview,
+        "low_stock_count": len(all_low_stock),
+        "expiring_count": expiring_count,
     }
 
 
-def get_stock_status_analytics(
-    db: Session, hospital_id: uuid.UUID, limit: int = 50
-) -> list[dict]:
-    """Get stock status for analytics dashboard."""
+def _compute_stock_status_rows(db: Session, hospital_id: uuid.UUID) -> list[dict]:
+    """Stock status for EVERY active medicine — no limit applied here (the
+    analytics summary needs the true total; get_stock_status_analytics below
+    slices this for display). Fixes two bugs the per-medicine-loop version
+    had: (1) it queried total_stock with a separate DB round-trip PER
+    medicine instead of one grouped query, and (2) it re-ran the identical
+    hospital-wide "last restock date" query inside that same per-medicine
+    loop even though the query doesn't depend on the medicine at all — both
+    now run once, outside any loop."""
     today = hospital_today_by_id(db, hospital_id)
 
-    # Get all medicines with their stock levels
     medicines = db.query(Medicine).filter(
         Medicine.hospital_id == hospital_id,
         Medicine.is_active == True,
-    ).limit(limit).all()
+    ).all()
+    med_ids = [m.id for m in medicines]
+
+    stock_map: dict[uuid.UUID, int] = {}
+    if med_ids:
+        # Expired batches excluded — same "available" definition used
+        # everywhere else (dispensing, low-stock).
+        rows = (
+            db.query(MedicineBatch.medicine_id, func.coalesce(func.sum(MedicineBatch.quantity), 0))
+            .filter(
+                MedicineBatch.medicine_id.in_(med_ids),
+                MedicineBatch.is_active == True,
+                MedicineBatch.expiry_date >= today,
+            )
+            .group_by(MedicineBatch.medicine_id)
+            .all()
+        )
+        stock_map = {row[0]: int(row[1]) for row in rows}
+
+    last_grn = db.query(GoodsReceiptNote.receipt_date).filter(
+        GoodsReceiptNote.hospital_id == hospital_id,
+        GoodsReceiptNote.status == "accepted",
+    ).order_by(GoodsReceiptNote.receipt_date.desc()).first()
+    last_restock_date = str(last_grn.receipt_date) if last_grn and last_grn.receipt_date else None
 
     results = []
     for med in medicines:
-        # Calculate total stock from batches — expired batches excluded, same
-        # "available" definition used everywhere else (dispensing, low-stock).
-        total_stock = db.query(
-            func.coalesce(func.sum(MedicineBatch.quantity), 0)
-        ).join(
-            Medicine, Medicine.id == MedicineBatch.medicine_id
-        ).filter(
-            Medicine.id == med.id,
-            MedicineBatch.is_active == True,
-            MedicineBatch.expiry_date >= today,
-        ).scalar() or 0
-        
-        # Determine status
+        total_stock = stock_map.get(med.id, 0)
+
         if total_stock == 0:
             status = "critical"
         elif med.reorder_level is not None and total_stock < med.reorder_level:
@@ -2246,12 +2293,6 @@ def get_stock_status_analytics(
             status = "overstock"
         else:
             status = "ok"
-        
-        # Get last restock date from latest GRN
-        last_grn = db.query(GoodsReceiptNote.receipt_date).filter(
-            GoodsReceiptNote.hospital_id == hospital_id,
-            GoodsReceiptNote.status == "accepted",
-        ).order_by(GoodsReceiptNote.receipt_date.desc()).first()
 
         results.append({
             "item_name": med.name,
@@ -2261,10 +2302,35 @@ def get_stock_status_analytics(
             "min_stock": med.reorder_level or 0,
             "max_stock": med.max_stock_level or 0,
             "status": status,
-            "last_restock_date": str(last_grn.receipt_date) if last_grn and last_grn.receipt_date else None,
+            "last_restock_date": last_restock_date,
         })
-    
+
+    # Most critical (lowest stock) first — this used to have no ordering at
+    # all, so a limit-capped caller got an arbitrary DB-order slice rather
+    # than the items that actually need attention most.
+    results.sort(key=lambda r: r["current_stock"])
     return results
+
+
+def get_stock_status_analytics(
+    db: Session, hospital_id: uuid.UUID, limit: int = 50
+) -> list[dict]:
+    """Display-limited stock status list, most-critical-first. For true
+    aggregate counts (e.g. the Inventory Health panel's summary tiles), use
+    get_stock_status_summary() instead — never len() on this capped list."""
+    return _compute_stock_status_rows(db, hospital_id)[:limit]
+
+
+def get_stock_status_summary(db: Session, hospital_id: uuid.UUID) -> dict:
+    """True counts (critical/low/overstock/ok/total) across the WHOLE active
+    medicine catalog — not derived from any limit-capped list. Backs the
+    Inventory Health analytics panel's summary tiles and pie chart, which
+    previously derived these counts from a list capped at 50 (max 200)."""
+    rows = _compute_stock_status_rows(db, hospital_id)
+    counts = {"ok": 0, "low": 0, "critical": 0, "overstock": 0}
+    for r in rows:
+        counts[r["status"]] = counts.get(r["status"], 0) + 1
+    return {"total": len(rows), **counts}
 
 
 def get_inventory_aging_analytics(

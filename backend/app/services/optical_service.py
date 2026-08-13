@@ -1046,7 +1046,10 @@ def get_optical_dashboard(db: Session, hospital_id: uuid.UUID) -> dict:
     today = hospital_today_by_id(db, hospital_id)
     thirty_days = today + timedelta(days=30)
 
-    products = db.query(OpticalProduct.id, OpticalProduct.reorder_level).filter(
+    products = db.query(
+        OpticalProduct.id, OpticalProduct.reorder_level, OpticalProduct.name,
+        OpticalProduct.brand, OpticalProduct.category,
+    ).filter(
         OpticalProduct.hospital_id == hospital_id, OpticalProduct.is_active == True
     ).all()
     total_products = len(products)
@@ -1107,6 +1110,17 @@ def get_optical_dashboard(db: Session, hospital_id: uuid.UUID) -> dict:
         if 0 < stock_map.get(p.id, 0) <= (p.reorder_level or 5)
     )
 
+    # True out-of-stock total across the WHOLE catalog — see the matching
+    # comment in pharmacy_service.get_pharmacy_dashboard for why this must
+    # never be derived from a paginated/limited list. Kept separate from
+    # low_stock above so the two dashboard cards never double-count a product.
+    out_of_stock_products = [p for p in products if stock_map.get(p.id, 0) == 0]
+    out_of_stock_count = len(out_of_stock_products)
+    out_of_stock_preview = [
+        {"id": str(p.id), "name": p.name, "brand": p.brand, "category": p.category, "reorder_level": p.reorder_level}
+        for p in sorted(out_of_stock_products, key=lambda p: p.name or "")[:10]
+    ]
+
     today_sales = db.query(
         func.count(OpticalSale.id),
         func.coalesce(func.sum(OpticalSale.paid_amount), 0),
@@ -1129,6 +1143,8 @@ def get_optical_dashboard(db: Session, hospital_id: uuid.UUID) -> dict:
     return {
         "total_products": total_products,
         "low_stock_count": low_stock,
+        "out_of_stock_count": out_of_stock_count,
+        "out_of_stock_items": out_of_stock_preview,
         "expiring_soon_count": expiring,
         "expired_count": expired,
         "today_sales_count": today_sales[0] if today_sales else 0,

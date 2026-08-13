@@ -137,6 +137,16 @@ export interface StockStatus {
   last_restock_date: string | null;
 }
 
+/** True counts across the whole active medicine catalog — never derived
+ * from the limit-capped StockStatus[] list above. */
+export interface StockStatusSummary {
+  total: number;
+  ok: number;
+  low: number;
+  critical: number;
+  overstock: number;
+}
+
 export interface InventoryAging {
   range: string;          // "0-30 days", "31-60 days", etc.
   item_count: number;

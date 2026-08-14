@@ -681,3 +681,26 @@ def _resolve_batch_number(db: Session, item_type: str, batch_id: Optional[uuid.U
 - #41: register a walk-in with a doctor assigned, and separately refer a patient to a doctor → confirm the doctor receives a notification each time (bell + `/notifications` list).
 - #40: book an appointment, change the doctor's consultation fee in Staff Directory, then check the appointment's fee (Queue badge) reflects the new rate before it's billed; after "Collect Fee" is used once, confirm changing the doctor's rate again does *not* alter that already-invoiced appointment.
 - #52/#53/#54: create a stock adjustment against a specific batch → confirm the batch number (not a raw UUID) shows in both Stock Movements and the Adjustments list, and that the "New Stock Adjustment" form lets you pick a batch when creating one.
+
+
+
+MHC(Master Health checkup)
+CBC
+Blood Sugar  
+Lipid protcle 
+Liver function 
+TFT(Thyroid protile)  
+Urine complete
+microscope examination
+ECG
+DRS
+Abdome scan
+
+HHC (Heaache Health Checkup)
+
+CBC
+Blood Sugar  
+Lipid protcle 
+RFT(Renal Profile,Kidney function test)
+TSH 
+DRS 

@@ -1,0 +1,20 @@
+MHC(Master Health checkup)
+CBC
+Blood Sugar  
+Lipid protcle 
+Liver function 
+TFT(Thyroid protile)  
+Urine complete
+microscope examination
+ECG
+DRS
+Abdome scan
+
+HHC (Heaache Health Checkup)
+
+CBC
+Blood Sugar  
+Lipid protcle 
+RFT(Renal Profile,Kidney function test)
+TSH 
+DRS 

@@ -21,10 +21,7 @@ def get_live_payroll(db: Session, hospital_id: uuid.UUID, year: int, month: int)
 
     items = []
     for emp in report["employees"]:
-        # per_day_salary was derived from base_salary / working_days in
-        # attendance_service — reconstruct base_salary from it rather than
-        # re-querying the user, since working_days is already known here.
-        base_salary = round(emp["per_day_salary"] * emp["working_days"], 2)
+        base_salary = emp["base_salary"]
         user_uuid = uuid.UUID(emp["user_id"])
         allowance_added = float(allowance_totals.get(user_uuid, 0))
         incentive_added = float(incentive_totals.get(user_uuid, 0))

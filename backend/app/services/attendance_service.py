@@ -191,6 +191,7 @@ def get_month_report(
             "unmarked_count": counts["unmarked"],
             "paid_leave_entitlement": paid_leave_entitlement,
             "working_days": working_days,
+            "base_salary": float(emp.base_salary) if emp.base_salary else 0.0,
             "per_day_salary": round(per_day_salary, 2),
             "deduction_days": deduction_days,
             "deduction_amount": deduction_amount,

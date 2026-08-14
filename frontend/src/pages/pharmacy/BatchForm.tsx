@@ -7,6 +7,11 @@ import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
 import SearchableSelect, { type SuggestionOption } from '../../components/common/SearchableSelect';
 
+// Renders a 0 amount/percent field as an empty box with a "0" placeholder
+// hint instead of a literal "0" value — so clicking in starts from blank
+// rather than requiring the user to delete a leading zero first.
+const zeroAsEmpty = (n: number | undefined): number | string => (!n ? '' : n);
+
 const BatchForm: React.FC = () => {
   const navigate = useNavigate();
   const toast = useToast();
@@ -151,7 +156,7 @@ const BatchForm: React.FC = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Quantity *</label>
-            <input type="number" name="quantity" min={1} value={form.quantity} onChange={handleChange} required
+            <input type="number" name="quantity" min={1} value={zeroAsEmpty(form.quantity)} placeholder="0" onChange={handleChange} required
               className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
           </div>
         </div>
@@ -159,17 +164,17 @@ const BatchForm: React.FC = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Purchase Price *</label>
-            <input type="number" name="purchase_price" min={0} step={0.01} value={form.purchase_price} onChange={handleChange} required
+            <input type="number" name="purchase_price" min={0} step={0.01} value={zeroAsEmpty(form.purchase_price)} placeholder="0.00" onChange={handleChange} required
               className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Selling Price *</label>
-            <input type="number" name="selling_price" min={0} step={0.01} value={form.selling_price} onChange={handleChange} required
+            <input type="number" name="selling_price" min={0} step={0.01} value={zeroAsEmpty(form.selling_price)} placeholder="0.00" onChange={handleChange} required
               className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">MRP</label>
-            <input type="number" name="mrp" min={0} step={0.01} value={form.mrp} onChange={handleChange}
+            <input type="number" name="mrp" min={0} step={0.01} value={zeroAsEmpty(form.mrp)} placeholder="0.00" onChange={handleChange}
               className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
           </div>
         </div>
@@ -177,12 +182,12 @@ const BatchForm: React.FC = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Tax %</label>
-            <input type="number" name="tax_percent" min={0} max={100} step={0.01} value={form.tax_percent} onChange={handleChange}
+            <input type="number" name="tax_percent" min={0} max={100} step={0.01} value={zeroAsEmpty(form.tax_percent)} placeholder="0" onChange={handleChange}
               className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Discount %</label>
-            <input type="number" name="discount_percent" min={0} max={100} step={0.01} value={form.discount_percent} onChange={handleChange}
+            <input type="number" name="discount_percent" min={0} max={100} step={0.01} value={zeroAsEmpty(form.discount_percent)} placeholder="0" onChange={handleChange}
               className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
           </div>
         </div>

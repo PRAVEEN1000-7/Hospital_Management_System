@@ -4,6 +4,11 @@ import { useToast } from '../../contexts/ToastContext';
 import inventoryService from '../../services/inventoryService';
 import type { PurchaseOrder, Supplier, GRNCreate } from '../../types/inventory';
 
+// Renders a 0 amount field as an empty box with a "0" placeholder hint
+// instead of a literal "0" value — so clicking in starts from blank rather
+// than requiring the user to delete a leading zero first.
+const zeroAsEmpty = (n: number): number | string => (n === 0 ? '' : n);
+
 interface ItemRow {
   po_item_id?: string;
   item_type: 'medicine' | 'optical_product';
@@ -210,7 +215,7 @@ const NewGRNPage: React.FC = () => {
                   </div>
                   <div>
                     <label className="text-xs text-slate-400">Unit Price *</label>
-                    <input type="number" min="0" step="0.01" value={item.unit_price} onChange={e => updateItem(idx, 'unit_price', parseFloat(e.target.value) || 0)}
+                    <input type="number" min="0" step="0.01" value={zeroAsEmpty(item.unit_price)} placeholder="0.00" onChange={e => updateItem(idx, 'unit_price', parseFloat(e.target.value) || 0)}
                       className="w-full px-2 py-2 border border-slate-200 rounded-lg text-sm mt-1" />
                   </div>
                   <div className="flex items-end">

@@ -7,6 +7,11 @@ import SearchableSelect, { type SuggestionOption } from '../../components/common
 import type { CycleCount, CycleCountCreate } from '../../types/inventory';
 import { formatDateOnly } from '../../utils/calendarDate';
 
+// Renders a 0 quantity field as an empty box with a "0" placeholder hint
+// instead of a literal "0" value — so clicking in starts from blank rather
+// than requiring the user to delete a leading zero first.
+const zeroAsEmpty = (n: number): number | string => (n === 0 ? '' : n);
+
 const STATUS_COLORS: Record<string, string> = {
   in_progress: 'bg-blue-50 text-blue-700',
   completed: 'bg-amber-50 text-amber-700',
@@ -385,7 +390,7 @@ const CycleCountsPage: React.FC = () => {
                         </div>
                         <div>
                           <label className="text-xs text-slate-400">Counted Qty *</label>
-                          <input type="number" min="0" value={item.counted_quantity} onChange={e => updateItem(idx, 'counted_quantity', parseInt(e.target.value) || 0)}
+                          <input type="number" min="0" value={zeroAsEmpty(item.counted_quantity)} placeholder="0" onChange={e => updateItem(idx, 'counted_quantity', parseInt(e.target.value) || 0)}
                             className="w-full px-2 py-2 border border-slate-200 rounded-lg text-sm mt-1" />
                         </div>
                       </div>

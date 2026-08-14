@@ -11,6 +11,11 @@ import SearchableSelect, { type SuggestionOption } from '../../components/common
 
 const RX_REQUIRED_CATEGORIES = ['lens', 'contact_lens'];
 
+// Renders a 0 amount/percent field as an empty box with a "0" placeholder
+// hint instead of a literal "0" value — so clicking in starts from blank
+// rather than requiring the user to delete a leading zero first.
+const zeroAsEmpty = (n: number): number | string => (n === 0 ? '' : n);
+
 interface CartItem extends OpticalSaleItemCreate {
   product_name: string;
   category: string;
@@ -384,7 +389,7 @@ const NewOpticalSale: React.FC = () => {
                       </div>
                       <div className="col-span-1">
                         <label className="block text-xs text-slate-500 mb-0.5">Disc%</label>
-                        <input type="number" min={0} max={100} value={item.discount_percent || 0}
+                        <input type="number" min={0} max={100} value={zeroAsEmpty(item.discount_percent || 0)} placeholder="0"
                           onChange={e => updateCartItem(idx, 'discount_percent', parseFloat(e.target.value) || 0)}
                           className="w-full px-2 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
                       </div>
@@ -444,7 +449,7 @@ const NewOpticalSale: React.FC = () => {
               </div>
               <div className="flex justify-between text-sm items-center">
                 <span className="text-slate-500">Discount</span>
-                <input type="number" min={0} step={0.01} value={discountAmount}
+                <input type="number" min={0} step={0.01} value={zeroAsEmpty(discountAmount)} placeholder="0"
                   onChange={e => setDiscountAmount(parseFloat(e.target.value) || 0)}
                   className="w-24 px-2 py-1 text-sm text-right border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
               </div>
@@ -454,13 +459,13 @@ const NewOpticalSale: React.FC = () => {
               </div>
               <div className="flex justify-between text-sm items-center pt-2 border-t border-slate-200">
                 <span className="text-slate-500">Advance Paid</span>
-                <input type="number" min={0} step={0.01} value={advanceAmount}
+                <input type="number" min={0} step={0.01} value={zeroAsEmpty(advanceAmount)} placeholder="0"
                   onChange={e => setAdvanceAmount(parseFloat(e.target.value) || 0)}
                   className="w-24 px-2 py-1 text-sm text-right border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
               </div>
               <div className="flex justify-between text-sm items-center">
                 <span className="text-slate-500">Amount Received Now</span>
-                <input type="number" min={0} step={0.01} value={amountTendered}
+                <input type="number" min={0} step={0.01} value={zeroAsEmpty(amountTendered)} placeholder="0"
                   onChange={e => setAmountTendered(parseFloat(e.target.value) || 0)}
                   className="w-24 px-2 py-1 text-sm text-right border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
               </div>

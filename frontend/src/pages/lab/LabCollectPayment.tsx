@@ -255,7 +255,7 @@ const LabCollectPayment: React.FC = () => {
             <div className="flex justify-between text-sm items-center">
               <span className="text-slate-500">Amount Received Now</span>
               <input type="number" min={0.01} max={Number(sale.balance_amount) || undefined} step={0.01}
-                value={payAmount || ''}
+                value={payAmount || ''} placeholder="0.00"
                 onChange={(e) => {
                   // The `max` attribute above is a visual hint only — a
                   // browser number input never actually blocks typing past

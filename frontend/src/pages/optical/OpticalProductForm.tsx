@@ -38,7 +38,7 @@ const OpticalProductForm: React.FC = () => {
 
   const [form, setForm] = useState<OpticalProductCreateData>({
     name: '', category: 'frame', brand: '', model_number: '', color: '', material: '',
-    size: '', gender: '', sku: '', barcode: '', selling_price: 0, purchase_price: undefined,
+    size: '', gender: '', sku: '', barcode: '', selling_price: undefined, purchase_price: undefined,
     reorder_level: 5, lens_type: '', lens_index: '', lens_coating: '',
   });
   const [saving, setSaving] = useState(false);
@@ -303,11 +303,11 @@ const OpticalProductForm: React.FC = () => {
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div>
                     <label className={labelClass}>Selling Price</label>
-                    <input type="number" step="0.01" min={0} name="selling_price" value={form.selling_price ?? ''} onChange={handleChange} className={fieldClass} />
+                    <input type="number" step="0.01" min={0} name="selling_price" value={form.selling_price ?? ''} placeholder="0.00" onChange={handleChange} className={fieldClass} />
                   </div>
                   <div>
                     <label className={labelClass}>Purchase Price</label>
-                    <input type="number" step="0.01" min={0} name="purchase_price" value={form.purchase_price ?? ''} onChange={handleChange} className={fieldClass} />
+                    <input type="number" step="0.01" min={0} name="purchase_price" value={form.purchase_price ?? ''} placeholder="0.00" onChange={handleChange} className={fieldClass} />
                   </div>
                 </div>
                 <div>
@@ -377,6 +377,7 @@ const OpticalProductForm: React.FC = () => {
                         type="number"
                         min={1}
                         value={openingBatch.quantity || ''}
+                        placeholder="0"
                         onChange={(e) => setOpeningBatch((prev) => ({ ...prev, quantity: Math.max(0, Number(e.target.value) || 0) }))}
                         className={fieldClass}
                       />
@@ -388,6 +389,7 @@ const OpticalProductForm: React.FC = () => {
                         step="0.01"
                         min={0}
                         value={openingBatch.purchase_price || ''}
+                        placeholder="0.00"
                         onChange={(e) => setOpeningBatch((prev) => ({ ...prev, purchase_price: Math.max(0, Number(e.target.value) || 0) }))}
                         className={fieldClass}
                       />
@@ -399,6 +401,7 @@ const OpticalProductForm: React.FC = () => {
                         step="0.01"
                         min={0}
                         value={openingBatch.selling_price || ''}
+                        placeholder="0.00"
                         onChange={(e) => setOpeningBatch((prev) => ({ ...prev, selling_price: Math.max(0, Number(e.target.value) || 0) }))}
                         className={fieldClass}
                       />

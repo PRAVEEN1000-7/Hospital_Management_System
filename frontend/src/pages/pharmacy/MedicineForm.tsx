@@ -520,6 +520,7 @@ const MedicineForm: React.FC = () => {
                         type="number"
                         min={1}
                         value={openingBatch.quantity || ''}
+                        placeholder="0"
                         onChange={(e) => setOpeningBatch((prev) => ({ ...prev, quantity: Math.max(0, Number(e.target.value) || 0) }))}
                         className={fieldClass}
                       />
@@ -531,6 +532,7 @@ const MedicineForm: React.FC = () => {
                         step="0.01"
                         min={0}
                         value={openingBatch.purchase_price || ''}
+                        placeholder="0.00"
                         onChange={(e) => setOpeningBatch((prev) => ({ ...prev, purchase_price: Math.max(0, Number(e.target.value) || 0) }))}
                         className={fieldClass}
                       />
@@ -542,6 +544,7 @@ const MedicineForm: React.FC = () => {
                         step="0.01"
                         min={0}
                         value={openingBatch.selling_price || ''}
+                        placeholder="0.00"
                         onChange={(e) => setOpeningBatch((prev) => ({ ...prev, selling_price: Math.max(0, Number(e.target.value) || 0) }))}
                         className={fieldClass}
                       />

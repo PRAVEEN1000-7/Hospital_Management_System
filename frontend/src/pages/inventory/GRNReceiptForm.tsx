@@ -14,6 +14,11 @@ const STATUS_COLORS: Record<string, string> = {
   rejected: 'bg-red-50 text-red-600',
 };
 
+// Renders a 0 amount/percent field as an empty box with a "0" placeholder
+// hint instead of a literal "0" value — so clicking in starts from blank
+// rather than requiring the user to delete a leading zero first.
+const zeroAsEmpty = (n: number): number | string => (n === 0 ? '' : n);
+
 interface CatalogItem {
   id: string;
   name: string;
@@ -585,16 +590,16 @@ const GRNReceiptForm: React.FC = () => {
                     <td className="px-3 py-3 text-center">
                       <input
                         type="number"
-                        value={item.quantity_received}
-                        onChange={(e) => updateItem(idx, 'quantity_received', parseInt(e.target.value))}
+                        value={zeroAsEmpty(item.quantity_received)} placeholder="0"
+                        onChange={(e) => updateItem(idx, 'quantity_received', parseInt(e.target.value) || 0)}
                         className="w-16 px-2 py-1 border border-slate-200 rounded text-xs focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:bg-slate-50"
                       />
                     </td>
                     <td className="px-3 py-3 text-center">
                       <input
                         type="number"
-                        value={item.quantity_accepted || 0}
-                        onChange={(e) => updateItem(idx, 'quantity_accepted', parseInt(e.target.value))}
+                        value={zeroAsEmpty(item.quantity_accepted || 0)} placeholder="0"
+                        onChange={(e) => updateItem(idx, 'quantity_accepted', parseInt(e.target.value) || 0)}
                         disabled={isEditMode}
                         className="w-16 px-2 py-1 border border-slate-200 rounded text-xs focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:bg-slate-50"
                       />

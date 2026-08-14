@@ -1010,7 +1010,7 @@ const AppointmentManagement: React.FC = () => {
                           max={Number(collectInvoice.balance_amount || 0)}
                           step="0.01"
                           disabled={collectInvoice.status === 'paid'}
-                          value={collectAmount || ''}
+                          value={collectAmount || ''} placeholder="0.00"
                           onChange={(e) => {
                             const balance = Number(collectInvoice.balance_amount || 0);
                             const raw = parseFloat(e.target.value) || 0;

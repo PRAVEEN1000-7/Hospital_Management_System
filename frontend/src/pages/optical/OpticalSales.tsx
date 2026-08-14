@@ -281,7 +281,7 @@ const OpticalSales: React.FC = () => {
               <div>
                 <label className="block text-xs font-bold text-slate-500 mb-1">Amount Received</label>
                 <input type="number" min={0.01} max={Number(payingSale.balance_amount) || undefined} step={0.01}
-                  value={payAmount || ''}
+                  value={payAmount || ''} placeholder="0.00"
                   onChange={(e) => {
                     // The `max` attribute above is a visual hint only — a
                     // browser number input never actually blocks typing past

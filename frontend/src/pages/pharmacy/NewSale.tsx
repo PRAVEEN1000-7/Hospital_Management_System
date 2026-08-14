@@ -493,7 +493,7 @@ const NewSale: React.FC = () => {
                     </div>
                     <div className="col-span-1">
                       <label className="block text-xs text-slate-500 mb-0.5">Disc%</label>
-                      <input type="number" min={0} max={100} value={item.discount_percent || ''}
+                      <input type="number" min={0} max={100} value={item.discount_percent || ''} placeholder="0"
                         onChange={e => updateCartItem(idx, 'discount_percent', parseFloat(e.target.value) || 0)}
                         className="w-full px-2 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
                     </div>
@@ -557,7 +557,7 @@ const NewSale: React.FC = () => {
               </div>
               <div className="flex justify-between text-sm items-center">
                 <span className="text-slate-500">Discount</span>
-                <input type="number" min={0} step={0.01} value={discountAmount || ''}
+                <input type="number" min={0} step={0.01} value={discountAmount || ''} placeholder="0"
                   onChange={e => setDiscountAmount(parseFloat(e.target.value) || 0)}
                   className="w-24 px-2 py-1 text-sm text-right border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
               </div>

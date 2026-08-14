@@ -1671,6 +1671,7 @@ const PrescriptionBuilder: React.FC = () => {
                               onChange={e => updateItem(blockIdx, itemIdx, 'duration_value', parseInt(e.target.value) || null)}
                               className="w-10 px-1 py-1.5 border border-slate-200 rounded text-xs bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none text-center"
                               min={1}
+                              placeholder="—"
                             />
                             <select
                               value={item.duration_unit || 'days'}

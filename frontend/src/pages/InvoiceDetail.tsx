@@ -763,7 +763,7 @@ const InvoiceDetail: React.FC = () => {
                 <label className="block text-xs font-medium text-slate-600 mb-1">Amount *</label>
                 <input
                   type="number" min={0.01} step="0.01" max={invoice.balance_amount}
-                  value={payAmount || ''}
+                  value={payAmount || ''} placeholder="0.00"
                   onChange={e => setPayAmount(Math.min(parseFloat(e.target.value) || 0, invoice.balance_amount))}
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                 />
@@ -786,7 +786,7 @@ const InvoiceDetail: React.FC = () => {
                     <label className="block text-xs font-medium text-slate-600 mb-1">Cash Received (₹)</label>
                     <input
                       type="number" min={0} step="0.01"
-                      value={cashReceived || ''}
+                      value={cashReceived || ''} placeholder="0.00"
                       onChange={e => setCashReceived(parseFloat(e.target.value) || 0)}
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                     />

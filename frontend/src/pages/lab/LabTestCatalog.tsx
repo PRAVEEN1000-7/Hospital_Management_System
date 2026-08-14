@@ -4,6 +4,11 @@ import type { LabTest, LabTestCreateData, LabTestParameterTemplate } from '../..
 import { useToast } from '../../contexts/ToastContext';
 import SearchableSelect, { type SuggestionOption } from '../../components/common/SearchableSelect';
 
+// Renders a 0 amount field as an empty box with a "0" placeholder hint
+// instead of a literal "0" value — so clicking in starts from blank rather
+// than requiring the user to delete a leading zero first.
+const zeroAsEmpty = (n: number): number | string => (n === 0 ? '' : n);
+
 const emptyForm: LabTestCreateData = {
   name: '', code: '', category: '', sample_type: '', price: 0,
   unit: '', reference_range: '', turnaround_hours: undefined, is_active: true,
@@ -251,7 +256,7 @@ const LabTestCatalog: React.FC = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Price (₹) *</label>
-                <input type="number" min={0} step="0.01" value={form.price}
+                <input type="number" min={0} step="0.01" value={zeroAsEmpty(form.price)} placeholder="0.00"
                   onChange={(e) => setForm({ ...form, price: e.target.value === '' ? 0 : parseFloat(e.target.value) })}
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
               </div>

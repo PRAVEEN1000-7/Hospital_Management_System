@@ -482,7 +482,7 @@ const SalesList: React.FC = () => {
               <div className="flex justify-between text-sm items-center">
                 <span className="text-slate-500">Amount Received Now</span>
                 <input type="number" min={0.01} max={Number(payingSale.balance_amount) || undefined} step={0.01}
-                  value={payAmount || ''}
+                  value={payAmount || ''} placeholder="0.00"
                   onChange={(e) => {
                     // The `max` attribute above is a visual hint only — a
                     // browser number input never actually blocks typing past
@@ -608,7 +608,7 @@ const SalesList: React.FC = () => {
                   type="number"
                   min={0}
                   step={0.01}
-                  value={tenderedInput || ''}
+                  value={tenderedInput || ''} placeholder="0.00"
                   onChange={(e) => setTenderedInput(e.target.value === '' ? 0 : parseFloat(e.target.value))}
                   className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
                 />

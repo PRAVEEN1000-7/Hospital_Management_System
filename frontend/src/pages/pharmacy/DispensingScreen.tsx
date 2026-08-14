@@ -1164,7 +1164,7 @@ const DispensingScreen: React.FC = () => {
                               type="number"
                               min="0"
                               max={Math.min(item.available_quantity || 0, item.remainingQty)}
-                              value={item.dispensedQty || ''}
+                              value={item.dispensedQty || ''} placeholder="0"
                               onChange={(e) =>
                                 handleQuantityChange(index, parseInt(e.target.value) || 0)
                               }
@@ -1562,7 +1562,7 @@ const DispensingScreen: React.FC = () => {
                                       type="number"
                                       min="0"
                                       max={selectedBatch?.quantity || 0}
-                                      value={item.quantity || ''}
+                                      value={item.quantity || ''} placeholder="0"
                                       onChange={(e) => handleExtraItemQuantityChange(item.clientId, parseInt(e.target.value) || 0)}
                                       className="flex-1 px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 transition-all font-semibold"
                                     />
@@ -1763,7 +1763,7 @@ const DispensingScreen: React.FC = () => {
                 <input
                   type="number"
                   min={1}
-                  value={addBatchForm.quantity || ''}
+                  value={addBatchForm.quantity || ''} placeholder="0"
                   onChange={(e) => setAddBatchForm((prev) => ({ ...prev, quantity: parseInt(e.target.value) || 0 }))}
                   className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-emerald-500"
                 />
@@ -1775,7 +1775,7 @@ const DispensingScreen: React.FC = () => {
                     type="number"
                     min={0}
                     step={0.01}
-                    value={addBatchForm.purchase_price || ''}
+                    value={addBatchForm.purchase_price || ''} placeholder="0.00"
                     onChange={(e) => setAddBatchForm((prev) => ({ ...prev, purchase_price: parseFloat(e.target.value) || 0 }))}
                     className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-emerald-500"
                   />
@@ -1786,7 +1786,7 @@ const DispensingScreen: React.FC = () => {
                     type="number"
                     min={0}
                     step={0.01}
-                    value={addBatchForm.selling_price || ''}
+                    value={addBatchForm.selling_price || ''} placeholder="0.00"
                     onChange={(e) => setAddBatchForm((prev) => ({ ...prev, selling_price: parseFloat(e.target.value) || 0 }))}
                     className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-emerald-500"
                   />

@@ -20,6 +20,7 @@ from ..dependencies import get_current_active_user
 from ..core.audit_logger import AuditLogger, AuditAction
 from ..schemas.lab import (
     LabTestCreate, LabTestUpdate, LabTestResponse, LabTestListResponse,
+    LabTestPanelCreate, LabTestPanelUpdate, LabTestPanelResponse, LabTestPanelListResponse,
     LabOrderCreate, LabOrderResponse, LabResultEntry, LabOrderItemTestUpdate,
     LabQueueEntryResponse, LabQueueStatusUpdate,
     LabSaleResponse, LabMarkPaidRequest,
@@ -146,6 +147,64 @@ async def delete_lab_test_permanently(
         resource_id=test_id,
         old_values={"name": test_name, "code": test_code},
     )
+
+
+# ═══ Test packages (named bundles, e.g. "MHC — Master Health Checkup") ═══
+@router.get("/panels", response_model=LabTestPanelListResponse)
+async def list_lab_panels(
+    active_only: bool = True,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    # Doctors need to read this to pick a package from the Prescription
+    # Builder — same view tier as the test catalog itself.
+    _require(current_user, LAB_VIEW_ROLES)
+    panels = svc.list_lab_panels(db, current_user.hospital_id, active_only)
+    return {"data": [svc._enrich_panel(db, p) for p in panels]}
+
+
+@router.post("/panels", response_model=LabTestPanelResponse, status_code=status.HTTP_201_CREATED)
+async def create_lab_panel(
+    data: LabTestPanelCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    _require(current_user, LAB_STAFF_ROLES)
+    try:
+        panel = svc.create_lab_panel(db, current_user.hospital_id, data.model_dump())
+        return svc._enrich_panel(db, panel)
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error creating lab panel: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail=f"Could not create package (code '{data.code}' may already exist)")
+
+
+@router.put("/panels/{panel_id}", response_model=LabTestPanelResponse)
+async def update_lab_panel(
+    panel_id: str,
+    data: LabTestPanelUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    _require(current_user, LAB_STAFF_ROLES)
+    existing = svc.get_lab_panel_by_id(db, panel_id, hospital_id=current_user.hospital_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Package not found")
+    panel = svc.update_lab_panel(db, panel_id, data.model_dump(exclude_unset=True), hospital_id=current_user.hospital_id)
+    return svc._enrich_panel(db, panel)
+
+
+@router.delete("/panels/{panel_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def deactivate_lab_panel(
+    panel_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    _require(current_user, LAB_STAFF_ROLES)
+    existing = svc.get_lab_panel_by_id(db, panel_id, hospital_id=current_user.hospital_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Package not found")
+    svc.deactivate_lab_panel(db, panel_id, hospital_id=current_user.hospital_id)
 
 
 # ═══ Orders ═══

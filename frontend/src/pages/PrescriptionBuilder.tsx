@@ -13,7 +13,7 @@ import opticalService from '../services/opticalService';
 import labService from '../services/labService';
 import type { PrescriptionItemCreate, Medicine, PrescriptionTemplate, EyeSide } from '../types/prescription';
 import type { OpticalPrescriptionCreateData } from '../types/optical';
-import type { LabTest, PatientLabResult } from '../types/lab';
+import type { LabTest, LabTestPanel, PatientLabResult } from '../types/lab';
 import type { Patient } from '../types/patient';
 import type { DoctorOption } from '../types/appointment';
 import SearchableSelect, { type SuggestionOption } from '../components/common/SearchableSelect';
@@ -199,6 +199,9 @@ const PrescriptionBuilder: React.FC = () => {
   // Optional Laboratory tests, ordered alongside the drug prescription in the
   // same visit — any hospital type (gated by labModuleEnabled).
   const [labTests, setLabTests] = useState<LabTest[]>([]);
+  // Named bundles (e.g. "MHC — Master Health Checkup") a doctor can pick as
+  // one unit — see the package-chip row rendered above the search box below.
+  const [labPanels, setLabPanels] = useState<LabTestPanel[]>([]);
   const [selectedLabTestIds, setSelectedLabTestIds] = useState<string[]>([]);
   const [labNotes, setLabNotes] = useState('');
   const [labTestSearch, setLabTestSearch] = useState('');
@@ -244,6 +247,7 @@ const PrescriptionBuilder: React.FC = () => {
   useEffect(() => {
     if (!labModuleEnabled || isEditMode) return;
     labService.getTests(1, 500).then(res => setLabTests(res.data)).catch(() => {});
+    labService.getPanels().then(setLabPanels).catch(() => {});
   }, [labModuleEnabled, isEditMode]);
 
   // The patient's own lab results (all finalized orders) — refreshed whenever
@@ -1912,6 +1916,40 @@ const PrescriptionBuilder: React.FC = () => {
                 </p>
               ) : (
                 <div className="space-y-4">
+                  {labPanels.length > 0 && (
+                    <div>
+                      <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">
+                        Health Checkup Packages
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {labPanels.map(panel => {
+                          // Same toggle mechanic as the per-category "Select
+                          // all" checkbox below — just triggered from a named
+                          // package instead of a single category, since a
+                          // package's tests can span several categories.
+                          const panelIds = panel.test_ids;
+                          const allSelected = panelIds.length > 0 && panelIds.every(id => selectedLabTestIds.includes(id));
+                          return (
+                            <button
+                              key={panel.id}
+                              type="button"
+                              onClick={() => setSelectedLabTestIds(prev =>
+                                allSelected
+                                  ? prev.filter(id => !panelIds.includes(id))
+                                  : [...new Set([...prev, ...panelIds])]
+                              )}
+                              className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${
+                                allSelected ? 'border-primary bg-primary/10 text-primary' : 'border-slate-200 text-slate-600 hover:border-primary/40'
+                              }`}
+                            >
+                              {allSelected && <span className="material-symbols-outlined text-sm align-middle mr-1">check_circle</span>}
+                              {panel.name} <span className="text-slate-400 font-normal">({panel.test_ids.length})</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                   <div className="relative">
                     <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-lg">search</span>
                     <input

@@ -46,6 +46,32 @@ export interface LabTestListResponse {
   data: LabTest[];
 }
 
+// A named bundle of catalog tests (e.g. "MHC — Master Health Checkup") a
+// doctor can pick as one unit from the Prescription Builder, expanding into
+// every member test on the order.
+export interface LabTestPanel {
+  id: string;
+  hospital_id: string;
+  name: string;
+  code: string;
+  test_ids: string[];
+  is_active: boolean;
+  tests: LabTest[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LabTestPanelCreateData {
+  name: string;
+  code: string;
+  test_ids: string[];
+  is_active?: boolean;
+}
+
+export interface LabTestPanelListResponse {
+  data: LabTestPanel[];
+}
+
 export type LabResultFlag = 'normal' | 'high' | 'low' | 'abnormal';
 export type LabItemStatus = 'ordered' | 'sample_collected' | 'in_progress' | 'completed' | 'cancelled';
 export type LabQueueStatus = 'waiting' | 'being_served' | 'collected';

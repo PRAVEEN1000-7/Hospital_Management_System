@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import labService from '../../services/labService';
-import type { LabTest, LabTestCreateData, LabTestParameterTemplate } from '../../types/lab';
+import type { LabTest, LabTestCreateData, LabTestParameterTemplate, LabTestPanel, LabTestPanelCreateData } from '../../types/lab';
 import { useToast } from '../../contexts/ToastContext';
 import SearchableSelect, { type SuggestionOption } from '../../components/common/SearchableSelect';
 
@@ -15,8 +15,11 @@ const emptyForm: LabTestCreateData = {
   report_template: [],
 };
 
+const emptyPanelForm: LabTestPanelCreateData = { name: '', code: '', test_ids: [], is_active: true };
+
 const LabTestCatalog: React.FC = () => {
   const { showToast } = useToast();
+  const [activeTab, setActiveTab] = useState<'tests' | 'packages'>('tests');
   const [tests, setTests] = useState<LabTest[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -24,6 +27,14 @@ const LabTestCatalog: React.FC = () => {
   const [editing, setEditing] = useState<LabTest | null>(null);
   const [form, setForm] = useState<LabTestCreateData>(emptyForm);
   const [saving, setSaving] = useState(false);
+
+  // ═══ Packages (named bundles, e.g. "MHC — Master Health Checkup") ═══
+  const [panels, setPanels] = useState<LabTestPanel[]>([]);
+  const [panelsLoading, setPanelsLoading] = useState(true);
+  const [panelModalOpen, setPanelModalOpen] = useState(false);
+  const [editingPanel, setEditingPanel] = useState<LabTestPanel | null>(null);
+  const [panelForm, setPanelForm] = useState<LabTestPanelCreateData>(emptyPanelForm);
+  const [panelSaving, setPanelSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -38,6 +49,19 @@ const LabTestCatalog: React.FC = () => {
   }, [search, showToast]);
 
   useEffect(() => { load(); }, [load]);
+
+  const loadPanels = useCallback(async () => {
+    setPanelsLoading(true);
+    try {
+      setPanels(await labService.getPanels(false));
+    } catch {
+      showToast('error', 'Failed to load packages');
+    } finally {
+      setPanelsLoading(false);
+    }
+  }, [showToast]);
+
+  useEffect(() => { loadPanels(); }, [loadPanels]);
 
   const openCreate = () => { setEditing(null); setForm(emptyForm); setModalOpen(true); };
   const openEdit = (t: LabTest) => {
@@ -129,19 +153,105 @@ const LabTestCatalog: React.FC = () => {
     }
   };
 
+  const openCreatePanel = () => { setEditingPanel(null); setPanelForm(emptyPanelForm); setPanelModalOpen(true); };
+  const openEditPanel = (p: LabTestPanel) => {
+    setEditingPanel(p);
+    setPanelForm({ name: p.name, code: p.code, test_ids: [...p.test_ids], is_active: p.is_active });
+    setPanelModalOpen(true);
+  };
+
+  // Same "group the catalog by category, with a per-group select-all"
+  // pattern used in the Prescription Builder's own test picker, so both
+  // places behave identically.
+  const panelTestGroups = useMemo(() => {
+    const groups = new Map<string, LabTest[]>();
+    tests.filter((t) => t.is_active).forEach((t) => {
+      const key = t.category || 'Other';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(t);
+    });
+    return Array.from(groups.entries()).map(([category, groupTests]) => ({ category, tests: groupTests }));
+  }, [tests]);
+
+  const togglePanelTest = (testId: string) =>
+    setPanelForm((prev) => ({
+      ...prev,
+      test_ids: prev.test_ids.includes(testId)
+        ? prev.test_ids.filter((id) => id !== testId)
+        : [...prev.test_ids, testId],
+    }));
+
+  const handleSavePanel = async () => {
+    if (!panelForm.name.trim() || !panelForm.code.trim()) {
+      showToast('error', 'Name and code are required');
+      return;
+    }
+    if (panelForm.test_ids.length === 0) {
+      showToast('error', 'Select at least one test for this package');
+      return;
+    }
+    setPanelSaving(true);
+    try {
+      if (editingPanel) {
+        await labService.updatePanel(editingPanel.id, panelForm);
+        showToast('success', 'Package updated');
+      } else {
+        await labService.createPanel(panelForm);
+        showToast('success', 'Package added');
+      }
+      setPanelModalOpen(false);
+      loadPanels();
+    } catch (err: any) {
+      showToast('error', err?.response?.data?.detail || 'Failed to save package');
+    } finally {
+      setPanelSaving(false);
+    }
+  };
+
+  const handleDeactivatePanel = async (p: LabTestPanel) => {
+    if (!window.confirm(`Deactivate "${p.name}"? It will no longer be selectable from Prescription.`)) return;
+    try {
+      await labService.deletePanel(p.id);
+      showToast('success', 'Package deactivated');
+      loadPanels();
+    } catch {
+      showToast('error', 'Failed to deactivate package');
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Lab Test Catalog</h1>
-          <p className="text-sm text-slate-500 mt-1">Tests doctors can order from a prescription</p>
+          <p className="text-sm text-slate-500 mt-1">
+            {activeTab === 'tests'
+              ? 'Tests doctors can order from a prescription'
+              : 'Named bundles of tests (e.g. "MHC — Master Health Checkup") a doctor can add in one click from a prescription'}
+          </p>
         </div>
-        <button onClick={openCreate}
+        <button onClick={activeTab === 'tests' ? openCreate : openCreatePanel}
           className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 transition-colors">
-          <span className="material-symbols-outlined text-base">add</span> Add Test
+          <span className="material-symbols-outlined text-base">add</span> {activeTab === 'tests' ? 'Add Test' : 'Add Package'}
         </button>
       </div>
 
+      <div className="flex gap-1 border-b border-slate-200">
+        <button onClick={() => setActiveTab('tests')}
+          className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors ${
+            activeTab === 'tests' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-700'
+          }`}>
+          Tests
+        </button>
+        <button onClick={() => setActiveTab('packages')}
+          className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px transition-colors ${
+            activeTab === 'packages' ? 'border-primary text-primary' : 'border-transparent text-slate-500 hover:text-slate-700'
+          }`}>
+          Packages
+        </button>
+      </div>
+
+      {activeTab === 'tests' && (
       <div className="relative max-w-sm">
         <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-lg">search</span>
         <input
@@ -151,7 +261,9 @@ const LabTestCatalog: React.FC = () => {
           className="w-full pl-10 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
         />
       </div>
+      )}
 
+      {activeTab === 'tests' && (
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         {loading ? (
           <div className="p-12 text-center">
@@ -215,6 +327,68 @@ const LabTestCatalog: React.FC = () => {
           </div>
         )}
       </div>
+      )}
+
+      {activeTab === 'packages' && (
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        {panelsLoading ? (
+          <div className="p-12 text-center">
+            <span className="material-symbols-outlined animate-spin text-3xl text-slate-300">progress_activity</span>
+          </div>
+        ) : panels.length === 0 ? (
+          <div className="p-12 text-center text-slate-500">
+            <span className="material-symbols-outlined text-4xl text-slate-300 block mb-2">list_alt</span>
+            No packages yet. Add one to bundle tests doctors order together most often.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-slate-50 text-left text-xs font-semibold text-slate-500 uppercase">
+                  <th className="px-4 py-3">Package</th>
+                  <th className="px-4 py-3">Code</th>
+                  <th className="px-4 py-3">Tests Included</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {panels.map((p) => (
+                  <tr key={p.id} className="hover:bg-slate-50">
+                    <td className="px-4 py-3 text-sm font-medium text-slate-900">{p.name}</td>
+                    <td className="px-4 py-3 text-sm text-slate-600 font-mono">{p.code}</td>
+                    <td className="px-4 py-3 text-sm text-slate-600">
+                      <div className="flex flex-wrap gap-1 max-w-md">
+                        {p.tests.map((t) => (
+                          <span key={t.id} className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-xs">{t.name}</span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
+                        p.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                      }`}>
+                        {p.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
+                      <button onClick={() => openEditPanel(p)} className="text-slate-400 hover:text-primary p-1" title="Edit">
+                        <span className="material-symbols-outlined text-lg">edit</span>
+                      </button>
+                      {p.is_active && (
+                        <button onClick={() => handleDeactivatePanel(p)} className="text-slate-400 hover:text-red-600 p-1" title="Deactivate">
+                          <span className="material-symbols-outlined text-lg">block</span>
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+      )}
 
       {modalOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
@@ -320,6 +494,97 @@ const LabTestCatalog: React.FC = () => {
               <button onClick={handleSave} disabled={saving}
                 className="px-5 py-2 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 disabled:opacity-50">
                 {saving ? 'Saving...' : editing ? 'Save Changes' : 'Add Test'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {panelModalOpen && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-slate-900">{editingPanel ? 'Edit Package' : 'Add Package'}</h2>
+              <button onClick={() => setPanelModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            <div className="p-6 grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Package Name *</label>
+                <input value={panelForm.name} onChange={(e) => setPanelForm({ ...panelForm, name: e.target.value })}
+                  placeholder="e.g. MHC (Master Health Checkup)"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Code *</label>
+                <input value={panelForm.code} onChange={(e) => setPanelForm({ ...panelForm, code: e.target.value })}
+                  placeholder="e.g. MHC"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+              </div>
+
+              <div className="col-span-2 pt-2 border-t border-slate-100">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-slate-700">Tests Included *</label>
+                  {panelForm.test_ids.length > 0 && (
+                    <span className="px-2 py-0.5 text-xs font-bold rounded-lg bg-primary/10 text-primary">
+                      {panelForm.test_ids.length} selected
+                    </span>
+                  )}
+                </div>
+                {panelTestGroups.length === 0 ? (
+                  <p className="text-sm text-slate-400">No active tests in the catalog yet — add some under the Tests tab first.</p>
+                ) : (
+                  <div className="max-h-64 overflow-y-auto space-y-3">
+                    {panelTestGroups.map(({ category, tests: groupTests }) => {
+                      const groupIds = groupTests.map((t) => t.id);
+                      const allChecked = groupIds.length > 0 && groupIds.every((id) => panelForm.test_ids.includes(id));
+                      return (
+                        <div key={category}>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <div className="text-xs font-bold text-slate-500 uppercase tracking-wide">{category}</div>
+                            <label className="flex items-center gap-1.5 text-xs font-semibold text-primary cursor-pointer select-none">
+                              <input
+                                type="checkbox"
+                                checked={allChecked}
+                                onChange={() => setPanelForm((prev) => ({
+                                  ...prev,
+                                  test_ids: allChecked
+                                    ? prev.test_ids.filter((id) => !groupIds.includes(id))
+                                    : [...new Set([...prev.test_ids, ...groupIds])],
+                                }))}
+                                className="accent-primary"
+                              />
+                              Select all
+                            </label>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            {groupTests.map((t) => (
+                              <label key={t.id}
+                                className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer text-sm transition-colors ${
+                                  panelForm.test_ids.includes(t.id) ? 'border-primary bg-primary/5' : 'border-slate-200 hover:border-primary/40'
+                                }`}>
+                                <input type="checkbox" checked={panelForm.test_ids.includes(t.id)}
+                                  onChange={() => togglePanelTest(t.id)} className="accent-primary" />
+                                <span className="truncate">{t.name}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-slate-200 flex justify-end gap-2">
+              <button onClick={() => setPanelModalOpen(false)}
+                className="px-4 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50">
+                Cancel
+              </button>
+              <button onClick={handleSavePanel} disabled={panelSaving}
+                className="px-5 py-2 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 disabled:opacity-50">
+                {panelSaving ? 'Saving...' : editingPanel ? 'Save Changes' : 'Add Package'}
               </button>
             </div>
           </div>

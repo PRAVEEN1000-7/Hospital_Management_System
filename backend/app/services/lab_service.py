@@ -20,7 +20,7 @@ from sqlalchemy import func, or_
 from .pharmacy_service import _filter_model_data
 from .notification_service import notify_hospital_users
 from ..core.hospital_time import hospital_today_by_id, hospital_today_utc_range_by_id
-from ..models.lab import LabTest, LabOrder, LabOrderItem, LabSale, LabReferral
+from ..models.lab import LabTest, LabTestPanel, LabOrder, LabOrderItem, LabSale, LabReferral
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +120,88 @@ def delete_lab_test(db: Session, test: LabTest) -> None:
     references it."""
     db.delete(test)
     db.commit()
+
+
+# ══════════════════════════════════════════════════
+# Lab Test Package CRUD — named bundles of catalog tests
+# ══════════════════════════════════════════════════
+
+def _coerce_test_ids(data: dict) -> dict:
+    """test_ids arrives as a list[str] from the Pydantic schema — the ARRAY
+    column needs real uuid.UUID elements, same explicit-parse convention
+    used everywhere else IDs cross the API boundary in this module."""
+    if "test_ids" in data and data["test_ids"] is not None:
+        data = {**data, "test_ids": [uuid.UUID(t) for t in data["test_ids"]]}
+    return data
+
+
+def create_lab_panel(db: Session, hospital_id: uuid.UUID, data: dict) -> LabTestPanel:
+    payload = _filter_model_data(LabTestPanel, _coerce_test_ids(data))
+    panel = LabTestPanel(hospital_id=hospital_id, **payload)
+    db.add(panel)
+    db.commit()
+    db.refresh(panel)
+    return panel
+
+
+def get_lab_panel_by_id(
+    db: Session, panel_id: str | uuid.UUID, hospital_id: Optional[uuid.UUID] = None,
+) -> Optional[LabTestPanel]:
+    if isinstance(panel_id, str):
+        try:
+            panel_id = uuid.UUID(panel_id)
+        except ValueError:
+            return None
+    q = db.query(LabTestPanel).filter(LabTestPanel.id == panel_id)
+    if hospital_id is not None:
+        q = q.filter(LabTestPanel.hospital_id == hospital_id)
+    return q.first()
+
+
+def list_lab_panels(db: Session, hospital_id: uuid.UUID, active_only: bool = True) -> list[LabTestPanel]:
+    query = db.query(LabTestPanel).filter(LabTestPanel.hospital_id == hospital_id)
+    if active_only:
+        query = query.filter(LabTestPanel.is_active == True)
+    return query.order_by(LabTestPanel.name).all()
+
+
+def update_lab_panel(
+    db: Session, panel_id: str | uuid.UUID, data: dict, hospital_id: Optional[uuid.UUID] = None,
+) -> Optional[LabTestPanel]:
+    panel = get_lab_panel_by_id(db, panel_id, hospital_id=hospital_id)
+    if not panel:
+        return None
+    for key, value in _coerce_test_ids(data).items():
+        if hasattr(panel, key) and value is not None:
+            setattr(panel, key, value)
+    db.commit()
+    db.refresh(panel)
+    return panel
+
+
+def deactivate_lab_panel(db: Session, panel_id: str | uuid.UUID, hospital_id: Optional[uuid.UUID] = None) -> bool:
+    panel = get_lab_panel_by_id(db, panel_id, hospital_id=hospital_id)
+    if not panel:
+        return False
+    panel.is_active = False
+    db.commit()
+    return True
+
+
+def _enrich_panel(db: Session, panel: LabTestPanel) -> dict:
+    """Attach the resolved member tests for the response — the frontend
+    never has to cross-reference test_ids against the catalog itself."""
+    from ..schemas.lab import LabTestPanelResponse, LabTestResponse
+
+    resp = LabTestPanelResponse.model_validate(panel)
+    if panel.test_ids:
+        tests = db.query(LabTest).filter(LabTest.id.in_(panel.test_ids)).all()
+        by_id = {str(t.id): t for t in tests}
+        # Preserve panel.test_ids order rather than the query's arbitrary
+        # order, and silently skip any id that no longer resolves (e.g. a
+        # catalog test hard-deleted after the panel was created).
+        resp.tests = [LabTestResponse.model_validate(by_id[tid]) for tid in resp.test_ids if tid in by_id]
+    return resp
 
 
 def is_lab_order_billed(db: Session, order_id: str | uuid.UUID) -> bool:

@@ -4,7 +4,7 @@ Laboratory module Pydantic schemas — test catalog, orders (+ result rows), sal
 Follows schemas/optical.py's shape: `_orm_to_dict` transform on responses,
 denormalized/enriched fields set by the service layer.
 """
-from pydantic import BaseModel, Field, ConfigDict, model_validator
+from pydantic import BaseModel, Field, ConfigDict, model_validator, field_validator
 from typing import Optional, Any
 from datetime import datetime
 from decimal import Decimal
@@ -95,6 +95,58 @@ class LabTestListResponse(BaseModel):
     limit: int
     total_pages: int
     data: list[LabTestResponse]
+
+
+# ══════════════════════════════════════════════════
+# Lab Test Package — a named bundle of catalog tests a doctor picks as one
+# unit from the Prescription Builder (e.g. "MHC — Master Health Checkup"),
+# expanding into every member test on the order.
+# ══════════════════════════════════════════════════
+class LabTestPanelCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    code: str = Field(..., min_length=1, max_length=30)
+    test_ids: list[str] = Field(..., min_length=1)
+    is_active: bool = True
+
+
+class LabTestPanelUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=200)
+    code: Optional[str] = Field(None, min_length=1, max_length=30)
+    test_ids: Optional[list[str]] = Field(None, min_length=1)
+    is_active: Optional[bool] = None
+
+
+class LabTestPanelResponse(BaseModel):
+    id: str
+    hospital_id: str
+    name: str
+    code: str
+    test_ids: list[str]
+    is_active: bool = True
+    # Resolved member tests — set by the service layer so the frontend never
+    # has to cross-reference test_ids against the catalog itself.
+    tests: list[LabTestResponse] = []
+    created_at: datetime
+    updated_at: datetime
+
+    @model_validator(mode="before")
+    @classmethod
+    def transform(cls, data: Any) -> Any:
+        return _orm_to_dict(data)
+
+    # _orm_to_dict only stringifies a bare UUID value (via hasattr(val,
+    # "hex")) — test_ids is a *list* of UUID objects from the ARRAY column,
+    # which that check skips, so it needs its own coercion here.
+    @field_validator("test_ids", mode="before")
+    @classmethod
+    def _stringify_test_ids(cls, v: Any) -> list[str]:
+        return [str(x) for x in (v or [])]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class LabTestPanelListResponse(BaseModel):
+    data: list[LabTestPanelResponse]
 
 
 # ══════════════════════════════════════════════════

@@ -16,7 +16,7 @@ from sqlalchemy import (
     Column, String, Boolean, DateTime, Integer, Text,
     ForeignKey, UniqueConstraint, Numeric,
 )
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.dialects.postgresql import UUID, JSONB, ARRAY
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -46,6 +46,32 @@ class LabTest(Base):
 
     __table_args__ = (
         UniqueConstraint("hospital_id", "code", name="uq_lab_test_code"),
+    )
+
+    hospital = relationship("Hospital", foreign_keys=[hospital_id])
+
+
+class LabTestPanel(Base):
+    """Named bundle of catalog tests (e.g. "MHC — Master Health Checkup")
+    that a doctor can select as one unit from the Prescription Builder,
+    expanding into that many individual test_ids on the order — same
+    "pick a bundle, order everything under it" idea as the on-screen
+    per-category "Select all" checkbox, just spanning multiple categories.
+    test_ids has no DB-level FK (arrays can't carry one) — same accepted
+    tradeoff as SubscriptionPlan.modules_included."""
+    __tablename__ = "lab_test_panels"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    hospital_id = Column(UUID(as_uuid=True), ForeignKey("hospitals.id"), nullable=False)
+    name = Column(String(200), nullable=False)
+    code = Column(String(30), nullable=False)
+    test_ids = Column(ARRAY(UUID(as_uuid=True)), nullable=False, default=list)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("hospital_id", "code", name="uq_lab_test_panel_code"),
     )
 
     hospital = relationship("Hospital", foreign_keys=[hospital_id])

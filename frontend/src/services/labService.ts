@@ -1,6 +1,7 @@
 import api from './api';
 import type {
   LabTest, LabTestCreateData, LabTestListResponse,
+  LabTestPanel, LabTestPanelCreateData, LabTestPanelListResponse,
   LabOrder, LabOrderCreateData, LabResultEntryData, LabOrderItemTestUpdateData,
   LabQueueEntry, LabQueueStatus, LabSale, LabDashboard,
   LabBillingListResponse,
@@ -47,6 +48,28 @@ export const labService = {
    * in that case. */
   async permanentlyDeleteTest(id: string): Promise<void> {
     await api.delete(`/lab/tests/${id}/permanent`);
+  },
+
+  // ═══ Test packages (named bundles, e.g. "MHC — Master Health Checkup") ═══
+  async getPanels(activeOnly = true): Promise<LabTestPanel[]> {
+    const res = await api.get<LabTestPanelListResponse>('/lab/panels', { params: { active_only: activeOnly } });
+    return res.data.data;
+  },
+
+  async createPanel(data: LabTestPanelCreateData): Promise<LabTestPanel> {
+    const res = await api.post<LabTestPanel>('/lab/panels', data);
+    return res.data;
+  },
+
+  async updatePanel(id: string, data: Partial<LabTestPanelCreateData>): Promise<LabTestPanel> {
+    const res = await api.put<LabTestPanel>(`/lab/panels/${id}`, data);
+    return res.data;
+  },
+
+  /** Deactivates the package (hides it from the doctor's picker) — history
+   * of past orders that used its member tests is untouched. */
+  async deletePanel(id: string): Promise<void> {
+    await api.delete(`/lab/panels/${id}`);
   },
 
   // ═══ Orders ═══

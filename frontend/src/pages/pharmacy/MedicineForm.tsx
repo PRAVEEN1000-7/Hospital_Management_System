@@ -12,6 +12,7 @@ interface OpeningBatchForm {
   quantity: number;
   purchase_price: number;
   selling_price: number;
+  mrp: number;
 }
 
 const CATEGORIES = [
@@ -63,11 +64,17 @@ const MedicineForm: React.FC = () => {
     quantity: 0,
     purchase_price: 0,
     selling_price: 0,
+    mrp: 0,
   });
   // Edit mode: existing batches with editable quantities (BUG-24 — "open
   // stock" lives on batches, so editing stock means editing batch quantities).
   const [editBatches, setEditBatches] = useState<MedicineBatch[]>([]);
   const [editedQty, setEditedQty] = useState<Record<string, number>>({});
+  // Same diff-map pattern as editedQty, one per editable price field — kept
+  // separate rather than merged so editedQty (already working) is untouched.
+  const [editedPurchasePrice, setEditedPurchasePrice] = useState<Record<string, number>>({});
+  const [editedSellingPrice, setEditedSellingPrice] = useState<Record<string, number>>({});
+  const [editedMrp, setEditedMrp] = useState<Record<string, number>>({});
 
   // Brand / manufacturer suggestions drawn from values already in the
   // catalog, so admins match an existing one instead of free-typing
@@ -162,19 +169,30 @@ const MedicineForm: React.FC = () => {
 
       if (isEdit && id) {
         await pharmacyService.updateMedicine(id, payload);
-        // Persist edited batch stock quantities (BUG-24)
-        const changed = Object.entries(editedQty).filter(([batchId, qty]) => {
-          const original = editBatches.find(b => b.id === batchId);
-          return original && qty !== original.quantity && qty >= 0;
-        });
-        for (const [batchId, qty] of changed) {
+        // Persist edited batch stock/prices (BUG-24 covered quantity only —
+        // Purchase/Selling/MRP now follow the same pattern). One combined
+        // PUT per dirty batch, not one call per changed field.
+        let updatedCount = 0;
+        for (const b of editBatches) {
+          const patch: { quantity?: number; purchase_price?: number; selling_price?: number; mrp?: number } = {};
+          const newQty = editedQty[b.id];
+          if (newQty !== undefined && newQty !== b.quantity && newQty >= 0) patch.quantity = newQty;
+          const newPurchase = editedPurchasePrice[b.id];
+          if (newPurchase !== undefined && newPurchase !== b.purchase_price && newPurchase >= 0) patch.purchase_price = newPurchase;
+          const newSelling = editedSellingPrice[b.id];
+          if (newSelling !== undefined && newSelling !== b.selling_price && newSelling >= 0) patch.selling_price = newSelling;
+          const newMrp = editedMrp[b.id];
+          if (newMrp !== undefined && newMrp !== (b.mrp ?? undefined) && newMrp >= 0) patch.mrp = newMrp;
+
+          if (Object.keys(patch).length === 0) continue;
           try {
-            await pharmacyService.updateBatch(batchId, { quantity: qty });
+            await pharmacyService.updateBatch(b.id, patch);
+            updatedCount++;
           } catch {
-            toast.error(`Failed to update stock for batch ${editBatches.find(b => b.id === batchId)?.batch_number || ''}`);
+            toast.error(`Failed to update batch ${b.batch_number}`);
           }
         }
-        toast.success(changed.length > 0 ? 'Medicine and stock updated' : 'Medicine updated');
+        toast.success(updatedCount > 0 ? 'Medicine and stock updated' : 'Medicine updated');
         navigate('/pharmacy/medicines');
       } else {
         const created = await pharmacyService.createMedicine(payload);
@@ -188,6 +206,7 @@ const MedicineForm: React.FC = () => {
             quantity: openingBatch.quantity,
             purchase_price: openingBatch.purchase_price,
             selling_price: openingBatch.selling_price,
+            mrp: openingBatch.mrp || undefined,
           });
           toast.success('Medicine created with opening stock batch');
         } else {
@@ -328,7 +347,7 @@ const MedicineForm: React.FC = () => {
               <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                 <div className="mb-5">
                   <h2 className={sectionTitleClass}>Open Stock</h2>
-                  <p className={sectionHintClass}>Adjust the on-hand quantity per batch. Changes are saved together with the medicine.</p>
+                  <p className={sectionHintClass}>Adjust the on-hand quantity and pricing per batch. Changes are saved together with the medicine.</p>
                 </div>
                 <div className="overflow-x-auto rounded-xl border border-slate-200">
                   <table className="w-full text-sm">
@@ -339,13 +358,25 @@ const MedicineForm: React.FC = () => {
                         <th className="px-4 py-2.5">Status</th>
                         <th className="px-4 py-2.5 text-right">Current Stock</th>
                         <th className="px-4 py-2.5 text-right">New Stock</th>
+                        <th className="px-4 py-2.5 text-right">Purchase ₹</th>
+                        <th className="px-4 py-2.5 text-right">Selling ₹</th>
+                        <th className="px-4 py-2.5 text-right">MRP ₹</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {editBatches.map(b => {
                         const newQty = editedQty[b.id] ?? b.quantity;
-                        const isDirty = newQty !== b.quantity;
+                        const newPurchase = editedPurchasePrice[b.id] ?? b.purchase_price;
+                        const newSelling = editedSellingPrice[b.id] ?? b.selling_price;
+                        const newMrp = editedMrp[b.id] ?? (b.mrp ?? 0);
+                        const isDirty = newQty !== b.quantity || newPurchase !== b.purchase_price
+                          || newSelling !== b.selling_price || newMrp !== (b.mrp ?? 0);
                         const isExpired = b.expiry_date ? new Date(b.expiry_date) < new Date() : false;
+                        const priceInputClass = (dirty: boolean) => `w-24 rounded-lg border px-2.5 py-1.5 text-sm text-right shadow-sm focus:outline-none focus:ring-2 ${
+                          dirty
+                            ? 'border-amber-300 bg-white focus:border-amber-500 focus:ring-amber-200'
+                            : 'border-slate-200 bg-white focus:border-primary focus:ring-primary/10'
+                        }`;
                         return (
                           <tr key={b.id} className={isDirty ? 'bg-amber-50/60' : undefined}>
                             <td className="px-4 py-2.5 font-semibold text-slate-800">{b.batch_number}</td>
@@ -368,11 +399,37 @@ const MedicineForm: React.FC = () => {
                                 min={0}
                                 value={newQty}
                                 onChange={(e) => setEditedQty(prev => ({ ...prev, [b.id]: Math.max(0, parseInt(e.target.value) || 0) }))}
-                                className={`w-28 rounded-lg border px-3 py-1.5 text-sm text-right shadow-sm focus:outline-none focus:ring-2 ${
-                                  isDirty
-                                    ? 'border-amber-300 bg-white focus:border-amber-500 focus:ring-amber-200'
-                                    : 'border-slate-200 bg-white focus:border-primary focus:ring-primary/10'
-                                }`}
+                                className={priceInputClass(newQty !== b.quantity)}
+                              />
+                            </td>
+                            <td className="px-4 py-2.5 text-right">
+                              <input
+                                type="number"
+                                min={0}
+                                step="0.01"
+                                value={newPurchase}
+                                onChange={(e) => setEditedPurchasePrice(prev => ({ ...prev, [b.id]: Math.max(0, parseFloat(e.target.value) || 0) }))}
+                                className={priceInputClass(newPurchase !== b.purchase_price)}
+                              />
+                            </td>
+                            <td className="px-4 py-2.5 text-right">
+                              <input
+                                type="number"
+                                min={0}
+                                step="0.01"
+                                value={newSelling}
+                                onChange={(e) => setEditedSellingPrice(prev => ({ ...prev, [b.id]: Math.max(0, parseFloat(e.target.value) || 0) }))}
+                                className={priceInputClass(newSelling !== b.selling_price)}
+                              />
+                            </td>
+                            <td className="px-4 py-2.5 text-right">
+                              <input
+                                type="number"
+                                min={0}
+                                step="0.01"
+                                value={newMrp}
+                                onChange={(e) => setEditedMrp(prev => ({ ...prev, [b.id]: Math.max(0, parseFloat(e.target.value) || 0) }))}
+                                className={priceInputClass(newMrp !== (b.mrp ?? 0))}
                               />
                             </td>
                           </tr>
@@ -390,6 +447,7 @@ const MedicineForm: React.FC = () => {
                         <td className="px-4 py-2.5 text-right text-sm font-bold text-slate-900">
                           {editBatches.reduce((s, b) => s + (editedQty[b.id] ?? b.quantity), 0)}
                         </td>
+                        <td colSpan={3}></td>
                       </tr>
                     </tfoot>
                   </table>
@@ -546,6 +604,18 @@ const MedicineForm: React.FC = () => {
                         value={openingBatch.selling_price || ''}
                         placeholder="0.00"
                         onChange={(e) => setOpeningBatch((prev) => ({ ...prev, selling_price: Math.max(0, Number(e.target.value) || 0) }))}
+                        className={fieldClass}
+                      />
+                    </div>
+                    <div>
+                      <label className={labelClass}>MRP</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min={0}
+                        value={openingBatch.mrp || ''}
+                        placeholder="0.00"
+                        onChange={(e) => setOpeningBatch((prev) => ({ ...prev, mrp: Math.max(0, Number(e.target.value) || 0) }))}
                         className={fieldClass}
                       />
                     </div>

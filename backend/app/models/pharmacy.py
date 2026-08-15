@@ -9,7 +9,7 @@ from sqlalchemy import (
     ForeignKey, UniqueConstraint, Numeric,
 )
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship, synonym
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from ..database import Base
 
@@ -35,6 +35,9 @@ class MedicineBatch(Base):
     quantity = Column("current_quantity", Integer, nullable=False, default=0)
     purchase_price = Column(Numeric(12, 2))
     selling_price = Column(Numeric(12, 2))
+    # Printed maximum retail price on the pack — distinct from selling_price
+    # (what's actually charged, which can be at or below MRP).
+    mrp = Column(Numeric(12, 2))
     # Who this batch's opening stock was sourced from — optional, settable
     # from the medicine form's Opening Stock section and the bulk-upload
     # Excel template (supplier_name, resolved to this id client-side).
@@ -51,9 +54,6 @@ class MedicineBatch(Base):
         # are physically distinct batches and must be tracked as separate rows.
         UniqueConstraint("medicine_id", "batch_number", "manufactured_date", "expiry_date", name="uq_medicine_batch"),
     )
-
-    # Compatibility aliases for response payloads.
-    mrp = synonym("selling_price")
 
     medicine = relationship("Medicine", foreign_keys=[medicine_id])
     supplier = relationship("Supplier", foreign_keys=[supplier_id])

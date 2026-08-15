@@ -290,6 +290,10 @@ def create_batch(db: Session, data: dict) -> MedicineBatch:
     payload = _filter_model_data(MedicineBatch, data)
     if "quantity" in payload and "initial_quantity" not in payload:
         payload["initial_quantity"] = payload["quantity"]
+    # MRP is optional on the create form — default it to selling_price
+    # rather than leaving it blank, same as the migration's one-time
+    # backfill for pre-existing batches.
+    payload.setdefault("mrp", payload.get("selling_price"))
 
     batch = MedicineBatch(**payload)
     db.add(batch)

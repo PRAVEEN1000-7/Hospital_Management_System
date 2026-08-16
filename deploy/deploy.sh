@@ -58,10 +58,43 @@ cd "$PROJECT_DIR"
 echo ""
 echo "[3/7] Running database migration..."
 
-# Both files are idempotent (IF NOT EXISTS / ON CONFLICT DO NOTHING throughout)
-# — safe to re-run on every deploy, on a database that already has data.
-psql -U hms_user -d hms_db -f database_hole/01_full_schema.sql
-psql -U hms_user -d hms_db -f database_hole/02_eye_hospital_updates.sql
+# Every file here is idempotent (IF NOT EXISTS / ON CONFLICT DO NOTHING
+# throughout) — safe to re-run on every deploy, on a database that already
+# has data. This used to be just 01_full_schema.sql + 02_eye_hospital_updates.sql,
+# which meant every dated/numbered migration added since (05 through the
+# newest 2026-* file) never reached production through this script — a real
+# incident (Lab Test Packages shipped in code+committed, but never appeared
+# live because its migration was never applied). New migration files MUST be
+# added to this list — nothing here discovers them automatically.
+#
+# Deliberately excluded: 99_drop_database.sql (destructive), and
+# workforce_attendance_module_combined.sql / security_token_revocation_combined.sql
+# (one-time patches for pre-01_full_schema.sql databases only — see
+# database_hole/README.md; NOT meant for routine replay here).
+for f in \
+    01_full_schema.sql \
+    02_eye_hospital_updates.sql \
+    05_schema_structure.sql \
+    07_queue_display_screens.sql \
+    08_role_permission_overrides.sql \
+    09_grn_edit_and_opd_assignment.sql \
+    10_lab_test_templates_batch2.sql \
+    11_lab_technician_role.sql \
+    12_lab_test_templates_batch3.sql \
+    13_lab_test_fasting_blood_sugar.sql \
+    14_optional_doctor_id.sql \
+    15_clinical_note_ngrams.sql \
+    16_ngram_field_type_and_medicine_columns.sql \
+    2026-08-09_medicine_bulk_upload_fields.sql \
+    2026-08-12_appointment_followup_label.sql \
+    2026-08-12_gst_purchase_order.sql \
+    2026-08-13_general_billing_module.sql \
+    2026-08-14_lab_test_panels.sql \
+    2026-08-15_medicine_batch_mrp_column.sql \
+; do
+    echo "  Applying $f..."
+    psql -U hms_user -d hms_db -f "database_hole/$f"
+done
 echo "  Migration complete"
 
 # ── 4. Prepare web root ──────────────────────────────────────────────────────

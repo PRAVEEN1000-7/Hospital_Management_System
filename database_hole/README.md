@@ -365,7 +365,14 @@ psql -U hms_user -d hms_db -f database_hole/11_lab_technician_role.sql
 psql -U hms_user -d hms_db -f database_hole/12_lab_test_templates_batch3.sql
 psql -U hms_user -d hms_db -f database_hole/13_lab_test_fasting_blood_sugar.sql
 psql -U hms_user -d hms_db -f database_hole/14_optional_doctor_id.sql
+psql -U hms_user -d hms_db -f database_hole/15_clinical_note_ngrams.sql
+psql -U hms_user -d hms_db -f database_hole/16_ngram_field_type_and_medicine_columns.sql
 psql -U hms_user -d hms_db -f database_hole/2026-08-09_medicine_bulk_upload_fields.sql
+psql -U hms_user -d hms_db -f database_hole/2026-08-12_appointment_followup_label.sql
+psql -U hms_user -d hms_db -f database_hole/2026-08-12_gst_purchase_order.sql
+psql -U hms_user -d hms_db -f database_hole/2026-08-13_general_billing_module.sql
+psql -U hms_user -d hms_db -f database_hole/2026-08-14_lab_test_panels.sql
+psql -U hms_user -d hms_db -f database_hole/2026-08-15_medicine_batch_mrp_column.sql
 
 # 5. Seed platform essentials (module registry, RBAC, roles) + one Super Admin login
 cd backend

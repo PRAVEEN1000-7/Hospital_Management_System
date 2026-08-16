@@ -551,7 +551,7 @@ const InvoiceCreate: React.FC = () => {
   };
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    <div className="p-6">
       {/* ── Header ── */}
       <div className="flex items-center gap-3 mb-6">
         <button

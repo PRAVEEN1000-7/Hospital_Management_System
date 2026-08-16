@@ -666,7 +666,7 @@ const WalkInQueue: React.FC = () => {
 
   // ── Render ─────────────────────────────────────────────────────
   return (
-    <div className="max-w-7xl mx-auto">
+    <div>
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-4">
         <div>

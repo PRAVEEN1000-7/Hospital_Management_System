@@ -517,7 +517,7 @@ const HospitalSetup: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="max-w-5xl mx-auto flex items-center justify-center py-32">
+      <div className="flex items-center justify-center py-32">
         <div className="flex items-center gap-3 text-slate-500">
           <svg className="animate-spin h-6 w-6 text-blue-500" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -532,7 +532,7 @@ const HospitalSetup: React.FC = () => {
   // Card Display View - Show when data exists and not editing
   if (isEditMode && !isEditing) {
     return (
-      <div ref={topRef} className="max-w-6xl mx-auto">
+      <div ref={topRef}>
         {/* Header */}
         <div className="mb-6 flex items-center justify-between">
           <div>
@@ -683,7 +683,7 @@ const HospitalSetup: React.FC = () => {
   }
 
   return (
-    <div ref={topRef} className="max-w-6xl mx-auto">
+    <div ref={topRef}>
       {/* Header */}
       <div className="mb-6 flex items-center justify-between">
         <div>
@@ -764,7 +764,7 @@ const HospitalSetup: React.FC = () => {
           
 
           {/* Form Content */}
-          <div className="max-w-5xl mx-auto">
+          <div>
             {/* STEP 0: Basic Details */}
             {currentStep === 0 && (
               <div className="space-y-6">

@@ -42,7 +42,7 @@ const AppointmentReports: React.FC = () => {
   ];
 
   return (
-    <div className="max-w-6xl mx-auto">
+    <div>
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-slate-900">Appointment Reports</h1>

@@ -988,7 +988,7 @@ const PrescriptionBuilder: React.FC = () => {
   }
 
   return (
-    <div className="max-w-7xl mx-auto">
+    <div>
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <div>

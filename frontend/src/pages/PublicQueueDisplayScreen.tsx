@@ -145,7 +145,7 @@ const PublicQueueDisplayScreen: React.FC = () => {
       </header>
 
       <main className="flex-1 flex flex-col p-5 gap-4 overflow-y-auto">
-        <div className={`grid grid-cols-1 md:grid-cols-2 ${gridCols} gap-5 flex-1 max-w-7xl mx-auto w-full`}>
+        <div className={`grid grid-cols-1 md:grid-cols-2 ${gridCols} gap-5 flex-1 w-full`}>
           {data.columns.map(col => (
             <QueueColumn key={col.id} column={col} animKey={animKey} />
           ))}

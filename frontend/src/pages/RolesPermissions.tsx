@@ -208,7 +208,7 @@ const RolesPermissions: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="max-w-6xl mx-auto p-6 flex items-center justify-center py-24">
+      <div className="p-6 flex items-center justify-center py-24">
         <span className="material-symbols-outlined animate-spin text-primary text-[32px]">progress_activity</span>
       </div>
     );
@@ -217,7 +217,7 @@ const RolesPermissions: React.FC = () => {
   if (!matrix) return null;
 
   return (
-    <div className="max-w-6xl mx-auto p-6 pb-28">
+    <div className="p-6 pb-28">
       <div className="flex items-start justify-between mb-6 gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Roles & Permissions</h1>
@@ -389,7 +389,7 @@ const RolesPermissions: React.FC = () => {
 
       {pendingCount > 0 && (
         <div className="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-amber-200 shadow-[0_-4px_12px_rgba(0,0,0,0.08)]">
-          <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
+          <div className="px-6 py-4 flex items-center justify-between gap-4">
             <p className="text-sm text-amber-700 font-medium">
               {pendingCount} unsaved change{pendingCount > 1 ? 's' : ''}
             </p>

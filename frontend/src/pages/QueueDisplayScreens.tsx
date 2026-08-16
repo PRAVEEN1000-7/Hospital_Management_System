@@ -138,7 +138,7 @@ const QueueDisplayScreens: React.FC = () => {
   const publicBaseUrl = `${window.location.origin}/public/queue/${user?.hospital_code || '{hospitalCode}'}`;
 
   return (
-    <div className="max-w-5xl mx-auto p-6">
+    <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Queue Display Screens</h1>

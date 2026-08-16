@@ -729,7 +729,7 @@ const DispensingScreen: React.FC = () => {
 
   if (!hasPharmacyAccess) {
     return (
-      <div className="max-w-7xl mx-auto p-6">
+      <div className="p-6">
         <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
           <h2 className="text-lg font-semibold text-red-800">Access Denied</h2>
           <p className="text-red-600 mt-2">You don't have access to edit this.</p>
@@ -740,7 +740,7 @@ const DispensingScreen: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="max-w-7xl mx-auto p-6">
+      <div className="p-6">
         <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
           <span className="material-symbols-outlined text-4xl text-slate-300 animate-spin">
             progress_activity
@@ -761,7 +761,7 @@ const DispensingScreen: React.FC = () => {
   };
 
   return (
-    <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="px-4 sm:px-6 lg:px-8 py-8">
       {/* Header - Matches PrescriptionDetail layout */}
       <div className="flex justify-between items-start mb-6">
         <div>

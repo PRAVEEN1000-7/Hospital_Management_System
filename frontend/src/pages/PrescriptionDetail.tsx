@@ -154,7 +154,7 @@ const PrescriptionDetail: React.FC = () => {
   const canFinalize = !rx.is_finalized && canEditModule('rx.all', user?.roles) && (userRole === 'doctor' || userRole === 'super_admin' || userRole === 'pharmacist');
 
   return (
-    <div className="max-w-7xl mx-auto">
+    <div>
       {/* Header */}
       <div className="flex justify-between items-start mb-6">
         <div>

@@ -355,7 +355,7 @@ const DoctorSchedulePage: React.FC = () => {
   const formHasLeaveConflict = formActiveWeekdays.some(d => leaveDayIndices.has(d));
 
   return (
-    <div className="max-w-7xl mx-auto">
+    <div>
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8 gap-4">
         <div>

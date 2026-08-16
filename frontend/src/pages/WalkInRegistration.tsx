@@ -228,7 +228,7 @@ const WalkInRegistration: React.FC = () => {
 
   if (waitlisted) {
     return (
-      <div className="max-w-5xl mx-auto">
+      <div>
         <div className="flex items-center justify-between mb-5">
           <div>
             <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
@@ -278,7 +278,7 @@ const WalkInRegistration: React.FC = () => {
 
   if (success) {
     return (
-      <div className="max-w-5xl mx-auto">
+      <div>
         <div className="flex items-center justify-between mb-5">
           <div>
             <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
@@ -317,7 +317,7 @@ const WalkInRegistration: React.FC = () => {
   }
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <div>
       {/* Compact header row */}
       <div className="flex items-center justify-between mb-5">
         <div>

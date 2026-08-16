@@ -387,7 +387,7 @@ const AppointmentManagement: React.FC = () => {
   const statuses: AppointmentStatus[] = ['scheduled', 'pending', 'confirmed', 'in-progress', 'completed', 'cancelled', 'no-show', 'rescheduled'];
 
   return (
-    <div className="max-w-7xl mx-auto">
+    <div>
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-slate-900">Appointment Management</h1>

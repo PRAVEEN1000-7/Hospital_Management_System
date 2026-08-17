@@ -104,7 +104,7 @@ MODULE_ROLES: Dict[str, Dict[str, str]] = {
         "admin": _EDIT, "pharmacist": _EDIT, "inventory_manager": _VIEW,
     },
     "optical": {
-        "admin": _EDIT, "optical_staff": _EDIT,
+        "admin": _EDIT, "optical_staff": _EDIT, "nurse": _EDIT,
     },
     "inventory": {
         "admin": _EDIT, "pharmacist": _VIEW, "inventory_manager": _EDIT,

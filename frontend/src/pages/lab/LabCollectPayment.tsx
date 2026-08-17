@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import labService from '../../services/labService';
-import type { LabOrder, LabSale, LabTest } from '../../types/lab';
+import type { LabOrder, LabOrderItem, LabSale, LabTest } from '../../types/lab';
 import type { PaymentMode } from '../../types/billing';
 import { useToast } from '../../contexts/ToastContext';
 import SearchableSelect, { type SuggestionOption } from '../../components/common/SearchableSelect';
@@ -34,6 +34,14 @@ const LabCollectPayment: React.FC = () => {
   const [labTests, setLabTests] = useState<LabTest[]>([]);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [itemSaving, setItemSaving] = useState(false);
+
+  // ── Billing amount/name — the catalog carries no price at all, so every
+  // item starts at ₹0 and staff enters the real amount (and, optionally, a
+  // billing-only display name) here before payment can be collected.
+  const [editingBillingItemId, setEditingBillingItemId] = useState<string | null>(null);
+  const [billingNameDraft, setBillingNameDraft] = useState('');
+  const [billingPriceDraft, setBillingPriceDraft] = useState(0);
+  const [billingSaving, setBillingSaving] = useState(false);
 
   useEffect(() => {
     labService.getTests(1, 500).then((res) => setLabTests(res.data)).catch(() => { /* catalog picker just won't populate */ });
@@ -104,6 +112,39 @@ const LabCollectPayment: React.FC = () => {
     }
   };
 
+  const startEditBilling = (item: LabOrderItem) => {
+    setEditingBillingItemId(item.id);
+    setBillingNameDraft(item.billed_name || '');
+    setBillingPriceDraft(Number(item.price) || 0);
+  };
+
+  const cancelEditBilling = () => setEditingBillingItemId(null);
+
+  const saveBilling = async (itemId: string) => {
+    if (!orderId) return;
+    if (billingPriceDraft < 0) {
+      toast.error('Amount cannot be negative');
+      return;
+    }
+    setBillingSaving(true);
+    try {
+      await labService.updateItemBilling(orderId, itemId, billingPriceDraft, billingNameDraft.trim() || undefined);
+      const [o, s] = await Promise.all([
+        labService.getOrder(orderId),
+        labService.getOrCreateSale(orderId),
+      ]);
+      setOrder(o);
+      setSale(s);
+      setPayAmount((prev) => Math.min(prev, Number(s.balance_amount) || 0));
+      toast.success('Billing amount updated');
+      setEditingBillingItemId(null);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to update billing amount');
+    } finally {
+      setBillingSaving(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!orderId || payAmount <= 0) return;
     setSaving(true);
@@ -156,7 +197,7 @@ const LabCollectPayment: React.FC = () => {
         ) : (
           <div className="divide-y divide-slate-100">
             {order.items.map((item) => (
-              <div key={item.id} className="py-2 text-sm">
+              <div key={item.id} className="py-3 text-sm">
                 {editingItemId === item.id ? (
                   <div className="flex items-center gap-2">
                     <div className="flex-1">
@@ -169,7 +210,7 @@ const LabCollectPayment: React.FC = () => {
                         suggestions={labTests.map((t): SuggestionOption => ({
                           id: t.id,
                           label: t.name,
-                          sublabel: `${t.code}${t.price ? ` · ₹${Number(t.price).toFixed(2)}` : ''}`,
+                          sublabel: t.code,
                           metadata: { id: t.id },
                         }))}
                         placeholder="Search test to switch to..."
@@ -182,10 +223,53 @@ const LabCollectPayment: React.FC = () => {
                       <span className="material-symbols-outlined text-lg">close</span>
                     </button>
                   </div>
+                ) : editingBillingItemId === item.id ? (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_140px]">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Billing Name</label>
+                        <input
+                          type="text"
+                          value={billingNameDraft}
+                          onChange={(e) => setBillingNameDraft(e.target.value)}
+                          placeholder={item.test_name}
+                          disabled={billingSaving}
+                          className="w-full px-2.5 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Amount (₹)</label>
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={billingPriceDraft || ''}
+                          placeholder="0.00"
+                          disabled={billingSaving}
+                          onChange={(e) => setBillingPriceDraft(parseFloat(e.target.value) || 0)}
+                          className="w-full px-2.5 py-1.5 text-sm text-right border border-slate-200 rounded-lg focus:outline-none focus:border-primary"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-slate-400">
+                      Catalog test: {item.test_name}. This name/amount is only used for the invoice and
+                      billing records — the doctor's report always shows the catalog test as-is.
+                    </p>
+                    <div className="flex justify-end gap-2">
+                      <button type="button" onClick={cancelEditBilling} disabled={billingSaving}
+                        className="px-3 py-1 text-xs font-semibold text-slate-500 hover:bg-slate-100 rounded disabled:opacity-50">
+                        Cancel
+                      </button>
+                      <button type="button" onClick={() => saveBilling(item.id)} disabled={billingSaving}
+                        className="px-3 py-1 text-xs font-semibold text-white bg-primary rounded hover:bg-primary/90 disabled:opacity-50">
+                        {billingSaving ? 'Saving…' : 'Save'}
+                      </button>
+                    </div>
+                  </div>
                 ) : (
                   <div className="flex justify-between items-center">
                     <span className="text-slate-700 flex items-center gap-1.5">
-                      {item.test_name}
+                      {item.billed_name || item.test_name}
                       <button
                         type="button"
                         onClick={() => canEditItems && setEditingItemId(item.id)}
@@ -195,10 +279,23 @@ const LabCollectPayment: React.FC = () => {
                           ? 'text-slate-300 hover:text-primary'
                           : 'text-slate-200 cursor-not-allowed'}
                       >
-                        <span className="material-symbols-outlined text-base align-middle">edit</span>
+                        <span className="material-symbols-outlined text-base align-middle">swap_horiz</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => canEditItems && startEditBilling(item)}
+                        disabled={!canEditItems}
+                        title={itemEditLockReason || 'Set billing amount / name'}
+                        className={canEditItems
+                          ? 'text-slate-300 hover:text-primary'
+                          : 'text-slate-200 cursor-not-allowed'}
+                      >
+                        <span className="material-symbols-outlined text-base align-middle">edit_note</span>
                       </button>
                     </span>
-                    <span className="font-medium text-slate-900">₹{fmt(item.price)}</span>
+                    <span className={`font-medium ${Number(item.price) > 0 ? 'text-slate-900' : 'text-amber-600'}`}>
+                      {Number(item.price) > 0 ? `₹${fmt(item.price)}` : 'Amount not set'}
+                    </span>
                   </div>
                 )}
               </div>

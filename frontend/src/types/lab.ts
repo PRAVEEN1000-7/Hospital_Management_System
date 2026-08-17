@@ -26,11 +26,13 @@ export interface LabTest {
 }
 
 export interface LabTestCreateData {
+  // No price field — the catalog no longer carries a real price at all
+  // (every LabTest.price stays ₹0). The actual amount is entered per
+  // order, at billing time — see LabOrderItemBillingUpdateData.
   name: string;
   code: string;
   category?: string;
   sample_type?: string;
-  price: number;
   unit?: string;
   reference_range?: string;
   turnaround_hours?: number;
@@ -92,6 +94,10 @@ export interface LabOrderItem {
   lab_order_id: string;
   lab_test_id: string;
   test_name: string;
+  // Billing-only override of test_name, entered at collection time — the
+  // invoice/billing worklist show this when set; the doctor's own views
+  // (PrescriptionBuilder, LabOrderDetail) always show test_name instead.
+  billed_name?: string | null;
   price: number;
   status: LabItemStatus;
   parameters: LabResultParameter[];
@@ -152,6 +158,11 @@ export interface LabResultEntryData {
 
 export interface LabOrderItemTestUpdateData {
   lab_test_id: string;
+}
+
+export interface LabOrderItemBillingUpdateData {
+  price: number;
+  billed_name?: string;
 }
 
 export interface LabQueueEntry {

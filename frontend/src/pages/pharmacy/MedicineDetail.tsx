@@ -3,10 +3,14 @@ import { useParams, useNavigate } from 'react-router-dom';
 import pharmacyService from '../../services/pharmacyService';
 import type { Medicine, MedicineBatch } from '../../types/pharmacy';
 import { format } from 'date-fns';
+import { useToast } from '../../contexts/ToastContext';
+import { useConfirm } from '../../contexts/ConfirmContext';
 
 const MedicineDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const toast = useToast();
+  const confirm = useConfirm();
   const [medicine, setMedicine] = useState<Medicine | null>(null);
   const [batches, setBatches] = useState<MedicineBatch[]>([]);
   const [loading, setLoading] = useState(true);
@@ -34,6 +38,23 @@ const MedicineDetail: React.FC = () => {
 
   const totalStock = batches.reduce((sum, b) => sum + b.quantity, 0);
 
+  const handleDelete = async () => {
+    const ok = await confirm({
+      title: 'Deactivate Medicine',
+      message: `Deactivate "${medicine.name}"? It will no longer appear in the inventory or be available for prescribing/dispensing. This does not delete its sales or batch history.`,
+      confirmLabel: 'Deactivate',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    try {
+      await pharmacyService.deleteMedicine(medicine.id);
+      toast.success('Medicine deactivated');
+      navigate('/pharmacy/medicines');
+    } catch {
+      toast.error('Failed to deactivate medicine');
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-screen-2xl">
       {/* Header */}
@@ -52,6 +73,12 @@ const MedicineDetail: React.FC = () => {
             className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-primary bg-white border border-primary/30 rounded-lg hover:bg-primary/5">
             <span className="material-symbols-outlined text-base">edit</span> Edit
           </button>
+          {medicine.is_active && (
+            <button onClick={handleDelete}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50">
+              <span className="material-symbols-outlined text-base">delete</span> Deactivate
+            </button>
+          )}
         </div>
       </div>
 

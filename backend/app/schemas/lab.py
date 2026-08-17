@@ -40,11 +40,14 @@ class LabTestParameterTemplate(BaseModel):
 
 
 class LabTestCreate(BaseModel):
+    # No price field here on purpose — the catalog no longer carries a real
+    # price at all (every LabTest.price stays ₹0, see the model column's
+    # default). The actual amount is entered per order, at billing time —
+    # see LabOrderItemBillingUpdate.
     name: str = Field(..., min_length=1, max_length=200)
     code: str = Field(..., min_length=1, max_length=30)
     category: Optional[str] = Field(None, max_length=100)
     sample_type: Optional[str] = Field(None, max_length=50)
-    price: Decimal = Field(default=Decimal("0"), ge=0)
     unit: Optional[str] = Field(None, max_length=30)
     reference_range: Optional[str] = Field(None, max_length=200)
     turnaround_hours: Optional[int] = Field(None, ge=0)
@@ -53,11 +56,11 @@ class LabTestCreate(BaseModel):
 
 
 class LabTestUpdate(BaseModel):
+    # price intentionally omitted — see LabTestCreate.
     name: Optional[str] = Field(None, min_length=1, max_length=200)
     code: Optional[str] = Field(None, min_length=1, max_length=30)
     category: Optional[str] = Field(None, max_length=100)
     sample_type: Optional[str] = Field(None, max_length=50)
-    price: Optional[Decimal] = Field(None, ge=0)
     unit: Optional[str] = Field(None, max_length=30)
     reference_range: Optional[str] = Field(None, max_length=200)
     turnaround_hours: Optional[int] = Field(None, ge=0)
@@ -186,11 +189,24 @@ class LabOrderItemTestUpdate(BaseModel):
     lab_test_id: str = Field(..., min_length=1)
 
 
+class LabOrderItemBillingUpdate(BaseModel):
+    """Set the actual billed amount (and, optionally, a billing-only display
+    name) for one order item — see lab_service.update_lab_order_item_billing.
+    Same edit-boundary rule as LabOrderItemTestUpdate."""
+    price: Decimal = Field(..., ge=0)
+    billed_name: Optional[str] = Field(None, max_length=200)
+
+
 class LabOrderItemResponse(BaseModel):
     id: str
     lab_order_id: str
     lab_test_id: str
     test_name: str
+    # Billing-only override of test_name — set at collection time, shown on
+    # the invoice/billing worklist in place of test_name when present. The
+    # doctor's report/PrescriptionBuilder always use test_name instead,
+    # never this field.
+    billed_name: Optional[str] = None
     price: Decimal
     status: str = "ordered"
     parameters: list[LabResultParameter] = []

@@ -4,13 +4,8 @@ import type { LabTest, LabTestCreateData, LabTestParameterTemplate, LabTestPanel
 import { useToast } from '../../contexts/ToastContext';
 import SearchableSelect, { type SuggestionOption } from '../../components/common/SearchableSelect';
 
-// Renders a 0 amount field as an empty box with a "0" placeholder hint
-// instead of a literal "0" value — so clicking in starts from blank rather
-// than requiring the user to delete a leading zero first.
-const zeroAsEmpty = (n: number): number | string => (n === 0 ? '' : n);
-
 const emptyForm: LabTestCreateData = {
-  name: '', code: '', category: '', sample_type: '', price: 0,
+  name: '', code: '', category: '', sample_type: '',
   unit: '', reference_range: '', turnaround_hours: undefined, is_active: true,
   report_template: [],
 };
@@ -68,7 +63,7 @@ const LabTestCatalog: React.FC = () => {
     setEditing(t);
     setForm({
       name: t.name, code: t.code, category: t.category || '', sample_type: t.sample_type || '',
-      price: Number(t.price), unit: t.unit || '', reference_range: t.reference_range || '',
+      unit: t.unit || '', reference_range: t.reference_range || '',
       turnaround_hours: t.turnaround_hours ?? undefined, is_active: t.is_active,
       report_template: t.report_template ? t.report_template.map((p) => ({ ...p })) : [],
     });
@@ -283,7 +278,6 @@ const LabTestCatalog: React.FC = () => {
                   <th className="px-4 py-3">Code</th>
                   <th className="px-4 py-3">Category</th>
                   <th className="px-4 py-3">Sample</th>
-                  <th className="px-4 py-3 text-right">Price</th>
                   <th className="px-4 py-3">Reference Range</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3 text-right">Actions</th>
@@ -296,7 +290,6 @@ const LabTestCatalog: React.FC = () => {
                     <td className="px-4 py-3 text-sm text-slate-600 font-mono">{t.code}</td>
                     <td className="px-4 py-3 text-sm text-slate-600">{t.category || '—'}</td>
                     <td className="px-4 py-3 text-sm text-slate-600">{t.sample_type || '—'}</td>
-                    <td className="px-4 py-3 text-sm text-slate-900 text-right">₹{Number(t.price).toFixed(2)}</td>
                     <td className="px-4 py-3 text-sm text-slate-600">
                       {t.reference_range || '—'}{t.unit ? ` ${t.unit}` : ''}
                     </td>
@@ -428,11 +421,10 @@ const LabTestCatalog: React.FC = () => {
                   placeholder="e.g. Blood"
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Price (₹) *</label>
-                <input type="number" min={0} step="0.01" value={zeroAsEmpty(form.price)} placeholder="0.00"
-                  onChange={(e) => setForm({ ...form, price: e.target.value === '' ? 0 : parseFloat(e.target.value) })}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30" />
+              <div className="col-span-2 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-500">
+                <span className="material-symbols-outlined text-sm align-middle mr-1">info</span>
+                There's no price here — the catalog doesn't carry pricing. The actual amount for each
+                report is entered by billing staff per order, at the time payment is collected.
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Unit</label>

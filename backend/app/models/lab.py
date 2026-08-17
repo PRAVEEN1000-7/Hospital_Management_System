@@ -118,14 +118,24 @@ class LabOrder(Base):
 
 class LabOrderItem(Base):
     """One row per ordered test; also holds that test's eventual result.
-    test_name/price are snapshots at order time (same pattern as
-    PrescriptionItem.medicine_name)."""
+    test_name is a snapshot at order time (same pattern as
+    PrescriptionItem.medicine_name) — this is what every clinical/doctor-
+    facing view shows, and it never changes after order creation except via
+    an explicit catalog-test swap (see update_lab_order_item_test).
+
+    price is NOT derived from the catalog — LabTest.price is always ₹0 (see
+    LabTestCreate/LabTestUpdate), so every item starts at ₹0 and billing
+    staff enters the real amount at collection time (see
+    update_lab_order_item_billing). billed_name is an optional, independent
+    override of test_name used only for billing-facing output (invoice,
+    billing worklist) — when unset, those fall back to test_name too."""
     __tablename__ = "lab_order_items"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     lab_order_id = Column(UUID(as_uuid=True), ForeignKey("lab_orders.id"), nullable=False)
     lab_test_id = Column(UUID(as_uuid=True), ForeignKey("lab_tests.id"), nullable=False)
     test_name = Column(String(200), nullable=False)
+    billed_name = Column(String(200))
     price = Column(Numeric(12, 2), nullable=False, default=0)
     status = Column(String(20), default="ordered")  # 'ordered','sample_collected','in_progress','completed','cancelled'
     result_value = Column(String(200))

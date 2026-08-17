@@ -6,6 +6,7 @@ import inventoryService from '../../services/inventoryService';
 import type { Medicine, MedicineCreateData, BatchCreateData } from '../../types/pharmacy';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { useConfirm } from '../../contexts/ConfirmContext';
 import { formatDateOnly } from '../../utils/calendarDate';
 
 const CATEGORY_OPTIONS = [
@@ -33,6 +34,7 @@ const VALID_CATEGORIES = CATEGORY_OPTIONS.filter((opt) => opt.value).map((opt) =
 const MedicineList: React.FC = () => {
   const navigate = useNavigate();
   const toast = useToast();
+  const confirm = useConfirm();
   const { isEyeHospitalFeatureEnabled } = useAuth();
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [loading, setLoading] = useState(true);
@@ -103,6 +105,24 @@ const MedicineList: React.FC = () => {
   };
 
   const hasActiveFilters = Boolean(search || category || stockFilter);
+
+  const handleDeleteMedicine = async (med: Medicine, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const ok = await confirm({
+      title: 'Deactivate Medicine',
+      message: `Deactivate "${med.name}"? It will no longer appear in the inventory or be available for prescribing/dispensing. This does not delete its sales or batch history.`,
+      confirmLabel: 'Deactivate',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    try {
+      await pharmacyService.deleteMedicine(med.id);
+      toast.success('Medicine deactivated');
+      fetchMedicines();
+    } catch {
+      toast.error('Failed to deactivate medicine');
+    }
+  };
 
   const handleDownloadMedicineTemplate = () => {
     const medicineHeaders = [
@@ -622,10 +642,16 @@ const MedicineList: React.FC = () => {
                     </span>
                   </td>
                   <td className="px-3 py-3 text-center" onClick={(e) => e.stopPropagation()}>
-                    <button onClick={() => navigate(`/pharmacy/medicines/${med.id}/edit`)}
-                      className="text-slate-400 hover:text-primary transition-colors">
-                      <span className="material-symbols-outlined text-lg">edit</span>
-                    </button>
+                    <div className="flex items-center justify-center gap-1">
+                      <button onClick={() => navigate(`/pharmacy/medicines/${med.id}/edit`)} title="Edit"
+                        className="p-1 text-slate-400 hover:text-primary transition-colors">
+                        <span className="material-symbols-outlined text-lg">edit</span>
+                      </button>
+                      <button onClick={(e) => handleDeleteMedicine(med, e)} title="Deactivate"
+                        className="p-1 text-slate-400 hover:text-red-500 transition-colors">
+                        <span className="material-symbols-outlined text-lg">delete</span>
+                      </button>
+                    </div>
                   </td>
                 </tr>
                 );

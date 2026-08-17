@@ -389,43 +389,11 @@ def enqueue_lab_queue_entry(db: Session, lab_order: LabOrder) -> None:
     db.flush()
 
 
-def _resync_unpaid_item_prices(db: Session, order: LabOrder) -> bool:
-    """Keep an order's item price snapshots in step with the live catalog
-    price, for as long as nothing has actually been paid on that order yet.
-
-    LabOrderItem.price is normally a frozen snapshot taken at order-creation
-    time (same pattern as PrescriptionItem.medicine_name — deliberate, so a
-    *paid* bill never silently changes after the fact). But most lab tests
-    in this catalog start out priced at ₹0 and get a real price filled in by
-    admin/lab staff afterward — for any order created before that happened,
-    the snapshot stays frozen at ₹0 forever no matter what the catalog price
-    is corrected to, so the bill total stays ₹0 and there's nothing for the
-    Collect Payment flow to actually collect. Self-heals on every read/
-    billing touch while unpaid; once paid, stops touching it — the paid
-    record is history, same as GRN/dispensing corrections elsewhere.
-    """
-    sale = db.query(LabSale).filter(LabSale.lab_order_id == order.id).first()
-    if sale and sale.payment_status == "paid":
-        return False
-
-    changed = False
-    for item in (order.items or []):
-        test = item.test
-        if test is not None and test.price is not None and item.price != test.price:
-            item.price = test.price
-            changed = True
-    if changed:
-        db.commit()
-        db.refresh(order)
-    return changed
-
-
 def _enrich_order(db: Session, order: LabOrder) -> dict:
     """Serialize an order with items + billing summary for the response."""
     from ..models.user import User
     from ..schemas.lab import LabOrderResponse, LabOrderItemResponse
 
-    _resync_unpaid_item_prices(db, order)
     resp = LabOrderResponse.model_validate(order)
     resp.patient_name = order.patient.full_name if getattr(order, "patient", None) else None
     resp.doctor_name = (
@@ -470,7 +438,6 @@ def list_lab_queue(db: Session, hospital_id: uuid.UUID) -> list[dict]:
     )
     result = []
     for o in orders:
-        _resync_unpaid_item_prices(db, o)
         total = sum((i.price or Decimal("0")) for i in (o.items or []))
         sale = db.query(LabSale).filter(LabSale.lab_order_id == o.id).first()
         result.append({
@@ -525,13 +492,13 @@ def _generate_sale_number(db: Session, hospital_id: uuid.UUID) -> str:
 
 
 def get_or_create_lab_sale(db: Session, order: LabOrder) -> LabSale:
-    """Get-or-create the billing header for an order; total is computed from
-    the order's item snapshots (re-synced from the live catalog price first
-    — see _resync_unpaid_item_prices — so an already-existing-but-unpaid
-    sale's total doesn't stay stuck at whatever it was when first created)."""
+    """Get-or-create the billing header for an order; total is computed live
+    from the order's item prices (see LabOrderItem.price / billed_name —
+    entered by billing staff via update_lab_order_item_billing, never
+    derived from the catalog) so an already-existing-but-unpaid sale's total
+    doesn't stay stuck at whatever it was when first created."""
     from sqlalchemy.exc import IntegrityError
 
-    _resync_unpaid_item_prices(db, order)
     total = sum((i.price or Decimal("0")) for i in (order.items or []))
 
     existing = db.query(LabSale).filter(LabSale.lab_order_id == order.id).first()
@@ -602,7 +569,10 @@ def get_or_create_lab_invoice(
         InvoiceItemCreate(
             item_type="lab_test",
             reference_id=str(item.lab_test_id),
-            description=item.test_name,
+            # Billing name, when staff entered one at collection time, takes
+            # over the invoice line — the doctor's own views always show
+            # item.test_name instead and are untouched by this.
+            description=item.billed_name or item.test_name,
             quantity=Decimal("1"),
             unit_price=item.price or Decimal("0"),
             display_order=idx,
@@ -738,7 +708,6 @@ def list_lab_billing(
 
     data = []
     for order, sale in rows:
-        _resync_unpaid_item_prices(db, order)
         order_total = sum((i.price or Decimal("0")) for i in (order.items or []))
         data.append({
             "id": str(order.id),
@@ -851,13 +820,10 @@ def update_lab_order_item_test(
       clinical record, same rule record_lab_result already enforces for
       result entry (see above).
     - Blocked once ANY payment has been collected against the order
-      (sale.paid_amount > 0), including partial. This is deliberately
-      stricter than _resync_unpaid_item_prices, which keeps re-syncing a
-      snapshot to a corrected *catalog price* even under partial payment —
-      that's safe because it's still pricing the same test. Swapping *which*
-      test an item bills for after money has changed hands means the
-      patient's payment receipt would no longer describe what was actually
-      paid for — a real audit-trail problem, not just an arithmetic one — so
+      (sale.paid_amount > 0), including partial. Swapping *which* test an
+      item bills for after money has changed hands means the patient's
+      payment receipt would no longer describe what was actually paid for —
+      a real audit-trail problem, not just an arithmetic one — so
       this function refuses outright rather than trying to recompute its way
       around it.
 
@@ -900,6 +866,10 @@ def update_lab_order_item_test(
     item.lab_test_id = test.id
     item.test_name = test.name
     item.price = test.price or Decimal("0")
+    # A custom billing name entered for the old test no longer describes
+    # what this line now bills for — clear it so the invoice falls back to
+    # the new test_name rather than silently keeping the stale label.
+    item.billed_name = None
     db.commit()
     db.refresh(item)
     db.refresh(order)
@@ -909,6 +879,70 @@ def update_lab_order_item_test(
     # the fee-collection screen's own re-fetch — but syncing here too means
     # any other reader of LabSale sees the corrected total immediately, not
     # only after that explicit re-fetch.
+    if sale:
+        total = sum((i.price or Decimal("0")) for i in (order.items or []))
+        if sale.total_amount != total:
+            sale.subtotal = total
+            sale.total_amount = total
+            sale.balance_amount = max(Decimal("0"), total - (sale.paid_amount or Decimal("0")))
+            db.commit()
+
+    return item
+
+
+def update_lab_order_item_billing(
+    db: Session,
+    order: LabOrder,
+    item_id: str | uuid.UUID,
+    price: Decimal,
+    billed_name: Optional[str],
+    hospital_id: uuid.UUID,
+) -> Optional[LabOrderItem]:
+    """Set the actual billed amount (and, optionally, a billing-only display
+    name) for one order item — reached from the fee-collection screen
+    (LabCollectPayment.tsx). This is now the ONLY way an item's price is
+    ever set: LabTest.price (the catalog) is always ₹0 — see
+    LabTestCreate/LabTestUpdate, which no longer accept a price at all — so
+    every order starts at ₹0 and billing staff enters the real amount here,
+    per line, at collection time.
+
+    billed_name is independent of test_name: test_name stays the catalog
+    snapshot forever and is what the doctor's report and PrescriptionBuilder
+    always display (see LabOrderDetail.tsx / the Lab Results panel) — this
+    field, when set, is what the invoice and billing worklist show instead.
+    Passing None/blank clears it, falling back to test_name on the invoice.
+
+    Same edit boundary as update_lab_order_item_test (see its docstring for
+    the full reasoning): blocked once order.report_status == 'finalized',
+    or once any payment has been collected against the order.
+    """
+    if isinstance(item_id, str):
+        try:
+            item_id = uuid.UUID(item_id)
+        except ValueError:
+            return None
+
+    item = (
+        db.query(LabOrderItem)
+        .filter(LabOrderItem.id == item_id, LabOrderItem.lab_order_id == order.id)
+        .first()
+    )
+    if not item:
+        return None
+
+    if order.report_status == "finalized":
+        raise ValueError("Report already finalized; items are locked")
+
+    sale = db.query(LabSale).filter(LabSale.lab_order_id == order.id).first()
+    if sale and (sale.paid_amount or Decimal("0")) > 0:
+        raise ValueError("Cannot change items after payment has been collected against this order")
+
+    item.price = price
+    item.billed_name = (billed_name or "").strip() or None
+    db.commit()
+    db.refresh(item)
+    db.refresh(order)
+
     if sale:
         total = sum((i.price or Decimal("0")) for i in (order.items or []))
         if sale.total_amount != total:

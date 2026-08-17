@@ -118,7 +118,7 @@ export const MODULE_ROLES: Record<string, Partial<Record<string, Exclude<AccessL
     admin: 'edit', pharmacist: 'edit', inventory_manager: 'view',
   },
   optical: {
-    admin: 'edit', optical_staff: 'edit',
+    admin: 'edit', optical_staff: 'edit', nurse: 'edit',
   },
   inventory: {
     admin: 'edit', pharmacist: 'view', inventory_manager: 'edit',

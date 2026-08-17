@@ -92,6 +92,7 @@ for f in \
     2026-08-13_general_billing_module.sql \
     2026-08-14_lab_test_panels.sql \
     2026-08-15_medicine_batch_mrp_column.sql \
+    2026-08-17_lab_order_item_billed_name.sql \
 ; do
     echo "  Applying $f..."
     psql -U hms_user -d hms_db -f "database_hole/$f"

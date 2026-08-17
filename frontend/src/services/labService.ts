@@ -3,6 +3,7 @@ import type {
   LabTest, LabTestCreateData, LabTestListResponse,
   LabTestPanel, LabTestPanelCreateData, LabTestPanelListResponse,
   LabOrder, LabOrderCreateData, LabResultEntryData, LabOrderItemTestUpdateData,
+  LabOrderItemBillingUpdateData,
   LabQueueEntry, LabQueueStatus, LabSale, LabDashboard,
   LabBillingListResponse,
   PatientLabResult, LabReferral, LabReferralCreateData,
@@ -138,6 +139,17 @@ export const labService = {
   async updateItemTest(orderId: string, itemId: string, labTestId: string): Promise<LabOrder> {
     const data: LabOrderItemTestUpdateData = { lab_test_id: labTestId };
     const res = await api.put<LabOrder>(`/lab/orders/${orderId}/items/${itemId}/test`, data);
+    return res.data;
+  },
+
+  /** Sets the actual billed amount (and an optional billing-only display
+   * name) for one order item. Catalog test price is always ₹0 — this is
+   * the only place a lab order's price is ever set. 409s under the same
+   * edit-boundary rule as updateItemTest (finalized report, or any payment
+   * already collected against the order). */
+  async updateItemBilling(orderId: string, itemId: string, price: number, billedName?: string): Promise<LabOrder> {
+    const data: LabOrderItemBillingUpdateData = { price, billed_name: billedName || undefined };
+    const res = await api.put<LabOrder>(`/lab/orders/${orderId}/items/${itemId}/billing`, data);
     return res.data;
   },
 

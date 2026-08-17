@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import pharmacyService from '../../services/pharmacyService';
 import type { Sale, SaleItem } from '../../types/pharmacy';
@@ -72,6 +72,14 @@ const SalesList: React.FC = () => {
   const [payMethod, setPayMethod] = useState('cash');
   const [paySaving, setPaySaving] = useState(false);
   const [downloadingSaleId, setDownloadingSaleId] = useState<string | null>(null);
+
+  // View Invoice modal — fetches the same print-ready HTML the old
+  // download-only button used, but shows it in an iframe first so Print and
+  // Download can both act on it without a redundant re-fetch.
+  const [viewingSale, setViewingSale] = useState<Sale | null>(null);
+  const [viewHtml, setViewHtml] = useState<string | null>(null);
+  const [viewLoading, setViewLoading] = useState(false);
+  const viewIframeRef = useRef<HTMLIFrameElement>(null);
 
   // Post-finalization correction modal — reopens an already-dispensed sale
   // so a pharmacist can fix a miskeyed dispensed quantity (reconciling stock
@@ -188,13 +196,37 @@ const SalesList: React.FC = () => {
     }
   };
 
-  const handleDownloadInvoice = async (sale: Sale) => {
-    setDownloadingSaleId(sale.id);
+  const openViewInvoice = async (sale: Sale) => {
+    setViewingSale(sale);
+    setViewHtml(null);
+    setViewLoading(true);
     try {
       const html = await pharmacyService.getSalePdfHtml(sale.id);
-      await htmlStringToPdf(html, `Invoice_${sale.invoice_number}.pdf`);
+      setViewHtml(html);
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail || 'Failed to download invoice');
+      toast.error(err?.response?.data?.detail || 'Failed to load invoice');
+      setViewingSale(null);
+    } finally {
+      setViewLoading(false);
+    }
+  };
+
+  const closeViewInvoice = () => {
+    setViewingSale(null);
+    setViewHtml(null);
+  };
+
+  const handlePrintInvoice = () => {
+    viewIframeRef.current?.contentWindow?.print();
+  };
+
+  const handleDownloadInvoice = async () => {
+    if (!viewingSale || !viewHtml) return;
+    setDownloadingSaleId(viewingSale.id);
+    try {
+      await htmlStringToPdf(viewHtml, `Invoice_${viewingSale.invoice_number}.pdf`);
+    } catch {
+      toast.error('Failed to download invoice');
     } finally {
       setDownloadingSaleId(null);
     }
@@ -386,12 +418,11 @@ const SalesList: React.FC = () => {
                         </button>
                       )}
                       <button
-                        onClick={() => handleDownloadInvoice(s)}
-                        disabled={downloadingSaleId === s.id}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 disabled:opacity-50"
+                        onClick={() => openViewInvoice(s)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100"
                       >
-                        <span className="material-symbols-outlined text-sm">download</span>
-                        {downloadingSaleId === s.id ? 'Preparing…' : 'Invoice'}
+                        <span className="material-symbols-outlined text-sm">visibility</span>
+                        View
                       </button>
                       {canCorrectSale && s.status === 'dispensed' && (
                         <button
@@ -505,6 +536,62 @@ const SalesList: React.FC = () => {
                 className="px-4 py-2 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 shadow-sm disabled:opacity-50">
                 {paySaving ? 'Recording…' : 'Record Payment'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View Invoice Modal — Print/Download sit at the top-right of the
+          modal itself, acting on the already-fetched HTML so neither one
+          re-fetches it. */}
+      {viewingSale && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={closeViewInvoice}>
+          <div className="flex h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Invoice</h3>
+                <p className="text-sm text-slate-500">{viewingSale.invoice_number}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handlePrintInvoice}
+                  disabled={!viewHtml}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 disabled:opacity-50"
+                >
+                  <span className="material-symbols-outlined text-sm">print</span> Print
+                </button>
+                <button
+                  onClick={handleDownloadInvoice}
+                  disabled={!viewHtml || downloadingSaleId === viewingSale.id}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-primary bg-primary/5 border border-primary/20 rounded-lg hover:bg-primary/10 disabled:opacity-50"
+                >
+                  <span className="material-symbols-outlined text-sm">download</span>
+                  {downloadingSaleId === viewingSale.id ? 'Preparing…' : 'Download'}
+                </button>
+                <button onClick={closeViewInvoice} className="ml-1 text-slate-400 hover:text-slate-600">
+                  <span className="material-symbols-outlined">close</span>
+                </button>
+              </div>
+            </div>
+            {/* flex-1 + min-h-0 so this pane (not the outer modal) owns the
+                available height; the iframe fills it exactly (h-full, no
+                fixed vh) so its own document is the only thing that scrolls
+                — the earlier fixed iframe height inside a scrollable wrapper
+                produced two nested scrollbars for any invoice taller than
+                75vh. */}
+            <div className="min-h-0 flex-1 bg-slate-100">
+              {viewLoading ? (
+                <div className="flex h-full items-center justify-center">
+                  <span className="material-symbols-outlined animate-spin text-3xl text-primary">progress_activity</span>
+                </div>
+              ) : viewHtml ? (
+                <iframe
+                  ref={viewIframeRef}
+                  srcDoc={viewHtml}
+                  title={`Invoice ${viewingSale.invoice_number}`}
+                  className="h-full w-full border-0 bg-white"
+                />
+              ) : null}
             </div>
           </div>
         </div>

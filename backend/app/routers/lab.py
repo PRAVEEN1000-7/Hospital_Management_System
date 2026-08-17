@@ -22,6 +22,7 @@ from ..schemas.lab import (
     LabTestCreate, LabTestUpdate, LabTestResponse, LabTestListResponse,
     LabTestPanelCreate, LabTestPanelUpdate, LabTestPanelResponse, LabTestPanelListResponse,
     LabOrderCreate, LabOrderResponse, LabResultEntry, LabOrderItemTestUpdate,
+    LabOrderItemBillingUpdate,
     LabQueueEntryResponse, LabQueueStatusUpdate,
     LabSaleResponse, LabMarkPaidRequest,
     LabBillingItemResponse, LabBillingListResponse,
@@ -476,7 +477,6 @@ async def update_lab_queue_status(
         order = svc.advance_lab_queue_status(db, order_id, data.queue_status, hospital_id=current_user.hospital_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    svc._resync_unpaid_item_prices(db, order)
     total = sum((i.price or Decimal("0")) for i in (order.items or []))
     return {
         "id": str(order.id),
@@ -606,6 +606,36 @@ async def update_lab_order_item_test(
         raise HTTPException(status_code=409, detail=str(e))
     if not item:
         raise HTTPException(status_code=404, detail="Lab order item or lab test not found")
+    db.refresh(order)
+    return svc._enrich_order(db, order)
+
+
+@router.put("/orders/{order_id}/items/{item_id}/billing", response_model=LabOrderResponse)
+async def update_lab_order_item_billing(
+    order_id: str,
+    item_id: str,
+    data: LabOrderItemBillingUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Set the actual billed amount (and optional billing-only display name)
+    for one order item, from the fee-collection screen (LabCollectPayment.tsx).
+    Catalog test price is always ₹0, so this is the only place a lab order's
+    price is ever set — see lab_service.update_lab_order_item_billing. Same
+    409 edit-boundary as the /test swap endpoint above."""
+    _require(current_user, LAB_STAFF_ROLES)
+    order = svc.get_lab_order_by_id(db, order_id, hospital_id=current_user.hospital_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Lab order not found")
+    try:
+        item = svc.update_lab_order_item_billing(
+            db, order, item_id, data.price, data.billed_name, hospital_id=current_user.hospital_id,
+        )
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(e))
+    if not item:
+        raise HTTPException(status_code=404, detail="Lab order item not found")
     db.refresh(order)
     return svc._enrich_order(db, order)
 

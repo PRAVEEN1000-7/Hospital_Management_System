@@ -129,10 +129,17 @@ const MedicineForm: React.FC = () => {
     }));
   };
 
+  // A medicine with zero existing batches (e.g. one created with just a
+  // name) has nothing for the "Open Stock" table above to show — this is
+  // the only other place a batch (and therefore an MRP — MRP lives on
+  // MedicineBatch, not Medicine) can be added for it, so it's offered here
+  // too, not just on create.
+  const canAddOpeningStock = !isEdit || editBatches.length === 0;
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim()) { toast.error('Medicine name is required'); return; }
-    if (!isEdit && addOpeningStock) {
+    if (canAddOpeningStock && addOpeningStock) {
       if (!openingBatch.batch_number.trim()) { toast.error('Opening stock batch number is required'); return; }
       if (!openingBatch.expiry_date) { toast.error('Opening stock expiry date is required'); return; }
       if (openingBatch.quantity <= 0) { toast.error('Opening stock quantity must be greater than 0'); return; }
@@ -171,7 +178,9 @@ const MedicineForm: React.FC = () => {
         await pharmacyService.updateMedicine(id, payload);
         // Persist edited batch stock/prices (BUG-24 covered quantity only —
         // Purchase/Selling/MRP now follow the same pattern). One combined
-        // PUT per dirty batch, not one call per changed field.
+        // PUT per dirty batch, not one call per changed field. A no-op loop
+        // when this medicine has no batches yet — see the addOpeningStock
+        // branch below for that case instead.
         let updatedCount = 0;
         for (const b of editBatches) {
           const patch: { quantity?: number; purchase_price?: number; selling_price?: number; mrp?: number } = {};
@@ -192,7 +201,31 @@ const MedicineForm: React.FC = () => {
             toast.error(`Failed to update batch ${b.batch_number}`);
           }
         }
-        toast.success(updatedCount > 0 ? 'Medicine and stock updated' : 'Medicine updated');
+
+        let addedOpeningBatch = false;
+        if (editBatches.length === 0 && addOpeningStock) {
+          try {
+            await pharmacyService.createBatch({
+              medicine_id: id,
+              batch_number: openingBatch.batch_number.trim(),
+              mfg_date: openingBatch.mfg_date || undefined,
+              expiry_date: openingBatch.expiry_date,
+              quantity: openingBatch.quantity,
+              purchase_price: openingBatch.purchase_price,
+              selling_price: openingBatch.selling_price,
+              mrp: openingBatch.mrp || undefined,
+            });
+            addedOpeningBatch = true;
+          } catch {
+            toast.error('Medicine updated, but failed to add the opening stock batch');
+          }
+        }
+
+        toast.success(
+          addedOpeningBatch ? 'Medicine and opening stock batch added'
+            : updatedCount > 0 ? 'Medicine and stock updated'
+            : 'Medicine updated'
+        );
         navigate('/pharmacy/medicines');
       } else {
         const created = await pharmacyService.createMedicine(payload);
@@ -521,11 +554,15 @@ const MedicineForm: React.FC = () => {
               </div>
             </section>
 
-            {!isEdit && (
+            {canAddOpeningStock && (
               <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                 <div className="mb-5">
                   <h2 className={sectionTitleClass}>Opening Stock</h2>
-                  <p className={sectionHintClass}>Optionally create the first stock batch when saving this medicine.</p>
+                  <p className={sectionHintClass}>
+                    {isEdit
+                      ? "This medicine has no batches yet, so there's no stock or MRP for it — optionally add the first one now."
+                      : 'Optionally create the first stock batch when saving this medicine.'}
+                  </p>
                 </div>
 
                 <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
@@ -537,7 +574,7 @@ const MedicineForm: React.FC = () => {
                   />
                   <span>
                     <span className="block font-semibold text-slate-900">Add Opening Stock Batch</span>
-                    <span className="mt-0.5 block text-xs text-slate-500">Enable this to set initial quantity, batch, and pricing now.</span>
+                    <span className="mt-0.5 block text-xs text-slate-500">Enable this to set initial quantity, batch, and pricing (incl. MRP) now.</span>
                   </span>
                 </label>
 

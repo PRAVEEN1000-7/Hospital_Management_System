@@ -4,8 +4,10 @@
 # Run this on the server after: git pull
 # Usage: bash deploy/deploy.sh   (run from the project root)
 #
-# NOTE: vite.config.ts builds directly to /var/www/hms — no cp step needed.
-#       Permissions are set automatically in step 4 on every run (idempotent).
+# NOTE: vite.config.ts builds to frontend/dist (Vite's normal default).
+#       Nginx is pointed at that path directly — no cp step needed. Read
+#       traversal for nginx (www-data) up to frontend/dist is granted
+#       automatically in step 4 on every run (idempotent).
 # =============================================================================
 
 set -e  # stop on any error
@@ -13,7 +15,6 @@ set -e  # stop on any error
 PROJECT_DIR="$HOME/projects/Hospital_Management_System"
 BACKEND_DIR="$PROJECT_DIR/backend"
 FRONTEND_DIR="$PROJECT_DIR/frontend"
-WEB_ROOT="/var/www/hms"
 SERVER_IP=$(curl -s ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
 
 echo "============================================"
@@ -97,30 +98,30 @@ for f in \
 done
 echo "  Migration complete"
 
-# ── 4. Prepare web root ──────────────────────────────────────────────────────
+# ── 4. Grant nginx read access into the project directory ───────────────────
 echo ""
-echo "[4/7] Preparing web root permissions..."
+echo "[4/7] Preparing frontend/dist permissions..."
 
-# Create directory if it doesn't exist (first deploy only)
-sudo mkdir -p "$WEB_ROOT"
-
-# root owns the directory; hmsadmin group gets full write access.
-# nginx (runs as www-data) gets read+execute via the "others" bit (775).
-# This is idempotent — safe to run on every deploy.
-sudo chown -R root:$(whoami) "$WEB_ROOT"
-sudo chmod -R 775 "$WEB_ROOT"
-echo "  $WEB_ROOT — owner: root:$(whoami), mode: 775"
+# nginx (runs as www-data, not in your user's group) needs execute ("traverse")
+# permission on every directory from $HOME down to frontend/dist, plus
+# read+execute on frontend/dist itself so it can serve the built files.
+# $HOME defaults to 750 on most distros, which would otherwise block www-data
+# entirely. This only opens *traversal*, not write access — same pattern
+# already used for backend/uploads served the same way. Idempotent.
+chmod o+rx "$HOME" "$PROJECT_DIR" "$FRONTEND_DIR" 2>/dev/null || true
+echo "  Traversal permission granted: $HOME -> $FRONTEND_DIR"
 
 # ── 5. Frontend build ────────────────────────────────────────────────────────
 echo ""
 echo "[5/7] Building frontend..."
-# vite.config.ts has outDir: '/var/www/hms' + emptyOutDir: true
-# The build writes directly to the web root — no cp needed.
+# vite.config.ts has outDir: 'dist' (Vite's default) — builds into
+# frontend/dist, same directory nginx is configured to serve from directly.
 
 cd "$FRONTEND_DIR"
 npm install --silent
 npm run build
-echo "  Build complete → $WEB_ROOT"
+chmod -R o+rX "$FRONTEND_DIR/dist"
+echo "  Build complete → $FRONTEND_DIR/dist"
 cd "$PROJECT_DIR"
 
 # ── 6. Nginx install + config ────────────────────────────────────────────────
@@ -129,7 +130,10 @@ echo "[6/7] Configuring Nginx..."
 
 sudo apt-get install -y nginx -qq
 
-sudo cp "$PROJECT_DIR/deploy/nginx.conf" /etc/nginx/sites-available/hms
+# nginx.conf ships with a __FRONTEND_DIST__ placeholder instead of a hardcoded
+# path, since frontend/dist now lives under this deploy's own $HOME rather
+# than a fixed system path like /var/www/hms.
+sed "s|__FRONTEND_DIST__|$FRONTEND_DIR/dist|g" "$PROJECT_DIR/deploy/nginx.conf" | sudo tee /etc/nginx/sites-available/hms > /dev/null
 sudo ln -sf /etc/nginx/sites-available/hms /etc/nginx/sites-enabled/hms
 sudo rm -f /etc/nginx/sites-enabled/default
 sudo nginx -t

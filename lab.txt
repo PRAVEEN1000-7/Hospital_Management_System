@@ -18,3 +18,8 @@ Lipid protcle
 RFT(Renal Profile,Kidney function test)
 TSH 
 DRS 
+
+SELECT name FROM lab_tests WHERE hospital_id = (SELECT id FROM hospitals WHERE name = 'manipal') AND is_active = true ORDER BY name;
+
+SELECT count(*) AS total_panels FROM lab_test_panels;
+SELECT h.name AS hospital, p.code, p.name, array_length(p.test_ids,1) AS test_count FROM lab_test_panels p JOIN hospitals h ON h.id = p.hospital_id ORDER BY h.name, p.code;

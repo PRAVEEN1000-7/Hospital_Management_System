@@ -1,14 +1,22 @@
 #!/usr/bin/env python3
 """
 Seed the MHC (Master Health Checkup) and HHC (Health Checkup) lab test
-packages — the same data built and verified locally — reproducibly against
-any database (local or live), for one or all hospitals.
+packages, for one or all hospitals.
+
+CONTAINS NO HOSPITAL-SPECIFIC OR ENVIRONMENT-SPECIFIC DATA. There is no
+hardcoded hospital id, name, or local-only fixture anywhere in this file —
+audited line by line to confirm it. Every hospital it touches comes from
+querying the `hospitals` table of whichever database you point it at. Run
+this against your local dev database and it only ever creates/updates rows
+for your local dev hospitals; run it against production and it only ever
+touches production's own real hospitals. It is safe by construction to run
+against production — nothing here can "leak" local test data into it.
 
 Ensures two catalog tests exist first (CBC and a standalone TSH — both were
 missing from the originally seeded lab_tests catalog), then creates/updates
 the two named packages by resolving each member test by NAME against that
 hospital's own catalog (test IDs differ per database, so matching by name is
-what makes this portable between local and live).
+what makes this portable between environments instead of copying raw rows).
 
 Idempotent — safe to re-run: an existing package's test_ids are refreshed to
 match this script's list rather than duplicated; an existing catalog test
@@ -19,8 +27,10 @@ missing a test this script can't itself invent — e.g. no "Lipid Profile" row
 at all for that hospital. Re-run after adding it.
 
 Usage (run from backend/, inside the venv):
-    python ../deploy/seed_lab_test_panels.py
+    python ../deploy/seed_lab_test_panels.py --dry-run       # preview only, no writes — always run this first on production
+    python ../deploy/seed_lab_test_panels.py                 # apply, all hospitals
     python ../deploy/seed_lab_test_panels.py --hospital-id <uuid>
+    python ../deploy/seed_lab_test_panels.py --hospital-id <uuid> --dry-run
 """
 import argparse
 import sys
@@ -60,27 +70,36 @@ PANELS = {
 }
 
 
-def seed_hospital(db, hospital) -> None:
+def seed_hospital(db, hospital, dry_run: bool) -> None:
     hid = hospital.id
     label = f"{hospital.name} ({hid})"
+    prefix = "  [DRY RUN] would " if dry_run else "  "
 
     # 1. Ensure the extra catalog tests exist (matched by code, the natural key).
     for t in EXTRA_TESTS:
         existing = db.query(LabTest).filter(LabTest.hospital_id == hid, LabTest.code == t["code"]).first()
         if existing:
             continue
-        db.add(LabTest(
-            hospital_id=hid, name=t["name"], code=t["code"],
-            category=t["category"], sample_type=t["sample_type"],
-            price=0, is_active=True,
-        ))
+        print(f"{prefix}add catalog test '{t['name']}' ({t['code']}) for {label}")
+        if not dry_run:
+            db.add(LabTest(
+                hospital_id=hid, name=t["name"], code=t["code"],
+                category=t["category"], sample_type=t["sample_type"],
+                price=0, is_active=True,
+            ))
     db.flush()
 
     # 2. Resolve every needed test by name against this hospital's own catalog.
+    # In dry-run mode, don't rely on the (unflushed-to-DB) tests added above —
+    # re-derive what the catalog would contain so the preview is accurate even
+    # though nothing was actually inserted.
     by_name = {
         t.name: t.id
         for t in db.query(LabTest).filter(LabTest.hospital_id == hid, LabTest.is_active == True).all()
     }
+    if dry_run:
+        for t in EXTRA_TESTS:
+            by_name.setdefault(t["name"], "<new-id-not-yet-assigned>")
 
     for code, spec in PANELS.items():
         missing = [n for n in spec["tests"] if n not in by_name]
@@ -91,17 +110,20 @@ def seed_hospital(db, hospital) -> None:
 
         panel = db.query(LabTestPanel).filter(LabTestPanel.hospital_id == hid, LabTestPanel.code == code).first()
         if panel:
-            panel.test_ids = test_ids
-            panel.name = spec["name"]
-            print(f"  Updated {code} for {label} ({len(test_ids)} tests)")
+            print(f"{prefix}update {code} for {label} ({len(test_ids)} tests)")
+            if not dry_run:
+                panel.test_ids = test_ids
+                panel.name = spec["name"]
         else:
-            db.add(LabTestPanel(hospital_id=hid, name=spec["name"], code=code, test_ids=test_ids, is_active=True))
-            print(f"  Created {code} for {label} ({len(test_ids)} tests)")
+            print(f"{prefix}create {code} for {label} ({len(test_ids)} tests)")
+            if not dry_run:
+                db.add(LabTestPanel(hospital_id=hid, name=spec["name"], code=code, test_ids=test_ids, is_active=True))
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--hospital-id", help="Seed only this hospital. Default: every hospital.")
+    parser.add_argument("--dry-run", action="store_true", help="Preview what would change — no writes, rolled back at the end. Always run this first on production.")
     args = parser.parse_args()
 
     db = SessionLocal()
@@ -114,11 +136,17 @@ def main() -> None:
         else:
             hospitals = db.query(Hospital).all()
 
-        print(f"Seeding MHC/HHC lab test packages for {len(hospitals)} hospital(s)...")
+        mode = "[DRY RUN] Previewing" if args.dry_run else "Seeding"
+        print(f"{mode} MHC/HHC lab test packages for {len(hospitals)} hospital(s)...")
         for h in hospitals:
-            seed_hospital(db, h)
-        db.commit()
-        print("Done.")
+            seed_hospital(db, h, args.dry_run)
+
+        if args.dry_run:
+            db.rollback()
+            print("Done. Dry run only — nothing was written. Re-run without --dry-run to apply.")
+        else:
+            db.commit()
+            print("Done.")
     finally:
         db.close()
 

@@ -365,6 +365,25 @@ def get_prescription_by_number(db: Session, rx_number: str) -> Optional[Prescrip
     ).first()
 
 
+def get_prescription_by_appointment(
+    db: Session, appointment_id: str | uuid.UUID, hospital_id: uuid.UUID,
+) -> Optional[Prescription]:
+    """One appointment has at most one prescription — used by the doctor's
+    Prescription Builder to find a nurse's draft-vitals prescription (see
+    save_draft_vitals) for the visit it's opening, so vitals recorded before
+    the consultation show up automatically instead of a blank form."""
+    if isinstance(appointment_id, str):
+        try:
+            appointment_id = uuid.UUID(appointment_id)
+        except ValueError:
+            return None
+    return db.query(Prescription).filter(
+        Prescription.appointment_id == appointment_id,
+        Prescription.hospital_id == hospital_id,
+        Prescription.is_deleted == False,
+    ).first()
+
+
 def list_prescriptions(
     db: Session,
     page: int = 1,
@@ -557,6 +576,48 @@ def update_prescription(
 
     _save_version_snapshot(db, rx, performed_by, "Updated prescription")
     return rx
+
+
+def save_draft_vitals(
+    db: Session,
+    hospital_id: uuid.UUID,
+    data: dict,
+    created_by: uuid.UUID,
+) -> Prescription:
+    """Backs PUT /prescriptions/draft-vitals — the nurse-facing, vitals-only
+    write. Reuses create_prescription/update_prescription rather than
+    duplicating their patient/appointment validation and number-generation,
+    so this is genuinely just "the normal prescription flow" with only the
+    vitals fields filled in, same as the docstring on PrescriptionVitalsUpdate
+    promises.
+
+    - No existing prescription for this appointment yet: creates one via
+      create_prescription (status defaults to "draft", doctor_id resolves to
+      None when the caller isn't a doctor — nurse's case).
+    - One exists and isn't finalized: updates just the vitals fields via
+      update_prescription. None-valued vitals keys are dropped before calling
+      it — update_prescription treats *key presence* as "overwrite", so
+      passing every key from a partial Pydantic model unfiltered would wipe
+      out vitals a previous save already recorded.
+    - One exists and IS finalized: raises ValueError (the router turns this
+      into a 409) — vitals can't retroactively change a locked record.
+    """
+    existing = get_prescription_by_appointment(db, data["appointment_id"], hospital_id)
+    vitals_keys = (
+        "vitals_bp", "vitals_pulse", "vitals_temp",
+        "vitals_weight", "vitals_spo2", "vitals_blood_sugar",
+    )
+
+    if existing:
+        if existing.is_finalized:
+            raise ValueError("This visit's prescription has already been finalized by the doctor")
+        vitals_only = {k: data[k] for k in vitals_keys if data.get(k) is not None}
+        updated = update_prescription(db, existing.id, vitals_only, performed_by=created_by, hospital_id=hospital_id)
+        return updated
+
+    create_data = {"patient_id": data["patient_id"], "appointment_id": data["appointment_id"]}
+    create_data.update({k: data.get(k) for k in vitals_keys})
+    return create_prescription(db, create_data, created_by=created_by, hospital_id=hospital_id)
 
 
 def finalize_prescription(

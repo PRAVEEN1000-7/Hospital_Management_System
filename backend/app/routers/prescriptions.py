@@ -20,6 +20,7 @@ from ..core.hospital_time import hospital_today
 from ..schemas.prescription import (
     PrescriptionCreate,
     PrescriptionUpdate,
+    PrescriptionVitalsUpdate,
     PrescriptionResponse,
     PrescriptionListItem,
     PaginatedPrescriptionResponse,
@@ -35,6 +36,8 @@ from ..schemas.prescription import (
 from ..services.prescription_service import (
     create_prescription,
     get_prescription,
+    get_prescription_by_appointment,
+    save_draft_vitals,
     list_prescriptions,
     update_prescription,
     finalize_prescription,
@@ -111,10 +114,50 @@ def _rx_new_or_pharmacist_guard(level: str):
 rx_new_edit_or_pharmacist_guard = _rx_new_or_pharmacist_guard("edit")
 rx_new_view_or_pharmacist_guard = _rx_new_or_pharmacist_guard("view")
 
+# Narrow, vitals-only scope (see rx.vitals in module_roles.py / PrescriptionVitalsUpdate) —
+# a nurse gets this and nothing else on the Prescription resource.
+vitals_edit_guard = require_permission("rx.vitals", "edit")
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Prescription Endpoints
 # ═══════════════════════════════════════════════════════════════════════════
+
+# Registered before the generic "/{prescription_id}" GET/PUT routes below —
+# Starlette matches routes in registration order, and "/{prescription_id}"
+# would otherwise swallow "PUT /prescriptions/draft-vitals" by treating
+# "draft-vitals" as the id.
+@router.put("/draft-vitals", response_model=PrescriptionResponse)
+async def put_draft_vitals(
+    data: PrescriptionVitalsUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(vitals_edit_guard),
+):
+    """Record/update BP/Pulse/Temp/Weight/SpO2/Blood Sugar for a visit — the
+    nurse-facing vitals-only write. Creates a draft prescription for this
+    appointment if none exists yet, or updates just the vitals fields on an
+    existing (not-yet-finalized) one. See prescription_service.save_draft_vitals."""
+    try:
+        rx = save_draft_vitals(db, current_user.hospital_id, data.model_dump(), current_user.id)
+    except ValueError as ve:
+        raise HTTPException(status_code=409, detail=str(ve))
+    return enrich_prescription(db, rx)
+
+
+@router.get("/by-appointment/{appointment_id}", response_model=PrescriptionResponse)
+async def get_prescription_for_appointment(
+    appointment_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(rx_all_view_guard),
+):
+    """Looked up by the doctor's Prescription Builder when starting a
+    consultation, to find (and redirect into editing) a nurse's draft-vitals
+    prescription for this appointment instead of rendering a blank form."""
+    rx = get_prescription_by_appointment(db, appointment_id, current_user.hospital_id)
+    if not rx:
+        raise HTTPException(status_code=404, detail="No prescription found for this appointment")
+    return enrich_prescription(db, rx)
+
 
 @router.post("", response_model=PrescriptionResponse, status_code=status.HTTP_201_CREATED)
 async def create_new_prescription(

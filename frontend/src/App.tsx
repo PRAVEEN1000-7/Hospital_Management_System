@@ -58,6 +58,7 @@ import AppointmentSettings from './pages/AppointmentSettings';
 // Prescription pages
 import PrescriptionList from './pages/PrescriptionList';
 import PrescriptionBuilder from './pages/PrescriptionBuilder';
+import NurseVitals from './pages/NurseVitals';
 import PrescriptionDetail from './pages/PrescriptionDetail';
 
 // Pharmacy pages
@@ -409,6 +410,14 @@ const AppWithNotifications: React.FC = () => {
                   requiredModule="prescriptions"
                 >
                   <PrescriptionBuilder />
+                </ProtectedRoute>
+              } />
+              <Route path="/prescriptions/vitals/new" element={
+                <ProtectedRoute
+                  allowedRoles={allowedRoles('rx.vitals', 'edit')}
+                  requiredModule="prescriptions"
+                >
+                  <NurseVitals />
                 </ProtectedRoute>
               } />
               <Route path="/prescriptions/:id" element={

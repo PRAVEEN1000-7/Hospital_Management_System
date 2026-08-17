@@ -4,6 +4,7 @@ import type {
   PrescriptionListItem,
   PrescriptionCreate,
   PrescriptionUpdate,
+  PrescriptionVitalsUpdate,
   Medicine,
   MedicineCreate,
   PrescriptionTemplate,
@@ -66,6 +67,24 @@ const prescriptionService = {
 
   async getPrescription(id: string): Promise<Prescription> {
     const res = await api.get<Prescription>(`/prescriptions/${id}`);
+    return res.data;
+  },
+
+  /** Looks up the (draft or otherwise) prescription already tied to this
+   * appointment, if any — used by PrescriptionBuilder to auto-load a
+   * nurse's pre-recorded vitals instead of starting blank. Rejects with a
+   * 404 (caller should catch and treat as "no draft yet") when none exists. */
+  async getPrescriptionByAppointment(appointmentId: string): Promise<Prescription> {
+    const res = await api.get<Prescription>(`/prescriptions/by-appointment/${appointmentId}`);
+    return res.data;
+  },
+
+  /** Nurse-facing vitals-only save — creates a draft prescription for this
+   * appointment if none exists yet, or updates just the vitals fields on an
+   * existing (not yet finalized) one. 409s if the doctor has already
+   * finalized this visit's prescription. */
+  async saveDraftVitals(data: PrescriptionVitalsUpdate): Promise<Prescription> {
+    const res = await api.put<Prescription>('/prescriptions/draft-vitals', data);
     return res.data;
   },
 

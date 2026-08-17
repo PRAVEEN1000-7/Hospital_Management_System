@@ -250,6 +250,23 @@ class PrescriptionUpdate(BaseModel):
     items: Optional[list[PrescriptionItemCreate]] = None
 
 
+class PrescriptionVitalsUpdate(BaseModel):
+    """Narrow, vitals-only write — backs PUT /prescriptions/draft-vitals, the
+    endpoint a nurse (rx.vitals: edit) uses to record BP/Pulse/Temp/Weight/
+    SpO2/Blood Sugar for a visit before the doctor sees the patient.
+    Deliberately has no diagnosis/clinical_notes/advice/items/finalize field —
+    a nurse cannot author anything beyond vitals through this schema, by
+    construction, not just by RBAC."""
+    patient_id: str
+    appointment_id: str
+    vitals_bp: Optional[str] = None
+    vitals_pulse: Optional[str] = None
+    vitals_temp: Optional[str] = None
+    vitals_weight: Optional[str] = None
+    vitals_spo2: Optional[str] = None
+    vitals_blood_sugar: Optional[str] = None
+
+
 class PrescriptionResponse(BaseModel):
     id: str
     hospital_id: str

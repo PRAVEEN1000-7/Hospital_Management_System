@@ -168,6 +168,21 @@ export interface PrescriptionUpdate {
   items?: PrescriptionItemCreate[] | null;
 }
 
+// Narrow, vitals-only write — backs PUT /prescriptions/draft-vitals, used by
+// the nurse's Vitals entry screen (NurseVitals.tsx). No diagnosis/items/
+// finalize field exists here on purpose — see PrescriptionVitalsUpdate on
+// the backend.
+export interface PrescriptionVitalsUpdate {
+  patient_id: string;
+  appointment_id: string;
+  vitals_bp?: string;
+  vitals_pulse?: string;
+  vitals_temp?: string;
+  vitals_weight?: string;
+  vitals_spo2?: string;
+  vitals_blood_sugar?: string;
+}
+
 // —— Medicine ———————————————————————————————————————————————————
 
 export interface Medicine {

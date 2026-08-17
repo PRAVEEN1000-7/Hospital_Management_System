@@ -25,6 +25,7 @@ import { useListKeyboardNav } from '../hooks/useListKeyboardNav';
 import AutocompleteField from '../components/common/AutocompleteField';
 import { formatLocalDateISO, formatMonthKey } from '../utils/calendarDate';
 import PrescriptionHistoryGrid from '../components/patients/PrescriptionHistoryGrid';
+import VitalsCard from '../components/prescription/VitalsCard';
 
 const FREQUENCY_OPTIONS = ['1-0-0', '0-1-0', '0-0-1', '1-0-1', '1-1-0', '0-1-1', '1-1-1', '1-1-1-1'];
 const DURATION_UNITS = ['days', 'weeks', 'months'];
@@ -465,6 +466,29 @@ const PrescriptionBuilder: React.FC = () => {
       })
       .finally(() => setLoading(false));
   }, [editId]);
+
+  // Landed on /prescriptions/new (the normal "Start Consultation" flow) for
+  // a specific appointment — check whether a prescription already exists
+  // for it (most commonly a nurse's draft-vitals record, see
+  // NurseVitals.tsx) and redirect into editing it instead of rendering a
+  // blank form, so the doctor sees the nurse's vitals pre-filled. Silently
+  // does nothing when none exists (the common case — most consultations
+  // still start blank); a finalized one redirects here too, but the
+  // edit-mode effect above already handles that case (bounces back out with
+  // an error toast), so no separate check is needed.
+  useEffect(() => {
+    if (editId || !appointmentId) return;
+    let cancelled = false;
+    prescriptionService.getPrescriptionByAppointment(appointmentId)
+      .then(rx => {
+        if (cancelled) return;
+        const params = new URLSearchParams(searchParams);
+        navigate(`/prescriptions/${rx.id}/edit?${params.toString()}`, { replace: true });
+      })
+      .catch(() => { /* no existing prescription for this appointment yet */ });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editId, appointmentId]);
 
   // Load templates
   useEffect(() => {
@@ -1329,40 +1353,20 @@ const PrescriptionBuilder: React.FC = () => {
               its own accord when the patient has no prior prescriptions. */}
           {patient && <PrescriptionHistoryGrid patientId={patient.id} variant="card" />}
 
-          {/* Vitals Section */}
+          {/* Vitals Section — nurse can pre-fill this before the doctor opens
+              the consultation (see NurseVitals.tsx); shared field/layout via
+              VitalsCard so both screens look identical. */}
           {patient && (
-            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-              <h3 className="font-semibold mb-4 flex items-center gap-2">
-                <span className="material-symbols-outlined text-primary text-sm">vital_signs</span> Vitals
-              </h3>
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-1.5">BP (mmHg)</label>
-                  <input type="text" value={vitalsBp} onChange={e => setVitalsBp(e.target.value)} placeholder="120/80"
-                    className="input-field" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-1.5">Pulse (bpm)</label>
-                  <input type="text" value={vitalsPulse} onChange={e => setVitalsPulse(e.target.value)} placeholder="72"
-                    className="input-field" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-1.5">Temp (&deg;F)</label>
-                  <input type="text" value={vitalsTemp} onChange={e => setVitalsTemp(e.target.value)} placeholder="98.6"
-                    className="input-field" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-1.5">Weight (kg)</label>
-                  <input type="text" value={vitalsWeight} onChange={e => setVitalsWeight(e.target.value)} placeholder="70"
-                    className="input-field" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-1.5">SpO2 (%)</label>
-                  <input type="text" value={vitalsSpo2} onChange={e => setVitalsSpo2(e.target.value)} placeholder="98"
-                    className="input-field" />
-                </div>
-              </div>
-            </div>
+            <VitalsCard
+              values={{ bp: vitalsBp, pulse: vitalsPulse, temp: vitalsTemp, weight: vitalsWeight, spo2: vitalsSpo2 }}
+              onChange={(v) => {
+                setVitalsBp(v.bp);
+                setVitalsPulse(v.pulse);
+                setVitalsTemp(v.temp);
+                setVitalsWeight(v.weight);
+                setVitalsSpo2(v.spo2);
+              }}
+            />
           )}
 
           {/* Single Diagnosis & Medicines block */}
@@ -2018,9 +2022,6 @@ const PrescriptionBuilder: React.FC = () => {
                                   />
                                   <span className="min-w-0 flex-1">
                                     <span className="block font-medium text-slate-800 truncate">{t.name}</span>
-                                    <span className="block text-xs text-slate-400">
-                                      {t.code}{t.price ? ` · ₹${Number(t.price).toFixed(2)}` : ''}
-                                    </span>
                                   </span>
                                 </label>
                               );

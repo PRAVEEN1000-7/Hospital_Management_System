@@ -114,6 +114,14 @@ export const MODULE_ROLES: Record<string, Partial<Record<string, Exclude<AccessL
   'rx.new': {
     admin: 'view', doctor: 'edit', visiting_doctor: 'edit',
   },
+  // Narrow, vitals-only slice of rx.new — lets a nurse record BP/Pulse/Temp/
+  // Weight/SpO2/Blood Sugar as a draft prescription before the doctor sees
+  // the patient, without any access to diagnosis/medications/finalize (the
+  // PUT /prescriptions/draft-vitals endpoint's request schema has no such
+  // fields, so this scope is structural, not just RBAC).
+  'rx.vitals': {
+    admin: 'edit', doctor: 'edit', nurse: 'edit',
+  },
   pharmacy: {
     admin: 'edit', pharmacist: 'edit', inventory_manager: 'view',
   },

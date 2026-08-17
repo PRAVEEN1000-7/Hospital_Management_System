@@ -70,6 +70,10 @@ const WalkInQueue: React.FC = () => {
   // action buttons (Call/Skip/Start/Complete/Refer) correctly disappear
   // instead of rendering controls that would just 403 on click.
   const canActOnQueue = isDoctor && canEdit('appt.queue_display', roles);
+  // Vitals entry (nurse's pre-consultation flow, see NurseVitals.tsx) is
+  // deliberately not gated behind isDoctor — nurse holds rx.vitals: edit,
+  // the same permission the backend endpoint itself requires.
+  const canEnterVitals = canEdit('rx.vitals', roles);
   const today = formatLocalDateISO();
 
   const [queueData, setQueueData] = useState<QueueStatusType | null>(null);
@@ -389,6 +393,15 @@ const WalkInQueue: React.FC = () => {
         navigate(`/prescriptions/new?${params.toString()}`);
       }
     } catch { toast.error('Failed to start consultation'); }
+  };
+
+  const handleEnterVitals = (item: QueueItem) => {
+    const params = new URLSearchParams({
+      patient_id: item.patient_id || '',
+      appointment_id: item.appointment_id || '',
+      queue_id: item.queue_id,
+    });
+    navigate(`/prescriptions/vitals/new?${params.toString()}`);
   };
 
   const handleComplete = async (queueId: string) => {
@@ -1010,6 +1023,13 @@ const WalkInQueue: React.FC = () => {
                           <span className="material-symbols-outlined text-sm">person</span>
                           Info
                         </button>
+                        {canEnterVitals && (
+                          <button onClick={() => handleEnterVitals(nextPatient)}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-primary bg-primary/5 border border-primary/20 rounded-lg hover:bg-primary/10 transition-colors">
+                            <span className="material-symbols-outlined text-sm">vital_signs</span>
+                            Enter Vitals
+                          </button>
+                        )}
                         {canActOnQueue && (
                           <button onClick={() => handleStartConsultation(nextPatient.queue_id)}
                             className="inline-flex items-center gap-1.5 px-5 py-2.5 text-sm font-bold text-white bg-purple-500 rounded-lg hover:bg-purple-600 transition-colors shadow-sm">
@@ -1085,6 +1105,13 @@ const WalkInQueue: React.FC = () => {
                                   className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors">
                                   <span className="material-symbols-outlined text-sm">campaign</span>
                                   Call
+                                </button>
+                              )}
+                              {canEnterVitals && isSelectedDateToday && (
+                                <button onClick={() => handleEnterVitals(item)}
+                                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-primary bg-primary/5 hover:bg-primary/10 rounded-lg transition-colors">
+                                  <span className="material-symbols-outlined text-sm">vital_signs</span>
+                                  Vitals
                                 </button>
                               )}
                               {canActOnQueue && isSelectedDateToday && (
@@ -2407,6 +2434,12 @@ const WalkInQueue: React.FC = () => {
                 <button onClick={() => { handleSendPatientToDoctor(detailItem.queue_id, detailItem.patient_name || 'Patient'); setDetailItem(null); }}
                   className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-teal-500 rounded-lg hover:bg-teal-600 shadow-sm transition-colors">
                   <span className="material-symbols-outlined text-base">send</span> Send to Doctor
+                </button>
+              )}
+              {canEnterVitals && isSelectedDateToday && ['waiting', 'called', 'sent_to_doctor'].includes(detailItem.status) && (
+                <button onClick={() => { handleEnterVitals(detailItem); setDetailItem(null); }}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-primary bg-primary/5 border border-primary/20 rounded-lg hover:bg-primary/10 transition-colors">
+                  <span className="material-symbols-outlined text-base">vital_signs</span> Enter Vitals
                 </button>
               )}
               {canActOnQueue && isSelectedDateToday && (detailItem.status === 'called' || detailItem.status === 'sent_to_doctor') && (

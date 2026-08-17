@@ -100,6 +100,14 @@ MODULE_ROLES: Dict[str, Dict[str, str]] = {
     "rx.new": {
         "admin": _VIEW, "doctor": _EDIT, "visiting_doctor": _EDIT,
     },
+    # Narrow, vitals-only slice of rx.new — lets a nurse record BP/Pulse/
+    # Temp/Weight/SpO2/Blood Sugar as a draft prescription before the doctor
+    # sees the patient, without granting any access to diagnosis/medications/
+    # finalize (the PUT /prescriptions/draft-vitals endpoint's own request
+    # schema has no such fields, so this scope is structural, not just RBAC).
+    "rx.vitals": {
+        "admin": _EDIT, "doctor": _EDIT, "nurse": _EDIT,
+    },
     "pharmacy": {
         "admin": _EDIT, "pharmacist": _EDIT, "inventory_manager": _VIEW,
     },

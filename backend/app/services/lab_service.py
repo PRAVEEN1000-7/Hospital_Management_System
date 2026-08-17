@@ -1032,6 +1032,10 @@ def get_patient_lab_results(db: Session, patient_id: str | uuid.UUID, hospital_i
             items.append({
                 "id": str(i.id),
                 "test_name": i.test_name,
+                # Billing-only override — the report view shows this as the
+                # primary name when set, with test_name kept alongside as
+                # the doctor's catalog reference (see PrescriptionBuilder.tsx).
+                "billed_name": i.billed_name,
                 "status": i.status,
                 "parameters": parameters,
                 "result_notes": i.result_notes,

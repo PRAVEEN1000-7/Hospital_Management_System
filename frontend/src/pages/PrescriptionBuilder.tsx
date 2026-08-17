@@ -1880,7 +1880,12 @@ const PrescriptionBuilder: React.FC = () => {
                               </tr>
                             )) : [(
                               <tr key={item.id}>
-                                <td className="px-3 py-1.5 text-slate-700">{item.test_name}</td>
+                                <td className="px-3 py-1.5 text-slate-700">
+                                  {item.billed_name || item.test_name}
+                                  {item.billed_name && item.billed_name !== item.test_name && (
+                                    <span className="block text-xs text-slate-400">Catalog reference: {item.test_name}</span>
+                                  )}
+                                </td>
                                 <td className="px-3 py-1.5 text-slate-400 italic" colSpan={3}>Pending</td>
                               </tr>
                             )]

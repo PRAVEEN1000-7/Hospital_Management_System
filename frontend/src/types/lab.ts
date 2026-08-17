@@ -234,6 +234,7 @@ export interface LabDashboard {
 export interface PatientLabResultItem {
   id: string;
   test_name: string;
+  billed_name?: string | null;
   status: LabItemStatus;
   parameters: LabResultParameter[];
   result_notes?: string | null;

@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import labService from '../../services/labService';
-import type { LabOrder, LabOrderItem, LabSale, LabTest } from '../../types/lab';
+import type { LabOrder, LabOrderItem, LabSale } from '../../types/lab';
 import type { PaymentMode } from '../../types/billing';
 import { useToast } from '../../contexts/ToastContext';
-import SearchableSelect, { type SuggestionOption } from '../../components/common/SearchableSelect';
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
@@ -29,12 +28,6 @@ const LabCollectPayment: React.FC = () => {
   const [payAmount, setPayAmount] = useState(0);
   const [saving, setSaving] = useState(false);
 
-  // ── Item test picker — lets staff correct which catalog test a line was
-  // ordered against, right on this screen, before payment is collected.
-  const [labTests, setLabTests] = useState<LabTest[]>([]);
-  const [editingItemId, setEditingItemId] = useState<string | null>(null);
-  const [itemSaving, setItemSaving] = useState(false);
-
   // ── Billing amount/name — the catalog carries no price at all, so every
   // item starts at ₹0 and staff enters the real amount (and, optionally, a
   // billing-only display name) here before payment can be collected.
@@ -42,10 +35,6 @@ const LabCollectPayment: React.FC = () => {
   const [billingNameDraft, setBillingNameDraft] = useState('');
   const [billingPriceDraft, setBillingPriceDraft] = useState(0);
   const [billingSaving, setBillingSaving] = useState(false);
-
-  useEffect(() => {
-    labService.getTests(1, 500).then((res) => setLabTests(res.data)).catch(() => { /* catalog picker just won't populate */ });
-  }, []);
 
   useEffect(() => {
     if (!orderId) return;
@@ -74,7 +63,7 @@ const LabCollectPayment: React.FC = () => {
     : 0;
 
   // Mirrors the backend's edit-boundary rule exactly (see
-  // lab_service.update_lab_order_item_test) so the edit affordance never
+  // lab_service.update_lab_order_item_billing) so the edit affordance never
   // shows for a case the API would reject anyway.
   const itemEditLockReason = !order
     ? null
@@ -84,33 +73,6 @@ const LabCollectPayment: React.FC = () => {
         ? 'Payment has been collected — items are locked'
         : null;
   const canEditItems = !itemEditLockReason;
-
-  const handleItemTestChange = async (itemId: string, labTestId: string) => {
-    if (!orderId || !labTestId) return;
-    setItemSaving(true);
-    try {
-      await labService.updateItemTest(orderId, itemId, labTestId);
-      // Re-fetch both the order and the sale (same pair the initial load
-      // effect fetches) so the Items list AND the Subtotal/Grand
-      // Total/Balance summary stay consistent with each other.
-      const [o, s] = await Promise.all([
-        labService.getOrder(orderId),
-        labService.getOrCreateSale(orderId),
-      ]);
-      setOrder(o);
-      setSale(s);
-      // Re-clamp the amount-received-now field to the (possibly changed)
-      // balance — same Math.min pattern the input's onChange uses below, so
-      // it never disagrees with the refreshed summary panel.
-      setPayAmount((prev) => Math.min(prev, Number(s.balance_amount) || 0));
-      toast.success('Item updated');
-    } catch (err: any) {
-      toast.error(err?.response?.data?.detail || 'Failed to update item');
-    } finally {
-      setItemSaving(false);
-      setEditingItemId(null);
-    }
-  };
 
   const startEditBilling = (item: LabOrderItem) => {
     setEditingBillingItemId(item.id);
@@ -198,73 +160,35 @@ const LabCollectPayment: React.FC = () => {
           <div className="divide-y divide-slate-100">
             {order.items.map((item) => (
               <div key={item.id} className="py-3 text-sm">
-                {editingItemId === item.id ? (
+                {editingBillingItemId === item.id ? (
                   <div className="flex items-center gap-2">
-                    <div className="flex-1">
-                      <SearchableSelect
-                        value={item.test_name}
-                        onChange={(_value, metadata) => {
-                          const id = metadata?.id ? (metadata.id as string) : '';
-                          if (id) handleItemTestChange(item.id, id);
-                        }}
-                        suggestions={labTests.map((t): SuggestionOption => ({
-                          id: t.id,
-                          label: t.name,
-                          sublabel: t.code,
-                          metadata: { id: t.id },
-                        }))}
-                        placeholder="Search test to switch to..."
-                        allowManualEntry={false}
-                        disabled={itemSaving}
-                      />
-                    </div>
-                    <button type="button" onClick={() => setEditingItemId(null)} disabled={itemSaving}
+                    <input
+                      type="text"
+                      value={billingNameDraft}
+                      onChange={(e) => setBillingNameDraft(e.target.value)}
+                      placeholder={item.test_name}
+                      disabled={billingSaving}
+                      autoFocus
+                      className="flex-1 px-2.5 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary"
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={billingPriceDraft || ''}
+                      placeholder="0.00"
+                      disabled={billingSaving}
+                      onChange={(e) => setBillingPriceDraft(parseFloat(e.target.value) || 0)}
+                      className="w-28 px-2.5 py-1.5 text-sm text-right border border-slate-200 rounded-lg focus:outline-none focus:border-primary"
+                    />
+                    <button type="button" onClick={() => saveBilling(item.id)} disabled={billingSaving} title="Save"
+                      className="text-emerald-500 hover:text-emerald-600 disabled:opacity-50">
+                      <span className="material-symbols-outlined text-lg">check</span>
+                    </button>
+                    <button type="button" onClick={cancelEditBilling} disabled={billingSaving} title="Cancel"
                       className="text-slate-400 hover:text-slate-600 disabled:opacity-50">
                       <span className="material-symbols-outlined text-lg">close</span>
                     </button>
-                  </div>
-                ) : editingBillingItemId === item.id ? (
-                  <div className="space-y-2">
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_140px]">
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Billing Name</label>
-                        <input
-                          type="text"
-                          value={billingNameDraft}
-                          onChange={(e) => setBillingNameDraft(e.target.value)}
-                          placeholder={item.test_name}
-                          disabled={billingSaving}
-                          className="w-full px-2.5 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Amount (₹)</label>
-                        <input
-                          type="number"
-                          min={0}
-                          step="0.01"
-                          value={billingPriceDraft || ''}
-                          placeholder="0.00"
-                          disabled={billingSaving}
-                          onChange={(e) => setBillingPriceDraft(parseFloat(e.target.value) || 0)}
-                          className="w-full px-2.5 py-1.5 text-sm text-right border border-slate-200 rounded-lg focus:outline-none focus:border-primary"
-                        />
-                      </div>
-                    </div>
-                    <p className="text-xs text-slate-400">
-                      Catalog test: {item.test_name}. This name/amount is only used for the invoice and
-                      billing records — the doctor's report always shows the catalog test as-is.
-                    </p>
-                    <div className="flex justify-end gap-2">
-                      <button type="button" onClick={cancelEditBilling} disabled={billingSaving}
-                        className="px-3 py-1 text-xs font-semibold text-slate-500 hover:bg-slate-100 rounded disabled:opacity-50">
-                        Cancel
-                      </button>
-                      <button type="button" onClick={() => saveBilling(item.id)} disabled={billingSaving}
-                        className="px-3 py-1 text-xs font-semibold text-white bg-primary rounded hover:bg-primary/90 disabled:opacity-50">
-                        {billingSaving ? 'Saving…' : 'Save'}
-                      </button>
-                    </div>
                   </div>
                 ) : (
                   <div className="flex justify-between items-center">
@@ -272,25 +196,14 @@ const LabCollectPayment: React.FC = () => {
                       {item.billed_name || item.test_name}
                       <button
                         type="button"
-                        onClick={() => canEditItems && setEditingItemId(item.id)}
-                        disabled={!canEditItems}
-                        title={itemEditLockReason || 'Change test'}
-                        className={canEditItems
-                          ? 'text-slate-300 hover:text-primary'
-                          : 'text-slate-200 cursor-not-allowed'}
-                      >
-                        <span className="material-symbols-outlined text-base align-middle">swap_horiz</span>
-                      </button>
-                      <button
-                        type="button"
                         onClick={() => canEditItems && startEditBilling(item)}
                         disabled={!canEditItems}
-                        title={itemEditLockReason || 'Set billing amount / name'}
+                        title={itemEditLockReason || 'Edit name / amount'}
                         className={canEditItems
                           ? 'text-slate-300 hover:text-primary'
                           : 'text-slate-200 cursor-not-allowed'}
                       >
-                        <span className="material-symbols-outlined text-base align-middle">edit_note</span>
+                        <span className="material-symbols-outlined text-base align-middle">edit</span>
                       </button>
                     </span>
                     <span className={`font-medium ${Number(item.price) > 0 ? 'text-slate-900' : 'text-amber-600'}`}>

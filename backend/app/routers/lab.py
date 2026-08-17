@@ -366,8 +366,20 @@ async def get_lab_order_pdf(
             </tr>""")
         return "".join(rows)
 
+    def _test_heading(item) -> str:
+        display_name = _esc(item.billed_name or item.test_name)
+        # billed_name (set at billing) is the primary heading once present;
+        # the catalog test_name stays visible underneath, in reference to
+        # what the doctor originally ordered, exactly as it is in the DB.
+        if item.billed_name and item.billed_name != item.test_name:
+            return (
+                f'<p class="section-title">{display_name}'
+                f'<span class="catalog-ref">Catalog reference: {_esc(item.test_name)}</span></p>'
+            )
+        return f'<p class="section-title">{display_name}</p>'
+
     tests_html = "".join(
-        f"""<p class="section-title">{_esc(item.test_name)}</p>
+        f"""{_test_heading(item)}
         <table>
             <thead><tr><th>Parameter</th><th class="right">Result</th><th>Unit</th><th>Reference Range</th></tr></thead>
             <tbody>{_item_rows(item)}</tbody>
@@ -405,6 +417,7 @@ th {{ color:#64748b; font-weight:600; font-size:12px; }}
 .flag-high, .flag-low {{ color:#b45309; font-weight:700; }}
 .flag-abnormal {{ color:#b91c1c; font-weight:700; }}
 .section-title {{ font-size:16px; font-weight:bold; color:#0284c7; margin:24px 0 4px; padding-bottom:4px; border-bottom:2px solid #e2e8f0; }}
+.catalog-ref {{ display:block; font-size:11px; font-weight:normal; color:#94a3b8; margin-top:2px; }}
 .status {{ font-size:12px; font-weight:bold; text-transform:uppercase; }}
 .status-finalized {{ color:#166534; }}
 .status-completed {{ color:#92400e; }}

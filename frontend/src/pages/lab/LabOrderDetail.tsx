@@ -383,7 +383,12 @@ const LabOrderDetail: React.FC = () => {
               return (
                 <div key={item.id} className="border border-slate-200 rounded-lg p-4">
                   <div className="flex items-center justify-between mb-3">
-                    <div className="font-medium text-slate-900">{item.test_name}</div>
+                    <div>
+                      <div className="font-medium text-slate-900">{item.billed_name || item.test_name}</div>
+                      {item.billed_name && item.billed_name !== item.test_name && (
+                        <div className="text-xs text-slate-400">Catalog reference: {item.test_name}</div>
+                      )}
+                    </div>
                     <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium capitalize ${
                       done ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
                     }`}>

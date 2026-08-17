@@ -828,21 +828,23 @@ PUBLIC_IP=$(curl -4 -s ifconfig.me)
 echo "VITE_API_BASE_URL=http://$PUBLIC_IP/api/v1" > .env
 ```
 
-### 17.2 — Grant Nginx Read Access (First Deploy Only)
+### 17.2 — Prepare Web Root (First Deploy Only)
 
-`vite.config.ts` builds into `frontend/dist` (Vite's normal default), and Nginx is
-configured to serve directly from that path — no `cp` step needed. Since `frontend/dist`
-lives under your own `$HOME`, nginx (running as `www-data`) needs traversal permission
-down to it — `$HOME` defaults to `750` on most distros, which would otherwise block it
-entirely:
+`vite.config.ts` builds directly into `/var/www/hms` (no `cp` step needed).
+Before the first build, set up the directory permissions so your user can write there:
 
 ```bash
-chmod o+rx "$HOME" ~/Hospital_Management_System ~/Hospital_Management_System/frontend
+sudo mkdir -p /var/www/hms
+sudo chown -R root:$(whoami) /var/www/hms
+sudo chmod -R 775 /var/www/hms
 ```
 
-**What this does:** grants `others` (i.e. `www-data`) execute ("traverse") permission on
-each directory in the path — not write access, and not a change to `frontend/dist`
-itself (the build step below handles that).
+**What this does:**
+| Who | Permission | Why |
+|-----|------------|-----|
+| `root` (owner) | full | system ownership |
+| your user group | read + write + execute | build can write files here |
+| others (nginx/www-data) | read + execute | nginx can serve files, cannot modify them |
 
 > This is a one-time step. The deploy script (`deploy.sh`) runs it automatically on every deploy — it is safe to re-run (idempotent).
 
@@ -851,16 +853,13 @@ itself (the build step below handles that).
 ```bash
 npm install
 npm run build
-chmod -R o+rX dist
 ```
 
-Vite reads `outDir: 'dist'` from `vite.config.ts` and writes the compiled bundle to
-`frontend/dist`. The `chmod` makes the freshly-built files/directories readable by
-`www-data`. No Node.js needed at runtime.
+Vite reads `outDir: '/var/www/hms'` from `vite.config.ts` and writes the compiled bundle directly to `/var/www/hms`. No Node.js needed at runtime. No manual `cp` required.
 
 ### 17.4 — Serve via Nginx
 
-The files are already in `frontend/dist` after the build. Nginx (configured in [Section 18](#18-production-nginx-reverse-proxy)) serves them as static assets directly from there. No need to run `npm run dev` in production.
+The files are already in `/var/www/hms` after the build. Nginx (configured in [Section 18](#18-production-nginx-reverse-proxy)) serves them as static assets. No need to run `npm run dev` in production.
 
 > **Every future deploy:** `git pull` → `npm run build` → `sudo systemctl restart hms-backend` — that's it.
 
@@ -1043,12 +1042,9 @@ CORS_ORIGINS=["https://yourdomain.com"]
 VITE_API_BASE_URL=https://yourdomain.com/api/v1
 ```
 
-Rebuild frontend (outputs to `frontend/dist`, which Nginx serves directly) and restart backend:
+Rebuild frontend (writes directly to `/var/www/hms`) and restart backend:
 ```bash
-cd ~/Hospital_Management_System/frontend && npm run build && chmod -R o+rX dist
-sudo systemctl restart hms-backend
-sudo systemctl reload nginx
-```
+cd ~/Hospital_Management_System/frontend && npm run build
 
 ---
 
@@ -1059,6 +1055,9 @@ If you already have an existing database and are updating to a newer version, ru
 ### Add Emergency Contact Country Code
 ```sql
 ALTER TABLE patients ADD COLUMN emergency_contact_country_code VARCHAR(5) DEFAULT '+91';
+```
+sudo systemctl restart hms-backend
+sudo systemctl reload nginx
 ```
 
 ---
@@ -1335,7 +1334,7 @@ With systemd `enable`, this happens automatically on boot.
 
 | Error | Cause | Fix |
 |-------|-------|-----|
-| Site loads blank / Nginx `403 Forbidden` on `/` | `www-data` can't traverse into `frontend/dist` (`$HOME` defaults to `750`) | Run Section 17.2 permission setup once: `chmod o+rx "$HOME" ~/Hospital_Management_System ~/Hospital_Management_System/frontend` |
+| `EACCES: permission denied /var/www/hms` during build | `/var/www/hms` owned by root | Run Section 17.2 permission setup once: `sudo chown -R root:$(whoami) /var/www/hms && sudo chmod -R 775 /var/www/hms` |
 | Not loading on public IP | Vite bound to localhost | Use `--host 0.0.0.0` |
 | `[::1]:3000` in ss output | IPv6 only | Use `--host 0.0.0.0` |
 | Vite HMR WebSocket error | HMR host misconfigured | Add `hmr.host` in `vite.config.ts` |

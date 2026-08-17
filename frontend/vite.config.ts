@@ -5,7 +5,7 @@ import path from 'path'
 export default defineConfig({
   plugins: [react()],
   build: {
-    outDir: 'dist',
+    outDir: '/var/www/hms',
     emptyOutDir: true,
   },
   resolve: {

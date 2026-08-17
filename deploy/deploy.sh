@@ -4,10 +4,8 @@
 # Run this on the server after: git pull
 # Usage: bash deploy/deploy.sh   (run from the project root)
 #
-# NOTE: vite.config.ts builds to frontend/dist (Vite's normal default).
-#       Nginx is pointed at that path directly — no cp step needed. Read
-#       traversal for nginx (www-data) up to frontend/dist is granted
-#       automatically in step 4 on every run (idempotent).
+# NOTE: vite.config.ts builds directly to /var/www/hms — no cp step needed.
+#       Permissions are set automatically in step 4 on every run (idempotent).
 # =============================================================================
 
 set -e  # stop on any error
@@ -15,6 +13,7 @@ set -e  # stop on any error
 PROJECT_DIR="$HOME/projects/Hospital_Management_System"
 BACKEND_DIR="$PROJECT_DIR/backend"
 FRONTEND_DIR="$PROJECT_DIR/frontend"
+WEB_ROOT="/var/www/hms"
 SERVER_IP=$(curl -s ifconfig.me 2>/dev/null || hostname -I | awk '{print $1}')
 
 echo "============================================"
@@ -59,70 +58,36 @@ cd "$PROJECT_DIR"
 echo ""
 echo "[3/7] Running database migration..."
 
-# Every file here is idempotent (IF NOT EXISTS / ON CONFLICT DO NOTHING
-# throughout) — safe to re-run on every deploy, on a database that already
-# has data. This used to be just 01_full_schema.sql + 02_eye_hospital_updates.sql,
-# which meant every dated/numbered migration added since (05 through the
-# newest 2026-* file) never reached production through this script — a real
-# incident (Lab Test Packages shipped in code+committed, but never appeared
-# live because its migration was never applied). New migration files MUST be
-# added to this list — nothing here discovers them automatically.
-#
-# Deliberately excluded: 99_drop_database.sql (destructive), and
-# workforce_attendance_module_combined.sql / security_token_revocation_combined.sql
-# (one-time patches for pre-01_full_schema.sql databases only — see
-# database_hole/README.md; NOT meant for routine replay here).
-for f in \
-    01_full_schema.sql \
-    02_eye_hospital_updates.sql \
-    05_schema_structure.sql \
-    07_queue_display_screens.sql \
-    08_role_permission_overrides.sql \
-    09_grn_edit_and_opd_assignment.sql \
-    10_lab_test_templates_batch2.sql \
-    11_lab_technician_role.sql \
-    12_lab_test_templates_batch3.sql \
-    13_lab_test_fasting_blood_sugar.sql \
-    14_optional_doctor_id.sql \
-    15_clinical_note_ngrams.sql \
-    16_ngram_field_type_and_medicine_columns.sql \
-    2026-08-09_medicine_bulk_upload_fields.sql \
-    2026-08-12_appointment_followup_label.sql \
-    2026-08-12_gst_purchase_order.sql \
-    2026-08-13_general_billing_module.sql \
-    2026-08-14_lab_test_panels.sql \
-    2026-08-15_medicine_batch_mrp_column.sql \
-    2026-08-17_lab_order_item_billed_name.sql \
-; do
-    echo "  Applying $f..."
-    psql -U hms_user -d hms_db -f "database_hole/$f"
-done
+# Both files are idempotent (IF NOT EXISTS / ON CONFLICT DO NOTHING throughout)
+# — safe to re-run on every deploy, on a database that already has data.
+psql -U hms_user -d hms_db -f database_hole/01_full_schema.sql
+psql -U hms_user -d hms_db -f database_hole/02_eye_hospital_updates.sql
 echo "  Migration complete"
 
-# ── 4. Grant nginx read access into the project directory ───────────────────
+# ── 4. Prepare web root ──────────────────────────────────────────────────────
 echo ""
-echo "[4/7] Preparing frontend/dist permissions..."
+echo "[4/7] Preparing web root permissions..."
 
-# nginx (runs as www-data, not in your user's group) needs execute ("traverse")
-# permission on every directory from $HOME down to frontend/dist, plus
-# read+execute on frontend/dist itself so it can serve the built files.
-# $HOME defaults to 750 on most distros, which would otherwise block www-data
-# entirely. This only opens *traversal*, not write access — same pattern
-# already used for backend/uploads served the same way. Idempotent.
-chmod o+rx "$HOME" "$PROJECT_DIR" "$FRONTEND_DIR" 2>/dev/null || true
-echo "  Traversal permission granted: $HOME -> $FRONTEND_DIR"
+# Create directory if it doesn't exist (first deploy only)
+sudo mkdir -p "$WEB_ROOT"
+
+# root owns the directory; hmsadmin group gets full write access.
+# nginx (runs as www-data) gets read+execute via the "others" bit (775).
+# This is idempotent — safe to run on every deploy.
+sudo chown -R root:$(whoami) "$WEB_ROOT"
+sudo chmod -R 775 "$WEB_ROOT"
+echo "  $WEB_ROOT — owner: root:$(whoami), mode: 775"
 
 # ── 5. Frontend build ────────────────────────────────────────────────────────
 echo ""
 echo "[5/7] Building frontend..."
-# vite.config.ts has outDir: 'dist' (Vite's default) — builds into
-# frontend/dist, same directory nginx is configured to serve from directly.
+# vite.config.ts has outDir: '/var/www/hms' + emptyOutDir: true
+# The build writes directly to the web root — no cp needed.
 
 cd "$FRONTEND_DIR"
 npm install --silent
 npm run build
-chmod -R o+rX "$FRONTEND_DIR/dist"
-echo "  Build complete → $FRONTEND_DIR/dist"
+echo "  Build complete → $WEB_ROOT"
 cd "$PROJECT_DIR"
 
 # ── 6. Nginx install + config ────────────────────────────────────────────────
@@ -131,10 +96,7 @@ echo "[6/7] Configuring Nginx..."
 
 sudo apt-get install -y nginx -qq
 
-# nginx.conf ships with a __FRONTEND_DIST__ placeholder instead of a hardcoded
-# path, since frontend/dist now lives under this deploy's own $HOME rather
-# than a fixed system path like /var/www/hms.
-sed "s|__FRONTEND_DIST__|$FRONTEND_DIR/dist|g" "$PROJECT_DIR/deploy/nginx.conf" | sudo tee /etc/nginx/sites-available/hms > /dev/null
+sudo cp "$PROJECT_DIR/deploy/nginx.conf" /etc/nginx/sites-available/hms
 sudo ln -sf /etc/nginx/sites-available/hms /etc/nginx/sites-enabled/hms
 sudo rm -f /etc/nginx/sites-enabled/default
 sudo nginx -t

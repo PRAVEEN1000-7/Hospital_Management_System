@@ -227,9 +227,9 @@ const InvoiceList: React.FC = () => {
                     <td className="px-4 py-3 text-center">
                       <button
                         onClick={e => { e.stopPropagation(); navigate(`/billing/invoices/${inv.id}`); }}
-                        className="text-primary hover:underline text-xs font-semibold"
+                        className="inline-flex items-center gap-1 text-primary hover:underline text-xs font-semibold"
                       >
-                        View
+                        <span className="material-symbols-outlined text-sm">visibility</span> View
                       </button>
                     </td>
                   </tr>

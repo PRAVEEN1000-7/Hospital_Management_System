@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
@@ -6,6 +6,7 @@ import refundService from '../services/refundService';
 import type { RefundListItem, RefundStatus } from '../types/billing';
 import { formatDateTime } from '../utils/calendarDate';
 import { canEdit } from '../config/modulePermissions';
+import { htmlStringToPdf } from '../utils/pdf';
 
 const STATUS_COLORS: Record<RefundStatus, string> = {
   pending: 'bg-amber-100 text-amber-700',
@@ -48,6 +49,14 @@ const RefundList: React.FC = () => {
   const [showProcessModal, setShowProcessModal] = useState(false);
   const [processTargetId, setProcessTargetId] = useState('');
   const [processRef, setProcessRef] = useState('');
+
+  // View Receipt modal — Print/Download live at the top-right of this modal
+  // instead of a direct action, matching pharmacy/SalesList.tsx's pattern.
+  const [viewingRefund, setViewingRefund] = useState<RefundListItem | null>(null);
+  const [viewHtml, setViewHtml] = useState<string | null>(null);
+  const [viewLoading, setViewLoading] = useState(false);
+  const [downloadingReceipt, setDownloadingReceipt] = useState(false);
+  const viewIframeRef = useRef<HTMLIFrameElement>(null);
 
   const role = user?.roles?.[0];
   // Approve/Reject is a deliberately narrower, hardcoded admin-only tier —
@@ -104,17 +113,39 @@ const RefundList: React.FC = () => {
     } finally { setProcessing(null); }
   };
 
-  const handlePrintReceipt = async (refundId: string) => {
+  const openViewReceipt = async (refund: RefundListItem) => {
+    setViewingRefund(refund);
+    setViewHtml(null);
+    setViewLoading(true);
     try {
-      const html = await refundService.getPdfHtml(refundId);
-      const win = window.open('', '_blank');
-      if (win) {
-        win.document.write(html);
-        win.document.close();
-        setTimeout(() => win.print(), 500);
-      }
+      const html = await refundService.getPdfHtml(refund.id);
+      setViewHtml(html);
     } catch {
       showToast('error', 'Failed to generate refund receipt');
+      setViewingRefund(null);
+    } finally {
+      setViewLoading(false);
+    }
+  };
+
+  const closeViewReceipt = () => {
+    setViewingRefund(null);
+    setViewHtml(null);
+  };
+
+  const handlePrintReceipt = () => {
+    viewIframeRef.current?.contentWindow?.print();
+  };
+
+  const handleDownloadReceipt = async () => {
+    if (!viewingRefund || !viewHtml) return;
+    setDownloadingReceipt(true);
+    try {
+      await htmlStringToPdf(viewHtml, `Refund_Receipt_${viewingRefund.refund_number}.pdf`);
+    } catch {
+      showToast('error', 'Failed to download refund receipt');
+    } finally {
+      setDownloadingReceipt(false);
     }
   };
 
@@ -249,10 +280,10 @@ const RefundList: React.FC = () => {
                           )}
                           {r.status === 'processed' && (
                             <button
-                              onClick={() => handlePrintReceipt(r.id)}
+                              onClick={() => openViewReceipt(r)}
                               className="px-2 py-1 bg-slate-50 text-slate-600 border border-slate-200 rounded text-xs font-medium hover:bg-slate-100 flex items-center gap-1"
                             >
-                              <span className="material-symbols-outlined text-[14px]">print</span> Receipt
+                              <span className="material-symbols-outlined text-[14px]">visibility</span> View
                             </button>
                           )}
                           {r.status === 'rejected' && (
@@ -354,6 +385,54 @@ const RefundList: React.FC = () => {
               >
                 Cancel
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* View Receipt Modal — Print/Download at the top-right, matching
+          pharmacy/SalesList.tsx's pattern. */}
+      {viewingRefund && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={closeViewReceipt}>
+          <div className="flex h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Refund Receipt</h3>
+                <p className="text-sm text-slate-500">{viewingRefund.refund_number}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handlePrintReceipt}
+                  disabled={!viewHtml}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 disabled:opacity-50"
+                >
+                  <span className="material-symbols-outlined text-sm">print</span> Print
+                </button>
+                <button
+                  onClick={handleDownloadReceipt}
+                  disabled={!viewHtml || downloadingReceipt}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-primary bg-primary/5 border border-primary/20 rounded-lg hover:bg-primary/10 disabled:opacity-50"
+                >
+                  <span className="material-symbols-outlined text-sm">download</span>
+                  {downloadingReceipt ? 'Preparing…' : 'Download'}
+                </button>
+                <button onClick={closeViewReceipt} className="ml-1 text-slate-400 hover:text-slate-600">
+                  <span className="material-symbols-outlined">close</span>
+                </button>
+              </div>
+            </div>
+            <div className="min-h-0 flex-1 bg-slate-100">
+              {viewLoading ? (
+                <div className="flex h-full items-center justify-center">
+                  <span className="material-symbols-outlined animate-spin text-3xl text-primary">progress_activity</span>
+                </div>
+              ) : viewHtml ? (
+                <iframe
+                  ref={viewIframeRef}
+                  srcDoc={viewHtml}
+                  title={`Refund Receipt ${viewingRefund.refund_number}`}
+                  className="h-full w-full border-0 bg-white"
+                />
+              ) : null}
             </div>
           </div>
         </div>

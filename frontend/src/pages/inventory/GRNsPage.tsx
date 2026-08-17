@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '../../contexts/ToastContext';
 import inventoryService from '../../services/inventoryService';
@@ -27,6 +27,12 @@ const GRNsPage: React.FC = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [detailGRN, setDetailGRN] = useState<GoodsReceiptNote | null>(null);
+  // Print/Download for the detail modal's header — fetched alongside the
+  // modal opening, matching pharmacy/SalesList.tsx's View pattern (the
+  // modal's structured summary itself is unrelated/unchanged).
+  const [detailHtml, setDetailHtml] = useState<string | null>(null);
+  const [downloadingDoc, setDownloadingDoc] = useState(false);
+  const detailIframeRef = useRef<HTMLIFrameElement>(null);
 
   const fetchGRNs = useCallback(async () => {
     setLoading(true);
@@ -55,24 +61,42 @@ const GRNsPage: React.FC = () => {
       await inventoryService.updateGRN(grn.id, { status: newStatus });
       toast.success(`GRN ${grn.grn_number} → ${newStatus}`);
       fetchGRNs();
-      if (detailGRN?.id === grn.id) setDetailGRN(null);
+      if (detailGRN?.id === grn.id) closeGRNDetail();
     } catch {
       toast.error('Failed to update GRN status');
     }
   };
 
-  // BRD 5.5 — download a single GRN as a proper document.
-  const [downloadingGrnId, setDownloadingGrnId] = useState<string | null>(null);
-  const handleDownloadGrn = async (grn: GoodsReceiptNote) => {
-    if (downloadingGrnId) return;
-    setDownloadingGrnId(grn.id);
+  const openGRNDetail = async (grn: GoodsReceiptNote) => {
+    setDetailGRN(grn);
+    setDetailHtml(null);
     try {
       const html = await inventoryService.getGRNPdfHtml(grn.id);
-      await htmlStringToPdf(html, `GRN_${grn.grn_number}.pdf`);
+      setDetailHtml(html);
+    } catch {
+      toast.error('Failed to load GRN document');
+    }
+  };
+
+  const closeGRNDetail = () => {
+    setDetailGRN(null);
+    setDetailHtml(null);
+  };
+
+  const handlePrintGrn = () => {
+    detailIframeRef.current?.contentWindow?.print();
+  };
+
+  // BRD 5.5 — download a single GRN as a proper document.
+  const handleDownloadGrn = async () => {
+    if (!detailGRN || !detailHtml) return;
+    setDownloadingDoc(true);
+    try {
+      await htmlStringToPdf(detailHtml, `GRN_${detailGRN.grn_number}.pdf`);
     } catch {
       toast.error('Failed to download GRN');
     } finally {
-      setDownloadingGrnId(null);
+      setDownloadingDoc(false);
     }
   };
 
@@ -152,7 +176,7 @@ const GRNsPage: React.FC = () => {
                 {grns.map(grn => (
                   <tr key={grn.id} className="hover:bg-slate-50/50 transition-colors">
                     <td className="px-4 py-4">
-                      <button onClick={() => setDetailGRN(grn)} className="text-sm font-semibold text-primary hover:underline">{grn.grn_number}</button>
+                      <button onClick={() => openGRNDetail(grn)} className="text-sm font-semibold text-primary hover:underline">{grn.grn_number}</button>
                     </td>
                     <td className="px-4 py-4 text-sm text-slate-700">{grn.po_number || '—'}</td>
                     <td className="px-4 py-4 text-sm text-slate-600">{formatDateOnly(grn.receipt_date)}</td>
@@ -185,7 +209,7 @@ const GRNsPage: React.FC = () => {
                             </button>
                           </>
                         )}
-                        <button onClick={() => setDetailGRN(grn)}
+                        <button onClick={() => openGRNDetail(grn)}
                           className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
                           title="View full receipt details and line items">
                           <span className="material-symbols-outlined text-[15px]">visibility</span> View
@@ -194,13 +218,6 @@ const GRNsPage: React.FC = () => {
                           className="inline-flex items-center gap-1 p-1.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
                           title="Correct batch #, quantity, dates, or discrepancy notes">
                           <span className="material-symbols-outlined text-[15px]">edit</span>
-                        </button>
-                        <button onClick={() => handleDownloadGrn(grn)} disabled={downloadingGrnId === grn.id}
-                          className="inline-flex items-center gap-1 p-1.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors disabled:opacity-50"
-                          title="Download this GRN as a PDF">
-                          <span className={`material-symbols-outlined text-[15px] ${downloadingGrnId === grn.id ? 'animate-spin' : ''}`}>
-                            {downloadingGrnId === grn.id ? 'progress_activity' : 'download'}
-                          </span>
                         </button>
                       </div>
                     </td>
@@ -226,17 +243,46 @@ const GRNsPage: React.FC = () => {
       {/* Detail Modal */}
       {detailGRN && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setDetailGRN(null)} />
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={closeGRNDetail} />
           <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between rounded-t-2xl z-10">
               <div>
                 <h2 className="text-lg font-bold text-slate-900">{detailGRN.grn_number}</h2>
                 <p className="text-sm text-slate-500">PO: {detailGRN.po_number || '—'}</p>
               </div>
-              <button onClick={() => setDetailGRN(null)} className="p-1 hover:bg-slate-100 rounded-lg transition-colors">
-                <span className="material-symbols-outlined text-slate-500">close</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handlePrintGrn}
+                  disabled={!detailHtml}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 disabled:opacity-50"
+                >
+                  <span className="material-symbols-outlined text-sm">print</span> Print
+                </button>
+                <button
+                  onClick={handleDownloadGrn}
+                  disabled={!detailHtml || downloadingDoc}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-primary bg-primary/5 border border-primary/20 rounded-lg hover:bg-primary/10 disabled:opacity-50"
+                >
+                  <span className="material-symbols-outlined text-sm">download</span>
+                  {downloadingDoc ? 'Preparing…' : 'Download'}
+                </button>
+                <button onClick={closeGRNDetail} className="p-1 hover:bg-slate-100 rounded-lg transition-colors">
+                  <span className="material-symbols-outlined text-slate-500">close</span>
+                </button>
+              </div>
             </div>
+            {/* Off-screen (not display:none) iframe carrying the print-ready
+                HTML for the Print button above — the modal body itself
+                stays the structured summary view below, unchanged. Kept
+                off-screen rather than hidden so the browser actually lays
+                it out; some browsers won't print a display:none iframe. */}
+            <iframe
+              ref={detailIframeRef}
+              srcDoc={detailHtml || undefined}
+              title={`GRN ${detailGRN.grn_number}`}
+              className="fixed -left-[9999px] top-0 h-[1px] w-[1px] border-0"
+              aria-hidden="true"
+            />
             <div className="p-6 space-y-6">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 <div>

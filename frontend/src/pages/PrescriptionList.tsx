@@ -6,7 +6,6 @@ import { useConfirm } from '../contexts/ConfirmContext';
 import prescriptionService from '../services/prescriptionService';
 import { opticalService } from '../services/opticalService';
 import scheduleService from '../services/scheduleService';
-import { htmlStringToPdf } from '../utils/pdf';
 import type { PrescriptionListItem, PaginatedResponse } from '../types/prescription';
 import type { OpticalPrescription } from '../types/optical';
 import type { DoctorOption } from '../types/appointment';
@@ -111,7 +110,6 @@ const PrescriptionList: React.FC = () => {
   const [optPage, setOptPage] = useState(1);
   const [optTotalPages, setOptTotalPages] = useState(0);
   const [optTotal, setOptTotal] = useState(0);
-  const [optDownloadingId, setOptDownloadingId] = useState<string | null>(null);
 
   const role = user?.roles?.[0];
 
@@ -175,35 +173,6 @@ const PrescriptionList: React.FC = () => {
 
   useEffect(() => { fetchOpticalRx(); }, [fetchOpticalRx]);
 
-  const handleOptDownload = async (id: string, rxNum: string) => {
-    if (optDownloadingId) return;
-    setOptDownloadingId(id);
-    try {
-      const html = await opticalService.getPrescriptionPdfUrl(id);
-      await htmlStringToPdf(html, `EyePrescription_${rxNum || id}.pdf`);
-      showToast('success', 'Eye prescription downloaded');
-    } catch {
-      showToast('error', 'Failed to download eye prescription');
-    } finally {
-      setOptDownloadingId(null);
-    }
-  };
-
-  const handleOptPrint = async (id: string) => {
-    const win = window.open('', '_blank');
-    if (!win) { showToast('error', 'Pop-ups are blocked — allow pop-ups for this site to print.'); return; }
-    try {
-      const html = await opticalService.getPrescriptionPdfUrl(id);
-      win.document.open();
-      win.document.write(html);
-      win.document.close();
-      setTimeout(() => { try { win.print(); } catch { /* window may have been closed */ } }, 800);
-    } catch {
-      win.close();
-      showToast('error', 'Failed to print eye prescription');
-    }
-  };
-
   // Debounced search
   const [searchInput, setSearchInput] = useState(() => searchParams.get('search') || '');
   useEffect(() => {
@@ -231,22 +200,6 @@ const PrescriptionList: React.FC = () => {
       setSearchParams({}, { replace: true });
     }
   }, [search, setSearchParams]);
-
-  const [downloadingId, setDownloadingId] = useState<string | null>(null);
-
-  const handleDownload = async (id: string, rxNumber: string) => {
-    if (downloadingId) return;
-    setDownloadingId(id);
-    try {
-      const html = await prescriptionService.getPrescriptionPdfUrl(id, 'en');
-      await htmlStringToPdf(html, `Prescription_${rxNumber || id}.pdf`);
-      showToast('success', 'Prescription downloaded');
-    } catch {
-      showToast('error', 'Failed to download prescription');
-    } finally {
-      setDownloadingId(null);
-    }
-  };
 
   const handleDelete = async (id: string) => {
     const ok = await confirm({
@@ -402,19 +355,8 @@ const PrescriptionList: React.FC = () => {
                         <td className="px-4 py-3 text-right">
                           <div className="flex justify-end items-center gap-1">
                             <button onClick={() => navigate(`/optical/prescriptions/${rx.id}`)}
-                              className="p-1.5 rounded-lg hover:bg-violet-50 text-slate-400 hover:text-violet-600 transition-colors" title="View">
-                              <span className="material-symbols-outlined text-sm">visibility</span>
-                            </button>
-                            <button onClick={() => handleOptPrint(rx.id)}
-                              className="p-1.5 rounded-lg hover:bg-violet-50 text-slate-400 hover:text-violet-600 transition-colors" title="Print">
-                              <span className="material-symbols-outlined text-sm">print</span>
-                            </button>
-                            <button onClick={() => handleOptDownload(rx.id, rx.prescription_number)}
-                              disabled={optDownloadingId === rx.id}
-                              className="p-1.5 rounded-lg hover:bg-violet-50 text-slate-400 hover:text-violet-600 transition-colors disabled:opacity-50" title="Download PDF">
-                              <span className={`material-symbols-outlined text-sm ${optDownloadingId === rx.id ? 'animate-spin' : ''}`}>
-                                {optDownloadingId === rx.id ? 'progress_activity' : 'download'}
-                              </span>
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg hover:bg-violet-50 text-slate-400 hover:text-violet-600 transition-colors text-xs font-semibold" title="View">
+                              <span className="material-symbols-outlined text-sm">visibility</span> View
                             </button>
                           </div>
                         </td>
@@ -582,20 +524,10 @@ const PrescriptionList: React.FC = () => {
                       <div className="flex justify-end gap-1">
                         <button
                           onClick={() => navigate(`/prescriptions/${rx.id}`)}
-                          className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-primary transition-colors"
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-primary transition-colors text-xs font-semibold"
                           title="View"
                         >
-                          <span className="material-symbols-outlined text-sm">visibility</span>
-                        </button>
-                        <button
-                          onClick={() => handleDownload(rx.id, rx.prescription_number)}
-                          disabled={downloadingId === rx.id}
-                          className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-primary transition-colors disabled:opacity-50"
-                          title="Download PDF"
-                        >
-                          <span className={`material-symbols-outlined text-sm ${downloadingId === rx.id ? 'animate-spin' : ''}`}>
-                            {downloadingId === rx.id ? 'progress_activity' : 'download'}
-                          </span>
+                          <span className="material-symbols-outlined text-sm">visibility</span> View
                         </button>
                         {!rx.is_finalized && canEdit('rx.all', user?.roles) && (
                           <>

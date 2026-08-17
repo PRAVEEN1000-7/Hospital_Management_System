@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -47,6 +47,12 @@ const PurchaseOrdersPage: React.FC = () => {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [detailPO, setDetailPO] = useState<PurchaseOrder | null>(null);
+  // Print/Download for the detail modal's header — fetched alongside the
+  // modal opening, matching pharmacy/SalesList.tsx's View pattern (the
+  // modal's structured summary itself is unrelated/unchanged).
+  const [detailHtml, setDetailHtml] = useState<string | null>(null);
+  const [downloadingDoc, setDownloadingDoc] = useState(false);
+  const detailIframeRef = useRef<HTMLIFrameElement>(null);
   const [paymentStatusFilter, setPaymentStatusFilter] = useState('');
   const [sortBy, setSortBy] = useState('created_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -192,17 +198,35 @@ td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
   // BRD 5.4 — download a single PO as a proper document (PO number, vendor,
   // items, tax/total, signatory) via the new backend endpoint, distinct from
   // handleExportPdf's client-built bulk list export above.
-  const [downloadingPoId, setDownloadingPoId] = useState<string | null>(null);
-  const handleDownloadPo = async (po: PurchaseOrder) => {
-    if (downloadingPoId) return;
-    setDownloadingPoId(po.id);
+  const openPODetail = async (po: PurchaseOrder) => {
+    setDetailPO(po);
+    setDetailHtml(null);
     try {
       const html = await inventoryService.getPurchaseOrderPdfHtml(po.id);
-      await htmlStringToPdf(html, `PO_${po.po_number}.pdf`);
+      setDetailHtml(html);
+    } catch {
+      toast.error('Failed to load purchase order document');
+    }
+  };
+
+  const closePODetail = () => {
+    setDetailPO(null);
+    setDetailHtml(null);
+  };
+
+  const handlePrintPo = () => {
+    detailIframeRef.current?.contentWindow?.print();
+  };
+
+  const handleDownloadPo = async () => {
+    if (!detailPO || !detailHtml) return;
+    setDownloadingDoc(true);
+    try {
+      await htmlStringToPdf(detailHtml, `PO_${detailPO.po_number}.pdf`);
     } catch {
       toast.error('Failed to download purchase order');
     } finally {
-      setDownloadingPoId(null);
+      setDownloadingDoc(false);
     }
   };
 
@@ -317,7 +341,7 @@ td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
                 {orders.map(po => (
                   <tr key={po.id} className="hover:bg-slate-50/50 transition-colors">
                     <td className="px-4 py-4">
-                      <button onClick={() => setDetailPO(po)} className="text-sm font-semibold text-primary hover:underline">{po.po_number}</button>
+                      <button onClick={() => openPODetail(po)} className="text-sm font-semibold text-primary hover:underline">{po.po_number}</button>
                       <p className="text-xs text-slate-400">{po.items.length} item(s)</p>
                     </td>
                     <td className="px-4 py-4 text-sm text-slate-700">{po.supplier_name || '—'}</td>
@@ -367,17 +391,10 @@ td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
                             <span className="material-symbols-outlined text-[15px]">cancel</span> Cancel
                           </button>
                         )}
-                        <button onClick={() => setDetailPO(po)}
-                          className="inline-flex items-center gap-1 p-1.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                        <button onClick={() => openPODetail(po)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
                           title="View full order details and line items">
-                          <span className="material-symbols-outlined text-[15px]">visibility</span>
-                        </button>
-                        <button onClick={() => handleDownloadPo(po)} disabled={downloadingPoId === po.id}
-                          className="inline-flex items-center gap-1 p-1.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors disabled:opacity-50"
-                          title="Download this purchase order as a PDF">
-                          <span className={`material-symbols-outlined text-[15px] ${downloadingPoId === po.id ? 'animate-spin' : ''}`}>
-                            {downloadingPoId === po.id ? 'progress_activity' : 'download'}
-                          </span>
+                          <span className="material-symbols-outlined text-[15px]">visibility</span> View
                         </button>
                         {canManagePOs && isAdminUser && !['draft', 'cancelled'].includes(po.status) && (
                           <button onClick={() => navigate(`/inventory/purchase-orders/${po.id}/payments`)}
@@ -410,17 +427,45 @@ td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; }
       {/* Detail Modal */}
       {detailPO && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setDetailPO(null)} />
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={closePODetail} />
           <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between rounded-t-2xl z-10">
               <div>
                 <h2 className="text-lg font-bold text-slate-900">{detailPO.po_number}</h2>
                 <p className="text-sm text-slate-500">{detailPO.supplier_name}</p>
               </div>
-              <button onClick={() => setDetailPO(null)} className="p-1 hover:bg-slate-100 rounded-lg transition-colors">
-                <span className="material-symbols-outlined text-slate-500">close</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handlePrintPo}
+                  disabled={!detailHtml}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 disabled:opacity-50"
+                >
+                  <span className="material-symbols-outlined text-sm">print</span> Print
+                </button>
+                <button
+                  onClick={handleDownloadPo}
+                  disabled={!detailHtml || downloadingDoc}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-primary bg-primary/5 border border-primary/20 rounded-lg hover:bg-primary/10 disabled:opacity-50"
+                >
+                  <span className="material-symbols-outlined text-sm">download</span>
+                  {downloadingDoc ? 'Preparing…' : 'Download'}
+                </button>
+                <button onClick={closePODetail} className="p-1 hover:bg-slate-100 rounded-lg transition-colors">
+                  <span className="material-symbols-outlined text-slate-500">close</span>
+                </button>
+              </div>
             </div>
+            {/* Off-screen (not display:none) iframe carrying the print-ready
+                HTML for the Print button above — kept off-screen rather
+                than hidden so the browser actually lays it out; some
+                browsers won't print a display:none iframe. */}
+            <iframe
+              ref={detailIframeRef}
+              srcDoc={detailHtml || undefined}
+              title={`Purchase Order ${detailPO.po_number}`}
+              className="fixed -left-[9999px] top-0 h-[1px] w-[1px] border-0"
+              aria-hidden="true"
+            />
             <div className="p-6 space-y-6">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 <div>

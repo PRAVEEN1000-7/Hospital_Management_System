@@ -4,7 +4,6 @@ import opticalService from '../../services/opticalService';
 import type { OpticalPrescription } from '../../types/optical';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
-import { htmlStringToPdf } from '../../utils/pdf';
 import { format } from 'date-fns';
 
 const OpticalPrescriptions: React.FC = () => {
@@ -18,7 +17,6 @@ const OpticalPrescriptions: React.FC = () => {
   const canDispense = hasRole('super_admin', 'admin', 'optical_staff');
   const [prescriptions, setPrescriptions] = useState<OpticalPrescription[]>([]);
   const [loading, setLoading] = useState(true);
-  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   const fetchPrescriptions = useCallback(async () => {
     setLoading(true);
@@ -34,33 +32,6 @@ const OpticalPrescriptions: React.FC = () => {
   }, []);
 
   useEffect(() => { fetchPrescriptions(); }, [fetchPrescriptions]);
-
-  const handlePrint = async (id: string) => {
-    // Open synchronously (before any await) to avoid popup blockers.
-    const win = window.open('', '_blank');
-    if (!win) { toast.error('Pop-ups are blocked — allow pop-ups for this site to print.'); return; }
-    try {
-      const html = await opticalService.getPrescriptionPdfUrl(id);
-      win.document.open();
-      win.document.write(html);
-      win.document.close();
-      setTimeout(() => { try { win.print(); } catch { /* window may have been closed */ } }, 800);
-    } catch {
-      win.close();
-      toast.error('Failed to generate print view');
-    }
-  };
-
-  const handleDownload = async (rx: OpticalPrescription) => {
-    if (downloadingId) return;
-    setDownloadingId(rx.id);
-    try {
-      const html = await opticalService.getPrescriptionPdfUrl(rx.id);
-      await htmlStringToPdf(html, `Eye_Prescription_${rx.prescription_number}.pdf`);
-      toast.success('Prescription downloaded');
-    } catch { toast.error('Failed to download prescription'); }
-    finally { setDownloadingId(null); }
-  };
 
   return (
     <div className="space-y-6">
@@ -132,16 +103,8 @@ const OpticalPrescriptions: React.FC = () => {
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
                       <button onClick={() => navigate(`/optical/prescriptions/${rx.id}`)}
-                        className="p-1.5 rounded-lg hover:bg-violet-50 text-slate-400 hover:text-violet-600 transition-colors" title="View">
-                        <span className="material-symbols-outlined text-sm">visibility</span>
-                      </button>
-                      <button onClick={() => handlePrint(rx.id)}
-                        className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors" title="Print">
-                        <span className="material-symbols-outlined text-sm">print</span>
-                      </button>
-                      <button onClick={() => handleDownload(rx)} disabled={downloadingId === rx.id}
-                        className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors disabled:opacity-40" title="Download PDF">
-                        <span className="material-symbols-outlined text-sm">{downloadingId === rx.id ? 'hourglass_empty' : 'download'}</span>
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg hover:bg-violet-50 text-slate-400 hover:text-violet-600 transition-colors text-xs font-semibold" title="View">
+                        <span className="material-symbols-outlined text-sm">visibility</span> View
                       </button>
                       {canDispense && rx.is_finalized && (
                         rx.has_sale ? (

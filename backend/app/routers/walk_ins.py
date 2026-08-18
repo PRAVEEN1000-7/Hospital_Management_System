@@ -429,10 +429,47 @@ async def get_queue_status(
         ):
             invoice_by_appt[str(inv.appointment_id)] = inv
 
+    # Batch-fetch every Appointment/Patient/Doctor (assigned + referring) and
+    # referral parent Appointment referenced by this page's queue entries, in
+    # a handful of IN(...) queries total — previously the loop below issued
+    # up to 5 individual `SELECT ... WHERE id = ?` queries PER queue entry
+    # (Appointment, Patient, Doctor, parent Appointment, referring Doctor),
+    # which meant 80-150+ round trips for a 20-30 patient queue on an
+    # endpoint polled every 15s. Same batching approach already used for
+    # invoice_by_appt just above.
+    appt_ids = [qe.appointment_id for qe in queue_entries if qe.appointment_id]
+    appt_by_id: dict = {}
+    if appt_ids:
+        for a in db.query(Appointment).filter(Appointment.id.in_(appt_ids)).all():
+            appt_by_id[a.id] = a
+
+    patient_ids = {a.patient_id for a in appt_by_id.values() if a.patient_id}
+    doctor_ids = {a.doctor_id for a in appt_by_id.values() if a.doctor_id}
+    parent_appt_ids = {a.parent_appointment_id for a in appt_by_id.values() if a.parent_appointment_id}
+
+    patient_by_id: dict = {}
+    if patient_ids:
+        for p in db.query(Patient).filter(Patient.id.in_(patient_ids)).all():
+            patient_by_id[p.id] = p
+
+    parent_appt_by_id: dict = {}
+    if parent_appt_ids:
+        for pa in db.query(Appointment).filter(Appointment.id.in_(parent_appt_ids)).all():
+            parent_appt_by_id[pa.id] = pa
+            if pa.doctor_id:
+                doctor_ids.add(pa.doctor_id)
+
+    doctor_by_id: dict = {}
+    if doctor_ids:
+        for d in (
+            db.query(Doctor).options(joinedload(Doctor.user)).filter(Doctor.id.in_(doctor_ids)).all()
+        ):
+            doctor_by_id[d.id] = d
+
     # Build rich items with patient names, doctor names, priority, etc.
     items = []
     for qe in queue_entries:
-        appt = db.query(Appointment).filter(Appointment.id == qe.appointment_id).first()
+        appt = appt_by_id.get(qe.appointment_id)
         patient_name = None
         doctor_name = None
         priority = "normal"
@@ -463,7 +500,7 @@ async def get_queue_status(
             check_in_time = appt.check_in_at.isoformat() if appt.check_in_at else None
             is_specialist_assignment = bool(appt.is_specialist_assignment)
 
-            patient = db.query(Patient).filter(Patient.id == appt.patient_id).first()
+            patient = patient_by_id.get(appt.patient_id)
             if patient:
                 patient_name = patient.full_name
                 patient_id_str = str(patient.id)
@@ -489,7 +526,7 @@ async def get_queue_status(
 
             if appt.doctor_id:
                 doctor_id_str = str(appt.doctor_id)
-                doc = db.query(Doctor).filter(Doctor.id == appt.doctor_id).first()
+                doc = doctor_by_id.get(appt.doctor_id)
                 if doc and doc.user:
                     doctor_name = f"Dr. {doc.user.full_name}"
 
@@ -504,9 +541,9 @@ async def get_queue_status(
         consultation_invoice_id = str(invoice_for_fee.id) if invoice_for_fee else None
         consultation_fee_collected = bool(invoice_for_fee and float(invoice_for_fee.balance_amount or 0) <= 0)
         if appt and appt.parent_appointment_id:
-            parent = db.query(Appointment).filter(Appointment.id == appt.parent_appointment_id).first()
+            parent = parent_appt_by_id.get(appt.parent_appointment_id)
             if parent and parent.doctor_id:
-                ref_doc = db.query(Doctor).filter(Doctor.id == parent.doctor_id).first()
+                ref_doc = doctor_by_id.get(parent.doctor_id)
                 if ref_doc and ref_doc.user:
                     referring_doctor_name = f"Dr. {ref_doc.user.full_name}"
             referral_notes = appt.notes
@@ -1147,16 +1184,50 @@ async def get_upcoming_queue(
         AppointmentQueue.queue_number.asc(),
     ).all()
 
+    # Batch-fetch every Appointment/Patient/Doctor (assigned + referring) and
+    # referral parent Appointment referenced by these queue entries, in a
+    # handful of IN(...) queries total — previously the loop below issued up
+    # to 4 individual `SELECT ... WHERE id = ?` queries PER queue entry,
+    # same N+1 pattern (and fix) as GET /walk-ins/queue above.
+    appt_ids = [qe.appointment_id for qe in queue_entries if qe.appointment_id]
+    appt_by_id: dict = {}
+    if appt_ids:
+        for a in db.query(Appointment).filter(Appointment.id.in_(appt_ids)).all():
+            appt_by_id[a.id] = a
+
+    patient_ids = {a.patient_id for a in appt_by_id.values() if a.patient_id}
+    doctor_ids = {a.doctor_id for a in appt_by_id.values() if a.doctor_id}
+    parent_appt_ids = {a.parent_appointment_id for a in appt_by_id.values() if a.parent_appointment_id}
+
+    patient_by_id: dict = {}
+    if patient_ids:
+        for p in db.query(Patient).filter(Patient.id.in_(patient_ids)).all():
+            patient_by_id[p.id] = p
+
+    parent_appt_by_id: dict = {}
+    if parent_appt_ids:
+        for pa in db.query(Appointment).filter(Appointment.id.in_(parent_appt_ids)).all():
+            parent_appt_by_id[pa.id] = pa
+            if pa.doctor_id:
+                doctor_ids.add(pa.doctor_id)
+
+    doctor_by_id: dict = {}
+    if doctor_ids:
+        for d in (
+            db.query(Doctor).options(joinedload(Doctor.user)).filter(Doctor.id.in_(doctor_ids)).all()
+        ):
+            doctor_by_id[d.id] = d
+
     # Group by date and enrich with patient/appointment info
     from collections import defaultdict
     grouped: dict = defaultdict(list)
 
     for qe in queue_entries:
-        appt = db.query(Appointment).filter(Appointment.id == qe.appointment_id).first()
+        appt = appt_by_id.get(qe.appointment_id)
         if not appt:
             continue
 
-        patient = db.query(Patient).filter(Patient.id == appt.patient_id).first()
+        patient = patient_by_id.get(appt.patient_id)
         patient_age = None
         if patient and patient.date_of_birth:
             patient_age = (today - patient.date_of_birth).days // 365
@@ -1166,15 +1237,15 @@ async def get_upcoming_queue(
         # Resolve referring doctor name if this is a referral
         referring_doctor_name = None
         if appt.parent_appointment_id:
-            parent = db.query(Appointment).filter(Appointment.id == appt.parent_appointment_id).first()
+            parent = parent_appt_by_id.get(appt.parent_appointment_id)
             if parent and parent.doctor_id:
-                ref_doc = db.query(Doctor).filter(Doctor.id == parent.doctor_id).first()
+                ref_doc = doctor_by_id.get(parent.doctor_id)
                 if ref_doc and ref_doc.user:
                     referring_doctor_name = f"Dr. {ref_doc.user.full_name}"
 
         doctor_name = None
         if appt.doctor_id:
-            doc = db.query(Doctor).filter(Doctor.id == appt.doctor_id).first()
+            doc = doctor_by_id.get(appt.doctor_id)
             if doc and doc.user:
                 doctor_name = f"Dr. {doc.user.full_name}"
 

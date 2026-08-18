@@ -18,6 +18,7 @@ import {
   getRelativeTime,
 } from '../../utils/notificationUtils';
 import { hasAccess, canEdit } from '../../config/modulePermissions';
+import { useVisiblePolling } from '../../hooks/useVisiblePolling';
 
 const Layout: React.FC = () => {
   const { user, logout, isModuleEnabled, isEyeHospitalFeatureEnabled } = useAuth();
@@ -173,30 +174,31 @@ const Layout: React.FC = () => {
   }, [user?.id]);
 
   // Fetch pending prescription count for pharmacy badge
-  useEffect(() => {
-    if (!hasPendingPrescriptionAccess) {
-      return;
+  const fetchPendingCount = useCallback(async () => {
+    if (!hasPendingPrescriptionAccess) return;
+    setLoadingPendingCount(true);
+    try {
+      // Explicitly request status='pending' — with no filter this endpoint
+      // returns both pending and dispensed prescriptions, which would inflate
+      // this sidebar badge with prescriptions that are already fully dispensed.
+      const result = await pharmacyService.getPendingPrescriptions(1, 1, 'pending');
+      setPendingPrescriptionCount(result.total);
+    } catch (err) {
+      setPendingPrescriptionCount(0);
+    } finally {
+      setLoadingPendingCount(false);
     }
-
-    const fetchPendingCount = async () => {
-      setLoadingPendingCount(true);
-      try {
-        // Explicitly request status='pending' — with no filter this endpoint
-        // returns both pending and dispensed prescriptions, which would inflate
-        // this sidebar badge with prescriptions that are already fully dispensed.
-        const result = await pharmacyService.getPendingPrescriptions(1, 1, 'pending');
-        setPendingPrescriptionCount(result.total);
-      } catch (err) {
-        setPendingPrescriptionCount(0);
-      } finally {
-        setLoadingPendingCount(false);
-      }
-    };
-
-    fetchPendingCount();
-    const interval = setInterval(fetchPendingCount, 30000);
-    return () => clearInterval(interval);
   }, [hasPendingPrescriptionAccess]);
+
+  useEffect(() => {
+    if (hasPendingPrescriptionAccess) fetchPendingCount();
+  }, [hasPendingPrescriptionAccess, fetchPendingCount]);
+
+  // Background poll every 30s — skips the fetch while this tab is
+  // backgrounded, and fires one immediate refresh the moment it regains
+  // focus, so the badge reflects new pending prescriptions right away
+  // instead of waiting up to 30s after switching back.
+  useVisiblePolling(fetchPendingCount, 30000, hasPendingPrescriptionAccess);
 
   // Auto-expand sections when navigating to their routes
   useEffect(() => {
@@ -253,19 +255,19 @@ const Layout: React.FC = () => {
     fetchNotifications(true);
   }, [fetchNotifications]);
 
-  // Background poll: cheap unread-count only (every 30 s).
-  // Full list is fetched on dropdown open.
-  useEffect(() => {
-    const timer = setInterval(async () => {
-      try {
-        const count = await notificationsService.getUnreadCount();
-        setUnreadCount(count);
-      } catch {
-        // keep previous count on transient failure
-      }
-    }, 30000);
-    return () => clearInterval(timer);
-  }, []);
+  // Background poll: cheap unread-count only (every 30 s). Full list is
+  // fetched on dropdown open. Skips the fetch while this tab is
+  // backgrounded, and fires one immediate refresh the moment it regains
+  // focus, so a new notification shows up right away instead of waiting up
+  // to 30s after switching back.
+  useVisiblePolling(async () => {
+    try {
+      const count = await notificationsService.getUnreadCount();
+      setUnreadCount(count);
+    } catch {
+      // keep previous count on transient failure
+    }
+  }, 30000);
 
   const handleMarkRead = async (id: string) => {
     try {

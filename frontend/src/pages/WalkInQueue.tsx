@@ -10,6 +10,7 @@ import type { QueueStatus as QueueStatusType, QueueItem, DoctorOption, Appointme
 import AppointmentStatusBadge from '../components/appointments/AppointmentStatusBadge';
 import AvailabilityCalendar from '../components/common/AvailabilityCalendar';
 import { useDoctorMonthAvailability } from '../hooks/useDoctorMonthAvailability';
+import { useVisiblePolling } from '../hooks/useVisiblePolling';
 import { formatTimeOnly, formatDateOnly } from '../utils/calendarDate';
 import { formatLocalDateISO, formatMonthKey } from '../utils/calendarDate';
 import type { Patient } from '../types/patient';
@@ -368,11 +369,16 @@ const WalkInQueue: React.FC = () => {
     if (activeTab === 'upcoming' || receptionTab === 'upcoming') fetchUpcoming();
   }, [activeTab, receptionTab, fetchUpcoming]);
 
-  // Auto-refresh every 15s
-  useEffect(() => {
-    const timer = setInterval(() => { fetchQueue(); fetchUnassigned(); fetchUpcoming(); if (isDoctor) fetchScheduledAppts(); }, 15000);
-    return () => clearInterval(timer);
-  }, [fetchQueue, fetchUnassigned, fetchScheduledAppts, isDoctor]);
+  // Auto-refresh every 15s — skips the fetch while this tab is backgrounded
+  // (nobody's looking at stale data anyway) and fires one immediate refresh
+  // the moment the tab regains focus, so new arrivals in the queue show up
+  // right away instead of waiting up to 15s after switching back.
+  useVisiblePolling(() => {
+    fetchQueue();
+    fetchUnassigned();
+    fetchUpcoming();
+    if (isDoctor) fetchScheduledAppts();
+  }, 15000);
 
   // ── Queue actions ──────────────────────────────────────────────
   const handleCall = async (queueId: string) => {

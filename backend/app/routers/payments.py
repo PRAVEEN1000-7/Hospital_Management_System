@@ -40,15 +40,18 @@ def _has_any_role(current_user: User, allowed_roles: set[str]) -> bool:
     return bool(roles & {r.lower() for r in allowed_roles})
 
 
-# Narrow carve-out for receptionist "Collect Fee" AND lab staff "Collect
-# Fee": unlike the consultation-invoice endpoint in invoices.py, POST
-# /payments is generic — it records payments against ANY invoice (OPD,
-# pharmacy, optical, lab, combined), so neither role can be let through
-# unconditionally here or they could pay off arbitrary invoices. Only allow:
-#   - a receptionist, when the target invoice is the consultation/OPD type
-#     created for an appointment (see get_or_create_consultation_invoice_for_appointment
-#     in services/invoice_service.py, which always uses invoice_type="opd"
-#     and sets appointment_id);
+# Narrow carve-out for receptionist "Collect Fee", nurse "Collect Fee", AND
+# lab staff "Collect Fee": unlike the consultation-invoice endpoint in
+# invoices.py, POST /payments is generic — it records payments against ANY
+# invoice (OPD, pharmacy, optical, lab, combined), so none of these roles
+# can be let through unconditionally here or they could pay off arbitrary
+# invoices. Only allow:
+#   - a receptionist OR nurse, when the target invoice is the
+#     consultation/OPD type created for an appointment (see
+#     get_or_create_consultation_invoice_for_appointment in
+#     services/invoice_service.py, which always uses invoice_type="opd"
+#     and sets appointment_id) — nurse gets exactly the same scope
+#     receptionist already has here, nothing broader;
 #   - a lab_technician, when the target invoice is invoice_type="lab" (see
 #     LabOrderDetail.tsx's Collect Payment flow / invoices.py's matching
 #     _require_billing_staff_or_lab_invoice carve-out for create/issue).
@@ -76,7 +79,7 @@ def _require_billing_staff_or_consultation_payment(
         else None
     )
 
-    if _has_any_role(current_user, {"receptionist"}):
+    if _has_any_role(current_user, {"receptionist", "nurse"}):
         if invoice is not None and invoice.invoice_type == "opd" and invoice.appointment_id is not None:
             return
 

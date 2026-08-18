@@ -2133,6 +2133,21 @@ const PrescriptionBuilder: React.FC = () => {
                     </div>
                   </div>
 
+                  {/* Per-eye PD — distinct from PD Distance/Near above (which
+                      split by viewing distance, not by eye); some opticians
+                      measure and prescribe PD per eye instead of a single
+                      binocular value. */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">PD Right / OD (mm)</label>
+                      <input type="number" step="0.5" value={opticalRx.pd_right ?? ''} onChange={opticalNumField('pd_right')} className="input-field" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">PD Left / OS (mm)</label>
+                      <input type="number" step="0.5" value={opticalRx.pd_left ?? ''} onChange={opticalNumField('pd_left')} className="input-field" />
+                    </div>
+                  </div>
+
                   <div>
                     <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Optical Notes</label>
                     <AutocompleteField as="input" field="optical_prescription_notes" value={opticalRx.notes || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, notes: e.target.value }))} className="input-field" />

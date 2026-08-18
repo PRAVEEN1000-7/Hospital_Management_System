@@ -74,7 +74,10 @@ def _require_billing_admin(current_user: User) -> None:
 # get_or_create_consultation_invoice; every other endpoint in this router
 # must keep using _require_billing_staff/_require_billing_view as-is.
 def _require_billing_staff_or_receptionist(db: Session, current_user: User) -> None:
-    if _has_any_role(current_user, {"receptionist"}):
+    # Nurse gets the same narrow "collect the consultation fee" carve-out as
+    # receptionist — see the matching comment on
+    # _require_billing_staff_or_consultation_payment in routers/payments.py.
+    if _has_any_role(current_user, {"receptionist", "nurse"}):
         return
     _require_billing_staff(db, current_user)
 
@@ -114,7 +117,7 @@ def _require_billing_staff_or_lab_invoice(db: Session, current_user: User, invoi
 def _require_billing_view_or_consultation_invoice(db: Session, current_user: User, invoice) -> None:
     if check_permission(db, current_user, "billing", "view"):
         return
-    if _has_any_role(current_user, {"receptionist"}) and invoice.invoice_type == "opd" and invoice.appointment_id is not None:
+    if _has_any_role(current_user, {"receptionist", "nurse"}) and invoice.invoice_type == "opd" and invoice.appointment_id is not None:
         return
     if _has_any_role(current_user, {"lab_technician"}) and invoice.invoice_type == "lab":
         return

@@ -1442,15 +1442,16 @@ const WalkInQueue: React.FC = () => {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200">
-                  <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider w-16">Token</th>
-                  <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">Patient / Doctor</th>
-                  <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">Complaint</th>
-                  <th className="px-4 py-3 text-center text-[10px] font-bold text-slate-400 uppercase tracking-wider w-28">Priority</th>
-                  <th className="px-4 py-3 text-center text-[10px] font-bold text-slate-400 uppercase tracking-wider w-28">Status</th>
-                  <th className="px-4 py-3 text-center text-[10px] font-bold text-slate-400 uppercase tracking-wider w-24">
+                  <th className="px-4 py-3 text-center text-[10px] font-bold text-slate-400 uppercase tracking-wider w-14">Token</th>
+                  <th className="px-4 py-3 text-center text-[10px] font-bold text-slate-400 uppercase tracking-wider">Patient</th>
+                  <th className="px-4 py-3 text-center text-[10px] font-bold text-slate-400 uppercase tracking-wider w-36">Doctor</th>
+                  <th className="px-4 py-3 text-center text-[10px] font-bold text-slate-400 uppercase tracking-wider w-36">Complaint</th>
+                  <th className="px-4 py-3 text-center text-[10px] font-bold text-slate-400 uppercase tracking-wider w-24">Priority</th>
+                  <th className="px-4 py-3 text-center text-[10px] font-bold text-slate-400 uppercase tracking-wider w-24">Status</th>
+                  <th className="px-4 py-3 text-center text-[10px] font-bold text-slate-400 uppercase tracking-wider w-20">
                     {receptionTab === 'completed' ? 'Completed' : 'Wait'}
                   </th>
-                  <th className="px-4 py-3 text-right text-[10px] font-bold text-slate-400 uppercase tracking-wider w-28">Actions</th>
+                  <th className="px-4 py-3 text-center text-[10px] font-bold text-slate-400 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -1487,48 +1488,55 @@ const WalkInQueue: React.FC = () => {
                         </span>
                       </td>
 
-                      {/* Patient + Doctor Combined */}
+                      {/* Patient */}
                       <td className="px-4 py-3">
                         <button
                           type="button"
                           onClick={() => setDetailItem(item)}
-                          className="text-left hover:bg-slate-50 rounded-lg -m-1 p-1 transition-colors group w-full"
+                          className="text-left hover:bg-slate-50 rounded-lg -m-1 p-1 transition-colors group w-full min-w-0"
                         >
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="font-semibold text-slate-900 group-hover:text-primary transition-colors truncate">
-                                {item.patient_name || '—'}
-                              </p>
-                              <div className="flex items-center gap-2 mt-0.5">
-                                {item.patient_reference_number && (
-                                  <span className="text-[11px] font-mono text-slate-400">
-                                    {item.patient_reference_number}
-                                  </span>
-                                )}
-                                {item.patient_gender && (
-                                  <span className="text-[11px] text-slate-400 capitalize">{item.patient_gender}</span>
-                                )}
-                                {item.patient_age != null && (
-                                  <span className="text-[11px] text-slate-400">{item.patient_age}y</span>
-                                )}
-                              </div>
-                            </div>
-                            {item.doctor_name && (
-                              <div className="shrink-0 flex items-center gap-1.5 px-2 py-1 bg-slate-50 rounded-lg">
-                                <span className="material-symbols-outlined text-slate-400" style={{ fontSize: 14 }}>stethoscope</span>
-                                <span className="text-xs text-slate-600 font-medium">{item.doctor_name}</span>
-                                {item.is_specialist_assignment && (
-                                  <span className="material-symbols-outlined text-primary" style={{ fontSize: 14 }} title="Specialist Assignment — locked to this doctor">lock</span>
-                                )}
-                              </div>
+                          <p className="font-semibold text-slate-900 group-hover:text-primary transition-colors truncate">
+                            {item.patient_name || '—'}
+                          </p>
+                          {/* Wraps onto a second line on a narrow viewport instead of
+                              forcing the cell (and the whole table) wider — PRN, gender,
+                              and age just flow to fill whatever space is actually there. */}
+                          <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                            {item.patient_reference_number && (
+                              <span className="text-[11px] font-mono text-slate-400">
+                                {item.patient_reference_number}
+                              </span>
+                            )}
+                            {item.patient_gender && (
+                              <span className="text-[11px] text-slate-400 capitalize">{item.patient_gender}</span>
+                            )}
+                            {item.patient_age != null && (
+                              <span className="text-[11px] text-slate-400">{item.patient_age}y</span>
                             )}
                           </div>
                         </button>
                       </td>
 
+                      {/* Doctor — separate column, own truncation, so a long doctor
+                          name can never push this row (and the table) wider than the
+                          viewport the way it did sharing a cell with Patient. */}
+                      <td className="px-4 py-3">
+                        {item.doctor_name ? (
+                          <div className="flex items-center gap-1.5 min-w-0" title={item.doctor_name}>
+                            <span className="material-symbols-outlined text-slate-400 shrink-0" style={{ fontSize: 14 }}>stethoscope</span>
+                            <span className="text-xs text-slate-600 font-medium truncate">{item.doctor_name}</span>
+                            {item.is_specialist_assignment && (
+                              <span className="material-symbols-outlined text-primary shrink-0" style={{ fontSize: 14 }} title="Specialist Assignment — locked to this doctor">lock</span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-slate-300 text-xs">—</span>
+                        )}
+                      </td>
+
                       {/* Complaint */}
                       <td className="px-4 py-3">
-                        <p className="text-slate-600 text-sm truncate max-w-[250px]" title={item.chief_complaint || ''}>
+                        <p className="text-slate-600 text-sm truncate max-w-[140px]" title={item.chief_complaint || ''}>
                           {item.chief_complaint || <span className="text-slate-300">—</span>}
                         </p>
                       </td>
@@ -1559,7 +1567,7 @@ const WalkInQueue: React.FC = () => {
                       </td>
 
                       {/* Actions */}
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-4 py-3 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1">
                           {/* Send to Doctor: for reception/admin on waiting OR called items */}
                           {canFilter && isSelectedDateToday && (item.status === 'waiting' || item.status === 'called') && item.doctor_id && (
@@ -1597,20 +1605,11 @@ const WalkInQueue: React.FC = () => {
                               Assign
                             </button>
                           )}
-                          {/* Sent to Doctor badge */}
-                          {item.status === 'sent_to_doctor' && (
-                            <span className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold rounded-lg bg-teal-100 text-teal-700">
-                              <span className="material-symbols-outlined text-sm">check_circle</span>
-                              Sent to Doctor
-                            </span>
-                          )}
-                          {/* In Consultation status indicator */}
-                          {isInConsultation && (
-                            <span className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold rounded-lg bg-purple-100 text-purple-700">
-                              <span className="material-symbols-outlined text-sm">clinical_notes</span>
-                              With Doctor
-                            </span>
-                          )}
+                          {/* "Sent to Doctor" / "In Consultation" badges intentionally
+                              removed here — the Status column two cells to the left
+                              already shows the exact same state (qs.label), so repeating
+                              it in Actions was pure duplication that pushed this cell
+                              wider than the viewport for no benefit. */}
                           {/* Consultation Fee (BRD 5.1) — collected/uncollected state right
                               in the queue row, no navigation to another module needed.
                               Receptionist is allowed here too even without general "billing"
@@ -1618,16 +1617,18 @@ const WalkInQueue: React.FC = () => {
                               consultation-invoice/payment endpoints only, not general billing. */}
                           {(canEdit('billing', roles) || isReception) && item.appointment_id && (
                             item.consultation_fee_collected ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold rounded-lg bg-emerald-100 text-emerald-700" title="Consultation fee collected">
-                                <span className="material-symbols-outlined text-sm">paid</span>
-                                Paid
+                              // Compact icon-only once collected — it's a status marker at
+                              // this point, not an action, so it doesn't need a text label
+                              // competing for space with the still-actionable buttons.
+                              <span className="w-7 h-7 flex items-center justify-center rounded-lg bg-emerald-100 text-emerald-700" title="Consultation fee collected">
+                                <span className="material-symbols-outlined text-base">paid</span>
                               </span>
                             ) : (
                               <button onClick={() => openCollectFee(item)}
                                 className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-500 text-white hover:bg-amber-600 hover:scale-105 active:scale-95 transition-all shadow-sm text-xs font-semibold"
                                 title="Collect Consultation Fee">
                                 <span className="material-symbols-outlined text-base">payments</span>
-                                Collect Fee
+                                Fee
                               </button>
                             )
                           )}
@@ -1636,9 +1637,10 @@ const WalkInQueue: React.FC = () => {
                               from the "Assign"/"Send" doctor-picker above. */}
                           {canFilter && item.patient_id && (
                             item.opd_assigned_at ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold rounded-lg bg-indigo-100 text-indigo-700" title="Sent to OPD Assignment">
-                                <span className="material-symbols-outlined text-sm">assignment_turned_in</span>
-                                Assigned
+                              // Compact icon-only once assigned — same reasoning as the
+                              // "Paid" badge above.
+                              <span className="w-7 h-7 flex items-center justify-center rounded-lg bg-indigo-100 text-indigo-700" title="Sent to OPD Assignment">
+                                <span className="material-symbols-outlined text-base">assignment_turned_in</span>
                               </span>
                             ) : (
                               <button
@@ -1646,7 +1648,7 @@ const WalkInQueue: React.FC = () => {
                                 className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-indigo-200 text-indigo-600 hover:bg-indigo-50 hover:scale-105 active:scale-95 transition-all text-xs font-semibold"
                                 title="OPD Assignment">
                                 <span className="material-symbols-outlined text-base">assignment_ind</span>
-                                OPD Assignment
+                                OPD
                               </button>
                             )
                           )}

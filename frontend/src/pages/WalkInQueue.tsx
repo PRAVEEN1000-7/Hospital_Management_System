@@ -63,6 +63,7 @@ const WalkInQueue: React.FC = () => {
   const isDoctor = roles.includes('doctor');
   const isReception = roles.includes('receptionist');
   const isAdmin = roles.includes('admin') || roles.includes('super_admin');
+  const isNurse = roles.includes('nurse');
   const canFilter = isReception || isAdmin;
   // Only doctors ever see this console at all, but a hospital admin can still
   // downgrade the "doctor" role to view-only on appt.queue_display via the
@@ -70,23 +71,23 @@ const WalkInQueue: React.FC = () => {
   // action buttons (Call/Skip/Start/Complete/Refer) correctly disappear
   // instead of rendering controls that would just 403 on click.
   const canActOnQueue = isDoctor && canEdit('appt.queue_display', roles);
-  // Vitals entry (nurse's pre-consultation flow, see NurseVitals.tsx) —
-  // deliberately excludes doctor even though rx.vitals grants doctor edit
-  // access too (kept there for API-level consistency): a doctor already
-  // enters vitals as part of the normal Prescription Builder consultation
-  // flow, so a redundant quick-entry button in the queue would just be
-  // confusing clutter for that role.
-  const canEnterVitals = !isDoctor && canEdit('rx.vitals', roles);
+  // Vitals entry (nurse's pre-consultation flow, see NurseVitals.tsx) — the
+  // Walk-in Queue button is restricted to the literal nurse role only, even
+  // though rx.vitals also grants admin/doctor edit at the API level (kept
+  // there for API-level consistency — a doctor still enters vitals directly
+  // as part of the normal Prescription Builder consultation flow, and admin
+  // needs no quick-entry button here at all). Checking isNurse directly
+  // (not canEdit) is deliberate: canEdit('rx.vitals', roles) would also be
+  // true for admin, which would put this action back in a non-nurse login.
+  const canEnterVitals = isNurse && canEdit('rx.vitals', roles);
   // Optical entry (nurse's pre-consultation eye-exam measurements, see
-  // NewOpticalPrescription.tsx) — same shape as canEnterVitals above:
-  // narrow "optical.exam" permission (create/update a draft only, never
-  // finalize or the rest of the Optical Store — see module_roles.py),
-  // deliberately excludes doctor for the same reason vitals does (a doctor
-  // already has the embedded "Add Optical" section in their own
-  // Prescription Builder consultation flow). Module-enabled + eye-hospital
-  // checks match the Optical Store nav link's own gate (Layout.tsx's
-  // canAccessOptical).
-  const canEnterOptical = !isDoctor && canEdit('optical.exam', roles) && isModuleEnabled('optical') && isEyeHospitalFeatureEnabled;
+  // NewOpticalPrescription.tsx) — same nurse-only restriction as
+  // canEnterVitals above, for the same reason: "optical.exam" also grants
+  // admin/doctor edit at the API level (doctor's own embedded "Add Optical"
+  // section in Prescription Builder needs it), but this queue action must
+  // only ever appear in a nurse login. Module-enabled + eye-hospital checks
+  // match the Optical Store nav link's own gate (Layout.tsx's canAccessOptical).
+  const canEnterOptical = isNurse && canEdit('optical.exam', roles) && isModuleEnabled('optical') && isEyeHospitalFeatureEnabled;
   const today = formatLocalDateISO();
 
   const [queueData, setQueueData] = useState<QueueStatusType | null>(null);
@@ -1672,10 +1673,13 @@ const WalkInQueue: React.FC = () => {
                               Optical
                             </button>
                           )}
-                          {/* View Details button for any item */}
+                          {/* View Details button for any item — icon + text, matching the
+                              app-wide convention (see docs/print-download-pattern.md) of
+                              never leaving a bare icon action without a visible label. */}
                           <button onClick={() => setDetailItem(item)}
-                            className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors" title="View Patient Details">
-                            <span className="material-symbols-outlined text-lg">visibility</span>
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-slate-500 hover:text-primary hover:bg-primary/10 transition-colors text-xs font-semibold" title="View Patient Details">
+                            <span className="material-symbols-outlined text-base">visibility</span>
+                            View
                           </button>
                         </div>
                       </td>

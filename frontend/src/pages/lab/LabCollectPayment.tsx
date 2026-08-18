@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import labService from '../../services/labService';
+import invoiceService from '../../services/invoiceService';
 import type { LabOrder, LabOrderItem, LabSale } from '../../types/lab';
 import type { PaymentMode } from '../../types/billing';
 import { useToast } from '../../contexts/ToastContext';
+import { htmlStringToPdf } from '../../utils/pdf';
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
@@ -27,6 +29,16 @@ const LabCollectPayment: React.FC = () => {
   const [payReference, setPayReference] = useState('');
   const [payAmount, setPayAmount] = useState(0);
   const [saving, setSaving] = useState(false);
+
+  // Bill view — shown automatically the moment payment succeeds (Print/
+  // Download top-right, matching pharmacy/SalesList.tsx's pattern), kept
+  // separate from the clinical report (LabOrderDetail.tsx's own Print
+  // Report/Download PDF, a different document entirely).
+  const [paidInvoiceId, setPaidInvoiceId] = useState<string | null>(null);
+  const [billHtml, setBillHtml] = useState<string | null>(null);
+  const [billLoading, setBillLoading] = useState(false);
+  const [downloadingBill, setDownloadingBill] = useState(false);
+  const billIframeRef = useRef<HTMLIFrameElement>(null);
 
   // ── Billing amount/name — the catalog carries no price at all, so every
   // item starts at ₹0 and staff enters the real amount (and, optionally, a
@@ -111,13 +123,53 @@ const LabCollectPayment: React.FC = () => {
     if (!orderId || payAmount <= 0) return;
     setSaving(true);
     try {
-      await labService.markSalePaid(orderId, payAmount, payMethod, payReference.trim() || undefined);
+      const updatedSale = await labService.markSalePaid(orderId, payAmount, payMethod, payReference.trim() || undefined);
       toast.success('Payment recorded');
-      navigate('/lab/billing');
+      // get_or_create_lab_invoice always runs before a payment is recorded
+      // (see lab_service.collect_lab_sale_payment), so invoice_id is
+      // guaranteed to be set here — show the bill immediately instead of
+      // navigating straight away; navigation happens once the user closes
+      // the bill view.
+      if (updatedSale.invoice_id) {
+        setPaidInvoiceId(updatedSale.invoice_id);
+        setBillLoading(true);
+        try {
+          const html = await invoiceService.getInvoicePdfHtml(updatedSale.invoice_id);
+          setBillHtml(html);
+        } catch {
+          toast.error('Payment recorded, but failed to load the bill for printing');
+        } finally {
+          setBillLoading(false);
+        }
+      } else {
+        navigate('/lab/billing');
+      }
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || 'Failed to record payment');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const closeBillView = () => {
+    setPaidInvoiceId(null);
+    setBillHtml(null);
+    navigate('/lab/billing');
+  };
+
+  const handlePrintBill = () => {
+    billIframeRef.current?.contentWindow?.print();
+  };
+
+  const handleDownloadBill = async () => {
+    if (!billHtml) return;
+    setDownloadingBill(true);
+    try {
+      await htmlStringToPdf(billHtml, `Lab_Bill_${order?.order_number || orderId}.pdf`);
+    } catch {
+      toast.error('Failed to download bill');
+    } finally {
+      setDownloadingBill(false);
     }
   };
 
@@ -296,6 +348,58 @@ const LabCollectPayment: React.FC = () => {
           {saving ? 'Recording…' : 'Record Payment'}
         </button>
       </div>
+
+      {/* Bill — shown automatically right after payment succeeds. Print/
+          Download at the top-right, matching pharmacy/SalesList.tsx's
+          pattern. This is the BILLING invoice only — the clinical report
+          is a separate document, printed separately from
+          LabOrderDetail.tsx's own Print Report/Download PDF. */}
+      {paidInvoiceId && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={closeBillView}>
+          <div className="flex h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Bill</h3>
+                <p className="text-sm text-slate-500">{order?.order_number}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handlePrintBill}
+                  disabled={!billHtml}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 disabled:opacity-50"
+                >
+                  <span className="material-symbols-outlined text-sm">print</span> Print
+                </button>
+                <button
+                  onClick={handleDownloadBill}
+                  disabled={!billHtml || downloadingBill}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-primary bg-primary/5 border border-primary/20 rounded-lg hover:bg-primary/10 disabled:opacity-50"
+                >
+                  <span className="material-symbols-outlined text-sm">download</span>
+                  {downloadingBill ? 'Preparing…' : 'Download'}
+                </button>
+                <button onClick={closeBillView} className="ml-1 text-slate-400 hover:text-slate-600">
+                  <span className="material-symbols-outlined">close</span>
+                </button>
+              </div>
+            </div>
+            <div className="min-h-0 flex-1 bg-slate-100">
+              {billLoading ? (
+                <div className="flex h-full items-center justify-center">
+                  <span className="material-symbols-outlined animate-spin text-3xl text-primary">progress_activity</span>
+                </div>
+              ) : billHtml ? (
+                <iframe
+                  ref={billIframeRef}
+                  srcDoc={billHtml}
+                  title={`Bill ${order?.order_number || ''}`}
+                  className="h-full w-full border-0 bg-white"
+                />
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -802,6 +802,7 @@ def finalize_prescription(
         index_note(db, rx.hospital_id, "advice", rx.advice)
     except Exception:
         logger.warning("Failed to index prescription text into ngram model", exc_info=True)
+        db.rollback()
 
     _save_version_snapshot(db, rx, performed_by, "Finalized prescription")
     return rx
@@ -1085,6 +1086,7 @@ def _save_version_snapshot(
         db.commit()
     except Exception as e:
         logger.error(f"Failed to save version snapshot: {e}")
+        db.rollback()
 
 
 def get_prescription_versions(

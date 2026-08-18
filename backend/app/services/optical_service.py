@@ -333,6 +333,29 @@ def get_optical_prescription_by_id(
     return q.first()
 
 
+def get_optical_prescription_by_appointment(
+    db: Session, appointment_id: str | uuid.UUID, hospital_id: uuid.UUID,
+) -> Optional[OpticalPrescription]:
+    """One appointment/visit -> at most one optical prescription, mirroring
+    prescription_service.get_prescription_by_appointment. Used both by the
+    nurse's quick-entry screen (to re-open its own draft instead of creating
+    a duplicate on re-entry) and by the doctor's Prescription Builder (to
+    pre-fill/continue a nurse-entered draft instead of starting blank)."""
+    if isinstance(appointment_id, str):
+        try:
+            appointment_id = uuid.UUID(appointment_id)
+        except ValueError:
+            return None
+    return (
+        db.query(OpticalPrescription)
+        .filter(
+            OpticalPrescription.appointment_id == appointment_id,
+            OpticalPrescription.hospital_id == hospital_id,
+        )
+        .first()
+    )
+
+
 def list_optical_prescriptions(
     db: Session,
     hospital_id: uuid.UUID,
@@ -471,6 +494,8 @@ def update_optical_prescription(db: Session, prescription_id: str | uuid.UUID, d
     rx = get_optical_prescription_by_id(db, prescription_id)
     if not rx:
         return None
+    if rx.is_finalized:
+        raise ValueError("This optical prescription has already been finalized and can no longer be edited")
     for key, value in data.items():
         if hasattr(rx, key) and value is not None:
             setattr(rx, key, value)

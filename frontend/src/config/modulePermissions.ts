@@ -126,7 +126,18 @@ export const MODULE_ROLES: Record<string, Partial<Record<string, Exclude<AccessL
     admin: 'edit', pharmacist: 'edit', inventory_manager: 'view',
   },
   optical: {
-    admin: 'edit', optical_staff: 'edit', nurse: 'edit',
+    admin: 'edit', optical_staff: 'edit',
+  },
+  // Narrow, entry-only slice of "optical" — lets a nurse record the eye-exam
+  // measurements (SPH/CYL/Axis/Add/VA/PD) as a draft optical prescription
+  // before the doctor sees the patient, and lets a doctor create/update
+  // their own consultation's optical prescription from the embedded
+  // "Add Optical" section of Prescription Builder — without granting either
+  // role Finalize or any of the rest of the Optical Store (products,
+  // batches, dispensing sales), which stay admin/optical_staff only via the
+  // "optical" key above.
+  'optical.exam': {
+    admin: 'edit', doctor: 'edit', nurse: 'edit',
   },
   inventory: {
     admin: 'edit', pharmacist: 'view', inventory_manager: 'edit',

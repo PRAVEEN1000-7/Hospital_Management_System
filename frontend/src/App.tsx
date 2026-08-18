@@ -607,7 +607,12 @@ const AppWithNotifications: React.FC = () => {
                   React Router ranks the literal "new" segment above ":id" regardless of order. */}
               <Route path="/optical/prescriptions/new" element={
                 <ProtectedRoute
-                  allowedRoles={allowedRoles('optical', 'edit')}
+                  // "optical" edit (admin/optical_staff, full Optical Store) OR the
+                  // narrower "optical.exam" edit (nurse's pre-consultation draft
+                  // entry; a doctor without Optical Store access) — see
+                  // module_roles.py's "optical.exam" for why this stays split
+                  // from the base "optical" key instead of just adding roles there.
+                  allowedRoles={[...allowedRoles('optical', 'edit'), ...allowedRoles('optical.exam', 'edit')]}
                   requiredModule="optical"
                 >
                   <NewOpticalPrescription />

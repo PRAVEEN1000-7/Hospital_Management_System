@@ -112,7 +112,19 @@ MODULE_ROLES: Dict[str, Dict[str, str]] = {
         "admin": _EDIT, "pharmacist": _EDIT, "inventory_manager": _VIEW,
     },
     "optical": {
-        "admin": _EDIT, "optical_staff": _EDIT, "nurse": _EDIT,
+        "admin": _EDIT, "optical_staff": _EDIT,
+    },
+    # Narrow, entry-only slice of "optical" — lets a nurse record the
+    # eye-exam measurements (SPH/CYL/Axis/Add/VA/PD) as a draft optical
+    # prescription before the doctor sees the patient, and lets a doctor
+    # create/update their own consultation's optical prescription from the
+    # embedded "Add Optical" section of Prescription Builder — without
+    # granting either role Finalize or any of the rest of the Optical Store
+    # (products, batches, dispensing sales), which stay admin/optical_staff
+    # only via the "optical" key above. See PUT/POST /optical/prescriptions
+    # and GET /optical/prescriptions/by-appointment/{id} in optical.py.
+    "optical.exam": {
+        "admin": _EDIT, "doctor": _EDIT, "nurse": _EDIT,
     },
     "inventory": {
         "admin": _EDIT, "pharmacist": _VIEW, "inventory_manager": _EDIT,

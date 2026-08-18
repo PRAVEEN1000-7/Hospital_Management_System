@@ -264,6 +264,10 @@ class PrescriptionVitalsUpdate(BaseModel):
     vitals_temp: Optional[str] = None
     vitals_weight: Optional[str] = None
     vitals_spo2: Optional[str] = None
+    # Eye-hospital only in the UI (matches PrescriptionBuilder.tsx's own
+    # Patient History blood sugar field) — accepted here regardless of
+    # hospital type since save_draft_vitals just passes through whatever's
+    # provided; the frontend is what gates visibility.
     vitals_blood_sugar: Optional[str] = None
 
 

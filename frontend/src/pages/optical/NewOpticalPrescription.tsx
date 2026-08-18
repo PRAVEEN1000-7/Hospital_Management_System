@@ -1,6 +1,7 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useToast } from '../../contexts/ToastContext';
+import { useAuth } from '../../contexts/AuthContext';
 import opticalService from '../../services/opticalService';
 import patientService from '../../services/patientService';
 import scheduleService from '../../services/scheduleService';
@@ -9,12 +10,21 @@ import type { DoctorOption } from '../../types/appointment';
 import type { OpticalPrescriptionCreateData } from '../../types/optical';
 import { useListKeyboardNav } from '../../hooks/useListKeyboardNav';
 import SearchableSelect, { type SuggestionOption } from '../../components/common/SearchableSelect';
+import { canEdit } from '../../config/modulePermissions';
 
 const NewOpticalPrescription: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const toast = useToast();
+  const { user } = useAuth();
+  // Full "optical" edit (admin/optical_staff) can manage the whole Optical
+  // Store, so after saving they land on the Rx detail page as before. A
+  // caller with only the narrower "optical.exam" permission (nurse's
+  // pre-consultation quick-entry, or a doctor without Optical Store access)
+  // has no view access to that detail page at all, so they return to the
+  // Walk-in Queue instead — same pattern as NurseVitals.tsx.
+  const hasFullOpticalAccess = canEdit('optical', user?.roles);
 
   // ── Patient lookup ────────────────────────────────────────────────────
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -31,6 +41,18 @@ const NewOpticalPrescription: React.FC = () => {
     }, 250);
     return () => window.clearTimeout(timeoutId);
   }, [patientSearch, selectedPatient, patientFocused]);
+
+  // Pre-fill from Walk-in Queue's "Optical" action, same convention as
+  // PrescriptionBuilder.tsx/NurseVitals.tsx — patient auto-selected (skips
+  // the search step) and appointment_id carried through to the created
+  // prescription so it's linked to that visit.
+  const [appointmentId] = useState(searchParams.get('appointment_id') || '');
+  useEffect(() => {
+    const prefillPatientId = searchParams.get('patient_id');
+    if (!prefillPatientId) return;
+    patientService.getPatient(prefillPatientId).then(selectPatient).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Doctor picker — OPTIONAL. doctor_id is nullable on the backend, and
   // optical_staff isn't a doctor so it can't be resolved from the logged-in
@@ -54,6 +76,31 @@ const NewOpticalPrescription: React.FC = () => {
     setOpticalRx(prev => ({ ...prev, [field]: value === '' ? undefined : Number(value) }));
   };
   const [saving, setSaving] = useState(false);
+
+  // ── Re-open an existing draft for this appointment instead of creating a
+  // duplicate — mirrors NurseVitals.tsx's draft-vitals lookup. Covers both a
+  // nurse re-entering "Optical" for the same visit, and the case where the
+  // page is reloaded mid-entry.
+  const [existingRxId, setExistingRxId] = useState<string | null>(null);
+  const [existingRxFinalized, setExistingRxFinalized] = useState(false);
+  useEffect(() => {
+    if (!appointmentId) return;
+    opticalService.getPrescriptionByAppointment(appointmentId).then(rx => {
+      if (!rx) return;
+      setExistingRxId(rx.id);
+      setExistingRxFinalized(!!rx.is_finalized);
+      setOpticalRx({
+        right_sph: rx.right_sph ?? undefined, right_cyl: rx.right_cyl ?? undefined,
+        right_axis: rx.right_axis ?? undefined, right_add: rx.right_add ?? undefined, right_va: rx.right_va ?? undefined,
+        left_sph: rx.left_sph ?? undefined, left_cyl: rx.left_cyl ?? undefined,
+        left_axis: rx.left_axis ?? undefined, left_add: rx.left_add ?? undefined, left_va: rx.left_va ?? undefined,
+        pd_distance: rx.pd_distance ?? undefined, pd_near: rx.pd_near ?? undefined,
+        pd_right: rx.pd_right ?? undefined, pd_left: rx.pd_left ?? undefined,
+        notes: rx.notes ?? undefined,
+      });
+    }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appointmentId]);
 
   // Returning from the full Patient Registration form (Register.tsx) after
   // registering a walk-in patient who wasn't found in search above — same
@@ -91,18 +138,26 @@ const NewOpticalPrescription: React.FC = () => {
     e.preventDefault();
     if (!selectedPatient) { toast.error('Select or register a patient'); return; }
     if (!hasOpticalFields) { toast.error('Fill in at least one field of the eye prescription'); return; }
+    if (existingRxFinalized) { toast.error('This visit’s optical prescription has already been finalized and can no longer be edited'); return; }
 
     setSaving(true);
     try {
-      const rx = await opticalService.createPrescription({
-        patient_id: selectedPatient.id,
-        doctor_id: doctorId || undefined,
-        ...opticalRx,
-      });
-      toast.success(`Eye prescription ${rx.prescription_number} created`);
-      navigate(`/optical/prescriptions/${rx.id}`);
+      const rx = existingRxId
+        ? await opticalService.updatePrescription(existingRxId, opticalRx)
+        : await opticalService.createPrescription({
+            patient_id: selectedPatient.id,
+            doctor_id: doctorId || undefined,
+            ...opticalRx,
+            appointment_id: appointmentId || undefined,
+          });
+      toast.success(existingRxId ? 'Eye prescription draft saved' : `Eye prescription ${rx.prescription_number} created`);
+      if (hasFullOpticalAccess) {
+        navigate(`/optical/prescriptions/${rx.id}`);
+      } else {
+        navigate('/appointments/queue');
+      }
     } catch (err: any) {
-      toast.error(err?.response?.data?.detail || 'Failed to create eye prescription');
+      toast.error(err?.response?.data?.detail || 'Failed to save eye prescription');
     } finally {
       setSaving(false);
     }
@@ -115,12 +170,21 @@ const NewOpticalPrescription: React.FC = () => {
           <span className="material-symbols-outlined">arrow_back</span>
         </button>
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">New Eye Prescription</h1>
+          <h1 className="text-2xl font-bold text-slate-900">{existingRxId ? 'Eye Prescription Draft' : 'New Eye Prescription'}</h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            Record a spectacle/eyewear prescription directly from the Optical Store — no doctor consultation required.
+            {appointmentId
+              ? 'Record the eye-exam measurements ahead of the consultation — saved as a draft the doctor will see and finalize.'
+              : 'Record a spectacle/eyewear prescription directly from the Optical Store — no doctor consultation required.'}
           </p>
         </div>
       </div>
+
+      {existingRxFinalized && (
+        <div className="px-4 py-3 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-800 text-sm flex items-center gap-2">
+          <span className="material-symbols-outlined text-lg">check_circle</span>
+          This visit's optical prescription has already been finalized by the doctor and can no longer be edited here.
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-5">
         {/* Patient */}
@@ -317,9 +381,9 @@ const NewOpticalPrescription: React.FC = () => {
             className="px-4 py-2 text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50">
             Cancel
           </button>
-          <button type="submit" disabled={saving}
+          <button type="submit" disabled={saving || existingRxFinalized}
             className="px-6 py-2 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 disabled:opacity-50">
-            {saving ? 'Saving...' : 'Create Prescription'}
+            {saving ? 'Saving...' : existingRxId ? 'Save Draft' : hasFullOpticalAccess ? 'Create Prescription' : 'Save Draft'}
           </button>
         </div>
       </form>

@@ -4,6 +4,7 @@ import patientService from '../services/patientService';
 import prescriptionService from '../services/prescriptionService';
 import type { Patient } from '../types/patient';
 import { useToast } from '../contexts/ToastContext';
+import { useAuth } from '../contexts/AuthContext';
 import VitalsCard, { type VitalsValues } from '../components/prescription/VitalsCard';
 
 const emptyVitals: VitalsValues = { bp: '', pulse: '', temp: '', weight: '', spo2: '' };
@@ -17,6 +18,7 @@ const NurseVitals: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const toast = useToast();
+  const { isEyeHospitalFeatureEnabled } = useAuth();
 
   const patientId = searchParams.get('patient_id') || '';
   const appointmentId = searchParams.get('appointment_id') || '';
@@ -25,6 +27,13 @@ const NurseVitals: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [vitals, setVitals] = useState<VitalsValues>(emptyVitals);
+  // Eye-hospital only — matches PrescriptionBuilder.tsx's own Patient
+  // History blood sugar field (same Prescription.vitals_blood_sugar
+  // column). Kept as its own field rather than folded into VitalsCard,
+  // since VitalsCard is also used by PrescriptionBuilder's main vitals
+  // card, which doesn't want blood sugar there — it already has its own
+  // separate blood sugar field elsewhere.
+  const [bloodSugar, setBloodSugar] = useState('');
 
   useEffect(() => {
     if (!patientId || !appointmentId) {
@@ -49,6 +58,7 @@ const NurseVitals: React.FC = () => {
             weight: rx.vitals_weight || '',
             spo2: rx.vitals_spo2 || '',
           });
+          setBloodSugar(rx.vitals_blood_sugar || '');
         }
       })
       .catch(() => {
@@ -70,6 +80,7 @@ const NurseVitals: React.FC = () => {
         vitals_temp: vitals.temp || undefined,
         vitals_weight: vitals.weight || undefined,
         vitals_spo2: vitals.spo2 || undefined,
+        vitals_blood_sugar: isEyeHospitalFeatureEnabled ? (bloodSugar || undefined) : undefined,
       });
       toast.success('Vitals saved as draft - the doctor will see these when the consultation starts');
       navigate('/appointments/queue');
@@ -102,6 +113,19 @@ const NurseVitals: React.FC = () => {
       </div>
 
       <VitalsCard values={vitals} onChange={setVitals} disabled={saving} />
+
+      {isEyeHospitalFeatureEnabled && (
+        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+          <h3 className="font-semibold mb-4 flex items-center gap-2">
+            <span className="material-symbols-outlined text-primary text-sm">bloodtype</span> Blood Sugar
+          </h3>
+          <div className="max-w-xs">
+            <label className="block text-xs font-semibold text-slate-500 mb-1.5">Blood Sugar</label>
+            <input type="text" value={bloodSugar} onChange={e => setBloodSugar(e.target.value)} disabled={saving}
+              placeholder="e.g. 110 mg/dL" className="input-field" />
+          </div>
+        </div>
+      )}
 
       <div className="sticky bottom-4 z-10 rounded-2xl border border-slate-200 bg-white/95 px-5 py-4 shadow-lg backdrop-blur">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

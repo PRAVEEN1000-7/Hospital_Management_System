@@ -193,6 +193,11 @@ const PrescriptionBuilder: React.FC = () => {
   const [addOpticalRx, setAddOpticalRx] = useState(false);
   const [opticalRx, setOpticalRx] = useState<Omit<OpticalPrescriptionCreateData, 'patient_id' | 'appointment_id'>>({});
   const [createdOpticalRxId, setCreatedOpticalRxId] = useState<string | null>(null);
+  // A nurse (or an earlier save in this same consultation) may already have
+  // created this visit's optical prescription — when set, saving updates
+  // that record instead of creating a duplicate one.
+  const [existingOpticalRxId, setExistingOpticalRxId] = useState<string | null>(null);
+  const [existingOpticalRxFinalized, setExistingOpticalRxFinalized] = useState(false);
   const opticalNumField = (field: keyof OpticalPrescriptionCreateData) => (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setOpticalRx(prev => ({ ...prev, [field]: value === '' ? undefined : Number(value) }));
@@ -489,6 +494,34 @@ const PrescriptionBuilder: React.FC = () => {
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editId, appointmentId]);
+
+  // Pre-fill the embedded "Add Optical" section with a nurse's draft for
+  // this visit (see NewOpticalPrescription.tsx / WalkInQueue.tsx's "Optical"
+  // action) — independent of the vitals redirect above, since this section
+  // lives inline on this same page in both create and edit mode, not behind
+  // a redirect. Silently does nothing when none exists (the common case).
+  useEffect(() => {
+    if (!appointmentId || !isEyeHospital) return;
+    let cancelled = false;
+    opticalService.getPrescriptionByAppointment(appointmentId)
+      .then(rx => {
+        if (cancelled || !rx) return;
+        setExistingOpticalRxId(rx.id);
+        setExistingOpticalRxFinalized(!!rx.is_finalized);
+        setAddOpticalRx(true);
+        setOpticalRx({
+          right_sph: rx.right_sph ?? undefined, right_cyl: rx.right_cyl ?? undefined,
+          right_axis: rx.right_axis ?? undefined, right_add: rx.right_add ?? undefined, right_va: rx.right_va ?? undefined,
+          left_sph: rx.left_sph ?? undefined, left_cyl: rx.left_cyl ?? undefined,
+          left_axis: rx.left_axis ?? undefined, left_add: rx.left_add ?? undefined, left_va: rx.left_va ?? undefined,
+          pd_distance: rx.pd_distance ?? undefined, pd_near: rx.pd_near ?? undefined,
+          pd_right: rx.pd_right ?? undefined, pd_left: rx.pd_left ?? undefined,
+          notes: rx.notes ?? undefined,
+        });
+      })
+      .catch(() => { /* no existing optical prescription for this appointment yet */ });
+    return () => { cancelled = true; };
+  }, [appointmentId, isEyeHospital]);
 
   // Load templates
   useEffect(() => {
@@ -889,7 +922,7 @@ const PrescriptionBuilder: React.FC = () => {
     setSaving(true);
     try {
       let rxId: string;
-      let freshOpticalRxId: string | null = null;
+      let freshOpticalRxId: string | null = existingOpticalRxId;
 
       if (isEditMode && editId) {
         // Update existing prescription
@@ -919,49 +952,62 @@ const PrescriptionBuilder: React.FC = () => {
           items: validItems,
         });
         rxId = rx.id;
+      }
 
-        if (addOpticalRx) {
-          try {
-            const createdOptRx = await opticalService.createPrescription({
-              patient_id: patient.id,
-              appointment_id: appointmentId || undefined,
-              ...opticalRx,
-            });
-            freshOpticalRxId = createdOptRx.id;
-            setCreatedOpticalRxId(createdOptRx.id);
-          } catch (opticalErr: any) {
-            // The drug prescription above already saved successfully — surface
-            // the optical failure separately rather than treating the whole
-            // save as failed (e.g. current doctor isn't an eye specialist).
-            showToast(
-              'error',
-              `Prescription saved, but the optical prescription could not be created: ${
-                opticalErr?.response?.data?.detail || 'unknown error'
-              }`,
-            );
-          }
+      // Optical + lab are independent sub-resources of this visit, not of
+      // the drug prescription's own create/update mode — a nurse's optical
+      // draft (or a doctor re-saving mid-consultation) must be updated here
+      // too when isEditMode is true, not just on first creation. Previously
+      // this whole block lived only inside the "create new prescription"
+      // branch above, so re-saving an existing (e.g. nurse-vitals-redirected)
+      // consultation silently dropped any optical/lab entry the doctor made.
+      if (hasOptical && !existingOpticalRxFinalized) {
+        try {
+          const optRx = existingOpticalRxId
+            ? await opticalService.updatePrescription(existingOpticalRxId, opticalRx)
+            : await opticalService.createPrescription({
+                patient_id: patient.id,
+                appointment_id: appointmentId || undefined,
+                ...opticalRx,
+              });
+          freshOpticalRxId = optRx.id;
+          setCreatedOpticalRxId(optRx.id);
+          setExistingOpticalRxId(optRx.id);
+        } catch (opticalErr: any) {
+          // The drug prescription above already saved successfully — surface
+          // the optical failure separately rather than treating the whole
+          // save as failed (e.g. the update was rejected because a doctor
+          // had already finalized this optical prescription elsewhere).
+          showToast(
+            'error',
+            `Prescription saved, but the optical prescription could not be saved: ${
+              opticalErr?.response?.data?.detail || 'unknown error'
+            }`,
+          );
         }
+      }
 
-        // Lab order — independent, non-blocking, same sequencing as optical:
-        // a failure here doesn't roll back the drug prescription. The
-        // server-side finalize_prescription links + queues it automatically.
-        if (hasLab) {
-          try {
-            await labService.createOrder({
-              patient_id: patient.id,
-              appointment_id: appointmentId || undefined,
-              prescription_id: rxId,
-              test_ids: selectedLabTestIds,
-              notes: labNotes || undefined,
-            });
-          } catch (labErr: any) {
-            showToast(
-              'error',
-              `Prescription saved, but the lab order could not be created: ${
-                labErr?.response?.data?.detail || 'unknown error'
-              }`,
-            );
-          }
+      // Lab order — independent, non-blocking, same sequencing as optical:
+      // a failure here doesn't roll back the drug prescription. The
+      // server-side finalize_prescription links + queues it automatically.
+      // Only relevant on first creation (a lab order is only ever created
+      // once per prescription, never re-created on a later edit/save).
+      if (hasLab && !isEditMode) {
+        try {
+          await labService.createOrder({
+            patient_id: patient.id,
+            appointment_id: appointmentId || undefined,
+            prescription_id: rxId,
+            test_ids: selectedLabTestIds,
+            notes: labNotes || undefined,
+          });
+        } catch (labErr: any) {
+          showToast(
+            'error',
+            `Prescription saved, but the lab order could not be created: ${
+              labErr?.response?.data?.detail || 'unknown error'
+            }`,
+          );
         }
       }
 

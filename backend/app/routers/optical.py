@@ -15,7 +15,7 @@ from ..database import get_db
 from ..models.user import User
 from ..models.optical import OpticalProduct as OpticalProductModel, OpticalBatch
 from ..dependencies import get_current_active_user, require_any_role
-from ..core.module_roles import require_permission
+from ..core.module_roles import require_permission, check_permission
 from ..services.notification_service import notify_hospital_users
 from ..schemas.optical import (
     # Product
@@ -44,6 +44,40 @@ router = APIRouter(prefix="/optical", tags=["Optical"])
 
 optical_view_guard = require_permission("optical", "view")
 optical_edit_guard = require_permission("optical", "edit")
+
+
+def _optical_prescription_entry_guard(level: str):
+    """Narrow carve-out for the two "enter an optical prescription's own
+    fields" endpoints (create + the by-appointment lookup used to re-open a
+    draft) — accepts either the full "optical" permission (admin/optical_staff,
+    who can also manage the rest of the Optical Store) OR the narrower
+    "optical.exam" permission (nurse's pre-consultation quick-entry, and a
+    doctor's own embedded "Add Optical" section in Prescription Builder).
+
+    Deliberately NOT applied to finalize or any Store-management endpoint
+    below (products/batches/sales) — those stay on optical_edit_guard alone,
+    so a nurse or doctor with only "optical.exam" can never finalize a
+    prescription or touch inventory/dispensing.
+    """
+    from ..database import get_db
+
+    async def _dependency(
+        current_user: User = Depends(get_current_active_user),
+        db: Session = Depends(get_db),
+    ):
+        if check_permission(db, current_user, "optical", level) or check_permission(db, current_user, "optical.exam", level):
+            return current_user
+        logger.warning(
+            "RBAC deny (optical/optical.exam carve-out) user=%s roles=%s level=%s",
+            getattr(current_user, "username", "unknown"), current_user.roles, level,
+        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role permissions")
+
+    return _dependency
+
+
+optical_entry_view_guard = _optical_prescription_entry_guard("view")
+optical_entry_edit_guard = _optical_prescription_entry_guard("edit")
 
 
 # ═══ Dashboard ═══
@@ -321,11 +355,33 @@ async def list_optical_prescriptions(
     return result
 
 
+@router.get("/prescriptions/by-appointment/{appointment_id}", response_model=OpticalPrescriptionResponse)
+async def get_optical_prescription_by_appointment(
+    appointment_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(optical_entry_view_guard),
+):
+    """Registered ahead of GET /prescriptions/{prescription_id} — a literal
+    segment route must come before a parameterized one, or FastAPI/Starlette
+    would try to parse "by-appointment" as a prescription_id and 404/422."""
+    rx = svc.get_optical_prescription_by_appointment(db, appointment_id, hospital_id=current_user.hospital_id)
+    if not rx:
+        raise HTTPException(status_code=404, detail="No optical prescription found for this appointment")
+    from ..models.optical import OpticalSale as _OptSale
+    has_sale = db.query(_OptSale.id).filter(_OptSale.prescription_id == rx.id).first() is not None
+    return _enrich_prescription_response(rx, has_sale=has_sale)
+
+
 @router.get("/prescriptions/{prescription_id}", response_model=OpticalPrescriptionResponse)
 async def get_optical_prescription(
     prescription_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(optical_view_guard),
+    # optical_entry_view_guard (not the plain optical_view_guard) — a doctor
+    # only has "optical.exam", not the full "optical" key, so they need this
+    # to view their own consultation's optical prescription (e.g. after
+    # finalizing, Prescription Builder navigates here). Same OR-guard the
+    # create/update/by-appointment endpoints above already use.
+    current_user: User = Depends(optical_entry_view_guard),
 ):
     rx = svc.get_optical_prescription_by_id(db, prescription_id, hospital_id=current_user.hospital_id)
     if not rx:
@@ -339,7 +395,7 @@ async def get_optical_prescription(
 async def create_optical_prescription(
     data: OpticalPrescriptionCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(optical_edit_guard),
+    current_user: User = Depends(optical_entry_edit_guard),
 ):
     try:
         rx = svc.create_optical_prescription(db, current_user.hospital_id, data.model_dump(), created_by=current_user.id)
@@ -360,12 +416,16 @@ async def update_optical_prescription(
     prescription_id: str,
     data: OpticalPrescriptionUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(optical_edit_guard),
+    current_user: User = Depends(optical_entry_edit_guard),
 ):
     rx = svc.get_optical_prescription_by_id(db, prescription_id, hospital_id=current_user.hospital_id)
     if not rx:
         raise HTTPException(status_code=404, detail="Prescription not found")
-    rx = svc.update_optical_prescription(db, prescription_id, data.model_dump(exclude_unset=True))
+    try:
+        rx = svc.update_optical_prescription(db, prescription_id, data.model_dump(exclude_unset=True))
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
     return _enrich_prescription_response(rx)
 
 

@@ -55,7 +55,7 @@ function timeAgo(iso: string | null): string {
 
 // ── Main Component ─────────────────────────────────────────────────
 const WalkInQueue: React.FC = () => {
-  const { user } = useAuth();
+  const { user, isEyeHospitalFeatureEnabled, isModuleEnabled } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
 
@@ -70,10 +70,23 @@ const WalkInQueue: React.FC = () => {
   // action buttons (Call/Skip/Start/Complete/Refer) correctly disappear
   // instead of rendering controls that would just 403 on click.
   const canActOnQueue = isDoctor && canEdit('appt.queue_display', roles);
-  // Vitals entry (nurse's pre-consultation flow, see NurseVitals.tsx) is
-  // deliberately not gated behind isDoctor — nurse holds rx.vitals: edit,
-  // the same permission the backend endpoint itself requires.
-  const canEnterVitals = canEdit('rx.vitals', roles);
+  // Vitals entry (nurse's pre-consultation flow, see NurseVitals.tsx) —
+  // deliberately excludes doctor even though rx.vitals grants doctor edit
+  // access too (kept there for API-level consistency): a doctor already
+  // enters vitals as part of the normal Prescription Builder consultation
+  // flow, so a redundant quick-entry button in the queue would just be
+  // confusing clutter for that role.
+  const canEnterVitals = !isDoctor && canEdit('rx.vitals', roles);
+  // Optical entry (nurse's pre-consultation eye-exam measurements, see
+  // NewOpticalPrescription.tsx) — same shape as canEnterVitals above:
+  // narrow "optical.exam" permission (create/update a draft only, never
+  // finalize or the rest of the Optical Store — see module_roles.py),
+  // deliberately excludes doctor for the same reason vitals does (a doctor
+  // already has the embedded "Add Optical" section in their own
+  // Prescription Builder consultation flow). Module-enabled + eye-hospital
+  // checks match the Optical Store nav link's own gate (Layout.tsx's
+  // canAccessOptical).
+  const canEnterOptical = !isDoctor && canEdit('optical.exam', roles) && isModuleEnabled('optical') && isEyeHospitalFeatureEnabled;
   const today = formatLocalDateISO();
 
   const [queueData, setQueueData] = useState<QueueStatusType | null>(null);
@@ -402,6 +415,15 @@ const WalkInQueue: React.FC = () => {
       queue_id: item.queue_id,
     });
     navigate(`/prescriptions/vitals/new?${params.toString()}`);
+  };
+
+  const handleEnterOptical = (item: QueueItem) => {
+    const params = new URLSearchParams({
+      patient_id: item.patient_id || '',
+      appointment_id: item.appointment_id || '',
+      queue_id: item.queue_id,
+    });
+    navigate(`/optical/prescriptions/new?${params.toString()}`);
   };
 
   const handleComplete = async (queueId: string) => {
@@ -1023,13 +1045,6 @@ const WalkInQueue: React.FC = () => {
                           <span className="material-symbols-outlined text-sm">person</span>
                           Info
                         </button>
-                        {canEnterVitals && (
-                          <button onClick={() => handleEnterVitals(nextPatient)}
-                            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-primary bg-primary/5 border border-primary/20 rounded-lg hover:bg-primary/10 transition-colors">
-                            <span className="material-symbols-outlined text-sm">vital_signs</span>
-                            Enter Vitals
-                          </button>
-                        )}
                         {canActOnQueue && (
                           <button onClick={() => handleStartConsultation(nextPatient.queue_id)}
                             className="inline-flex items-center gap-1.5 px-5 py-2.5 text-sm font-bold text-white bg-purple-500 rounded-lg hover:bg-purple-600 transition-colors shadow-sm">
@@ -1105,13 +1120,6 @@ const WalkInQueue: React.FC = () => {
                                   className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors">
                                   <span className="material-symbols-outlined text-sm">campaign</span>
                                   Call
-                                </button>
-                              )}
-                              {canEnterVitals && isSelectedDateToday && (
-                                <button onClick={() => handleEnterVitals(item)}
-                                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-primary bg-primary/5 hover:bg-primary/10 rounded-lg transition-colors">
-                                  <span className="material-symbols-outlined text-sm">vital_signs</span>
-                                  Vitals
                                 </button>
                               )}
                               {canActOnQueue && isSelectedDateToday && (
@@ -1640,6 +1648,29 @@ const WalkInQueue: React.FC = () => {
                                 OPD Assignment
                               </button>
                             )
+                          )}
+                          {/* Nurse pre-consultation data entry — quick-entry vitals
+                              and/or optical exam details, saved as a draft that
+                              auto-loads into the doctor's Prescription Builder when
+                              they start the consultation (see NurseVitals.tsx /
+                              NewOpticalPrescription.tsx). Lives directly in the
+                              queue row action bar, not behind the view/detail
+                              dialog, per BRD ask. */}
+                          {canEnterVitals && isSelectedDateToday && item.patient_id && item.appointment_id && !['completed', 'skipped'].includes(item.status) && (
+                            <button onClick={() => handleEnterVitals(item)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-primary/20 text-primary hover:bg-primary/5 hover:scale-105 active:scale-95 transition-all text-xs font-semibold"
+                              title="Enter Vitals">
+                              <span className="material-symbols-outlined text-base">vital_signs</span>
+                              Vitals
+                            </button>
+                          )}
+                          {canEnterOptical && isSelectedDateToday && item.patient_id && item.appointment_id && !['completed', 'skipped'].includes(item.status) && (
+                            <button onClick={() => handleEnterOptical(item)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-violet-200 text-violet-600 hover:bg-violet-50 hover:scale-105 active:scale-95 transition-all text-xs font-semibold"
+                              title="Enter Optical Check">
+                              <span className="material-symbols-outlined text-base">visibility</span>
+                              Optical
+                            </button>
                           )}
                           {/* View Details button for any item */}
                           <button onClick={() => setDetailItem(item)}
@@ -2434,12 +2465,6 @@ const WalkInQueue: React.FC = () => {
                 <button onClick={() => { handleSendPatientToDoctor(detailItem.queue_id, detailItem.patient_name || 'Patient'); setDetailItem(null); }}
                   className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-teal-500 rounded-lg hover:bg-teal-600 shadow-sm transition-colors">
                   <span className="material-symbols-outlined text-base">send</span> Send to Doctor
-                </button>
-              )}
-              {canEnterVitals && isSelectedDateToday && ['waiting', 'called', 'sent_to_doctor'].includes(detailItem.status) && (
-                <button onClick={() => { handleEnterVitals(detailItem); setDetailItem(null); }}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-primary bg-primary/5 border border-primary/20 rounded-lg hover:bg-primary/10 transition-colors">
-                  <span className="material-symbols-outlined text-base">vital_signs</span> Enter Vitals
                 </button>
               )}
               {canActOnQueue && isSelectedDateToday && (detailItem.status === 'called' || detailItem.status === 'sent_to_doctor') && (

@@ -106,8 +106,12 @@ const Layout: React.FC = () => {
     && isModuleEnabled('analytics')
     && (!hasRole('doctor') || hasRole('super_admin', 'admin') || doctorAnalyticsEnabled);
   // Optical Store is a back-of-store retail/dispensing operation, not part of a doctor's
-  // clinical workflow — admin/super_admin (oversight), optical_staff (the job), and
-  // nurse (enters eye prescriptions and routes them to a doctor) get it.
+  // clinical workflow — admin/super_admin (oversight) and optical_staff (the job) get
+  // this full nav section (products/sales/stock/dispensing). Nurse deliberately does
+  // NOT get it — nurse's eye-exam entry is scoped to the narrower "optical.exam"
+  // permission (draft create/update only, no finalize, no Store management) and is
+  // reached directly from the Walk-in Queue's "Optical" action, not this nav section
+  // (see module_roles.py's "optical.exam" for the full rationale).
   const canAccessOptical       = hasAccess('optical', effectiveRoles) && isModuleEnabled('optical') && isEyeHospitalFeatureEnabled;
   // Laboratory applies to every hospital type (not eye-specific) — admin/
   // super_admin (oversight) and lab_technician (the job) get it. Left untouched

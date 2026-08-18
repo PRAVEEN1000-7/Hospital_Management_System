@@ -133,6 +133,19 @@ export const opticalService = {
     return res.data;
   },
 
+  /** Returns null (not a rejected promise) when no optical prescription
+   * exists yet for this appointment — the common case, matching
+   * prescriptionService.getPrescriptionByAppointment's contract. */
+  async getPrescriptionByAppointment(appointmentId: string): Promise<OpticalPrescription | null> {
+    try {
+      const res = await api.get<OpticalPrescription>(`/optical/prescriptions/by-appointment/${appointmentId}`);
+      return res.data;
+    } catch (err: any) {
+      if (err?.response?.status === 404) return null;
+      throw err;
+    }
+  },
+
   async createPrescription(data: OpticalPrescriptionCreateData): Promise<OpticalPrescription> {
     const res = await api.post<OpticalPrescription>('/optical/prescriptions', data);
     return res.data;

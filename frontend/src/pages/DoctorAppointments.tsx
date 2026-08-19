@@ -1,11 +1,14 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import appointmentService, { type DoctorTodaySummary } from '../services/appointmentService';
+import appointmentSettingsService from '../services/appointmentSettingsService';
 import AppointmentStatusBadge from '../components/appointments/AppointmentStatusBadge';
 import type { Appointment } from '../types/appointment';
 import { formatLocalDateISO, formatDateOnly } from '../utils/calendarDate';
+
+type TimeCategory = 'morning' | 'evening' | 'full';
 
 const DoctorAppointments: React.FC = () => {
   const { user } = useAuth();
@@ -21,6 +24,36 @@ const DoctorAppointments: React.FC = () => {
   // Patients handled + consultation fee collected today — only meaningful for
   // "today" (the backend summary is always today-scoped), not other dates.
   const [todaySummary, setTodaySummary] = useState<DoctorTodaySummary | null>(null);
+
+  // Morning / Evening / Full Day view — reuses the same OPD session
+  // boundaries configured in Appointment Settings (opd_morning_end_time /
+  // opd_evening_start_time, same source AppointmentBooking.tsx's slot picker
+  // reads) rather than a separately hardcoded cutoff, so "Morning" here means
+  // the same thing it means everywhere else in the app. Defaults to whichever
+  // session is active right now — before the morning session ends: Morning;
+  // at/after the evening session starts: Evening; the gap between the two
+  // (no active session, e.g. a lunch break) or 24-hour OPDs: Full Day.
+  const [sessionTimes, setSessionTimes] = useState<{ morningEnd: string; eveningStart: string } | null>(null);
+  const [timeCategory, setTimeCategory] = useState<TimeCategory>('full');
+  const hasAppliedDefaultTimeCategory = useRef(false);
+
+  useEffect(() => {
+    appointmentSettingsService.getSettings()
+      .then(s => setSessionTimes({
+        morningEnd: (s.opd_morning_end_time || '14:00').slice(0, 5),
+        eveningStart: (s.opd_evening_start_time || '17:00').slice(0, 5),
+      }))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!sessionTimes || hasAppliedDefaultTimeCategory.current) return;
+    hasAppliedDefaultTimeCategory.current = true;
+    const nowHm = new Date().toTimeString().slice(0, 5);
+    if (nowHm < sessionTimes.morningEnd) setTimeCategory('morning');
+    else if (nowHm >= sessionTimes.eveningStart) setTimeCategory('evening');
+    else setTimeCategory('full');
+  }, [sessionTimes]);
 
   const fetchAppointments = useCallback(async () => {
     if (!user?.id) return;
@@ -50,15 +83,24 @@ const DoctorAppointments: React.FC = () => {
     (todaySummary?.patients || []).map(p => [p.appointment_id, p])
   );
 
+  const byTimeCategory = (a: Appointment): boolean => {
+    if (timeCategory === 'full' || !sessionTimes || !a.start_time) return true;
+    const t = a.start_time.slice(0, 5);
+    if (timeCategory === 'morning') return t < sessionTimes.morningEnd;
+    return t >= sessionTimes.eveningStart;
+  };
+
+  const timeFiltered = appointments.filter(byTimeCategory);
+
   const filtered = statusFilter
-    ? appointments.filter(a => a.status === statusFilter)
-    : appointments;
+    ? timeFiltered.filter(a => a.status === statusFilter)
+    : timeFiltered;
 
   const stats = {
-    total: appointments.length,
-    pending: appointments.filter(a => a.status === 'pending' || a.status === 'confirmed').length,
-    inProgress: appointments.filter(a => a.status === 'in-progress').length,
-    completed: appointments.filter(a => a.status === 'completed').length,
+    total: timeFiltered.length,
+    pending: timeFiltered.filter(a => a.status === 'pending' || a.status === 'confirmed').length,
+    inProgress: timeFiltered.filter(a => a.status === 'in-progress').length,
+    completed: timeFiltered.filter(a => a.status === 'completed').length,
   };
 
   const handleStatusChange = async (id: string, status: string) => {
@@ -89,6 +131,22 @@ const DoctorAppointments: React.FC = () => {
     return `${h % 12 || 12}:${m.toString().padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
   };
 
+  // A prescription only exists once the consultation has actually started
+  // (in-progress) or finished (completed) — same gate the "Rx" button below
+  // already used, now shared so the whole row does the same thing clicking
+  // that button did. Reuses /prescriptions/new's existing by-appointment
+  // lookup (see PrescriptionBuilder.tsx) to land on the real draft/finalized
+  // record for this visit instead of a blank form, whichever already exists.
+  const canViewPrescription = (appt: Appointment) => appt.status === 'in-progress' || appt.status === 'completed';
+
+  const openPrescription = (appt: Appointment) => {
+    if (!canViewPrescription(appt)) return;
+    const p = new URLSearchParams();
+    if (appt.patient_id) p.set('patient_id', appt.patient_id);
+    if (appt.id) p.set('appointment_id', appt.id);
+    navigate(`/prescriptions/new?${p.toString()}`);
+  };
+
   return (
     <div>
       {/* Header */}
@@ -99,6 +157,25 @@ const DoctorAppointments: React.FC = () => {
         </div>
         <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)}
           className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
+      </div>
+
+      {/* Morning / Evening / Full Day — defaults to whichever OPD session is
+          active right now (see the effect above), switchable any time. Uses
+          the same session boundaries configured in Appointment Settings. */}
+      <div className="flex gap-1 mb-6 bg-slate-100 rounded-xl p-1 w-fit">
+        {([
+          { key: 'morning', label: 'Morning', icon: 'wb_sunny' },
+          { key: 'evening', label: 'Evening', icon: 'bedtime' },
+          { key: 'full', label: 'Full Day', icon: 'calendar_view_day' },
+        ] as { key: TimeCategory; label: string; icon: string }[]).map(opt => (
+          <button key={opt.key} onClick={() => setTimeCategory(opt.key)}
+            className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-all ${
+              timeCategory === opt.key ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'
+            }`}>
+            <span className="material-symbols-outlined text-lg">{opt.icon}</span>
+            {opt.label}
+          </button>
+        ))}
       </div>
 
       {/* Today's patients handled + consultation fee collected */}
@@ -141,7 +218,7 @@ const DoctorAppointments: React.FC = () => {
 
       {/* Filters */}
       <div className="flex gap-2 mb-4 flex-wrap">
-        {['', 'pending', 'confirmed', 'in-progress', 'completed', 'no-show'].map(s => (
+        {['', 'pending', 'confirmed', 'in-progress', 'completed'].map(s => (
           <button key={s} onClick={() => setStatusFilter(s)}
             className={`px-3 py-1.5 text-xs font-semibold rounded-full transition-colors capitalize ${statusFilter === s ? 'bg-primary text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
             {s || 'All'}
@@ -155,12 +232,17 @@ const DoctorAppointments: React.FC = () => {
       ) : filtered.length === 0 ? (
         <div className="text-center py-20 text-slate-400 bg-white rounded-xl border border-slate-200">
           <span className="material-symbols-outlined text-5xl mb-3 block">event_available</span>
-          <p className="text-sm font-medium">No appointments for {formatDateOnly(selectedDate, 'EEEE, MMMM d')}</p>
+          <p className="text-sm font-medium">
+            No {timeCategory !== 'full' ? `${timeCategory} ` : ''}appointments for {formatDateOnly(selectedDate, 'EEEE, MMMM d')}
+          </p>
         </div>
       ) : (
         <div className="space-y-3">
           {filtered.map(appt => (
-            <div key={appt.id} className={`bg-white rounded-xl border p-5 transition-shadow hover:shadow-sm ${appt.status === 'in-progress' ? 'border-purple-200 ring-1 ring-purple-100' : 'border-slate-200'}`}>
+            <div key={appt.id}
+              onClick={() => openPrescription(appt)}
+              title={canViewPrescription(appt) ? 'View prescription' : undefined}
+              className={`bg-white rounded-xl border p-5 transition-shadow hover:shadow-sm ${appt.status === 'in-progress' ? 'border-purple-200 ring-1 ring-purple-100' : 'border-slate-200'} ${canViewPrescription(appt) ? 'cursor-pointer hover:border-primary/30' : ''}`}>
               <div className="flex flex-col lg:flex-row lg:items-center gap-4">
                 {/* Time Block */}
                 <div className="flex-shrink-0 w-24">
@@ -190,7 +272,7 @@ const DoctorAppointments: React.FC = () => {
                   {appt.notes && <p className="text-xs text-blue-500 mt-1 italic"><span className="material-symbols-outlined text-xs align-text-bottom mr-0.5">note</span>{appt.notes}</p>}
                 </div>
                 {/* Actions */}
-                <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="flex items-center gap-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
                   <button onClick={() => setNotesModal({ id: appt.id, notes: appt.notes || '' })}
                     className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg transition-colors" title="Add Notes">
                     <span className="material-symbols-outlined text-lg">edit_note</span>
@@ -207,25 +289,14 @@ const DoctorAppointments: React.FC = () => {
                       Complete
                     </button>
                   )}
-                  {(appt.status === 'in-progress' || appt.status === 'completed') && (
+                  {canViewPrescription(appt) && (
                     <button
-                      onClick={() => {
-                        const p = new URLSearchParams();
-                        if (appt.patient_id) p.set('patient_id', appt.patient_id);
-                        if (appt.id) p.set('appointment_id', appt.id);
-                        navigate(`/prescriptions/new?${p.toString()}`);
-                      }}
+                      onClick={() => openPrescription(appt)}
                       className="px-3 py-1.5 text-xs font-semibold text-white bg-purple-600 rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-1"
-                      title="Write Prescription"
+                      title="View Prescription"
                     >
                       <span className="material-symbols-outlined text-sm">clinical_notes</span>
                       Rx
-                    </button>
-                  )}
-                  {appt.status !== 'completed' && appt.status !== 'cancelled' && appt.status !== 'no-show' && (
-                    <button onClick={() => handleStatusChange(appt.id, 'no-show')}
-                      className="px-3 py-1.5 text-xs font-semibold text-slate-500 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
-                      No Show
                     </button>
                   )}
                 </div>

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import patientService from '../services/patientService';
 import prescriptionService from '../services/prescriptionService';
+import appointmentService from '../services/appointmentService';
 import type { Patient } from '../types/patient';
 import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -27,29 +28,36 @@ const NurseVitals: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [vitals, setVitals] = useState<VitalsValues>(emptyVitals);
-  // Eye-hospital only — matches PrescriptionBuilder.tsx's own Patient
-  // History blood sugar field (same Prescription.vitals_blood_sugar
-  // column). Kept as its own field rather than folded into VitalsCard,
-  // since VitalsCard is also used by PrescriptionBuilder's main vitals
-  // card, which doesn't want blood sugar there — it already has its own
-  // separate blood sugar field elsewhere.
+  // Blood sugar now renders inside VitalsCard itself (see that component) —
+  // still tracked separately here since it isn't part of VitalsValues, and
+  // still eye-hospital only, matching the vitals_blood_sugar column's only
+  // real use case.
   const [bloodSugar, setBloodSugar] = useState('');
+  // Patient's issue/complaint at the time of this visit — the same field
+  // reception fills in at registration (Appointment.chief_complaint), so a
+  // nurse correcting or adding detail here updates the one appointment
+  // record the doctor already reads from, rather than creating a second,
+  // conflicting place to look. Visible to the doctor as soon as they open
+  // this same appointment's consultation (see PrescriptionBuilder.tsx).
+  const [complaint, setComplaint] = useState('');
 
   useEffect(() => {
     if (!patientId || !appointmentId) {
       toast.error('Missing patient or appointment - open this from the Walk-in Queue');
-      navigate('/appointments/queue');
+      navigate(-1);
       return;
     }
     setLoading(true);
     Promise.all([
       patientService.getPatient(patientId),
+      appointmentService.getAppointment(appointmentId).catch(() => null),
       // An existing draft (e.g. re-opening to correct a value already saved)
       // pre-fills the form instead of starting blank every time.
       prescriptionService.getPrescriptionByAppointment(appointmentId).catch(() => null),
     ])
-      .then(([p, rx]) => {
+      .then(([p, appt, rx]) => {
         setPatient(p);
+        if (appt) setComplaint(appt.chief_complaint || '');
         if (rx) {
           setVitals({
             bp: rx.vitals_bp || '',
@@ -63,7 +71,7 @@ const NurseVitals: React.FC = () => {
       })
       .catch(() => {
         toast.error('Failed to load patient');
-        navigate('/appointments/queue');
+        navigate(-1);
       })
       .finally(() => setLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -72,16 +80,22 @@ const NurseVitals: React.FC = () => {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await prescriptionService.saveDraftVitals({
-        patient_id: patientId,
-        appointment_id: appointmentId,
-        vitals_bp: vitals.bp || undefined,
-        vitals_pulse: vitals.pulse || undefined,
-        vitals_temp: vitals.temp || undefined,
-        vitals_weight: vitals.weight || undefined,
-        vitals_spo2: vitals.spo2 || undefined,
-        vitals_blood_sugar: isEyeHospitalFeatureEnabled ? (bloodSugar || undefined) : undefined,
-      });
+      await Promise.all([
+        prescriptionService.saveDraftVitals({
+          patient_id: patientId,
+          appointment_id: appointmentId,
+          vitals_bp: vitals.bp || undefined,
+          vitals_pulse: vitals.pulse || undefined,
+          vitals_temp: vitals.temp || undefined,
+          vitals_weight: vitals.weight || undefined,
+          vitals_spo2: vitals.spo2 || undefined,
+          vitals_blood_sugar: isEyeHospitalFeatureEnabled ? (bloodSugar || undefined) : undefined,
+        }),
+        // Same permission nurse already holds for appointment editing
+        // (appt.manage) — a plain partial update, untouched fields on the
+        // appointment are left exactly as they were.
+        appointmentService.updateAppointment(appointmentId, { chief_complaint: complaint || undefined }),
+      ]);
       toast.success('Vitals saved as draft - the doctor will see these when the consultation starts');
       navigate('/appointments/queue');
     } catch (err: any) {
@@ -103,7 +117,7 @@ const NurseVitals: React.FC = () => {
   return (
     <div className="mx-auto max-w-2xl space-y-6 pb-10">
       <div className="flex items-center gap-3">
-        <button onClick={() => navigate('/appointments/queue')} className="text-slate-400 hover:text-slate-600">
+        <button onClick={() => navigate(-1)} className="text-slate-400 hover:text-slate-600">
           <span className="material-symbols-outlined">arrow_back</span>
         </button>
         <div>
@@ -112,26 +126,28 @@ const NurseVitals: React.FC = () => {
         </div>
       </div>
 
-      <VitalsCard values={vitals} onChange={setVitals} disabled={saving} />
+      <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+        <h3 className="font-semibold mb-4 flex items-center gap-2">
+          <span className="material-symbols-outlined text-primary text-sm">symptoms</span> Complaint
+        </h3>
+        <textarea value={complaint} onChange={e => setComplaint(e.target.value)} disabled={saving}
+          rows={2} placeholder="What is the patient reporting? (e.g. headache, blurred vision)"
+          className="input-field resize-none" />
+      </div>
 
-      {isEyeHospitalFeatureEnabled && (
-        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-          <h3 className="font-semibold mb-4 flex items-center gap-2">
-            <span className="material-symbols-outlined text-primary text-sm">bloodtype</span> Blood Sugar
-          </h3>
-          <div className="max-w-xs">
-            <label className="block text-xs font-semibold text-slate-500 mb-1.5">Blood Sugar</label>
-            <input type="text" value={bloodSugar} onChange={e => setBloodSugar(e.target.value)} disabled={saving}
-              placeholder="e.g. 110 mg/dL" className="input-field" />
-          </div>
-        </div>
-      )}
+      <VitalsCard
+        values={vitals}
+        onChange={setVitals}
+        disabled={saving}
+        bloodSugar={isEyeHospitalFeatureEnabled ? bloodSugar : undefined}
+        onBloodSugarChange={isEyeHospitalFeatureEnabled ? setBloodSugar : undefined}
+      />
 
       <div className="sticky bottom-4 z-10 rounded-2xl border border-slate-200 bg-white/95 px-5 py-4 shadow-lg backdrop-blur">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-slate-500">Saved as a draft - the doctor can still edit these before finalizing.</p>
           <div className="flex justify-end gap-3">
-            <button type="button" onClick={() => navigate('/appointments/queue')}
+            <button type="button" onClick={() => navigate(-1)}
               className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50">
               Cancel
             </button>

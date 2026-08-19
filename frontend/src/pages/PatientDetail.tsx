@@ -153,9 +153,8 @@ const PatientDetail: React.FC = () => {
     <div>
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-        <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-slate-500 hover:text-slate-700 transition-colors">
+        <button onClick={() => navigate(-1)} className="text-slate-400 hover:text-slate-600 transition-colors">
           <span className="material-icons text-lg">arrow_back</span>
-          <span className="text-sm font-semibold">Back</span>
         </button>
         <div className="flex items-center gap-2">
           {canEdit && (

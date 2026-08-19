@@ -157,26 +157,27 @@ const PrescriptionDetail: React.FC = () => {
     <div>
       {/* Header */}
       <div className="flex justify-between items-start mb-6">
-        <div>
-          <nav className="flex text-sm text-slate-400 mb-1">
-            <button onClick={() => navigate(-1)} className="hover:text-primary">
-              <span className="material-symbols-outlined text-sm align-middle">arrow_back</span> Back
-            </button>
-            <span className="mx-2">/</span>
-            <span className="text-slate-600">{rx.prescription_number}</span>
-          </nav>
-          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-3">
-            Prescription {rx.prescription_number}
-            <span className={`text-xs px-2.5 py-1 rounded-full border font-medium ${statusColor[rx.status] || ''}`}>
-              {rx.status?.replace('_', ' ')}
-            </span>
-            {rx.is_opthal && (
-              <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-primary/10 text-primary font-bold">
-                <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>visibility</span>
-                OPTHAL
+        <div className="flex items-start gap-3">
+          <button onClick={() => navigate(-1)} className="mt-1 text-slate-400 hover:text-slate-600">
+            <span className="material-symbols-outlined">arrow_back</span>
+          </button>
+          <div>
+            <nav className="flex text-sm text-slate-400 mb-1">
+              <span>{rx.prescription_number}</span>
+            </nav>
+            <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-3">
+              Prescription {rx.prescription_number}
+              <span className={`text-xs px-2.5 py-1 rounded-full border font-medium ${statusColor[rx.status] || ''}`}>
+                {rx.status?.replace('_', ' ')}
               </span>
-            )}
-          </h1>
+              {rx.is_opthal && (
+                <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-primary/10 text-primary font-bold">
+                  <span className="material-symbols-outlined" style={{ fontSize: '13px' }}>visibility</span>
+                  OPTHAL
+                </span>
+              )}
+            </h1>
+          </div>
         </div>
         <div className="flex gap-2">
           <div className="relative">

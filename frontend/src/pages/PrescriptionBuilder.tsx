@@ -1065,26 +1065,31 @@ const PrescriptionBuilder: React.FC = () => {
     <div>
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
-        <div>
-          <nav className="flex text-sm text-slate-400 mb-1">
-            <span>{isConsultationMode ? 'Queue' : 'Prescriptions'}</span>
-            <span className="mx-2">/</span>
-            <span className="text-slate-600">{isConsultationMode ? 'Consultation' : isEditMode ? 'Edit Prescription' : 'New Prescription'}</span>
-          </nav>
-          <h1 className="text-2xl font-bold text-slate-900">
-            {isConsultationMode ? 'Consultation & Prescription' : isEditMode ? 'Edit Prescription' : 'E-Prescription Builder'}
-          </h1>
+        <div className="flex items-center gap-3">
+          {/* Icon-only, top-left — matches the back-button convention used
+              across the app. Consultation mode is only ever reached from the
+              Walk-in Queue (it requires a queue_id), so a fixed destination
+              is always correct there; navigate(-1) covers every other way
+              this page can be reached (Prescriptions list, a patient's
+              "My Schedule" row, etc.). */}
+          <button
+            onClick={() => { if (isConsultationMode) navigate('/appointments/queue'); else navigate(-1); }}
+            className="text-slate-400 hover:text-slate-600"
+          >
+            <span className="material-symbols-outlined">arrow_back</span>
+          </button>
+          <div>
+            <nav className="flex text-sm text-slate-400 mb-1">
+              <span>{isConsultationMode ? 'Queue' : 'Prescriptions'}</span>
+              <span className="mx-2">/</span>
+              <span className="text-slate-600">{isConsultationMode ? 'Consultation' : isEditMode ? 'Edit Prescription' : 'New Prescription'}</span>
+            </nav>
+            <h1 className="text-2xl font-bold text-slate-900">
+              {isConsultationMode ? 'Consultation & Prescription' : isEditMode ? 'Edit Prescription' : 'E-Prescription Builder'}
+            </h1>
+          </div>
         </div>
         <div className="flex gap-3">
-          {isConsultationMode && (
-            <button
-              onClick={() => navigate('/appointments/queue')}
-              className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-medium hover:bg-slate-50 flex items-center gap-2"
-            >
-              <span className="material-symbols-outlined text-sm">arrow_back</span>
-              Back to Queue
-            </button>
-          )}
           <button
             onClick={() => setShowTemplates(!showTemplates)}
             className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-medium hover:bg-slate-50 flex items-center gap-2"
@@ -1114,9 +1119,9 @@ const PrescriptionBuilder: React.FC = () => {
             {referralInfo.notes && (
               <p className="mt-0.5 text-sm text-orange-700">{referralInfo.notes}</p>
             )}
-            {referralInfo.chiefComplaint && (
-              <p className="mt-0.5 text-xs text-orange-600">Original complaint: {referralInfo.chiefComplaint}</p>
-            )}
+            {/* Complaint itself now shown once, in the general Complaint card
+                below (near Vitals) rather than duplicated here — see that
+                card's comment. */}
           </div>
         </div>
       )}
@@ -1403,9 +1408,126 @@ const PrescriptionBuilder: React.FC = () => {
               its own accord when the patient has no prior prescriptions. */}
           {patient && <PrescriptionHistoryGrid patientId={patient.id} variant="card" />}
 
+          {/* Lab Results (read-only) — the outcome of tests advised for this
+              patient, so the doctor reviews them in-consultation without
+              leaving the screen. Moved up to sit alongside Prescription
+              History (same "read the patient's past before writing today's
+              notes" flow) instead of its old position near the bottom of the
+              form, past Diagnosis/Medicines/Lab-order-entry/Optical/Clinical
+              Notes, where a doctor would have to scroll past the entire
+              consultation form to find it — easy to miss, and too late to
+              inform anything written above it. Shown whenever there are any
+              (create or edit mode); data itself was already correct
+              (get_patient_lab_results only ever returns report_status =
+              'finalized' orders) — this was a placement fix, not a data fix. */}
+          {labModuleEnabled && pastLabResults.length > 0 && (
+            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+              <h3 className="font-semibold mb-4 flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-sm">biotech</span>
+                Lab Results
+              </h3>
+              <div className="space-y-3">
+                {pastLabResults.map(order => (
+                  <div key={order.id} className="border border-slate-200 rounded-lg overflow-hidden">
+                    <div className="flex items-center justify-between px-3 py-2 bg-slate-50 border-b border-slate-100">
+                      <span className="text-xs font-mono text-slate-600">
+                        {order.order_number}
+                        <span className={`ml-2 px-1.5 py-0.5 rounded-full text-[10px] font-medium capitalize ${
+                          order.status === 'completed' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                        }`}>{order.status.replace('_', ' ')}</span>
+                      </span>
+                      <span className="text-[11px] text-slate-400">
+                        {new Date(order.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <tbody className="divide-y divide-slate-100">
+                          {order.items.flatMap(item => (
+                            item.parameters.length > 0 ? item.parameters.map((p, idx) => (
+                              <tr key={`${item.id}-${idx}`}>
+                                <td className="px-3 py-1.5 text-slate-700">{p.name}</td>
+                                <td className="px-3 py-1.5 text-slate-900">
+                                  {p.value}{p.unit ? ` ${p.unit}` : ''}
+                                </td>
+                                <td className="px-3 py-1.5 text-slate-400 text-xs">{p.reference_range || ''}</td>
+                                <td className="px-3 py-1.5">
+                                  {p.flag && (
+                                    <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium capitalize ${
+                                      p.flag === 'normal' ? 'bg-emerald-50 text-emerald-700'
+                                        : p.flag === 'high' ? 'bg-red-50 text-red-600'
+                                        : p.flag === 'low' ? 'bg-amber-50 text-amber-700'
+                                        : 'bg-orange-50 text-orange-700'
+                                    }`}>{p.flag}</span>
+                                  )}
+                                </td>
+                              </tr>
+                            )) : [(
+                              <tr key={item.id}>
+                                <td className="px-3 py-1.5 text-slate-700">
+                                  {item.billed_name || item.test_name}
+                                  {item.billed_name && item.billed_name !== item.test_name && (
+                                    <span className="block text-xs text-slate-400">Catalog reference: {item.test_name}</span>
+                                  )}
+                                </td>
+                                <td className="px-3 py-1.5 text-slate-400 italic" colSpan={3}>Pending</td>
+                              </tr>
+                            )]
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Patient History — auto-filled from registration (BRD §2.5/§4.4).
+              Moved to appear before Complaint/Vitals below so the doctor sees
+              the patient's known history first, ahead of today's numbers.
+              Blood Sugar used to have its own input in this card too — it's
+              now shown/edited inside the Vitals card instead (one of the
+              vitals, not patient-history trivia), so this card is
+              Symptoms-only. */}
+          {isEyeHospital && historySymptoms.length > 0 && (
+            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+              <h3 className="font-semibold mb-4 flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-sm">history</span> Patient History
+              </h3>
+              <div>
+                <label className="text-xs font-semibold text-slate-500 uppercase mb-1.5 block">Symptoms</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {historySymptoms.map(s => (
+                    <span key={s} className="px-2.5 py-1 text-xs font-medium rounded-full bg-slate-100 text-slate-700">{s}</span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Complaint — nurse (or reception at registration) can record the
+              patient's issue ahead of the consultation (see NurseVitals.tsx /
+              NewOpticalPrescription.tsx); shown once here regardless of
+              referral status (the referral banner above used to duplicate
+              this as "Original complaint", now removed there). Read-only —
+              this is the same Appointment.chief_complaint reception/nurse
+              already own, not a field this screen writes to. */}
+          {referralInfo?.chiefComplaint && (
+            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+              <h3 className="font-semibold mb-2 flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-sm">symptoms</span> Complaint
+              </h3>
+              <p className="text-sm text-slate-700">{referralInfo.chiefComplaint}</p>
+            </div>
+          )}
+
           {/* Vitals Section — nurse can pre-fill this before the doctor opens
               the consultation (see NurseVitals.tsx); shared field/layout via
-              VitalsCard so both screens look identical. */}
+              VitalsCard so both screens look identical. Blood sugar renders
+              inside this same card (eye hospitals only) rather than as a
+              separate "Patient History" box further down the page — it's
+              one of the vitals, so it belongs with the rest of them. */}
           {patient && (
             <VitalsCard
               values={{ bp: vitalsBp, pulse: vitalsPulse, temp: vitalsTemp, weight: vitalsWeight, spo2: vitalsSpo2 }}
@@ -1416,6 +1538,8 @@ const PrescriptionBuilder: React.FC = () => {
                 setVitalsWeight(v.weight);
                 setVitalsSpo2(v.spo2);
               }}
+              bloodSugar={isEyeHospital ? vitalsBloodSugar : undefined}
+              onBloodSugarChange={isEyeHospital ? setVitalsBloodSugar : undefined}
             />
           )}
 
@@ -1842,34 +1966,6 @@ const PrescriptionBuilder: React.FC = () => {
             </div>
           )}
 
-          {/* Patient History — auto-filled from registration (BRD §2.5/§4.4) */}
-          {isEyeHospital && (historySymptoms.length > 0 || vitalsBloodSugar) && (
-            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-              <h3 className="font-semibold mb-4 flex items-center gap-2">
-                <span className="material-symbols-outlined text-primary text-sm">history</span> Patient History
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 uppercase mb-1.5 block">Blood Sugar</label>
-                  <input
-                    value={vitalsBloodSugar}
-                    onChange={e => setVitalsBloodSugar(e.target.value)}
-                    className="input-field"
-                    placeholder="e.g. 110 mg/dL"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 uppercase mb-1.5 block">Symptoms</label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {historySymptoms.map(s => (
-                      <span key={s} className="px-2.5 py-1 text-xs font-medium rounded-full bg-slate-100 text-slate-700">{s}</span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Clinical Notes */}
           <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
             <h3 className="font-semibold mb-4 flex items-center gap-2">
@@ -1886,72 +1982,6 @@ const PrescriptionBuilder: React.FC = () => {
             />
           </div>
 
-
-          {/* Lab Results (read-only) — the outcome of tests advised for this
-              patient, so the doctor reviews them in-consultation without leaving
-              the screen. Shown whenever there are any (create or edit mode). */}
-          {labModuleEnabled && pastLabResults.length > 0 && (
-            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-              <h3 className="font-semibold mb-4 flex items-center gap-2">
-                <span className="material-symbols-outlined text-primary text-sm">biotech</span>
-                Lab Results
-              </h3>
-              <div className="space-y-3">
-                {pastLabResults.map(order => (
-                  <div key={order.id} className="border border-slate-200 rounded-lg overflow-hidden">
-                    <div className="flex items-center justify-between px-3 py-2 bg-slate-50 border-b border-slate-100">
-                      <span className="text-xs font-mono text-slate-600">
-                        {order.order_number}
-                        <span className={`ml-2 px-1.5 py-0.5 rounded-full text-[10px] font-medium capitalize ${
-                          order.status === 'completed' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
-                        }`}>{order.status.replace('_', ' ')}</span>
-                      </span>
-                      <span className="text-[11px] text-slate-400">
-                        {new Date(order.created_at).toLocaleDateString()}
-                      </span>
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <tbody className="divide-y divide-slate-100">
-                          {order.items.flatMap(item => (
-                            item.parameters.length > 0 ? item.parameters.map((p, idx) => (
-                              <tr key={`${item.id}-${idx}`}>
-                                <td className="px-3 py-1.5 text-slate-700">{p.name}</td>
-                                <td className="px-3 py-1.5 text-slate-900">
-                                  {p.value}{p.unit ? ` ${p.unit}` : ''}
-                                </td>
-                                <td className="px-3 py-1.5 text-slate-400 text-xs">{p.reference_range || ''}</td>
-                                <td className="px-3 py-1.5">
-                                  {p.flag && (
-                                    <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium capitalize ${
-                                      p.flag === 'normal' ? 'bg-emerald-50 text-emerald-700'
-                                        : p.flag === 'high' ? 'bg-red-50 text-red-600'
-                                        : p.flag === 'low' ? 'bg-amber-50 text-amber-700'
-                                        : 'bg-orange-50 text-orange-700'
-                                    }`}>{p.flag}</span>
-                                  )}
-                                </td>
-                              </tr>
-                            )) : [(
-                              <tr key={item.id}>
-                                <td className="px-3 py-1.5 text-slate-700">
-                                  {item.billed_name || item.test_name}
-                                  {item.billed_name && item.billed_name !== item.test_name && (
-                                    <span className="block text-xs text-slate-400">Catalog reference: {item.test_name}</span>
-                                  )}
-                                </td>
-                                <td className="px-3 py-1.5 text-slate-400 italic" colSpan={3}>Pending</td>
-                              </tr>
-                            )]
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* Laboratory Tests — any hospital type (gated by the lab module),
               create-mode only. Ordered as an independent record; the server-side
@@ -2281,7 +2311,7 @@ const PrescriptionBuilder: React.FC = () => {
           <div className="flex justify-between items-center pb-6">
             <div className="flex gap-2">
               <button
-                onClick={() => navigate(isConsultationMode ? '/appointments/queue' : '/prescriptions')}
+                onClick={() => { if (isConsultationMode) navigate('/appointments/queue'); else navigate(-1); }}
                 className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-medium hover:bg-slate-50"
               >
                 Cancel

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import labService from '../../services/labService';
 import { patientService } from '../../services/patientService';
@@ -25,6 +26,7 @@ const blank = (value?: string | null, dashes = 40): string =>
   value && value.trim() ? value : '-'.repeat(dashes);
 
 const LabReferralForm: React.FC = () => {
+  const navigate = useNavigate();
   const { showToast } = useToast();
   const [hospital, setHospital] = useState<HospitalDetails | null>(null);
 
@@ -139,11 +141,16 @@ const LabReferralForm: React.FC = () => {
         }
       `}</style>
 
-      <div className="print:hidden">
-        <h1 className="text-2xl font-bold text-slate-900">Concern Form</h1>
-        <p className="text-sm text-slate-500 mt-1">
-          Refer a patient to an external consultant (e.g. for an investigation this lab doesn't perform in-house).
-        </p>
+      <div className="print:hidden flex items-center gap-3">
+        <button onClick={() => navigate(-1)} className="text-slate-400 hover:text-slate-600">
+          <span className="material-symbols-outlined">arrow_back</span>
+        </button>
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Concern Form</h1>
+          <p className="text-sm text-slate-500 mt-1">
+            Refer a patient to an external consultant (e.g. for an investigation this lab doesn't perform in-house).
+          </p>
+        </div>
       </div>
 
       <div className="bg-white rounded-xl border border-slate-200 p-5 print:hidden space-y-4">

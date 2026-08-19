@@ -237,8 +237,12 @@ const GRNReceiptForm: React.FC = () => {
       item.quantity_rejected = 0;
     }
 
-    // Auto-calculate total
-    if (field === 'quantity_accepted' || field === 'unit_price') {
+    // Auto-calculate total — also on 'quantity_received' since that field
+    // above just silently changed quantity_accepted too; without it here,
+    // editing quantity_received left total_price stale (still the old
+    // quantity's total) until unit_price/quantity_accepted was separately
+    // touched.
+    if (field === 'quantity_received' || field === 'quantity_accepted' || field === 'unit_price') {
       item.total_price = (item.quantity_accepted || 0) * (item.unit_price || 0);
     }
 
@@ -401,7 +405,7 @@ const GRNReceiptForm: React.FC = () => {
           </p>
         </div>
         <button
-          onClick={() => navigate('/inventory/grns')}
+          onClick={() => navigate(-1)}
           className="text-slate-600 hover:text-slate-900"
         >
           <span className="material-symbols-outlined">close</span>
@@ -522,6 +526,7 @@ const GRNReceiptForm: React.FC = () => {
                   <th className="px-3 py-2 text-center font-semibold text-slate-600">Received</th>
                   <th className="px-3 py-2 text-center font-semibold text-slate-600">Accepted</th>
                   <th className="px-3 py-2 text-right font-semibold text-slate-600">Unit Price</th>
+                  <th className="px-3 py-2 text-right font-semibold text-slate-600">Total</th>
                   <th className="px-3 py-2 text-left font-semibold text-slate-600">Discrepancy Notes</th>
                   <th className="px-3 py-2 text-center font-semibold text-slate-600">Action</th>
                 </tr>
@@ -604,8 +609,29 @@ const GRNReceiptForm: React.FC = () => {
                         className="w-16 px-2 py-1 border border-slate-200 rounded text-xs focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:bg-slate-50"
                       />
                     </td>
-                    <td className="px-3 py-3 text-right font-mono text-slate-900">
-                      ₹{(item.unit_price || 0).toFixed(2)}
+                    <td className="px-3 py-3">
+                      {/* Editable only at create time — the edit-mode "Save"
+                          below (handleSaveBatchDetails) hits
+                          update_grn_item_batch, which deliberately only
+                          covers batch_number/dates/quantity_received/
+                          discrepancy_notes (see GRNItemBatchUpdate), not
+                          rate — once items are posted to inventory, changing
+                          the rate here would silently do nothing rather
+                          than reconcile stock valuation, so it's disabled
+                          rather than offered and dropped. */}
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={zeroAsEmpty(item.unit_price || 0)} placeholder="0.00"
+                        onChange={(e) => updateItem(idx, 'unit_price', parseFloat(e.target.value) || 0)}
+                        disabled={isEditMode}
+                        title={isEditMode ? 'Rate can only be set when the GRN is first created' : undefined}
+                        className="w-24 px-2 py-1 border border-slate-200 rounded text-xs text-right focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:bg-slate-50"
+                      />
+                    </td>
+                    <td className="px-3 py-3 text-right font-mono font-semibold text-slate-900">
+                      ₹{(item.total_price || 0).toFixed(2)}
                     </td>
                     <td className="px-3 py-3 min-w-[160px]">
                       <input
@@ -643,12 +669,17 @@ const GRNReceiptForm: React.FC = () => {
               </tbody>
             </table>
           </div>
+          <div className="flex justify-end pt-3">
+            <div className="text-sm font-bold text-slate-900">
+              Grand Total: <span className="text-primary">₹{items.reduce((sum, i) => sum + (i.total_price || 0), 0).toFixed(2)}</span>
+            </div>
+          </div>
         </div>
 
         {/* Actions */}
         <div className="flex gap-3 pt-4 border-t border-slate-200">
           <button
-            onClick={() => navigate('/inventory/grns')}
+            onClick={() => navigate(-1)}
             className="flex-1 px-4 py-2 border border-slate-200 text-slate-700 rounded-lg text-sm font-semibold hover:bg-slate-50 transition-colors"
           >
             Cancel

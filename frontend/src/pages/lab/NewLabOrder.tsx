@@ -151,11 +151,16 @@ const NewLabOrder: React.FC = () => {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">New Lab Order</h1>
-        <p className="text-slate-500 text-sm mt-1">
-          Order lab tests directly for a walk-in patient — no prior doctor consultation required.
-        </p>
+      <div className="flex items-center gap-3">
+        <button onClick={() => navigate(-1)} className="text-slate-400 hover:text-slate-600">
+          <span className="material-symbols-outlined">arrow_back</span>
+        </button>
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">New Lab Order</h1>
+          <p className="text-slate-500 text-sm mt-1">
+            Order lab tests directly for a walk-in patient — no prior doctor consultation required.
+          </p>
+        </div>
       </div>
 
       {/* ── Patient ─────────────────────────────────────────────── */}

@@ -4,6 +4,7 @@ import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
 import opticalService from '../../services/opticalService';
 import patientService from '../../services/patientService';
+import appointmentService from '../../services/appointmentService';
 import scheduleService from '../../services/scheduleService';
 import type { Patient } from '../../types/patient';
 import type { DoctorOption } from '../../types/appointment';
@@ -102,6 +103,21 @@ const NewOpticalPrescription: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appointmentId]);
 
+  // Patient's issue/complaint at the time of this visit — same field
+  // reception fills in at registration (Appointment.chief_complaint), same
+  // as NurseVitals.tsx's Complaint field, so both entry points read/write
+  // the one appointment record the doctor already reads from. Only
+  // applicable when this Rx is tied to a live visit (appointmentId set) —
+  // the standalone walk-in-without-consultation case has no appointment to
+  // attach a complaint to.
+  const [complaint, setComplaint] = useState('');
+  useEffect(() => {
+    if (!appointmentId) return;
+    appointmentService.getAppointment(appointmentId)
+      .then(appt => setComplaint(appt.chief_complaint || ''))
+      .catch(() => {});
+  }, [appointmentId]);
+
   // Returning from the full Patient Registration form (Register.tsx) after
   // registering a walk-in patient who wasn't found in search above — same
   // sessionStorage 'walkInReturnUrl' + '?new_patient_id=' round trip already
@@ -150,6 +166,9 @@ const NewOpticalPrescription: React.FC = () => {
             ...opticalRx,
             appointment_id: appointmentId || undefined,
           });
+      if (appointmentId) {
+        await appointmentService.updateAppointment(appointmentId, { chief_complaint: complaint || undefined });
+      }
       toast.success(existingRxId ? 'Eye prescription draft saved' : `Eye prescription ${rx.prescription_number} created`);
       if (hasFullOpticalAccess) {
         navigate(`/optical/prescriptions/${rx.id}`);
@@ -283,6 +302,21 @@ const NewOpticalPrescription: React.FC = () => {
             This walk-in prescription is recorded without a consultation — optionally pick the doctor it should be filed under.
           </p>
         </div>
+
+        {/* Complaint — only applicable when tied to a live visit; a
+            standalone walk-in Rx (no consultation) has no appointment to
+            attach it to. */}
+        {appointmentId && (
+          <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+            <h3 className="font-semibold flex items-center gap-2 mb-4">
+              <span className="material-symbols-outlined text-primary text-sm">symptoms</span>
+              Complaint
+            </h3>
+            <textarea value={complaint} onChange={(e) => setComplaint(e.target.value)}
+              rows={2} placeholder="What is the patient reporting? (e.g. eye redness, watering)"
+              className="input-field resize-none" />
+          </div>
+        )}
 
         {/* Optical (Spectacle) Prescription */}
         <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">

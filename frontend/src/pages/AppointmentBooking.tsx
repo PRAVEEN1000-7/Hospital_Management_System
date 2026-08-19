@@ -315,9 +315,14 @@ const AppointmentBooking: React.FC = () => {
   return (
     <div className="max-w-4xl mx-auto">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-slate-900">Book Appointment</h1>
-        <p className="text-slate-500 text-sm mt-1">Schedule a patient appointment with a doctor</p>
+      <div className="flex items-center gap-3 mb-8">
+        <button onClick={() => navigate(-1)} className="text-slate-400 hover:text-slate-600">
+          <span className="material-symbols-outlined">arrow_back</span>
+        </button>
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Book Appointment</h1>
+          <p className="text-slate-500 text-sm mt-1">Schedule a patient appointment with a doctor</p>
+        </div>
       </div>
 
       {/* Step Indicators */}

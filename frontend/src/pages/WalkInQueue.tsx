@@ -1783,13 +1783,6 @@ const WalkInQueue: React.FC = () => {
                           Complete
                         </button>
                       )}
-                      {appt.status !== 'completed' && appt.status !== 'cancelled' && appt.status !== 'no-show' && (
-                        <button onClick={() => handleScheduledStatusChange(appt.id, 'no-show')}
-                          className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-500 bg-slate-50 border border-slate-200 rounded-lg hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors">
-                          <span className="material-symbols-outlined text-sm">person_off</span>
-                          No Show
-                        </button>
-                      )}
                     </div>
                   </div>
                 </div>

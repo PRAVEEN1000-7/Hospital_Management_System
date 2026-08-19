@@ -114,7 +114,7 @@ const OpticalPrescriptionDetail: React.FC = () => {
     <div className="space-y-6 max-w-screen-lg">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <button onClick={() => navigate('/optical/prescriptions')} className="text-slate-400 hover:text-slate-600">
+          <button onClick={() => navigate(-1)} className="text-slate-400 hover:text-slate-600">
             <span className="material-symbols-outlined">arrow_back</span>
           </button>
           <div>

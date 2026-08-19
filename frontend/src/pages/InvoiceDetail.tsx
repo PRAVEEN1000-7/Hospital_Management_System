@@ -129,7 +129,7 @@ const InvoiceDetail: React.FC = () => {
       setPatient(pat);
     } catch {
       showToast('error', 'Failed to load invoice');
-      navigate('/billing/invoices');
+      navigate(-1);
     } finally {
       setLoading(false);
     }
@@ -341,7 +341,7 @@ const InvoiceDetail: React.FC = () => {
         <div className="flex items-center justify-between mb-6 no-print">
           <div className="flex items-center gap-3">
             <button
-              onClick={() => navigate('/billing/invoices')}
+              onClick={() => navigate(-1)}
               className="p-2 rounded-lg hover:bg-slate-100 text-slate-500"
             >
               <span className="material-symbols-outlined text-[20px]">arrow_back</span>

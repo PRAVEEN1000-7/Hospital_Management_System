@@ -555,7 +555,7 @@ const InvoiceCreate: React.FC = () => {
       {/* ── Header ── */}
       <div className="flex items-center gap-3 mb-6">
         <button
-          onClick={() => navigate('/billing/invoices')}
+          onClick={() => navigate(-1)}
           className="p-2 rounded-lg hover:bg-slate-100 text-slate-500 transition-colors"
         >
           <span className="material-symbols-outlined text-[20px]">arrow_back</span>
@@ -1042,7 +1042,7 @@ const InvoiceCreate: React.FC = () => {
                 Save as Draft
               </button>
               <button
-                onClick={() => navigate('/billing/invoices')}
+                onClick={() => navigate(-1)}
                 className="w-full py-2 text-slate-500 text-sm hover:text-slate-700"
               >
                 Cancel

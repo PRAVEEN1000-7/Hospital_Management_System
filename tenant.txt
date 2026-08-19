@@ -1,0 +1,24 @@
+117b6c9d-8b7b-4b1a-ab49-63d9ecbdcd7e
+
+
+
+@tenant.txt in this file i share the tenat id of a specific hospital.now i want the below flow for this hospital only.
+  for the general medicine -> all related all the bills ,documnets,prescription i want the name as "Balaji Health Foundation"
+  for the optical related all the things -> all related bills ,documents ,prescription i want the name "Balaji Eye
+  Foundation"
+
+  these 2 changes should be take the effect the print ,download the document and view (preview) the document only and the
+  remaining flow as it is.
+
+
+
+   @image.png in this image add the option to switch the prescription between general and the optical,based on this details
+  the vital or optical data show in the top ,then the docotor can able to prescribe the
+  if the docotro choose the general the vital details should show
+
+   implement this flow.
+  after the opd assignment,the nurse enter the vital and optical details and save as the draft ,then the doctor can able to see those details .
+
+  in the nurse login ,they allow to create the both or either one and fill the necessary details.based on that ,it will show in the doctor login under the prescription while consult the patient.also make sure the enttire details only show and that should the exact one.dont show the random or auto generate datas.
+
+  check this flow and implement this

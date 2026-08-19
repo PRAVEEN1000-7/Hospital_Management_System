@@ -71,12 +71,34 @@ const sectionHeadingFor = (rows: { section: string }[], idx: number): string | u
   return section !== prevSection ? section : undefined;
 };
 
-const LabOrderDetail: React.FC = () => {
-  const { orderId } = useParams<{ orderId: string }>();
+interface LabOrderDetailProps {
+  /** When set, this component is embedded in a dialog (see
+   * LabBilling.tsx's "View" action) rather than reached via its own route —
+   * the order id comes from this prop instead of the route param, and
+   * every "leave this screen" action (breadcrumb, load failure, delete
+   * success) calls onClose() to dismiss the dialog instead of navigating
+   * the whole app away from wherever it was opened. All other content and
+   * behavior (results entry, finalize, print/download, delete) is
+   * unchanged — this is the same page, just optionally embeddable. */
+  orderIdProp?: string;
+  onClose?: () => void;
+}
+
+const LabOrderDetail: React.FC<LabOrderDetailProps> = ({ orderIdProp, onClose }) => {
+  const { orderId: routeOrderId } = useParams<{ orderId: string }>();
+  const orderId = orderIdProp ?? routeOrderId;
   const navigate = useNavigate();
   const { showToast } = useToast();
   const { user } = useAuth();
   const isStaff = Boolean(user?.roles?.some((r) => STAFF_ROLES.includes(r)));
+
+  // Single "leave this screen" action — dismisses the dialog when embedded,
+  // otherwise falls back to the original full-page navigation.
+  const goBack = useCallback(() => {
+    if (onClose) onClose();
+    else if (isStaff) navigate('/lab/queue');
+    else navigate(-1);
+  }, [onClose, isStaff, navigate]);
 
   const [order, setOrder] = useState<LabOrder | null>(null);
   const [loading, setLoading] = useState(true);
@@ -97,12 +119,12 @@ const LabOrderDetail: React.FC = () => {
       setNotesDrafts(Object.fromEntries(data.items.map((i) => [i.id, i.result_notes || ''])));
     } catch (err: any) {
       showToast('error', err?.response?.data?.detail || 'Failed to load order');
-      if (isStaff) navigate('/lab/queue'); else navigate(-1);
+      goBack();
     } finally {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderId, showToast, navigate]);
+  }, [orderId, showToast, goBack]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -222,7 +244,7 @@ const LabOrderDetail: React.FC = () => {
     try {
       await labService.deleteOrder(orderId);
       showToast('success', 'Lab order deleted');
-      if (isStaff) navigate('/lab/queue'); else navigate(-1);
+      goBack();
     } catch (err: any) {
       showToast('error', err?.response?.data?.detail || 'Failed to delete lab order');
     } finally {
@@ -270,8 +292,8 @@ const LabOrderDetail: React.FC = () => {
       {/* Header */}
       <div className="print:hidden">
         <nav className="flex text-sm text-slate-400 mb-1">
-          <button onClick={() => (isStaff ? navigate('/lab/queue') : navigate(-1))} className="hover:text-primary">
-            {isStaff ? 'Lab Queue' : 'Back'}
+          <button onClick={goBack} className="hover:text-primary">
+            {onClose ? 'Close' : isStaff ? 'Lab Queue' : 'Back'}
           </button>
           <span className="mx-2">/</span>
           <span className="text-slate-600">{order.order_number}</span>
@@ -370,7 +392,13 @@ const LabOrderDetail: React.FC = () => {
           {isStaff && !isFinalized && allItemsCompleted && !isPaid && (
             <p className="text-sm text-slate-500 mb-4 print:hidden">
               Payment must be collected before finalizing —{' '}
-              <button onClick={() => navigate('/lab/billing')} className="text-primary font-semibold hover:underline">
+              <button
+                onClick={() => (onClose ? onClose() : navigate('/lab/billing'))}
+                className="text-primary font-semibold hover:underline"
+              >
+                {/* Embedded in the Lab Billing dialog already — closing it is
+                    enough; navigate() would be a no-op route-wise but leave
+                    the dialog stuck open on top of the same list. */}
                 collect it from Lab Billing
               </button>.
             </p>

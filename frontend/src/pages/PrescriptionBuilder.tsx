@@ -232,10 +232,14 @@ const PrescriptionBuilder: React.FC = () => {
   // isEyeHospital, which forced every multi_specialty prescription into the
   // eye-drop table even for non-eye patients).
   const canChooseRxFormat = user?.hospital_specialty === 'multi_specialty';
-  // POST /optical/prescriptions is guarded by edit_roles('optical')
-  // (admin/optical_staff only) — without this the optical card renders for any
-  // eye-hospital user and the create silently 403s after the form is filled in.
-  const canCreateOpticalRx = canEdit('optical', user?.roles);
+  // POST/PUT /optical/prescriptions accept either "optical" (admin/optical_staff,
+  // full Optical Store) or the narrower "optical.exam" (doctor/nurse, entry-only —
+  // see module_roles.py) — a doctor authoring their own consultation's optical Rx
+  // here only ever holds the latter, so checking "optical" alone (as this used to)
+  // hid this whole section from every doctor. Without this OR, the section either
+  // renders for a role who'll get a silent 403 on save, or hides for a role who's
+  // actually allowed to save.
+  const canCreateOpticalRx = canEdit('optical', user?.roles) || canEdit('optical.exam', user?.roles);
 
   // Institution dual-letterhead selector (BRD §4.2) + Patient History auto-fill (BRD §4.4)
   const [institutionId, setInstitutionId] = useState('');
@@ -2093,11 +2097,18 @@ const PrescriptionBuilder: React.FC = () => {
             </div>
           )}
 
-          {/* Optical (Spectacle) Prescription — eye-hospital feature pack only,
-              create-mode only (it's a separate record, not part of this edit).
-              Shown for all eye hospitals; optical module (store) controls whether
-              the patient is sent to the optical store after finalization. */}
-          {isEyeHospital && !isEditMode && canCreateOpticalRx && (
+          {/* Optical (Spectacle) Prescription — eye-hospital feature pack only.
+              Gated on !!appointmentId (a live consultation for a specific visit),
+              not !isEditMode — a nurse's saved vitals draft (see NurseVitals.tsx)
+              routes the doctor straight into edit mode for THIS SAME visit, and
+              that draft may carry its own optical entry (see the
+              opticalService.getPrescriptionByAppointment effect above) that must
+              still be visible/editable here. A historical, standalone edit of an
+              old prescription with no appointment_id correctly stays excluded —
+              that's a genuinely separate record, per the original intent below.
+              Optical module (store) controls whether the patient is sent to the
+              optical store after finalization. */}
+          {isEyeHospital && !!appointmentId && canCreateOpticalRx && (
             <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold flex items-center gap-2">

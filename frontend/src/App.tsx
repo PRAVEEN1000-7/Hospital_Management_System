@@ -95,7 +95,6 @@ import LabTestCatalog from './pages/lab/LabTestCatalog';
 import LabQueue from './pages/lab/LabQueue';
 import LabOrderDetail from './pages/lab/LabOrderDetail';
 import LabBilling from './pages/lab/LabBilling';
-import LabCollectPayment from './pages/lab/LabCollectPayment';
 import LabReferralForm from './pages/lab/LabReferralForm';
 import NewLabOrder from './pages/lab/NewLabOrder';
 
@@ -702,14 +701,6 @@ const AppWithNotifications: React.FC = () => {
                   requiredModule="lab"
                 >
                   <LabBilling />
-                </ProtectedRoute>
-              } />
-              <Route path="/lab/billing/:orderId/pay" element={
-                <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'lab_technician']}
-                  requiredModule="lab"
-                >
-                  <LabCollectPayment />
                 </ProtectedRoute>
               } />
               <Route path="/lab/orders/:orderId" element={

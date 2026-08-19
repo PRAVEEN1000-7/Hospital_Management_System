@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import labService from '../../services/labService';
 import type { LabBillingItem } from '../../types/lab';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { format } from 'date-fns';
 import DateRangeFilter from '../../components/common/DateRangeFilter';
+import LabCollectPaymentModal from '../../components/lab/LabCollectPaymentModal';
+import LabOrderDetail from './LabOrderDetail';
 
 const STAFF_ROLES = ['super_admin', 'admin', 'lab_technician'];
 
@@ -25,7 +26,6 @@ const fmt = (n: number) =>
   new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
 
 const LabBilling: React.FC = () => {
-  const navigate = useNavigate();
   const toast = useToast();
   const { user } = useAuth();
   const [orders, setOrders] = useState<LabBillingItem[]>([]);
@@ -36,7 +36,14 @@ const LabBilling: React.FC = () => {
   const [paymentStatus, setPaymentStatus] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [payingOrderId, setPayingOrderId] = useState<string | null>(null);
   const canReceivePayment = Boolean(user?.roles?.some((r) => STAFF_ROLES.includes(r)));
+
+  // View — the exact same LabOrderDetail content (order info, items,
+  // results, Finalize, its own Print Report/Download PDF buttons already at
+  // the top right) embedded in a dialog instead of navigated to as a
+  // separate page, via LabOrderDetail's optional orderIdProp/onClose props.
+  const [viewingOrderId, setViewingOrderId] = useState<string | null>(null);
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -132,13 +139,13 @@ const LabBilling: React.FC = () => {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1">
-                      <button onClick={() => navigate(`/lab/orders/${o.id}`)}
+                      <button onClick={() => setViewingOrderId(o.id)}
                         className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50"
                         title="View lab order">
                         <span className="material-symbols-outlined text-sm">visibility</span> View
                       </button>
                       {canReceivePayment && o.payment_status !== 'paid' && (
-                        <button onClick={() => navigate(`/lab/billing/${o.id}/pay`)}
+                        <button onClick={() => setPayingOrderId(o.id)}
                           className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100">
                           <span className="material-symbols-outlined text-sm">payments</span> Receive Payment
                         </button>
@@ -168,6 +175,25 @@ const LabBilling: React.FC = () => {
           </div>
         )}
       </div>
+
+      {payingOrderId && (
+        <LabCollectPaymentModal
+          orderId={payingOrderId}
+          onClose={() => setPayingOrderId(null)}
+          onPaid={fetchOrders}
+        />
+      )}
+
+      {viewingOrderId && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setViewingOrderId(null)}>
+          <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white shadow-xl p-6" onClick={(e) => e.stopPropagation()}>
+            <LabOrderDetail
+              orderIdProp={viewingOrderId}
+              onClose={() => { setViewingOrderId(null); fetchOrders(); }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

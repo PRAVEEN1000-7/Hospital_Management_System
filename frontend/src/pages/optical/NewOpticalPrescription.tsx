@@ -93,8 +93,10 @@ const NewOpticalPrescription: React.FC = () => {
       setOpticalRx({
         right_sph: rx.right_sph ?? undefined, right_cyl: rx.right_cyl ?? undefined,
         right_axis: rx.right_axis ?? undefined, right_add: rx.right_add ?? undefined, right_va: rx.right_va ?? undefined,
+        right_vision: rx.right_vision ?? undefined, right_iop: rx.right_iop ?? undefined, right_nld: rx.right_nld ?? undefined,
         left_sph: rx.left_sph ?? undefined, left_cyl: rx.left_cyl ?? undefined,
         left_axis: rx.left_axis ?? undefined, left_add: rx.left_add ?? undefined, left_va: rx.left_va ?? undefined,
+        left_vision: rx.left_vision ?? undefined, left_iop: rx.left_iop ?? undefined, left_nld: rx.left_nld ?? undefined,
         pd_distance: rx.pd_distance ?? undefined, pd_near: rx.pd_near ?? undefined,
         pd_right: rx.pd_right ?? undefined, pd_left: rx.pd_left ?? undefined,
         notes: rx.notes ?? undefined,
@@ -317,6 +319,48 @@ const NewOpticalPrescription: React.FC = () => {
               className="input-field resize-none" />
           </div>
         )}
+
+        {/* Eye Exam — Vision / IOP / NLD, kept separate from and shown before
+            the spectacle (SPH/CYL/Axis) prescription below since it records
+            the raw exam findings rather than a lens prescription. */}
+        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+          <h3 className="font-semibold flex items-center gap-2 mb-4">
+            <span className="material-symbols-outlined text-primary text-sm">visibility</span>
+            Eye Exam
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="border border-slate-200 rounded-lg p-4 space-y-3">
+              <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Left Eye (OS)</h4>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Vision</label>
+                <input value={opticalRx.left_vision || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, left_vision: e.target.value }))} placeholder="6/9" className="input-field" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">IOP / Tension (Schiotz)</label>
+                <input value={opticalRx.left_iop || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, left_iop: e.target.value }))} placeholder="16 mmHg" className="input-field" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">NLD</label>
+                <input value={opticalRx.left_nld || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, left_nld: e.target.value }))} placeholder="Patent" className="input-field" />
+              </div>
+            </div>
+            <div className="border border-slate-200 rounded-lg p-4 space-y-3">
+              <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Right Eye (OD)</h4>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Vision</label>
+                <input value={opticalRx.right_vision || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, right_vision: e.target.value }))} placeholder="6/9" className="input-field" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">IOP / Tension (Schiotz)</label>
+                <input value={opticalRx.right_iop || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, right_iop: e.target.value }))} placeholder="16 mmHg" className="input-field" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">NLD</label>
+                <input value={opticalRx.right_nld || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, right_nld: e.target.value }))} placeholder="Patent" className="input-field" />
+              </div>
+            </div>
+          </div>
+        </div>
 
         {/* Optical (Spectacle) Prescription */}
         <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">

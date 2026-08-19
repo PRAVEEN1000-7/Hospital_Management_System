@@ -27,51 +27,15 @@ import { formatLocalDateISO, formatMonthKey } from '../utils/calendarDate';
 import PrescriptionHistoryGrid from '../components/patients/PrescriptionHistoryGrid';
 import VitalsCard from '../components/prescription/VitalsCard';
 
-const FREQUENCY_OPTIONS = ['1-0-0', '0-1-0', '0-0-1', '1-0-1', '1-1-0', '0-1-1', '1-1-1', '1-1-1-1'];
+const FREQUENCY_OPTIONS = ['1-0-0', '0-1-0', '0-0-1', '1-0-1', '1-1-0', '0-1-1', '1-1-1', '1-1-1-1', '1 hrs', '2 hrs'];
 const DURATION_UNITS = ['days', 'weeks', 'months'];
 const ROUTE_OPTIONS = ['oral', 'topical', 'injection', 'inhalation', 'sublingual', 'rectal', 'nasal', 'ophthalmic', 'otic'];
 const FOOD_TIMING_OPTIONS = ['', 'Before food', 'After food'];
 
-const _LIQUID_CATS = new Set(['syrup', 'suspension', 'liquid', 'solution', 'linctus', 'elixir', 'tincture']);
-const _SINGLE_UNIT_CATS = new Set(['drops', 'eye drops', 'ear drops', 'nasal drops', 'nasal spray', 'cream', 'ointment', 'gel', 'lotion', 'paste', 'inhaler', 'spray', 'patch', 'suppository']);
 // Categories that are valid for eye-side (RE/LE) dosing — must be ophthalmic/eye-drop type
 const EYE_DROP_CATEGORIES = new Set(['drops', 'eye drops', 'eye drop', 'ophthalmic', 'ophthalmic drops', 'eye ointment', 'ophthalmic ointment']);
 
 interface MedInfo { category: string | null; units_per_pack: number; unit_of_measure: string; }
-
-function computeDispenseQty(
-  item: PrescriptionItemCreate,
-  info?: MedInfo,
-): { qty: number | null; unit: string } {
-  const uom = (info?.unit_of_measure || '').toLowerCase();
-  const unit = uom === 'strip' ? 'tablets' : (uom || 'units');
-
-  if (!item.frequency || !item.duration_value || item.duration_value <= 0) {
-    return { qty: null, unit };
-  }
-
-  const parts = item.frequency.match(/\d+(?:\.\d+)?/g);
-  if (!parts?.length) return { qty: null, unit };
-  const dailyDoses = parts.reduce((s, p) => s + Number(p), 0);
-  if (dailyDoses <= 0) return { qty: null, unit };
-
-  const durUnit = (item.duration_unit || 'days').toLowerCase();
-  let days = item.duration_value;
-  if (durUnit === 'weeks') days *= 7;
-  if (durUnit === 'months') days *= 30;
-
-  const cat = (info?.category || '').toLowerCase();
-  const uop = Math.max(1, info?.units_per_pack || 1);
-
-  if (_LIQUID_CATS.has(cat) || (uom === 'bottle' && cat !== 'drops')) {
-    return { qty: Math.max(1, Math.ceil(days / 5)), unit: uom || 'bottle' };
-  }
-  if (_SINGLE_UNIT_CATS.has(cat) || uom === 'tube') {
-    return { qty: 1, unit: uom || 'unit' };
-  }
-  const totalDoses = Math.ceil(dailyDoses * days);
-  return { qty: totalDoses, unit };
-}
 
 /** Toggles one eye on/off for the Eye Hospital Drug Prescription RE/LE columns. */
 function toggleEyeSide(current: EyeSide | null | undefined, side: 'RE' | 'LE'): EyeSide | undefined {
@@ -189,8 +153,11 @@ const PrescriptionBuilder: React.FC = () => {
   const [advice, setAdvice] = useState('');
   const [isOpthal, setIsOpthal] = useState(user?.hospital_specialty === 'eye_hospital');
   // Optional Optical (Spectacle) Prescription, created alongside the drug
-  // prescription in the same visit — eye hospitals only.
-  const [addOpticalRx, setAddOpticalRx] = useState(false);
+  // prescription in the same visit — eye hospitals only. Defaulted open (not
+  // behind an extra "ADD OPTICAL" click) so every section is visible as soon
+  // as a new prescription is opened; leaving the fields blank still just
+  // means no optical Rx is created (see hasOpticalFields at save time).
+  const [addOpticalRx, setAddOpticalRx] = useState(user?.hospital_specialty === 'eye_hospital' || user?.hospital_specialty === 'multi_specialty');
   const [opticalRx, setOpticalRx] = useState<Omit<OpticalPrescriptionCreateData, 'patient_id' | 'appointment_id'>>({});
   const [createdOpticalRxId, setCreatedOpticalRxId] = useState<string | null>(null);
   // A nurse (or an earlier save in this same consultation) may already have
@@ -516,8 +483,10 @@ const PrescriptionBuilder: React.FC = () => {
         setOpticalRx({
           right_sph: rx.right_sph ?? undefined, right_cyl: rx.right_cyl ?? undefined,
           right_axis: rx.right_axis ?? undefined, right_add: rx.right_add ?? undefined, right_va: rx.right_va ?? undefined,
+          right_vision: rx.right_vision ?? undefined, right_iop: rx.right_iop ?? undefined, right_nld: rx.right_nld ?? undefined,
           left_sph: rx.left_sph ?? undefined, left_cyl: rx.left_cyl ?? undefined,
           left_axis: rx.left_axis ?? undefined, left_add: rx.left_add ?? undefined, left_va: rx.left_va ?? undefined,
+          left_vision: rx.left_vision ?? undefined, left_iop: rx.left_iop ?? undefined, left_nld: rx.left_nld ?? undefined,
           pd_distance: rx.pd_distance ?? undefined, pd_near: rx.pd_near ?? undefined,
           pd_right: rx.pd_right ?? undefined, pd_left: rx.pd_left ?? undefined,
           notes: rx.notes ?? undefined,
@@ -901,6 +870,15 @@ const PrescriptionBuilder: React.FC = () => {
     // A lab-only prescription (tests, no medicines/optical) is valid — the
     // server-side finalize handles the empty-medicine case for lab orders.
     const hasLab = labModuleEnabled && selectedLabTestIds.length > 0;
+    // is_opthal is now a content-derived flag, not a manual per-prescription
+    // toggle (that toggle was removed — general and eye-drop medicines are
+    // entered in the same unified table now). It's kept true if any medicine
+    // row was actually given an eye side, if an optical Rx was attached, or
+    // if it was already true (e.g. loaded from an existing eye-hospital
+    // record) — it only drives the cosmetic "OPTHAL" badge downstream.
+    const effectiveIsOpthal = isEyeHospital
+      ? (isOpthal || hasOptical || validItems.some(i => !!i.eye_side))
+      : undefined;
     if (validItems.length === 0 && !hasOptical && !hasLab && !skipEmptyCheck) {
       showToast('error', isEyeHospital
         ? 'Please add at least one medicine, a lab test, or fill out the optical prescription.'
@@ -934,7 +912,7 @@ const PrescriptionBuilder: React.FC = () => {
           diagnosis: allDiagnoses || undefined,
           clinical_notes: clinicalNotes || undefined,
           advice: advice || undefined,
-          is_opthal: isEyeHospital ? isOpthal : undefined,
+          is_opthal: effectiveIsOpthal,
           ...institutionPayload,
           ...vitalsPayload,
           items: validItems,
@@ -950,7 +928,7 @@ const PrescriptionBuilder: React.FC = () => {
           diagnosis: allDiagnoses || undefined,
           clinical_notes: clinicalNotes || undefined,
           advice: advice || undefined,
-          is_opthal: isEyeHospital ? isOpthal : undefined,
+          is_opthal: effectiveIsOpthal,
           ...institutionPayload,
           ...vitalsPayload,
           items: validItems,
@@ -1552,33 +1530,6 @@ const PrescriptionBuilder: React.FC = () => {
                   <span className="material-symbols-outlined text-primary text-sm">medical_information</span>
                   Diagnosis & Medicines
                 </h3>
-                {/* Multi-specialty hospitals treat both eye and non-eye
-                    patients — let the doctor pick the medicines-table format
-                    per prescription instead of forcing the eye-drop layout
-                    on every patient. */}
-                {canChooseRxFormat && (
-                  <div className="flex items-center bg-slate-100 rounded-lg p-0.5 text-xs font-semibold">
-                    <button
-                      type="button"
-                      onClick={() => setIsOpthal(false)}
-                      className={`px-3 py-1.5 rounded-md transition-colors ${
-                        !isOpthal ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                      }`}
-                    >
-                      General
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setIsOpthal(true)}
-                      className={`px-3 py-1.5 rounded-md transition-colors flex items-center gap-1 ${
-                        isOpthal ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                      }`}
-                    >
-                      <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>visibility</span>
-                      Eye (Opthal)
-                    </button>
-                  </div>
-                )}
               </div>
 
               <div className="px-6 pb-5 space-y-4">
@@ -1606,324 +1557,202 @@ const PrescriptionBuilder: React.FC = () => {
                   </h4>
 
                   <div className="border border-slate-200 rounded-lg overflow-visible">
-                    {isOpthal ? (
-                      <>
-                        {/* Eye Hospital Unified Table — LE/RE eye drops + normal medicines with optional Freq/Duration.
-                            Driven by isOpthal (per-prescription), not isEyeHospital (hospital-level) — a
-                            multi_specialty hospital treats non-eye patients too and must not be locked
-                            into this format for every prescription; see the format toggle above. */}
-                        <div className="grid grid-cols-[28px_1fr_40px_40px_100px_88px_108px_28px] gap-1 bg-slate-100 border-b border-slate-200 px-3 py-2">
-                          <div className="text-[10px] font-semibold text-slate-500 uppercase">#</div>
-                          <div className="text-[10px] font-semibold text-slate-500 uppercase">Medicine</div>
-                          <div className="text-[10px] font-semibold text-slate-500 uppercase text-center">LE</div>
-                          <div className="text-[10px] font-semibold text-slate-500 uppercase text-center">RE</div>
-                          <div className="text-[10px] font-semibold text-slate-500 uppercase">Dosage</div>
-                          <div className="text-[10px] font-semibold text-slate-400 uppercase">Freq</div>
-                          <div className="text-[10px] font-semibold text-slate-400 uppercase">Duration</div>
-                          <div className="text-[10px] font-semibold text-slate-500 uppercase text-center">×</div>
-                        </div>
-
-                        {/* Eye Hospital Medicine Rows — eye drops use RE/LE + dosage; normal medicines use Freq/Duration */}
-                        {block.items.map((item, itemIdx) => {
-                          const reOn = item.eye_side === 'RE' || item.eye_side === 'Both';
-                          const leOn = item.eye_side === 'LE' || item.eye_side === 'Both';
-                          const medInfo = item.medicine_id ? medicineInfoById[item.medicine_id] : undefined;
-                          const { qty: dispQty, unit: dispUnit } = computeDispenseQty(item, medInfo);
-                          // RE/LE buttons are only enabled for eye-drop category medicines.
-                          // If a medicine is selected from DB and its category is not ophthalmic, lock the buttons.
-                          const medCategory = (medInfo?.category || '').toLowerCase();
-                          const eyeSideDisabled = !!item.medicine_id && !EYE_DROP_CATEGORIES.has(medCategory);
-                          return (
-                            <div
-                              key={itemIdx}
-                              className={`grid grid-cols-[28px_1fr_40px_40px_100px_88px_108px_28px] gap-1 items-center px-3 py-1.5 border-b border-slate-100 last:border-0 hover:bg-blue-50/30 transition-colors ${item.medicine_name.trim() ? 'bg-white' : 'bg-slate-50/50'}`}
-                            >
-                              <div className="text-xs text-slate-400 font-medium">{itemIdx + 1}</div>
-
-                              <div className="relative pr-1">
-                                <input
-                                  type="text"
-                                  value={item.medicine_name}
-                                  onChange={e => handleMedicineNameChange(blockIdx, itemIdx, e.target.value)}
-                                  onFocus={(e) => {
-                                    activeMedInputRef.current = e.currentTarget;
-                                    setActiveMedBlockIdx(blockIdx);
-                                    setActiveMedItemIdx(itemIdx);
-                                    // Focusing an empty field browses the formulary
-                                    // (first page) instead of showing nothing until typed.
-                                    if (!item.medicine_name.trim()) {
-                                      setMedicineSearch('');
-                                      setActiveMedResultIdx(-1);
-                                      searchMedicines('');
-                                    }
-                                  }}
-                                  onBlur={() => setTimeout(() => { setActiveMedBlockIdx(null); setActiveMedItemIdx(null); }, 400)}
-                                  onKeyDown={(e) => handleMedicineInputKeyDown(e, blockIdx, itemIdx)}
-                                  className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                                  placeholder="Type, or click to browse formulary..."
-                                />
-                              </div>
-
-                              {/* LE toggle */}
-                              <div className="flex justify-center">
-                                <button
-                                  type="button"
-                                  onClick={() => !eyeSideDisabled && updateEyeSide(blockIdx, itemIdx, 'LE')}
-                                  title={eyeSideDisabled ? 'Not applicable — not an eye drop medicine' : 'Left Eye'}
-                                  disabled={eyeSideDisabled}
-                                  className={`w-7 h-7 rounded border text-[9px] font-bold transition-colors ${
-                                    eyeSideDisabled
-                                      ? 'bg-slate-100 text-slate-300 border-slate-100 cursor-not-allowed'
-                                      : leOn
-                                        ? 'bg-primary text-white border-primary'
-                                        : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50'
-                                  }`}
-                                >
-                                  LE
-                                </button>
-                              </div>
-                              {/* RE toggle */}
-                              <div className="flex justify-center">
-                                <button
-                                  type="button"
-                                  onClick={() => !eyeSideDisabled && updateEyeSide(blockIdx, itemIdx, 'RE')}
-                                  title={eyeSideDisabled ? 'Not applicable — not an eye drop medicine' : 'Right Eye'}
-                                  disabled={eyeSideDisabled}
-                                  className={`w-7 h-7 rounded border text-[9px] font-bold transition-colors ${
-                                    eyeSideDisabled
-                                      ? 'bg-slate-100 text-slate-300 border-slate-100 cursor-not-allowed'
-                                      : reOn
-                                        ? 'bg-primary text-white border-primary'
-                                        : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50'
-                                  }`}
-                                >
-                                  RE
-                                </button>
-                              </div>
-
-                              {/* Dosage */}
-                              <div className="pr-1">
-                                <input
-                                  type="text"
-                                  value={item.dosage}
-                                  onChange={e => updateItem(blockIdx, itemIdx, 'dosage', e.target.value)}
-                                  className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                                  placeholder={(leOn || reOn) ? '1 drop' : 'e.g. 500mg'}
-                                />
-                              </div>
-
-                              {/* Frequency (optional — for normal oral medicines) */}
-                              <div className="pr-1">
-                                <select
-                                  value={item.frequency || ''}
-                                  onChange={e => updateItem(blockIdx, itemIdx, 'frequency', e.target.value)}
-                                  className="w-full px-1 py-1.5 border border-slate-200 rounded text-xs bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none text-slate-600"
-                                >
-                                  <option value="">—</option>
-                                  {FREQUENCY_OPTIONS.map(f => (
-                                    <option key={f} value={f}>{f}</option>
-                                  ))}
-                                </select>
-                              </div>
-
-                              {/* Duration (optional) */}
-                              <div className="pr-1">
-                                <div className="flex gap-0.5">
-                                  <input
-                                    type="number"
-                                    value={item.duration_value || ''}
-                                    onChange={e => updateItem(blockIdx, itemIdx, 'duration_value', parseInt(e.target.value) || null)}
-                                    className="w-9 px-1 py-1.5 border border-slate-200 rounded text-xs bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none text-center"
-                                    min={1}
-                                    placeholder="—"
-                                  />
-                                  <select
-                                    value={item.duration_unit || 'days'}
-                                    onChange={e => updateItem(blockIdx, itemIdx, 'duration_unit', e.target.value)}
-                                    className="flex-1 px-1 py-1.5 border border-slate-200 rounded text-xs bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                                  >
-                                    {DURATION_UNITS.map(u => (
-                                      <option key={u} value={u}>{u}</option>
-                                    ))}
-                                  </select>
-                                </div>
-                              </div>
-
-
-
-                              <div className="flex justify-center">
-                                <button
-                                  onClick={() => removeItemFromBlock(blockIdx, itemIdx)}
-                                  disabled={block.items.length === 1}
-                                  className="w-6 h-6 rounded border border-red-200 flex items-center justify-center hover:bg-red-50 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
-                                >
-                                  <span className="material-symbols-outlined text-red-400" style={{ fontSize: '14px' }}>close</span>
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </>
-                    ) : (
-                      <>
-                    {/* Table Header */}
-                    <div className="grid grid-cols-[40px_1fr_80px_100px_120px_72px_80px_1fr_40px] gap-1 bg-slate-100 border-b border-slate-200 px-3 py-2">
+                    {/* Single unified medicines table for every hospital type — general
+                        medicines and eye drops are entered in the SAME table, on the
+                        SAME row-set, at the same time (per BRD: "medicine for the
+                        general and the eye are collected at the same place"). There is
+                        no longer a per-prescription "General"/"Eye (Opthal)" format
+                        toggle — that toggle forced an all-or-nothing choice per
+                        prescription (every row eye-drop-only, or every row
+                        general-only), which made it impossible to prescribe a normal
+                        medicine alongside an eye drop in one visit. The LE/RE toggles
+                        below are instead enabled/disabled PER ROW, driven by that
+                        row's own selected medicine's category (eyeSideDisabled, via
+                        EYE_DROP_CATEGORIES) — exactly the "enable/disable based on
+                        medicine type" behavior asked for. */}
+                    <div className="grid grid-cols-[28px_1fr_36px_36px_88px_96px_108px_76px_1fr_28px] gap-1 bg-slate-100 border-b border-slate-200 px-3 py-2">
                       <div className="text-[10px] font-semibold text-slate-500 uppercase">#</div>
                       <div className="text-[10px] font-semibold text-slate-500 uppercase">Medicine</div>
+                      <div className="text-[10px] font-semibold text-slate-500 uppercase text-center">LE</div>
+                      <div className="text-[10px] font-semibold text-slate-500 uppercase text-center">RE</div>
                       <div className="text-[10px] font-semibold text-slate-500 uppercase">Dosage</div>
                       <div className="text-[10px] font-semibold text-slate-500 uppercase">Frequency</div>
                       <div className="text-[10px] font-semibold text-slate-500 uppercase">Duration</div>
-                      <div className="text-[10px] font-semibold text-slate-500 uppercase text-center">Qty</div>
                       <div className="text-[10px] font-semibold text-slate-500 uppercase">Route</div>
                       <div className="text-[10px] font-semibold text-slate-500 uppercase">Food Timing</div>
                       <div className="text-[10px] font-semibold text-slate-500 uppercase text-center">×</div>
                     </div>
 
-                    {/* Medicine Rows */}
-                    {block.items.map((item, itemIdx) => (
-                      (() => {
-                        const selectedStock = item.medicine_id ? medicineStockById[item.medicine_id] : undefined;
-                        const isSelectedOutOfStock = typeof selectedStock === 'number' && selectedStock <= 0;
-                        const medInfo = item.medicine_id ? medicineInfoById[item.medicine_id] : undefined;
-                        const { qty: dispQty, unit: dispUnit } = computeDispenseQty(item, medInfo);
-                        return (
-                      <div
-                        key={itemIdx}
-                        className={`grid grid-cols-[40px_1fr_80px_100px_120px_72px_80px_1fr_40px] gap-1 items-center px-3 py-1.5 border-b border-slate-100 last:border-0 hover:bg-blue-50/30 transition-colors ${item.medicine_name.trim() ? 'bg-white' : 'bg-slate-50/50'} ${isSelectedOutOfStock ? 'bg-red-50/60' : ''}`}
-                      >
-                        {/* Row number */}
-                        <div className="text-xs text-slate-400 font-medium">{itemIdx + 1}</div>
+                    {block.items.map((item, itemIdx) => {
+                      const reOn = item.eye_side === 'RE' || item.eye_side === 'Both';
+                      const leOn = item.eye_side === 'LE' || item.eye_side === 'Both';
+                      const selectedStock = item.medicine_id ? medicineStockById[item.medicine_id] : undefined;
+                      const isSelectedOutOfStock = typeof selectedStock === 'number' && selectedStock <= 0;
+                      const medInfo = item.medicine_id ? medicineInfoById[item.medicine_id] : undefined;
+                      // LE/RE buttons are only enabled for eye-drop category medicines —
+                      // if a medicine is selected from the DB and its category isn't
+                      // ophthalmic, the buttons lock, so a general medicine on this same
+                      // row can never be miscoded with an eye side.
+                      const medCategory = (medInfo?.category || '').toLowerCase();
+                      const eyeSideDisabled = !!item.medicine_id && !EYE_DROP_CATEGORIES.has(medCategory);
+                      return (
+                        <div
+                          key={itemIdx}
+                          className={`grid grid-cols-[28px_1fr_36px_36px_88px_96px_108px_76px_1fr_28px] gap-1 items-center px-3 py-1.5 border-b border-slate-100 last:border-0 hover:bg-blue-50/30 transition-colors ${item.medicine_name.trim() ? 'bg-white' : 'bg-slate-50/50'} ${isSelectedOutOfStock ? 'bg-red-50/60' : ''}`}
+                        >
+                          <div className="text-xs text-slate-400 font-medium">{itemIdx + 1}</div>
 
-                        {/* Medicine Name with autocomplete */}
-                        <div className="relative pr-2">
-                          <input
-                            type="text"
-                            value={item.medicine_name}
-                            onChange={e => handleMedicineNameChange(blockIdx, itemIdx, e.target.value)}
-                            onFocus={(e) => {
-                              activeMedInputRef.current = e.currentTarget;
-                              setActiveMedBlockIdx(blockIdx);
-                              setActiveMedItemIdx(itemIdx);
-                              // Focusing an empty field browses the formulary
-                              // (first page) instead of showing nothing until typed.
-                              if (!item.medicine_name.trim()) {
-                                setMedicineSearch('');
-                                setActiveMedResultIdx(-1);
-                                searchMedicines('');
-                              }
-                            }}
-                            onBlur={() => setTimeout(() => { setActiveMedBlockIdx(null); setActiveMedItemIdx(null); }, 400)}
-                            onKeyDown={(e) => handleMedicineInputKeyDown(e, blockIdx, itemIdx)}
-                            className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                            placeholder="Type, or click to browse formulary..."
-                          />
-                        </div>
-
-                        {/* Dosage */}
-                        <div className="pr-1">
-                          <input
-                            type="text"
-                            value={item.dosage}
-                            onChange={e => updateItem(blockIdx, itemIdx, 'dosage', e.target.value)}
-                            className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                            placeholder="500mg"
-                          />
-                        </div>
-
-                        {/* Frequency */}
-                        <div className="pr-1">
-                          <select
-                            value={item.frequency}
-                            onChange={e => updateItem(blockIdx, itemIdx, 'frequency', e.target.value)}
-                            className="w-full px-1 py-1.5 border border-slate-200 rounded text-xs bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                          >
-                            <option value="">Select</option>
-                            {FREQUENCY_OPTIONS.map(f => (
-                              <option key={f} value={f}>{f}</option>
-                            ))}
-                          </select>
-                        </div>
-
-                        {/* Duration */}
-                        <div className="pr-1">
-                          <div className="flex gap-0.5">
+                          <div className="relative pr-1">
                             <input
-                              type="number"
-                              value={item.duration_value || ''}
-                              onChange={e => updateItem(blockIdx, itemIdx, 'duration_value', parseInt(e.target.value) || null)}
-                              className="w-10 px-1 py-1.5 border border-slate-200 rounded text-xs bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none text-center"
-                              min={1}
-                              placeholder="—"
+                              type="text"
+                              value={item.medicine_name}
+                              onChange={e => handleMedicineNameChange(blockIdx, itemIdx, e.target.value)}
+                              onFocus={(e) => {
+                                activeMedInputRef.current = e.currentTarget;
+                                setActiveMedBlockIdx(blockIdx);
+                                setActiveMedItemIdx(itemIdx);
+                                // Focusing an empty field browses the formulary
+                                // (first page) instead of showing nothing until typed.
+                                if (!item.medicine_name.trim()) {
+                                  setMedicineSearch('');
+                                  setActiveMedResultIdx(-1);
+                                  searchMedicines('');
+                                }
+                              }}
+                              onBlur={() => setTimeout(() => { setActiveMedBlockIdx(null); setActiveMedItemIdx(null); }, 400)}
+                              onKeyDown={(e) => handleMedicineInputKeyDown(e, blockIdx, itemIdx)}
+                              className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                              placeholder="Type, or click to browse formulary..."
                             />
-                            <select
-                              value={item.duration_unit || 'days'}
-                              onChange={e => updateItem(blockIdx, itemIdx, 'duration_unit', e.target.value)}
-                              className="flex-1 px-1 py-1.5 border border-slate-200 rounded text-xs bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                          </div>
+
+                          {/* LE toggle */}
+                          <div className="flex justify-center">
+                            <button
+                              type="button"
+                              onClick={() => !eyeSideDisabled && updateEyeSide(blockIdx, itemIdx, 'LE')}
+                              title={eyeSideDisabled ? 'Not applicable — not an eye drop medicine' : 'Left Eye'}
+                              disabled={eyeSideDisabled}
+                              className={`w-7 h-7 rounded border text-[9px] font-bold transition-colors ${
+                                eyeSideDisabled
+                                  ? 'bg-slate-100 text-slate-300 border-slate-100 cursor-not-allowed'
+                                  : leOn
+                                    ? 'bg-primary text-white border-primary'
+                                    : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50'
+                              }`}
                             >
-                              {DURATION_UNITS.map(u => (
-                                <option key={u} value={u}>{u}</option>
+                              LE
+                            </button>
+                          </div>
+                          {/* RE toggle */}
+                          <div className="flex justify-center">
+                            <button
+                              type="button"
+                              onClick={() => !eyeSideDisabled && updateEyeSide(blockIdx, itemIdx, 'RE')}
+                              title={eyeSideDisabled ? 'Not applicable — not an eye drop medicine' : 'Right Eye'}
+                              disabled={eyeSideDisabled}
+                              className={`w-7 h-7 rounded border text-[9px] font-bold transition-colors ${
+                                eyeSideDisabled
+                                  ? 'bg-slate-100 text-slate-300 border-slate-100 cursor-not-allowed'
+                                  : reOn
+                                    ? 'bg-primary text-white border-primary'
+                                    : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50'
+                              }`}
+                            >
+                              RE
+                            </button>
+                          </div>
+
+                          {/* Dosage */}
+                          <div className="pr-1">
+                            <input
+                              type="text"
+                              value={item.dosage}
+                              onChange={e => updateItem(blockIdx, itemIdx, 'dosage', e.target.value)}
+                              className="w-full px-2 py-1.5 border border-slate-200 rounded text-xs bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                              placeholder={(leOn || reOn) ? '1 drop' : '500mg'}
+                            />
+                          </div>
+
+                          {/* Frequency */}
+                          <div className="pr-1">
+                            <select
+                              value={item.frequency || ''}
+                              onChange={e => updateItem(blockIdx, itemIdx, 'frequency', e.target.value)}
+                              className="w-full px-1 py-1.5 border border-slate-200 rounded text-xs bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none text-slate-600"
+                            >
+                              <option value="">Select</option>
+                              {FREQUENCY_OPTIONS.map(f => (
+                                <option key={f} value={f}>{f}</option>
                               ))}
                             </select>
                           </div>
-                        </div>
 
-                        {/* Qty preview (read-only, computed) */}
-                        <div className="flex flex-col items-center justify-center">
-                          {dispQty !== null ? (
-                            <>
-                              <span className="text-sm font-bold text-primary leading-tight">{dispQty}</span>
-                              <span className="text-[9px] text-slate-400 leading-none truncate max-w-[64px] text-center">{dispUnit}</span>
-                            </>
-                          ) : (
-                            <span className="text-xs text-slate-300">—</span>
-                          )}
-                        </div>
+                          {/* Duration */}
+                          <div className="pr-1">
+                            <div className="flex gap-0.5">
+                              <input
+                                type="number"
+                                value={item.duration_value || ''}
+                                onChange={e => updateItem(blockIdx, itemIdx, 'duration_value', parseInt(e.target.value) || null)}
+                                className="w-9 px-1 py-1.5 border border-slate-200 rounded text-xs bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none text-center"
+                                min={1}
+                                placeholder="—"
+                              />
+                              <select
+                                value={item.duration_unit || 'days'}
+                                onChange={e => updateItem(blockIdx, itemIdx, 'duration_unit', e.target.value)}
+                                className="flex-1 px-1 py-1.5 border border-slate-200 rounded text-xs bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                              >
+                                {DURATION_UNITS.map(u => (
+                                  <option key={u} value={u}>{u}</option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
 
-                        {/* Route */}
-                        <div className="pr-1">
-                          <select
-                            value={item.route || ''}
-                            onChange={e => updateItem(blockIdx, itemIdx, 'route', e.target.value)}
-                            className="w-full px-1 py-1.5 border border-slate-200 rounded text-xs bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                          >
-                            <option value="">Select</option>
-                            {ROUTE_OPTIONS.map(r => (
-                              <option key={r} value={r}>{r}</option>
-                            ))}
-                          </select>
-                        </div>
+                          {/* Route */}
+                          <div className="pr-1">
+                            <select
+                              value={item.route || ''}
+                              onChange={e => updateItem(blockIdx, itemIdx, 'route', e.target.value)}
+                              className="w-full px-1 py-1.5 border border-slate-200 rounded text-xs bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                            >
+                              <option value="">Select</option>
+                              {ROUTE_OPTIONS.map(r => (
+                                <option key={r} value={r}>{r}</option>
+                              ))}
+                            </select>
+                          </div>
 
-                        {/* Food timing */}
-                        <div className="pr-1">
-                          <select
-                            value={(item.instructions === 'Before food' || item.instructions === 'After food') ? item.instructions : ''}
-                            onChange={e => updateItem(blockIdx, itemIdx, 'instructions', e.target.value || '')}
-                            className="w-full px-1 py-1.5 border border-slate-200 rounded text-xs bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                          >
-                            {FOOD_TIMING_OPTIONS.map(option => (
-                              <option key={option || 'none'} value={option}>
-                                {option || 'Select'}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
+                          {/* Food timing */}
+                          <div className="pr-1">
+                            <select
+                              value={(item.instructions === 'Before food' || item.instructions === 'After food') ? item.instructions : ''}
+                              onChange={e => updateItem(blockIdx, itemIdx, 'instructions', e.target.value || '')}
+                              className="w-full px-1 py-1.5 border border-slate-200 rounded text-xs bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+                            >
+                              {FOOD_TIMING_OPTIONS.map(option => (
+                                <option key={option || 'none'} value={option}>
+                                  {option || 'Select'}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
 
-                        {/* Delete */}
-                        <div className="flex justify-center">
-                          <button
-                            onClick={() => removeItemFromBlock(blockIdx, itemIdx)}
-                            disabled={block.items.length === 1}
-                            className="w-6 h-6 rounded border border-red-200 flex items-center justify-center hover:bg-red-50 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
-                          >
-                            <span className="material-symbols-outlined text-red-400" style={{ fontSize: '14px' }}>close</span>
-                          </button>
+                          {/* Delete */}
+                          <div className="flex justify-center">
+                            <button
+                              onClick={() => removeItemFromBlock(blockIdx, itemIdx)}
+                              disabled={block.items.length === 1}
+                              className="w-6 h-6 rounded border border-red-200 flex items-center justify-center hover:bg-red-50 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+                            >
+                              <span className="material-symbols-outlined text-red-400" style={{ fontSize: '14px' }}>close</span>
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                        );
-                      })()
-                    ))}
-                      </>
-                    )}
+                      );
+                    })}
 
                     {/* Quick Add Row */}
                     <div
@@ -2128,17 +1957,61 @@ const PrescriptionBuilder: React.FC = () => {
           )}
 
           {/* Optical (Spectacle) Prescription — eye-hospital feature pack only.
-              Gated on !!appointmentId (a live consultation for a specific visit),
-              not !isEditMode — a nurse's saved vitals draft (see NurseVitals.tsx)
-              routes the doctor straight into edit mode for THIS SAME visit, and
-              that draft may carry its own optical entry (see the
-              opticalService.getPrescriptionByAppointment effect above) that must
-              still be visible/editable here. A historical, standalone edit of an
-              old prescription with no appointment_id correctly stays excluded —
-              that's a genuinely separate record, per the original intent below.
-              Optical module (store) controls whether the patient is sent to the
-              optical store after finalization. */}
-          {isEyeHospital && !!appointmentId && canCreateOpticalRx && (
+              Shown whenever this is a brand-new prescription (!isEditMode) OR
+              there's a live appointmentId (a nurse's saved vitals draft — see
+              NurseVitals.tsx — routes the doctor straight into edit mode for
+              THIS SAME visit, and that draft may carry its own optical entry;
+              see the opticalService.getPrescriptionByAppointment effect
+              above). Every "New Prescription" entry point across the app —
+              queue-driven consultation or a standalone create — must show
+              this section for an eye-hospital doctor. A historical,
+              standalone EDIT of an old prescription with no appointment_id
+              correctly stays excluded — that's a genuinely separate record
+              being revised, not a fresh visit. Optical module (store)
+              controls whether the patient is sent to the optical store after
+              finalization. */}
+          {isEyeHospital && (!isEditMode || !!appointmentId) && canCreateOpticalRx && addOpticalRx && (
+            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+              <h3 className="font-semibold flex items-center gap-2 mb-4">
+                <span className="material-symbols-outlined text-primary text-sm">visibility</span>
+                Eye Exam
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="border border-slate-200 rounded-lg p-4 space-y-3">
+                  <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Left Eye (OS)</h4>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Vision</label>
+                    <input value={opticalRx.left_vision || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, left_vision: e.target.value }))} placeholder="6/9" className="input-field" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">IOP / Tension (Schiotz)</label>
+                    <input value={opticalRx.left_iop || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, left_iop: e.target.value }))} placeholder="16 mmHg" className="input-field" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">NLD</label>
+                    <input value={opticalRx.left_nld || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, left_nld: e.target.value }))} placeholder="Patent" className="input-field" />
+                  </div>
+                </div>
+                <div className="border border-slate-200 rounded-lg p-4 space-y-3">
+                  <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Right Eye (OD)</h4>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Vision</label>
+                    <input value={opticalRx.right_vision || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, right_vision: e.target.value }))} placeholder="6/9" className="input-field" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">IOP / Tension (Schiotz)</label>
+                    <input value={opticalRx.right_iop || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, right_iop: e.target.value }))} placeholder="16 mmHg" className="input-field" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">NLD</label>
+                    <input value={opticalRx.right_nld || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, right_nld: e.target.value }))} placeholder="Patent" className="input-field" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {isEyeHospital && (!isEditMode || !!appointmentId) && canCreateOpticalRx && (
             <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold flex items-center gap-2">

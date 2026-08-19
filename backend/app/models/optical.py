@@ -94,11 +94,21 @@ class OpticalPrescription(Base):
     right_axis = Column(Integer)
     right_add = Column(Numeric(4, 2))
     right_va = Column(String(20))
+    # Extra per-eye exam findings, distinct from the refraction numbers above —
+    # right_va/left_va record vision WITH this prescription's correction;
+    # right_vision/left_vision is the presenting/unaided reading taken before
+    # any correction.
+    right_vision = Column(String(20))
+    right_iop = Column(String(20))  # tension, via Schiotz tonometer
+    right_nld = Column(String(50))  # nasolacrimal duct patency
     left_sph = Column(Numeric(5, 2))
     left_cyl = Column(Numeric(5, 2))
     left_axis = Column(Integer)
     left_add = Column(Numeric(4, 2))
     left_va = Column(String(20))
+    left_vision = Column(String(20))
+    left_iop = Column(String(20))
+    left_nld = Column(String(50))
     pd_distance = Column(Numeric(4, 1))
     pd_near = Column(Numeric(4, 1))
     pd_right = Column(Numeric(4, 1))

@@ -214,6 +214,27 @@ const OpticalPrescriptionDetail: React.FC = () => {
                 <td className="px-3 py-2">{fmtVa(rx.left_va)}</td>
                 <td className="px-3 py-2">{fmtVa(rx.right_va)}</td>
               </tr>
+              {(rx.left_vision || rx.right_vision) && (
+                <tr>
+                  <td className="px-3 py-2 text-left font-semibold text-slate-700">Vision</td>
+                  <td className="px-3 py-2">{fmtVa(rx.left_vision)}</td>
+                  <td className="px-3 py-2">{fmtVa(rx.right_vision)}</td>
+                </tr>
+              )}
+              {(rx.left_iop || rx.right_iop) && (
+                <tr>
+                  <td className="px-3 py-2 text-left font-semibold text-slate-700">IOP (Tension)</td>
+                  <td className="px-3 py-2">{fmtVa(rx.left_iop)}</td>
+                  <td className="px-3 py-2">{fmtVa(rx.right_iop)}</td>
+                </tr>
+              )}
+              {(rx.left_nld || rx.right_nld) && (
+                <tr>
+                  <td className="px-3 py-2 text-left font-semibold text-slate-700">NLD</td>
+                  <td className="px-3 py-2">{fmtVa(rx.left_nld)}</td>
+                  <td className="px-3 py-2">{fmtVa(rx.right_nld)}</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

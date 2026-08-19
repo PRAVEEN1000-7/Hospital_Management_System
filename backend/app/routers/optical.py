@@ -446,7 +446,11 @@ async def finalize_optical_prescription(
 async def get_optical_prescription_pdf(
     prescription_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(optical_view_guard),
+    # optical_entry_view_guard (not the plain optical_view_guard) — same
+    # reasoning as get_optical_prescription above: a doctor only holds
+    # "optical.exam", not the full "optical" key, so they need this to
+    # print/download their own consultation's optical prescription.
+    current_user: User = Depends(optical_entry_view_guard),
 ):
     """Generate the eye prescription as printable HTML, styled like the clinical Rx template."""
     from fastapi.responses import HTMLResponse
@@ -660,6 +664,21 @@ td:first-child, th:first-child {{ text-align:left; }}
     <td>{fmt_va(rx.left_va)}</td>
     <td>{fmt_va(rx.right_va)}</td>
 </tr>
+{f'''<tr>
+    <td><strong>Vision</strong></td>
+    <td>{fmt_va(rx.left_vision)}</td>
+    <td>{fmt_va(rx.right_vision)}</td>
+</tr>''' if (rx.left_vision or rx.right_vision) else ''}
+{f'''<tr>
+    <td><strong>IOP (Tension)</strong></td>
+    <td>{fmt_va(rx.left_iop)}</td>
+    <td>{fmt_va(rx.right_iop)}</td>
+</tr>''' if (rx.left_iop or rx.right_iop) else ''}
+{f'''<tr>
+    <td><strong>NLD</strong></td>
+    <td>{fmt_va(rx.left_nld)}</td>
+    <td>{fmt_va(rx.right_nld)}</td>
+</tr>''' if (rx.left_nld or rx.right_nld) else ''}
 </tbody>
 </table>
 

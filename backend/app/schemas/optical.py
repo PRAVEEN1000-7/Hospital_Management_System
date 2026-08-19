@@ -198,11 +198,17 @@ class OpticalPrescriptionCreate(BaseModel):
     right_axis: Optional[int] = Field(None, ge=0, le=180)
     right_add: Optional[Decimal] = None
     right_va: Optional[str] = Field(None, max_length=20)
+    right_vision: Optional[str] = Field(None, max_length=20)
+    right_iop: Optional[str] = Field(None, max_length=20)
+    right_nld: Optional[str] = Field(None, max_length=50)
     left_sph: Optional[Decimal] = None
     left_cyl: Optional[Decimal] = None
     left_axis: Optional[int] = Field(None, ge=0, le=180)
     left_add: Optional[Decimal] = None
     left_va: Optional[str] = Field(None, max_length=20)
+    left_vision: Optional[str] = Field(None, max_length=20)
+    left_iop: Optional[str] = Field(None, max_length=20)
+    left_nld: Optional[str] = Field(None, max_length=50)
     pd_distance: Optional[Decimal] = None
     pd_near: Optional[Decimal] = None
     pd_right: Optional[Decimal] = None
@@ -217,11 +223,17 @@ class OpticalPrescriptionUpdate(BaseModel):
     right_axis: Optional[int] = Field(None, ge=0, le=180)
     right_add: Optional[Decimal] = None
     right_va: Optional[str] = Field(None, max_length=20)
+    right_vision: Optional[str] = Field(None, max_length=20)
+    right_iop: Optional[str] = Field(None, max_length=20)
+    right_nld: Optional[str] = Field(None, max_length=50)
     left_sph: Optional[Decimal] = None
     left_cyl: Optional[Decimal] = None
     left_axis: Optional[int] = Field(None, ge=0, le=180)
     left_add: Optional[Decimal] = None
     left_va: Optional[str] = Field(None, max_length=20)
+    left_vision: Optional[str] = Field(None, max_length=20)
+    left_iop: Optional[str] = Field(None, max_length=20)
+    left_nld: Optional[str] = Field(None, max_length=50)
     pd_distance: Optional[Decimal] = None
     pd_near: Optional[Decimal] = None
     pd_right: Optional[Decimal] = None
@@ -242,11 +254,17 @@ class OpticalPrescriptionResponse(BaseModel):
     right_axis: Optional[int] = None
     right_add: Optional[Decimal] = None
     right_va: Optional[str] = None
+    right_vision: Optional[str] = None
+    right_iop: Optional[str] = None
+    right_nld: Optional[str] = None
     left_sph: Optional[Decimal] = None
     left_cyl: Optional[Decimal] = None
     left_axis: Optional[int] = None
     left_add: Optional[Decimal] = None
     left_va: Optional[str] = None
+    left_vision: Optional[str] = None
+    left_iop: Optional[str] = None
+    left_nld: Optional[str] = None
     pd_distance: Optional[Decimal] = None
     pd_near: Optional[Decimal] = None
     pd_right: Optional[Decimal] = None

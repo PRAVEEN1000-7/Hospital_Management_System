@@ -20,6 +20,8 @@ import invoiceService from '../services/invoiceService';
 import paymentService from '../services/paymentService';
 import type { Invoice, PaymentMode, PaymentCollector } from '../types/billing';
 import SearchableSelect, { type SuggestionOption } from '../components/common/SearchableSelect';
+import VitalsDialog from '../components/queue/VitalsDialog';
+import OpticalDialog from '../components/queue/OpticalDialog';
 
 const PAYMENT_MODES: { value: PaymentMode; label: string }[] = [
   { value: 'cash', label: 'Cash' },
@@ -128,6 +130,20 @@ const WalkInQueue: React.FC = () => {
   const [scheduledAppts, setScheduledAppts] = useState<Appointment[]>([]);
   const [scheduledLoading, setScheduledLoading] = useState(false);
   const [notesModal, setNotesModal] = useState<{ id: string; notes: string } | null>(null);
+
+  // ── Standalone Complaint quick-entry (queue action bar) ─────────
+  // Same underlying field (Appointment.chief_complaint) that NurseVitals.tsx
+  // and NewOpticalPrescription.tsx already read/write — this gives nurses a
+  // way to record it directly from the queue row even when they aren't
+  // entering vitals or an optical exam for that visit.
+  const [complaintModal, setComplaintModal] = useState<{ id: string; patientName: string; complaint: string } | null>(null);
+  const [savingComplaint, setSavingComplaint] = useState(false);
+
+  // Vitals / Optical quick-entry — dialog based (see VitalsDialog.tsx /
+  // OpticalDialog.tsx), launched in place from the queue row instead of
+  // navigating away to a separate page.
+  const [vitalsDialogItem, setVitalsDialogItem] = useState<QueueItem | null>(null);
+  const [opticalDialogItem, setOpticalDialogItem] = useState<QueueItem | null>(null);
 
   // ── Upcoming Queue State ──────────────────────────────────────
   const [upcomingData, setUpcomingData] = useState<Awaited<ReturnType<typeof walkInService.getUpcomingQueue>> | null>(null);
@@ -415,22 +431,30 @@ const WalkInQueue: React.FC = () => {
     } catch { toast.error('Failed to start consultation'); }
   };
 
-  const handleEnterVitals = (item: QueueItem) => {
-    const params = new URLSearchParams({
-      patient_id: item.patient_id || '',
-      appointment_id: item.appointment_id || '',
-      queue_id: item.queue_id,
-    });
-    navigate(`/prescriptions/vitals/new?${params.toString()}`);
+  const handleEnterVitals = (item: QueueItem) => setVitalsDialogItem(item);
+  const handleEnterOptical = (item: QueueItem) => setOpticalDialogItem(item);
+
+  const openComplaintModal = async (item: QueueItem) => {
+    if (!item.appointment_id) return;
+    setComplaintModal({ id: item.appointment_id, patientName: item.patient_name || 'Patient', complaint: '' });
+    try {
+      const appt = await appointmentService.getAppointment(item.appointment_id);
+      setComplaintModal({ id: item.appointment_id, patientName: item.patient_name || 'Patient', complaint: appt.chief_complaint || '' });
+    } catch { /* keep the blank modal open — save will still work */ }
   };
 
-  const handleEnterOptical = (item: QueueItem) => {
-    const params = new URLSearchParams({
-      patient_id: item.patient_id || '',
-      appointment_id: item.appointment_id || '',
-      queue_id: item.queue_id,
-    });
-    navigate(`/optical/prescriptions/new?${params.toString()}`);
+  const handleSaveComplaint = async () => {
+    if (!complaintModal) return;
+    setSavingComplaint(true);
+    try {
+      await appointmentService.updateAppointment(complaintModal.id, { chief_complaint: complaintModal.complaint || undefined });
+      toast.success('Complaint saved');
+      setComplaintModal(null);
+    } catch {
+      toast.error('Failed to save complaint');
+    } finally {
+      setSavingComplaint(false);
+    }
   };
 
   const handleComplete = async (queueId: string) => {
@@ -1681,6 +1705,14 @@ const WalkInQueue: React.FC = () => {
                               Optical
                             </button>
                           )}
+                          {isNurse && isSelectedDateToday && item.patient_id && item.appointment_id && !['completed', 'skipped'].includes(item.status) && (
+                            <button onClick={() => openComplaintModal(item)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-amber-200 text-amber-600 hover:bg-amber-50 hover:scale-105 active:scale-95 transition-all text-xs font-semibold"
+                              title="Enter Complaint">
+                              <span className="material-symbols-outlined text-base">symptoms</span>
+                              Complaint
+                            </button>
+                          )}
                           {/* View Details button for any item — icon + text, matching the
                               app-wide convention (see docs/print-download-pattern.md) of
                               never leaving a bare icon action without a visible label. */}
@@ -2172,6 +2204,49 @@ const WalkInQueue: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Complaint Quick-Entry Modal (queue action bar) */}
+      {complaintModal && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setComplaintModal(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-slate-900 mb-1">Complaint</h3>
+            <p className="text-xs text-slate-500 mb-4">{complaintModal.patientName} — visible to the doctor when prescribing</p>
+            <textarea value={complaintModal.complaint} onChange={(e) => setComplaintModal({ ...complaintModal, complaint: e.target.value })}
+              rows={4} placeholder="What is the patient reporting? (e.g. fever, headache, eye redness)"
+              className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm resize-none focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
+            <div className="flex justify-end gap-3 mt-4">
+              <button onClick={() => setComplaintModal(null)} className="px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 rounded-lg">Cancel</button>
+              <button onClick={handleSaveComplaint} disabled={savingComplaint}
+                className="px-4 py-2 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 shadow-sm disabled:opacity-50">
+                {savingComplaint ? 'Saving...' : 'Save Complaint'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Vitals Entry Dialog */}
+      {vitalsDialogItem && (
+        <VitalsDialog
+          patientId={vitalsDialogItem.patient_id || ''}
+          appointmentId={vitalsDialogItem.appointment_id || ''}
+          patientName={vitalsDialogItem.patient_name || 'Patient'}
+          isEyeHospital={isEyeHospitalFeatureEnabled}
+          onClose={() => setVitalsDialogItem(null)}
+          onSaved={() => { setVitalsDialogItem(null); fetchQueue(); }}
+        />
+      )}
+
+      {/* Optical Exam Entry Dialog */}
+      {opticalDialogItem && (
+        <OpticalDialog
+          patientId={opticalDialogItem.patient_id || ''}
+          appointmentId={opticalDialogItem.appointment_id || ''}
+          patientName={opticalDialogItem.patient_name || 'Patient'}
+          onClose={() => setOpticalDialogItem(null)}
+          onSaved={() => { setOpticalDialogItem(null); fetchQueue(); }}
+        />
       )}
 
       {/* Send to Doctor Modal */}

@@ -58,6 +58,18 @@ def _require_billing_view(db: Session, current_user: User) -> None:
                             detail="Access denied")
 
 
+# Narrow carve-out for the read-only revenue/financial *analytics* endpoints
+# only (the "Analytics: Revenue / Financial" block below) — a doctor gets the
+# same aggregate stats an admin sees on the Reports & Analytics dashboard
+# (RevenuePanel/FinancialPanel/KPIStrip), without gaining "billing" itself:
+# invoice listing/detail, invoice creation, refunds, and settlement all keep
+# using _require_billing_view as-is and stay admin/cashier-only.
+def _require_billing_analytics_view(db: Session, current_user: User) -> None:
+    if _has_any_role(current_user, {"doctor"}):
+        return
+    _require_billing_view(db, current_user)
+
+
 def _require_billing_admin(current_user: User) -> None:
     if not _has_any_role(current_user, BILLING_ADMIN_ROLES):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
@@ -294,7 +306,7 @@ async def payment_status_summary(
 ):
     """BRD-001 — counts + totals per payment-status bucket, for the Reports/
     Analytics dashboard's Financial panel."""
-    _require_billing_view(db, current_user)
+    _require_billing_analytics_view(db, current_user)
     return get_payment_status_summary(db, current_user.hospital_id)
 
 
@@ -310,7 +322,7 @@ async def revenue_summary(
     current_user: User = Depends(get_current_active_user),
 ):
     """Total revenue collected + current outstanding dues, for KPIStrip."""
-    _require_billing_view(db, current_user)
+    _require_billing_analytics_view(db, current_user)
     today = hospital_today_by_id(db, current_user.hospital_id)
     d_to = date_to or today
     d_from = date_from or (d_to - timedelta(days=29))
@@ -326,7 +338,7 @@ async def revenue_trend(
     current_user: User = Depends(get_current_active_user),
 ):
     """Revenue collected per day/month, by module — RevenuePanel's Daily/Monthly tabs."""
-    _require_billing_view(db, current_user)
+    _require_billing_analytics_view(db, current_user)
     today = hospital_today_by_id(db, current_user.hospital_id)
     d_to = date_to or today
     d_from = date_from or (d_to - timedelta(days=29 if granularity == "daily" else 364))
@@ -341,7 +353,7 @@ async def revenue_by_module(
     current_user: User = Depends(get_current_active_user),
 ):
     """Revenue totals by module for the period — RevenuePanel's By Module pie chart."""
-    _require_billing_view(db, current_user)
+    _require_billing_analytics_view(db, current_user)
     today = hospital_today_by_id(db, current_user.hospital_id)
     d_to = date_to or today
     d_from = date_from or (d_to - timedelta(days=29))
@@ -356,7 +368,7 @@ async def collections_by_mode(
     current_user: User = Depends(get_current_active_user),
 ):
     """Collected amount by payment mode — FinancialPanel's Collections chart."""
-    _require_billing_view(db, current_user)
+    _require_billing_analytics_view(db, current_user)
     today = hospital_today_by_id(db, current_user.hospital_id)
     d_to = date_to or today
     d_from = date_from or (d_to - timedelta(days=29))
@@ -371,7 +383,7 @@ async def outstanding_aging(
     """Unpaid invoice balances bucketed by age — FinancialPanel's Outstanding Dues chart.
     A running snapshot, not scoped to the dashboard's period filter (see
     get_outstanding_aging's docstring)."""
-    _require_billing_view(db, current_user)
+    _require_billing_analytics_view(db, current_user)
     return get_outstanding_aging(db, current_user.hospital_id)
 
 
@@ -383,7 +395,7 @@ async def tax_summary(
     current_user: User = Depends(get_current_active_user),
 ):
     """Taxable/tax/total for the period — FinancialPanel's Tax Summary."""
-    _require_billing_view(db, current_user)
+    _require_billing_analytics_view(db, current_user)
     today = hospital_today_by_id(db, current_user.hospital_id)
     d_to = date_to or today
     d_from = date_from or (d_to - timedelta(days=29))

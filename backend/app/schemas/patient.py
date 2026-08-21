@@ -16,6 +16,19 @@ CHILD_TITLES = ["Baby", "Master"]
 ADULT_ONLY_TITLES = ["Mr.", "Mrs.", "Ms.", "Dr.", "Prof."]
 
 
+class MedicalConditionEntry(BaseModel):
+    """One row of the fixed "Condition / History" checklist (Prescription
+    Builder, below Prescription History) — distinct from the free-text
+    chronic_conditions field on PatientBase below."""
+    condition: str
+    details: Optional[str] = None
+    currently_in_treatment: Optional[bool] = None
+
+
+class PatientMedicalConditionsUpdate(BaseModel):
+    medical_conditions: list[MedicalConditionEntry]
+
+
 class PatientBase(BaseModel):
     title: Optional[str] = Field(None, max_length=10)
     first_name: str = Field(..., min_length=1, max_length=100, pattern=r"^[A-Za-z][A-Za-z\s'-]*$")
@@ -200,6 +213,7 @@ class PatientResponse(BaseModel):
     blood_sugar_unit: Optional[str] = None
     known_allergies: Optional[str] = None
     chronic_conditions: Optional[str] = None
+    medical_conditions: Optional[list[MedicalConditionEntry]] = None
     photo_url: Optional[str] = None
     is_email_verified: bool = False
     email_verified_at: Optional[datetime] = None

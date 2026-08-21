@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..dependencies import get_current_active_user, require_any_role
-from ..core.module_roles import require_permission
+from ..core.module_roles import require_permission, check_permission
 from ..models.user import User
 from ..schemas.inventory import (
     SupplierCreate, SupplierUpdate, SupplierResponse,
@@ -59,6 +59,22 @@ po_payment_roles = require_any_role("super_admin", "admin")
 adjustment_create_roles = require_any_role("super_admin", "admin", "inventory_manager", "pharmacist")
 
 
+# Narrow carve-out for the read-only dashboard/analytics endpoints only — a
+# doctor gets the same aggregate stats an admin sees on the Reports &
+# Analytics dashboard (KPIStrip/InventoryPanel), without gaining the general
+# "inventory" permission (suppliers, POs, GRNs, adjustments, low-stock/
+# expiring/stock-level lookups all keep using inventory_view_roles as-is).
+def inventory_analytics_view_roles(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+) -> User:
+    if "doctor" in {str(r).strip().lower() for r in (current_user.roles or [])}:
+        return current_user
+    if not check_permission(db, current_user, "inventory", "view"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    return current_user
+
+
 # ═════════════════════════════════════════════════════════════════════════════
 #  DASHBOARD
 # ═════════════════════════════════════════════════════════════════════════════
@@ -66,7 +82,7 @@ adjustment_create_roles = require_any_role("super_admin", "admin", "inventory_ma
 @router.get("/dashboard")
 async def inventory_dashboard(
     db: Session = Depends(get_db),
-    current_user: User = Depends(inventory_view_roles),
+    current_user: User = Depends(inventory_analytics_view_roles),
 ):
     """Inventory dashboard statistics."""
     return svc.get_inventory_dashboard(db, current_user.hospital_id)
@@ -121,7 +137,7 @@ async def stock_level(
 async def stock_status(
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
-    current_user: User = Depends(inventory_view_roles),
+    current_user: User = Depends(inventory_analytics_view_roles),
 ):
     """Get stock status for all items for analytics dashboard."""
     return svc.get_stock_status_analytics(db, current_user.hospital_id, limit)
@@ -130,7 +146,7 @@ async def stock_status(
 @router.get("/analytics/stock-status-summary", response_model=StockStatusSummary)
 async def stock_status_summary(
     db: Session = Depends(get_db),
-    current_user: User = Depends(inventory_view_roles),
+    current_user: User = Depends(inventory_analytics_view_roles),
 ):
     """True counts (critical/low/overstock/ok/total) across the whole active
     medicine catalog — for the Inventory Health panel's summary tiles and
@@ -141,7 +157,7 @@ async def stock_status_summary(
 @router.get("/analytics/aging", response_model=list[InventoryAgingAnalytics])
 async def inventory_aging(
     db: Session = Depends(get_db),
-    current_user: User = Depends(inventory_view_roles),
+    current_user: User = Depends(inventory_analytics_view_roles),
 ):
     """Get inventory aging report for analytics dashboard."""
     return svc.get_inventory_aging_analytics(db, current_user.hospital_id)

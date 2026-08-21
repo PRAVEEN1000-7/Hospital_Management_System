@@ -58,9 +58,15 @@ function getVisiblePanels(role: string): Panel[] {
     case 'super_admin':
     case 'admin':
     case 'report_viewer':
-      return ['kpi', 'revenue', 'opd', 'pharmacy', 'financial', 'inventory'];
+    // Doctor now sees the same full set an admin does — the underlying
+    // endpoints (revenue/financial stats in routers/invoices.py, pharmacy
+    // dashboard/analytics in routers/pharmacy.py, inventory dashboard/
+    // analytics in routers/inventory.py) were widened with a narrow
+    // doctor-inclusive view guard on just those read-only aggregate
+    // endpoints — general billing/pharmacy/inventory management access is
+    // untouched and stays admin/cashier/pharmacist/inventory_manager-only.
     case 'doctor':
-      return ['kpi', 'opd'];
+      return ['kpi', 'revenue', 'opd', 'pharmacy', 'financial', 'inventory'];
     default:
       return ['kpi'];
   }

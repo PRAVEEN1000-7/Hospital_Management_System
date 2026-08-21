@@ -39,9 +39,12 @@ export interface UserData {
 }
 
 export interface UserCreateData {
-  username: string;
-  email: string;
-  password: string;
+  // Optional only because role 'staff' (attendance-only, no login) omits
+  // them entirely — the backend auto-generates all three for that role.
+  // Every other role must still supply them (enforced by staffCreateSchema).
+  username?: string;
+  email?: string;
+  password?: string;
   first_name: string;
   last_name: string;
   role: string;

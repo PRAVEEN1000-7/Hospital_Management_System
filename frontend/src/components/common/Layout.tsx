@@ -114,11 +114,17 @@ const Layout: React.FC = () => {
   // reached directly from the Walk-in Queue's "Optical" action, not this nav section
   // (see module_roles.py's "optical.exam" for the full rationale).
   const canAccessOptical       = hasAccess('optical', effectiveRoles) && isModuleEnabled('optical') && isEyeHospitalFeatureEnabled;
-  // Laboratory applies to every hospital type (not eye-specific) — admin/
-  // super_admin (oversight) and lab_technician (the job) get it. Left untouched
-  // per the client's instruction to leave the Lab role as-is — not part of the
-  // shared matrix (its spreadsheet column is blank for every row).
-  const canAccessLab           = hasRole('super_admin', 'admin', 'lab_technician') && isModuleEnabled('lab');
+  // Laboratory applies to every hospital type (not eye-specific). Full
+  // operational access (Dashboard/Queue/Billing/New Order — anything the
+  // backend gates to LAB_STAFF_ROLES in routers/lab.py) stays admin/
+  // super_admin (oversight) + lab_technician (the job) only. A doctor gets a
+  // narrower carve-out — the backend's LAB_VIEW_ROLES already permits doctor
+  // to read the Test Catalog/panels/order detail/patient results, but until
+  // now nothing in this nav ever surfaced that; canAccessLab now includes
+  // doctor too, with labItems below trimmed to just what LAB_VIEW_ROLES
+  // actually lets a doctor open (see canManageLab).
+  const canManageLab           = hasRole('super_admin', 'admin', 'lab_technician');
+  const canAccessLab           = (canManageLab || hasRole('doctor')) && isModuleEnabled('lab');
   // Report Viewer's whole job is the appointment reports export — no other role gets a
   // sidebar entry for it since admin/super_admin already reach it via the Appointments dropdown.
   const canAccessAppointmentReports = hasRole('report_viewer') && isModuleEnabled('appointments');
@@ -619,15 +625,27 @@ const Layout: React.FC = () => {
   // ── Laboratory navigation ── applies to every hospital type
   const labItems: { to: string; label: string; icon: string }[] = [];
   if (canAccessLab) {
-    labItems.push(
-      { to: '/lab', label: 'Dashboard', icon: 'dashboard' },
-      // New Order — lets lab staff create a walk-in order directly (no prior
-      // doctor visit required), filed under a doctor picked from the roster.
-      { to: '/lab/new-order', label: 'New Order', icon: 'add_circle' },
-      { to: '/lab/queue', label: 'Lab Queue', icon: 'queue' },
-      { to: '/lab/billing', label: 'Billing', icon: 'payments' },
-      { to: '/lab/tests', label: 'Test Catalog', icon: 'biotech' },
-    );
+    if (canManageLab) {
+      labItems.push(
+        { to: '/lab', label: 'Dashboard', icon: 'dashboard' },
+        // New Order — lets lab staff create a walk-in order directly (no prior
+        // doctor visit required), filed under a doctor picked from the roster.
+        { to: '/lab/new-order', label: 'New Order', icon: 'add_circle' },
+        { to: '/lab/queue', label: 'Lab Queue', icon: 'queue' },
+        { to: '/lab/billing', label: 'Billing', icon: 'payments' },
+        { to: '/lab/tests', label: 'Test Catalog', icon: 'biotech' },
+      );
+    } else {
+      // Doctor: view-only carve-out — Dashboard/Queue/Billing/New Order are
+      // all backend-gated to lab staff (LAB_STAFF_ROLES), so only the Test
+      // Catalog (LAB_VIEW_ROLES) belongs here. Order results/PDFs are still
+      // reachable via /lab/orders/:orderId links from the patient's history —
+      // that route already allows doctor — there just isn't a standalone
+      // "browse all orders" list page for any role today.
+      labItems.push(
+        { to: '/lab/tests', label: 'Test Catalog', icon: 'biotech' },
+      );
+    }
   }
 
   // ── Attendance navigation ── sub-modules land here as they're built.

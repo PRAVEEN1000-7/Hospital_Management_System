@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useToast } from '../../contexts/ToastContext';
 import inventoryService from '../../services/inventoryService';
@@ -38,7 +38,6 @@ const GRNReceiptForm: React.FC = () => {
   const toast = useToast();
   const isEditMode = !!grnId;
 
-  const [po, setPO] = useState<PurchaseOrder | null>(null);
   const [supplier, setSupplier] = useState('');
   const [receiptDate, setReceiptDate] = useState(new Date().toISOString().split('T')[0]);
   const [invoiceNumber, setInvoiceNumber] = useState('');
@@ -159,12 +158,18 @@ const GRNReceiptForm: React.FC = () => {
   }, [isEditMode, toast]);
 
   // Suggestions for the PO reference and supplier searchable selects (browse +
-  // type-to-search in one field each)
-  const poSuggestions: SuggestionOption[] = purchaseOrders.map(p => ({
-    id: p.id,
-    label: `${p.po_number} - ${p.supplier_name}${p.status === 'partially_received' ? ' (balance pending)' : ''}`,
-    metadata: { id: p.id },
-  }));
+  // type-to-search in one field each). Once a supplier is chosen, the PO list
+  // is scoped down to that supplier's own purchase orders — previously this
+  // showed every hospital's approved/partially-received PO mixed together
+  // regardless of supplier, so picking a supplier first and then searching
+  // the PO field surfaced nothing that visibly connected back to it.
+  const poSuggestions: SuggestionOption[] = purchaseOrders
+    .filter(p => !supplier || p.supplier_id === supplier)
+    .map(p => ({
+      id: p.id,
+      label: `${p.po_number} - ${p.supplier_name}${p.status === 'partially_received' ? ' (balance pending)' : ''}`,
+      metadata: { id: p.id },
+    }));
 
   const selectedPO = purchaseOrders.find(p => p.id === poId);
 
@@ -181,7 +186,15 @@ const GRNReceiptForm: React.FC = () => {
   const selectedSupplierObj = suppliers.find((s: any) => s.id === supplier);
 
   const handleSupplierSelect = (_value: string, metadata?: Record<string, unknown>) => {
-    setSupplier((metadata && metadata.id) ? (metadata.id as string) : '');
+    const newSupplierId = (metadata && metadata.id) ? (metadata.id as string) : '';
+    // Switching to a different supplier than the one the currently-selected
+    // PO belongs to leaves a stale, mismatched PO reference behind — clear
+    // it so the item rows it auto-filled don't linger under the wrong
+    // supplier (the user can re-pick the right PO from the now-scoped list).
+    if (poId && selectedPO && selectedPO.supplier_id !== newSupplierId) {
+      setPOId('');
+    }
+    setSupplier(newSupplierId);
   };
 
   // Update PO when selected
@@ -418,25 +431,8 @@ const GRNReceiptForm: React.FC = () => {
           <h2 className="text-lg font-bold text-slate-900 pb-4 border-b border-slate-200">Receipt Information</h2>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Purchase Order */}
-            <div>
-              <label className="block text-sm font-semibold text-slate-900 mb-2">Purchase Order (Optional)</label>
-              <SearchableSelect
-                value={selectedPO ? `${selectedPO.po_number} - ${selectedPO.supplier_name}${selectedPO.status === 'partially_received' ? ' (balance pending)' : ''}` : ''}
-                onChange={handlePOSelect}
-                suggestions={poSuggestions}
-                placeholder="Search PO (auto-fill items)..."
-                disabled={isEditMode}
-                allowManualEntry={false}
-              />
-              {poId && purchaseOrders.find(p => p.id === poId)?.status === 'partially_received' && (
-                <p className="mt-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
-                  This PO was partially received earlier — items below are pre-filled with the remaining balance only.
-                </p>
-              )}
-            </div>
-
-            {/* Supplier */}
+            {/* Supplier — placed first since picking a supplier scopes the
+                Purchase Order field below to just that supplier's own POs. */}
             <div>
               <label className="block text-sm font-semibold text-slate-900 mb-2">Supplier *</label>
               <SearchableSelect
@@ -447,6 +443,33 @@ const GRNReceiptForm: React.FC = () => {
                 disabled={isEditMode}
                 allowManualEntry={false}
               />
+            </div>
+
+            {/* Purchase Order */}
+            <div>
+              <label className="block text-sm font-semibold text-slate-900 mb-2">Purchase Order (Optional)</label>
+              <SearchableSelect
+                value={selectedPO ? `${selectedPO.po_number} - ${selectedPO.supplier_name}${selectedPO.status === 'partially_received' ? ' (balance pending)' : ''}` : ''}
+                onChange={handlePOSelect}
+                suggestions={poSuggestions}
+                placeholder={supplier ? "Search this supplier's PO (auto-fill items)..." : "Search PO (auto-fill items)..."}
+                disabled={isEditMode}
+                allowManualEntry={false}
+              />
+              {poId && purchaseOrders.find(p => p.id === poId)?.status === 'partially_received' && (
+                <p className="mt-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+                  This PO was partially received earlier — items below are pre-filled with the remaining balance only.
+                </p>
+              )}
+              {/* Explains an empty PO list instead of leaving it silent — a PO
+                  only appears here once approved (see Purchase Orders → Approve),
+                  and once a supplier is chosen the list is scoped to just that
+                  supplier's own POs (see poSuggestions above). */}
+              {!poId && supplier && poSuggestions.length === 0 && (
+                <p className="mt-1.5 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5">
+                  No approved purchase orders found for this supplier — a PO must be Approved (Inventory → Purchase Orders) before it can be received here. You can still add items manually below.
+                </p>
+              )}
             </div>
 
             {/* Receipt Date */}

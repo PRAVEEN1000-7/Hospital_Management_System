@@ -150,6 +150,16 @@ def authenticate_user(db: Session, username: str, password: str) -> tuple:
         logger.warning(f"AUTH: Login attempt on inactive account id={user.id}")
         return None, "account_inactive"
 
+    # 'staff' is an attendance-only role (Staff Directory / Workforce
+    # Management) — created with no real login credentials (a random,
+    # never-shown password; see routers/users.py's create_new_user), so this
+    # is a hard backstop, not just obscurity. Checked before password
+    # verification, same as the lockout check above, so no timing signal
+    # about whether the guessed password was close.
+    if {r.lower() for r in (user.roles or [])} == {"staff"}:
+        logger.warning(f"AUTH: Blocked login for attendance-only 'staff' account id={user.id}")
+        return None, "no_login_access"
+
     if not verify_password(password, user.password_hash):
         user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
         _apply_lockout(user)

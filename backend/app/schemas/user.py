@@ -12,9 +12,15 @@ VALID_ROLES = [
 
 
 class UserCreate(BaseModel):
-    username: str = Field(..., min_length=3, max_length=50)
-    email: EmailStr
-    password: str = Field(..., min_length=8, max_length=128)
+    # Optional at the schema level only for role == "staff" — that role has
+    # no login access at all (see auth_service.authenticate_user's
+    # attendance-only-role block), so the router auto-generates a username/
+    # placeholder email/random password server-side when these are omitted
+    # rather than asking an admin to invent login details nobody will use.
+    # Every other role still requires all three (see validate_login_credentials).
+    username: Optional[str] = Field(None, min_length=3, max_length=50)
+    email: Optional[EmailStr] = None
+    password: Optional[str] = Field(None, min_length=8, max_length=128)
     first_name: str = Field(..., min_length=1, max_length=100)
     last_name: str = Field(..., min_length=3, max_length=100)
     full_name: Optional[str] = Field(None, max_length=255)
@@ -53,7 +59,9 @@ class UserCreate(BaseModel):
 
     @field_validator("username")
     @classmethod
-    def validate_username(cls, v: str) -> str:
+    def validate_username(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
         if " " in v:
             raise ValueError("Username must not contain spaces")
         if not re.match(r"^[a-zA-Z0-9_]+$", v):
@@ -77,7 +85,9 @@ class UserCreate(BaseModel):
 
     @field_validator("password")
     @classmethod
-    def validate_password(cls, v: str) -> str:
+    def validate_password(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
         if not re.search(r"[A-Z]", v):
             raise ValueError("Password must contain at least one uppercase letter")
         if not re.search(r"[a-z]", v):
@@ -104,6 +114,22 @@ class UserCreate(BaseModel):
                 raise ValueError("Qualification is required for doctors")
             if not self.registration_number:
                 raise ValueError("Registration number is required for doctors")
+        return self
+
+    @model_validator(mode="after")
+    def validate_login_credentials(self):
+        # 'staff' is the only role with no login access at all — the router
+        # auto-generates username/email/password for it, so they're
+        # legitimately absent from the request. Every other role must supply
+        # all three (Pydantic's own Optional typing can't express "required
+        # unless role == X").
+        if self.role != "staff":
+            if not self.username:
+                raise ValueError("Username is required")
+            if not self.email:
+                raise ValueError("Email is required")
+            if not self.password:
+                raise ValueError("Password is required")
         return self
 
 

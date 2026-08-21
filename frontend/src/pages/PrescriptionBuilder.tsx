@@ -14,7 +14,7 @@ import labService from '../services/labService';
 import type { PrescriptionItemCreate, Medicine, PrescriptionTemplate, EyeSide } from '../types/prescription';
 import type { OpticalPrescriptionCreateData } from '../types/optical';
 import type { LabTest, LabTestPanel, PatientLabResult } from '../types/lab';
-import type { Patient } from '../types/patient';
+import type { Patient, MedicalConditionEntry } from '../types/patient';
 import type { DoctorOption } from '../types/appointment';
 import SearchableSelect, { type SuggestionOption } from '../components/common/SearchableSelect';
 import { genId } from '../utils/id';
@@ -28,6 +28,21 @@ import PrescriptionHistoryGrid from '../components/patients/PrescriptionHistoryG
 import VitalsCard from '../components/prescription/VitalsCard';
 
 const FREQUENCY_OPTIONS = ['1-0-0', '0-1-0', '0-0-1', '1-0-1', '1-1-0', '0-1-1', '1-1-1', '1-1-1-1', '1 hrs', '2 hrs'];
+// Fixed "Condition / History" checklist, shown below Prescription History —
+// patient-level (persists across visits, saved via patientService's own
+// dedicated medical-conditions endpoint), not part of the prescription itself.
+const MEDICAL_CONDITIONS_CHECKLIST = [
+  'Diabetes Mellitus',
+  'Hypertension',
+  'Thyroid Disorder',
+  'Asthma / COPD',
+  'Coronary Artery Disease',
+  'Tuberculosis',
+  'Epilepsy',
+  'Chronic Kidney Disease',
+  'Liver Disease',
+  'Cancer / Malignancy',
+];
 const DURATION_UNITS = ['days', 'weeks', 'months'];
 const ROUTE_OPTIONS = ['oral', 'topical', 'injection', 'inhalation', 'sublingual', 'rectal', 'nasal', 'ophthalmic', 'otic'];
 const FOOD_TIMING_OPTIONS = ['', 'Before food', 'After food'];
@@ -141,6 +156,11 @@ const PrescriptionBuilder: React.FC = () => {
   const [queueId] = useState(searchParams.get('queue_id') || '');
   const isConsultationMode = Boolean(queueId);
   const [patient, setPatient] = useState<Patient | null>(null);
+  // "Condition / History" checklist — see MEDICAL_CONDITIONS_CHECKLIST.
+  const [medicalConditions, setMedicalConditions] = useState<MedicalConditionEntry[]>(
+    MEDICAL_CONDITIONS_CHECKLIST.map(condition => ({ condition, details: '', currently_in_treatment: null }))
+  );
+  const [savingConditions, setSavingConditions] = useState(false);
   // Referral context (who referred this patient in, and why) — fetched so it's
   // visible to the receiving doctor instead of silently never surfacing.
   const [referralInfo, setReferralInfo] = useState<{
@@ -346,6 +366,39 @@ const PrescriptionBuilder: React.FC = () => {
     }
   }, [patientId, isEyeHospital, editId]);
 
+  // Sync the "Condition / History" checklist whenever the patient changes
+  // (covers both the patientId-driven load above and the search-select
+  // handler further down) — merges whatever was already saved for this
+  // patient onto the fixed checklist, defaulting anything not yet answered.
+  useEffect(() => {
+    if (!patient) return;
+    const saved = patient.medical_conditions || [];
+    setMedicalConditions(MEDICAL_CONDITIONS_CHECKLIST.map(condition => {
+      const existing = saved.find(e => e.condition === condition);
+      return existing || { condition, details: '', currently_in_treatment: null };
+    }));
+  }, [patient]);
+
+  const updateConditionDetails = (idx: number, details: string) => {
+    setMedicalConditions(prev => prev.map((e, i) => (i === idx ? { ...e, details } : e)));
+  };
+  const updateConditionTreatment = (idx: number, value: boolean) => {
+    setMedicalConditions(prev => prev.map((e, i) => (i === idx ? { ...e, currently_in_treatment: value } : e)));
+  };
+  const handleSaveMedicalConditions = async () => {
+    if (!patient) return;
+    setSavingConditions(true);
+    try {
+      const updated = await patientService.updateMedicalConditions(patient.id, medicalConditions);
+      setPatient(updated);
+      showToast('success', 'Condition / History saved');
+    } catch {
+      showToast('error', 'Failed to save Condition / History');
+    } finally {
+      setSavingConditions(false);
+    }
+  };
+
   // Returning from the full Patient Registration form (Register.tsx) after
   // registering a walk-in patient who wasn't found in search below — same
   // sessionStorage 'walkInReturnUrl' + '?new_patient_id=' round trip already
@@ -443,15 +496,21 @@ const PrescriptionBuilder: React.FC = () => {
       .finally(() => setLoading(false));
   }, [editId]);
 
-  // Landed on /prescriptions/new (the normal "Start Consultation" flow) for
-  // a specific appointment — check whether a prescription already exists
-  // for it (most commonly a nurse's draft-vitals record, see
-  // NurseVitals.tsx) and redirect into editing it instead of rendering a
-  // blank form, so the doctor sees the nurse's vitals pre-filled. Silently
-  // does nothing when none exists (the common case — most consultations
-  // still start blank); a finalized one redirects here too, but the
-  // edit-mode effect above already handles that case (bounces back out with
-  // an error toast), so no separate check is needed.
+  // Landed on /prescriptions/new (the normal "Start Consultation" flow, or
+  // "My Patients"' row-click for a completed visit — see
+  // DoctorAppointments.tsx's openPrescription) for a specific appointment —
+  // check whether a prescription already exists for it and redirect into
+  // it instead of rendering a blank form. A draft (most commonly a nurse's
+  // draft-vitals record, see NurseVitals.tsx) redirects into EDIT mode so
+  // the doctor sees it pre-filled and can keep writing. A FINALIZED one
+  // redirects straight to the read-only detail view instead — previously
+  // this always redirected to edit mode first, which then bounced back out
+  // via the edit-mode effect above (is_finalized check) with an "Cannot
+  // edit a finalized prescription" error toast on every single click of an
+  // already-completed patient in "My Patients", even though the doctor never
+  // asked to edit anything, just to view it. Silently does nothing when no
+  // prescription exists yet (the common case — most consultations still
+  // start blank).
   useEffect(() => {
     if (editId || !appointmentId) return;
     let cancelled = false;
@@ -459,7 +518,11 @@ const PrescriptionBuilder: React.FC = () => {
       .then(rx => {
         if (cancelled) return;
         const params = new URLSearchParams(searchParams);
-        navigate(`/prescriptions/${rx.id}/edit?${params.toString()}`, { replace: true });
+        if (rx.is_finalized) {
+          navigate(`/prescriptions/${rx.id}?${params.toString()}`, { replace: true });
+        } else {
+          navigate(`/prescriptions/${rx.id}/edit?${params.toString()}`, { replace: true });
+        }
       })
       .catch(() => { /* no existing prescription for this appointment yet */ });
     return () => { cancelled = true; };
@@ -1386,6 +1449,79 @@ const PrescriptionBuilder: React.FC = () => {
               its own accord when the patient has no prior prescriptions. */}
           {patient && <PrescriptionHistoryGrid patientId={patient.id} variant="card" />}
 
+          {/* Condition / History — a fixed checklist of common chronic
+              conditions, patient-level (persists across every future visit,
+              saved via its own dedicated endpoint — see
+              patientService.updateMedicalConditions), not part of this one
+              prescription. Distinct from the free-text "Symptoms" card
+              below, which is this specific visit's presenting complaint. */}
+          {patient && (
+            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold flex items-center gap-2">
+                  <span className="material-symbols-outlined text-primary text-sm">history_edu</span>
+                  Condition / History
+                </h3>
+                <button
+                  type="button"
+                  onClick={handleSaveMedicalConditions}
+                  disabled={savingConditions}
+                  className="px-3 py-1.5 text-xs font-bold rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors disabled:opacity-50"
+                >
+                  {savingConditions ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wide border-b border-slate-100">
+                      <th className="py-2 pr-3">Condition / History</th>
+                      <th className="py-2 pr-3">Details</th>
+                      <th className="py-2">Currently in Treatment</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {medicalConditions.map((entry, idx) => (
+                      <tr key={entry.condition}>
+                        <td className="py-2 pr-3 font-medium text-slate-700 whitespace-nowrap">{entry.condition}</td>
+                        <td className="py-2 pr-3 min-w-[160px]">
+                          <input
+                            value={entry.details || ''}
+                            onChange={(e) => updateConditionDetails(idx, e.target.value)}
+                            placeholder="—"
+                            className="input-field"
+                          />
+                        </td>
+                        <td className="py-2">
+                          <div className="flex items-center gap-4">
+                            <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={entry.currently_in_treatment === true}
+                                onChange={() => updateConditionTreatment(idx, true)}
+                                className="w-4 h-4 rounded border-slate-300 text-primary focus:ring-2 focus:ring-primary/30"
+                              />
+                              Yes
+                            </label>
+                            <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={entry.currently_in_treatment === false}
+                                onChange={() => updateConditionTreatment(idx, false)}
+                                className="w-4 h-4 rounded border-slate-300 text-primary focus:ring-2 focus:ring-primary/30"
+                              />
+                              No
+                            </label>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           {/* Lab Results (read-only) — the outcome of tests advised for this
               patient, so the doctor reviews them in-consultation without
               leaving the screen. Moved up to sit alongside Prescription
@@ -1519,6 +1655,210 @@ const PrescriptionBuilder: React.FC = () => {
               bloodSugar={isEyeHospital ? vitalsBloodSugar : undefined}
               onBloodSugarChange={isEyeHospital ? setVitalsBloodSugar : undefined}
             />
+          )}
+
+          {/* Institution selector (BRD §4.2) — eye-hospital feature pack only */}
+          {isEyeHospital && institutions.length > 1 && (
+            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+              <h3 className="font-semibold mb-3 flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary text-sm">corporate_fare</span> Institution Letterhead
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {institutions.map((inst: HospitalInstitutionOption) => (
+                  <button
+                    key={inst.id}
+                    type="button"
+                    onClick={() => setInstitutionId(inst.id)}
+                    className={`px-4 py-2 text-sm font-semibold rounded-lg border transition-colors ${
+                      institutionId === inst.id
+                        ? 'bg-primary text-white border-primary'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    {inst.name.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Clinical Notes */}
+          <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+            <h3 className="font-semibold mb-4 flex items-center gap-2">
+              <span className="material-symbols-outlined text-primary text-sm">clinical_notes</span> Clinical Notes
+            </h3>
+            <AutocompleteField
+              as="textarea"
+              field="clinical_notes"
+              rows={3}
+              value={clinicalNotes}
+              onChange={e => setClinicalNotes(e.target.value)}
+              className="input-field"
+              placeholder="Patient presents with..."
+            />
+          </div>
+
+          {/* Optical (Spectacle) Prescription — eye-hospital feature pack only.
+              Shown whenever this is a brand-new prescription (!isEditMode) OR
+              there's a live appointmentId (a nurse's saved vitals draft — see
+              NurseVitals.tsx — routes the doctor straight into edit mode for
+              THIS SAME visit, and that draft may carry its own optical entry;
+              see the opticalService.getPrescriptionByAppointment effect
+              above). Every "New Prescription" entry point across the app —
+              queue-driven consultation or a standalone create — must show
+              this section for an eye-hospital doctor. A historical,
+              standalone EDIT of an old prescription with no appointment_id
+              correctly stays excluded — that's a genuinely separate record
+              being revised, not a fresh visit. Optical module (store)
+              controls whether the patient is sent to the optical store after
+              finalization. */}
+          {isEyeHospital && (!isEditMode || !!appointmentId) && canCreateOpticalRx && addOpticalRx && (
+            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+              <h3 className="font-semibold flex items-center gap-2 mb-4">
+                <span className="material-symbols-outlined text-primary text-sm">visibility</span>
+                Eye Exam
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="border border-slate-200 rounded-lg p-4 space-y-3">
+                  <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Right Eye (OD)</h4>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Vision</label>
+                    <input value={opticalRx.right_vision || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, right_vision: e.target.value }))} placeholder="6/9" className="input-field" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">IOP / Tension (Schiotz)</label>
+                    <input value={opticalRx.right_iop || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, right_iop: e.target.value }))} placeholder="16 mmHg" className="input-field" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">NLD</label>
+                    <input value={opticalRx.right_nld || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, right_nld: e.target.value }))} placeholder="Patent" className="input-field" />
+                  </div>
+                </div>
+                <div className="border border-slate-200 rounded-lg p-4 space-y-3">
+                  <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Left Eye (OS)</h4>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Vision</label>
+                    <input value={opticalRx.left_vision || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, left_vision: e.target.value }))} placeholder="6/9" className="input-field" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">IOP / Tension (Schiotz)</label>
+                    <input value={opticalRx.left_iop || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, left_iop: e.target.value }))} placeholder="16 mmHg" className="input-field" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">NLD</label>
+                    <input value={opticalRx.left_nld || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, left_nld: e.target.value }))} placeholder="Patent" className="input-field" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {isEyeHospital && (!isEditMode || !!appointmentId) && canCreateOpticalRx && (
+            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold flex items-center gap-2">
+                  <span className="material-symbols-outlined text-primary text-sm">visibility</span>
+                  Optical (Spectacle) Prescription
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setAddOpticalRx(v => !v)}
+                  className={`px-4 py-1.5 text-xs font-bold rounded-lg border transition-colors ${
+                    addOpticalRx ? 'bg-primary text-white border-primary' : 'bg-white text-primary border-primary/30 hover:bg-primary/5'
+                  }`}
+                >
+                  {addOpticalRx ? 'OPTICAL ✓' : 'ADD OPTICAL'}
+                </button>
+              </div>
+              {addOpticalRx && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Right Eye (OD) — shown first (screen-left) per the
+                        clinical convention of facing the patient, matching
+                        the Eye Exam section above. */}
+                    <div className="border border-slate-200 rounded-lg p-4 space-y-3">
+                      <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Right Eye (OD)</h4>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">SPH</label>
+                        <input type="number" step="0.25" value={opticalRx.right_sph ?? ''} onChange={opticalNumField('right_sph')} className="input-field" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">CYL</label>
+                        <input type="number" step="0.25" value={opticalRx.right_cyl ?? ''} onChange={opticalNumField('right_cyl')} className="input-field" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Axis</label>
+                        <input type="number" min={0} max={180} value={opticalRx.right_axis ?? ''} onChange={opticalNumField('right_axis')} className="input-field" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Add</label>
+                        <input type="number" step="0.25" value={opticalRx.right_add ?? ''} onChange={opticalNumField('right_add')} className="input-field" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Visual Acuity</label>
+                        <input value={opticalRx.right_va || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, right_va: e.target.value }))} placeholder="6/6" className="input-field" />
+                      </div>
+                    </div>
+
+                    {/* Left Eye (OS) */}
+                    <div className="border border-slate-200 rounded-lg p-4 space-y-3">
+                      <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Left Eye (OS)</h4>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">SPH</label>
+                        <input type="number" step="0.25" value={opticalRx.left_sph ?? ''} onChange={opticalNumField('left_sph')} className="input-field" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">CYL</label>
+                        <input type="number" step="0.25" value={opticalRx.left_cyl ?? ''} onChange={opticalNumField('left_cyl')} className="input-field" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Axis</label>
+                        <input type="number" min={0} max={180} value={opticalRx.left_axis ?? ''} onChange={opticalNumField('left_axis')} className="input-field" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Add</label>
+                        <input type="number" step="0.25" value={opticalRx.left_add ?? ''} onChange={opticalNumField('left_add')} className="input-field" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Visual Acuity</label>
+                        <input value={opticalRx.left_va || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, left_va: e.target.value }))} placeholder="6/6" className="input-field" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">PD Distance (mm)</label>
+                      <input type="number" step="0.5" value={opticalRx.pd_distance ?? ''} onChange={opticalNumField('pd_distance')} className="input-field" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">PD Near (mm)</label>
+                      <input type="number" step="0.5" value={opticalRx.pd_near ?? ''} onChange={opticalNumField('pd_near')} className="input-field" />
+                    </div>
+                  </div>
+
+                  {/* Per-eye PD — distinct from PD Distance/Near above (which
+                      split by viewing distance, not by eye); some opticians
+                      measure and prescribe PD per eye instead of a single
+                      binocular value. */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">PD Right / OD (mm)</label>
+                      <input type="number" step="0.5" value={opticalRx.pd_right ?? ''} onChange={opticalNumField('pd_right')} className="input-field" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">PD Left / OS (mm)</label>
+                      <input type="number" step="0.5" value={opticalRx.pd_left ?? ''} onChange={opticalNumField('pd_left')} className="input-field" />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Optical Notes</label>
+                    <AutocompleteField as="input" field="optical_prescription_notes" value={opticalRx.notes || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, notes: e.target.value }))} className="input-field" />
+                  </div>
+                </div>
+              )}
+            </div>
           )}
 
           {/* Single Diagnosis & Medicines block */}
@@ -1770,48 +2110,6 @@ const PrescriptionBuilder: React.FC = () => {
             </div>
           ))}
 
-          {/* Institution selector (BRD §4.2) — eye-hospital feature pack only */}
-          {isEyeHospital && institutions.length > 1 && (
-            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-              <h3 className="font-semibold mb-3 flex items-center gap-2">
-                <span className="material-symbols-outlined text-primary text-sm">corporate_fare</span> Institution Letterhead
-              </h3>
-              <div className="flex flex-wrap gap-2">
-                {institutions.map((inst: HospitalInstitutionOption) => (
-                  <button
-                    key={inst.id}
-                    type="button"
-                    onClick={() => setInstitutionId(inst.id)}
-                    className={`px-4 py-2 text-sm font-semibold rounded-lg border transition-colors ${
-                      institutionId === inst.id
-                        ? 'bg-primary text-white border-primary'
-                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                    }`}
-                  >
-                    {inst.name.toUpperCase()}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Clinical Notes */}
-          <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-            <h3 className="font-semibold mb-4 flex items-center gap-2">
-              <span className="material-symbols-outlined text-primary text-sm">clinical_notes</span> Clinical Notes
-            </h3>
-            <AutocompleteField
-              as="textarea"
-              field="clinical_notes"
-              rows={3}
-              value={clinicalNotes}
-              onChange={e => setClinicalNotes(e.target.value)}
-              className="input-field"
-              placeholder="Patient presents with..."
-            />
-          </div>
-
-
           {/* Laboratory Tests — any hospital type (gated by the lab module),
               create-mode only. Ordered as an independent record; the server-side
               finalize links + queues it when the doctor finalizes this Rx. */}
@@ -1950,167 +2248,6 @@ const PrescriptionBuilder: React.FC = () => {
                       className="input-field"
                       placeholder="Instructions for the lab (optional)..."
                     />
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Optical (Spectacle) Prescription — eye-hospital feature pack only.
-              Shown whenever this is a brand-new prescription (!isEditMode) OR
-              there's a live appointmentId (a nurse's saved vitals draft — see
-              NurseVitals.tsx — routes the doctor straight into edit mode for
-              THIS SAME visit, and that draft may carry its own optical entry;
-              see the opticalService.getPrescriptionByAppointment effect
-              above). Every "New Prescription" entry point across the app —
-              queue-driven consultation or a standalone create — must show
-              this section for an eye-hospital doctor. A historical,
-              standalone EDIT of an old prescription with no appointment_id
-              correctly stays excluded — that's a genuinely separate record
-              being revised, not a fresh visit. Optical module (store)
-              controls whether the patient is sent to the optical store after
-              finalization. */}
-          {isEyeHospital && (!isEditMode || !!appointmentId) && canCreateOpticalRx && addOpticalRx && (
-            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-              <h3 className="font-semibold flex items-center gap-2 mb-4">
-                <span className="material-symbols-outlined text-primary text-sm">visibility</span>
-                Eye Exam
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="border border-slate-200 rounded-lg p-4 space-y-3">
-                  <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Left Eye (OS)</h4>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Vision</label>
-                    <input value={opticalRx.left_vision || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, left_vision: e.target.value }))} placeholder="6/9" className="input-field" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">IOP / Tension (Schiotz)</label>
-                    <input value={opticalRx.left_iop || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, left_iop: e.target.value }))} placeholder="16 mmHg" className="input-field" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">NLD</label>
-                    <input value={opticalRx.left_nld || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, left_nld: e.target.value }))} placeholder="Patent" className="input-field" />
-                  </div>
-                </div>
-                <div className="border border-slate-200 rounded-lg p-4 space-y-3">
-                  <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Right Eye (OD)</h4>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Vision</label>
-                    <input value={opticalRx.right_vision || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, right_vision: e.target.value }))} placeholder="6/9" className="input-field" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">IOP / Tension (Schiotz)</label>
-                    <input value={opticalRx.right_iop || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, right_iop: e.target.value }))} placeholder="16 mmHg" className="input-field" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">NLD</label>
-                    <input value={opticalRx.right_nld || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, right_nld: e.target.value }))} placeholder="Patent" className="input-field" />
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {isEyeHospital && (!isEditMode || !!appointmentId) && canCreateOpticalRx && (
-            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold flex items-center gap-2">
-                  <span className="material-symbols-outlined text-primary text-sm">visibility</span>
-                  Optical (Spectacle) Prescription
-                </h3>
-                <button
-                  type="button"
-                  onClick={() => setAddOpticalRx(v => !v)}
-                  className={`px-4 py-1.5 text-xs font-bold rounded-lg border transition-colors ${
-                    addOpticalRx ? 'bg-primary text-white border-primary' : 'bg-white text-primary border-primary/30 hover:bg-primary/5'
-                  }`}
-                >
-                  {addOpticalRx ? 'OPTICAL ✓' : 'ADD OPTICAL'}
-                </button>
-              </div>
-              {addOpticalRx && (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {/* Left Eye (OS) */}
-                    <div className="border border-slate-200 rounded-lg p-4 space-y-3">
-                      <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Left Eye (OS)</h4>
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">SPH</label>
-                        <input type="number" step="0.25" value={opticalRx.left_sph ?? ''} onChange={opticalNumField('left_sph')} className="input-field" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">CYL</label>
-                        <input type="number" step="0.25" value={opticalRx.left_cyl ?? ''} onChange={opticalNumField('left_cyl')} className="input-field" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Axis</label>
-                        <input type="number" min={0} max={180} value={opticalRx.left_axis ?? ''} onChange={opticalNumField('left_axis')} className="input-field" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Add</label>
-                        <input type="number" step="0.25" value={opticalRx.left_add ?? ''} onChange={opticalNumField('left_add')} className="input-field" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Visual Acuity</label>
-                        <input value={opticalRx.left_va || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, left_va: e.target.value }))} placeholder="6/6" className="input-field" />
-                      </div>
-                    </div>
-
-                    {/* Right Eye (OD) */}
-                    <div className="border border-slate-200 rounded-lg p-4 space-y-3">
-                      <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Right Eye (OD)</h4>
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">SPH</label>
-                        <input type="number" step="0.25" value={opticalRx.right_sph ?? ''} onChange={opticalNumField('right_sph')} className="input-field" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">CYL</label>
-                        <input type="number" step="0.25" value={opticalRx.right_cyl ?? ''} onChange={opticalNumField('right_cyl')} className="input-field" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Axis</label>
-                        <input type="number" min={0} max={180} value={opticalRx.right_axis ?? ''} onChange={opticalNumField('right_axis')} className="input-field" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Add</label>
-                        <input type="number" step="0.25" value={opticalRx.right_add ?? ''} onChange={opticalNumField('right_add')} className="input-field" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Visual Acuity</label>
-                        <input value={opticalRx.right_va || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, right_va: e.target.value }))} placeholder="6/6" className="input-field" />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">PD Distance (mm)</label>
-                      <input type="number" step="0.5" value={opticalRx.pd_distance ?? ''} onChange={opticalNumField('pd_distance')} className="input-field" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">PD Near (mm)</label>
-                      <input type="number" step="0.5" value={opticalRx.pd_near ?? ''} onChange={opticalNumField('pd_near')} className="input-field" />
-                    </div>
-                  </div>
-
-                  {/* Per-eye PD — distinct from PD Distance/Near above (which
-                      split by viewing distance, not by eye); some opticians
-                      measure and prescribe PD per eye instead of a single
-                      binocular value. */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">PD Right / OD (mm)</label>
-                      <input type="number" step="0.5" value={opticalRx.pd_right ?? ''} onChange={opticalNumField('pd_right')} className="input-field" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">PD Left / OS (mm)</label>
-                      <input type="number" step="0.5" value={opticalRx.pd_left ?? ''} onChange={opticalNumField('pd_left')} className="input-field" />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Optical Notes</label>
-                    <AutocompleteField as="input" field="optical_prescription_notes" value={opticalRx.notes || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, notes: e.target.value }))} className="input-field" />
                   </div>
                 </div>
               )}

@@ -70,6 +70,26 @@ async def create_new_user(
             if tenant:
                 UserCapacityValidator.validate_user_creation(tenant.id, db)
 
+        # 'staff' is an attendance-only role with no login access at all (see
+        # auth_service.authenticate_user's attendance-only-role block) — the
+        # Staff Directory form hides username/email/password entirely for it,
+        # so generate values here instead: a real, unique username (reusing
+        # the same template suggest_username already gives every other role,
+        # so it still shows up correctly everywhere usernames are displayed),
+        # a placeholder email derived from it (guaranteed unique since the
+        # username is), and a random password nobody is ever shown — login
+        # is blocked for this role regardless, so its value never matters.
+        if user_data.role == "staff":
+            if not user_data.username:
+                user_data.username = suggest_username(
+                    db, current_user.hospital_id, user_data.first_name, user_data.last_name,
+                )
+            if not user_data.email:
+                user_data.email = f"{user_data.username}@staff.internal"
+            if not user_data.password:
+                import secrets
+                user_data.password = secrets.token_urlsafe(24)
+
         # Username and email are unique platform-wide (not just per hospital) —
         # login resolves a user by username alone, and password-reset by email
         # alone, neither one knowing the hospital in advance, so the DB
@@ -109,6 +129,7 @@ async def create_new_user(
             'pharmacist':        ['pharmacy'],
             'cashier':           ['billing'],
             'inventory_manager': ['inventory'],
+            'staff':             ['attendance'],
         }
         required_optional = _role_module_map.get(user_data.role, [])
         if required_optional and "super_admin" not in current_user.roles:

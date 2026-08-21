@@ -1,0 +1,11 @@
+-- Adds a structured "Condition / History" checklist to patients, distinct
+-- from the existing free-text patients.chronic_conditions column — this
+-- one is a fixed set of common conditions the doctor marks per-patient
+-- (Details + Currently in Treatment Yes/No each), shown in the Prescription
+-- Builder right below Prescription History (the same patient-level, not
+-- visit-level, section — persists across every future visit rather than
+-- being tied to one prescription). Stored the same way patients.symptoms
+-- already stores its array (JSONB), just with objects instead of plain
+-- strings: [{"condition": "Diabetes Mellitus", "details": "...",
+-- "currently_in_treatment": true}, ...].
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS medical_conditions JSONB;

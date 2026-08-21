@@ -1,5 +1,5 @@
 import api, { API_BASE_URL } from './api';
-import type { Patient, PatientCreateData, PaginatedResponse, PatientLastVisit } from '../types/patient';
+import type { Patient, PatientCreateData, PaginatedResponse, PatientLastVisit, MedicalConditionEntry } from '../types/patient';
 
 export interface PatientTrendBucket {
   period_start: string;
@@ -105,6 +105,14 @@ export const patientService = {
 
   async deletePatient(id: string): Promise<void> {
     await api.delete(`/patients/${id}`);
+  },
+
+  // "Condition / History" checklist (Prescription Builder, below
+  // Prescription History) — a narrow, dedicated call rather than routing
+  // through updatePatient (which requires the full patient payload).
+  async updateMedicalConditions(id: string, conditions: MedicalConditionEntry[]): Promise<Patient> {
+    const response = await api.put<Patient>(`/patients/${id}/medical-conditions`, { medical_conditions: conditions });
+    return response.data;
   },
 
   async uploadPhoto(id: string, file: File): Promise<Patient> {

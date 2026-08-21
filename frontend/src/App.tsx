@@ -681,7 +681,11 @@ const AppWithNotifications: React.FC = () => {
               } />
               <Route path="/lab/tests" element={
                 <ProtectedRoute
-                  allowedRoles={['super_admin', 'admin', 'lab_technician']}
+                  // Matches backend LAB_VIEW_ROLES (routers/lab.py) for GET
+                  // /lab/tests — doctor gets read access to the test catalog;
+                  // create/update/delete stay lab-staff only (enforced by
+                  // LabTestCatalog.tsx's own role checks + the backend guard).
+                  allowedRoles={['super_admin', 'admin', 'lab_technician', 'doctor']}
                   requiredModule="lab"
                 >
                   <LabTestCatalog />

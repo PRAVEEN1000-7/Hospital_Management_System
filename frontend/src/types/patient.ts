@@ -1,3 +1,9 @@
+export interface MedicalConditionEntry {
+  condition: string;
+  details: string | null;
+  currently_in_treatment: boolean | null;
+}
+
 export interface Patient {
   id: string;
   hospital_id: string;
@@ -27,6 +33,10 @@ export interface Patient {
   photo_url: string | null;
   known_allergies: string | null;
   chronic_conditions: string | null;
+  // Fixed "Condition / History" checklist (Prescription Builder, below
+  // Prescription History) — distinct from the free-text chronic_conditions
+  // above; one entry per condition in MEDICAL_CONDITIONS_CHECKLIST.
+  medical_conditions: MedicalConditionEntry[] | null;
   // Patient History block (BRD v1.1 §2) — eye-hospital feature pack only
   reason_for_visit: string | null;
   symptoms: string[] | null;

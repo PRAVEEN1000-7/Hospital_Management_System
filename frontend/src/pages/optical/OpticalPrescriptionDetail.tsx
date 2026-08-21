@@ -184,55 +184,55 @@ const OpticalPrescriptionDetail: React.FC = () => {
             <thead>
               <tr className="bg-slate-50 text-center text-xs font-semibold text-slate-500 uppercase">
                 <th className="px-3 py-2 text-left">Parameter</th>
-                <th className="px-3 py-2">Left (OS)</th>
                 <th className="px-3 py-2">Right (OD)</th>
+                <th className="px-3 py-2">Left (OS)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-center">
               <tr>
                 <td className="px-3 py-2 text-left font-semibold text-slate-700">SPH</td>
-                <td className="px-3 py-2">{fmtPower(rx.left_sph)}</td>
                 <td className="px-3 py-2">{fmtPower(rx.right_sph)}</td>
+                <td className="px-3 py-2">{fmtPower(rx.left_sph)}</td>
               </tr>
               <tr>
                 <td className="px-3 py-2 text-left font-semibold text-slate-700">CYL</td>
-                <td className="px-3 py-2">{fmtPower(rx.left_cyl)}</td>
                 <td className="px-3 py-2">{fmtPower(rx.right_cyl)}</td>
+                <td className="px-3 py-2">{fmtPower(rx.left_cyl)}</td>
               </tr>
               <tr>
                 <td className="px-3 py-2 text-left font-semibold text-slate-700">Axis</td>
-                <td className="px-3 py-2">{fmtAxis(rx.left_axis)}</td>
                 <td className="px-3 py-2">{fmtAxis(rx.right_axis)}</td>
+                <td className="px-3 py-2">{fmtAxis(rx.left_axis)}</td>
               </tr>
               <tr>
                 <td className="px-3 py-2 text-left font-semibold text-slate-700">Add</td>
-                <td className="px-3 py-2">{fmtPower(rx.left_add)}</td>
                 <td className="px-3 py-2">{fmtPower(rx.right_add)}</td>
+                <td className="px-3 py-2">{fmtPower(rx.left_add)}</td>
               </tr>
               <tr>
                 <td className="px-3 py-2 text-left font-semibold text-slate-700">Visual Acuity</td>
-                <td className="px-3 py-2">{fmtVa(rx.left_va)}</td>
                 <td className="px-3 py-2">{fmtVa(rx.right_va)}</td>
+                <td className="px-3 py-2">{fmtVa(rx.left_va)}</td>
               </tr>
               {(rx.left_vision || rx.right_vision) && (
                 <tr>
                   <td className="px-3 py-2 text-left font-semibold text-slate-700">Vision</td>
-                  <td className="px-3 py-2">{fmtVa(rx.left_vision)}</td>
                   <td className="px-3 py-2">{fmtVa(rx.right_vision)}</td>
+                  <td className="px-3 py-2">{fmtVa(rx.left_vision)}</td>
                 </tr>
               )}
               {(rx.left_iop || rx.right_iop) && (
                 <tr>
                   <td className="px-3 py-2 text-left font-semibold text-slate-700">IOP (Tension)</td>
-                  <td className="px-3 py-2">{fmtVa(rx.left_iop)}</td>
                   <td className="px-3 py-2">{fmtVa(rx.right_iop)}</td>
+                  <td className="px-3 py-2">{fmtVa(rx.left_iop)}</td>
                 </tr>
               )}
               {(rx.left_nld || rx.right_nld) && (
                 <tr>
                   <td className="px-3 py-2 text-left font-semibold text-slate-700">NLD</td>
-                  <td className="px-3 py-2">{fmtVa(rx.left_nld)}</td>
                   <td className="px-3 py-2">{fmtVa(rx.right_nld)}</td>
+                  <td className="px-3 py-2">{fmtVa(rx.left_nld)}</td>
                 </tr>
               )}
             </tbody>
@@ -246,8 +246,8 @@ const OpticalPrescriptionDetail: React.FC = () => {
               {[
                 rx.pd_distance ? `Distance: ${rx.pd_distance} mm` : null,
                 rx.pd_near ? `Near: ${rx.pd_near} mm` : null,
-                rx.pd_left ? `Left: ${rx.pd_left} mm` : null,
                 rx.pd_right ? `Right: ${rx.pd_right} mm` : null,
+                rx.pd_left ? `Left: ${rx.pd_left} mm` : null,
               ].filter(Boolean).join(' | ')}
             </p>
           </div>

@@ -27,13 +27,16 @@ const staffCreateSchema = z.object({
     .min(3, 'Last name must be more than 2 letters')
     .max(100, 'Max 100 characters')
     .regex(/^[A-Za-z]+$/, 'Only letters (A–Z) allowed — no numbers, spaces or symbols'),
+  // Required for every role except 'staff' (enforced below in superRefine) —
+  // that role has no login access at all, so the Staff Directory form hides
+  // these fields entirely and the backend auto-generates them.
   email: z.string()
-    .min(1, 'Email is required')
-    .email('Please enter a valid email address (e.g. user@hospital.com)'),
+    .email('Please enter a valid email address (e.g. user@hospital.com)')
+    .optional().or(z.literal('')),
   username: z.string()
-    .min(3, 'Username must be at least 3 characters')
     .max(50, 'Max 50 characters')
-    .regex(/^[a-zA-Z0-9_]+$/, 'Only letters, numbers, and underscores (no spaces)'),
+    .regex(/^[a-zA-Z0-9_]*$/, 'Only letters, numbers, and underscores (no spaces)')
+    .optional().or(z.literal('')),
   phone_number: z.string()
     .optional()
     .refine(val => !val || /^\d{10}$/.test(val), { message: 'Phone must be exactly 10 digits — no letters or special characters' }),
@@ -66,8 +69,19 @@ const staffCreateSchema = z.object({
   paid_leave_entitlement: z.union([z.string(), z.number()]).optional(),
   base_salary: z.union([z.string(), z.number()]).optional(),
 }).superRefine((data, ctx) => {
-  // Password validation — only when not auto-generating
-  if (!data.auto_generate_password) {
+  const isStaffRole = data.role === 'staff';
+  // Email/username/password are all optional at the object level (above) so
+  // 'staff' — the no-login attendance-only role — can skip them entirely;
+  // every other role still requires them, enforced here instead.
+  if (!isStaffRole) {
+    if (!data.email) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Email is required', path: ['email'] });
+    if (!data.username || data.username.length < 3) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Username must be at least 3 characters', path: ['username'] });
+    }
+  }
+  // Password validation — only when not auto-generating, and never for the
+  // no-login 'staff' role (the backend generates a random one it never shows).
+  if (!isStaffRole && !data.auto_generate_password) {
     if (!data.password || data.password.length < 8) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Password must be at least 8 characters', path: ['password'] });
     } else {
@@ -94,7 +108,10 @@ const staffCreateSchema = z.object({
 // nothing. The employee/HR fields below ARE editable (they're plain `users`
 // columns, not doctor-only), unlike the doctor fields above.
 const staffEditSchema = z.object({
-  email: z.string().email('Please enter a valid email address'),
+  // Optional here, required below in superRefine for every role except
+  // 'staff' — that role was created without a real email (see
+  // staffCreateSchema) and the field stays hidden on this form too.
+  email: z.string().email('Please enter a valid email address').optional().or(z.literal('')),
   first_name: z.string().min(1, 'Required').max(100).regex(/^[A-Za-z]+$/, 'Only letters (A–Z) allowed'),
   // Not the stricter >2-letter rule from staffCreateSchema (Bug #39) — this
   // form resends the full record, so keeping it here would lock an existing
@@ -128,6 +145,9 @@ const staffEditSchema = z.object({
   paid_leave_entitlement: z.union([z.string(), z.number()]).optional(),
   base_salary: z.union([z.string(), z.number()]).optional(),
 }).superRefine((data, ctx) => {
+  if (data.role !== 'staff' && !data.email) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Email is required', path: ['email'] });
+  }
   if (data.role === 'doctor') {
     if (!data.specialization) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Specialization is required for doctors', path: ['specialization'] });
     if (!data.qualification) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Qualification is required for doctors', path: ['qualification'] });
@@ -158,13 +178,17 @@ type ResetFormData = z.infer<typeof resetPasswordSchema>;
 // from one screen but not the other, like Staff Directory vs User Management
 // used to disagree on.
 // ────────────────────────────────────────
-// 'staff' deliberately excluded (BUG-11): the generic role granted nothing
-// beyond Dashboard and confused admins about what it was for. Existing users
-// holding it keep working — it just can't be assigned to anyone new.
+// 'staff' was previously excluded (BUG-11): the generic role granted nothing
+// beyond Dashboard and confused admins about what it was for. It's back with
+// a specific, narrow purpose — an attendance-only employee record with no
+// system login at all (see CreateStaffModal/EditStaffModal's isStaffRole
+// branch, which hides email/username/password for it entirely; the backend
+// auto-generates those and blocks login for the role regardless — see
+// auth_service.authenticate_user and routers/users.py's create_new_user).
 const ALL_ROLES = [
   'super_admin', 'admin', 'doctor', 'visiting_doctor', 'nurse', 'receptionist',
   'pharmacist', 'optical_staff', 'lab_technician', 'cashier', 'inventory_manager',
-  'report_viewer',
+  'report_viewer', 'staff',
 ] as const;
 
 const ROLE_MODULE_REQUIREMENTS: Partial<Record<string, string[]>> = {
@@ -174,6 +198,7 @@ const ROLE_MODULE_REQUIREMENTS: Partial<Record<string, string[]>> = {
   optical_staff:     ['optical'],
   lab_technician:    ['lab'],
   report_viewer:     ['analytics'],
+  staff:             ['attendance'],
   // doctor, nurse, receptionist, admin — rely on CORE modules only, always available
 };
 
@@ -507,6 +532,18 @@ export const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => 
   const selectedRole = watch('role', '');
   const username = watch('username', '');
   const isDoctorRole = selectedRole === 'doctor';
+  // 'staff' — attendance-only, no login access at all (see
+  // staffCreateSchema/routers/users.py) — hides email/username/password
+  // entirely rather than asking an admin to invent login details nobody
+  // will ever use.
+  const isStaffRole = selectedRole === 'staff';
+
+  // Re-validate email/username/password once role flips to/from 'staff' —
+  // they go from required to optional (or back), and react-hook-form's
+  // isValid otherwise keeps stale results from before the switch.
+  useEffect(() => {
+    trigger(['email', 'username', 'password', 'confirm_password']);
+  }, [isStaffRole, trigger]);
 
   useEffect(() => {
     if (!passwordTriggerMounted.current) {
@@ -544,6 +581,7 @@ export const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => 
   // and it always overwrites while typing names since the field is meant to
   // be template-driven (the admin can still hand-edit it afterwards).
   useEffect(() => {
+    if (isStaffRole) return;
     const fn = firstName.trim();
     const ln = lastName.trim();
     if (fn.length < 2 || ln.length < 2) return;
@@ -556,11 +594,11 @@ export const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => 
       }
     }, 500);
     return () => clearTimeout(timeout);
-  }, [firstName, lastName, setValue]);
+  }, [firstName, lastName, setValue, isStaffRole]);
 
   // Debounced username uniqueness check against backend
   useEffect(() => {
-    if (!username || username.length < 3 || !/^[a-zA-Z0-9_]+$/.test(username)) {
+    if (isStaffRole || !username || username.length < 3 || !/^[a-zA-Z0-9_]+$/.test(username)) {
       setUsernameError('');
       return;
     }
@@ -576,11 +614,11 @@ export const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => 
       }
     }, 500);
     return () => { clearTimeout(timeout); setUsernameChecking(false); };
-  }, [username]);
+  }, [username, isStaffRole]);
 
   // Debounced email uniqueness check against backend
   useEffect(() => {
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    if (isStaffRole || !email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       setEmailError('');
       return;
     }
@@ -596,7 +634,7 @@ export const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => 
       }
     }, 500);
     return () => { clearTimeout(timeout); setEmailChecking(false); };
-  }, [email]);
+  }, [email, isStaffRole]);
 
   const fullName = `${firstName} ${lastName}`.trim();
 
@@ -659,20 +697,24 @@ export const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => 
     setIsSaving(true);
     setSubmitError('');
     try {
-      let finalPassword = data.password || '';
-      // Use exactly the password shown in the field so what the admin copied is
-      // what actually gets set (fall back to a fresh one only if somehow empty).
-      if (data.auto_generate_password) finalPassword = generatedPassword || generatePassword();
-
       const payload: UserCreateData = {
-        username: data.username,
-        email: data.email,
         first_name: data.first_name,
         last_name: data.last_name,
         role: data.role,
-        password: finalPassword,
         phone_number: data.phone_number,
       };
+      // 'staff' (attendance-only) omits username/email/password entirely —
+      // the backend auto-generates all three and blocks login for the role
+      // regardless (see routers/users.py's create_new_user).
+      if (data.role !== 'staff') {
+        let finalPassword = data.password || '';
+        // Use exactly the password shown in the field so what the admin copied is
+        // what actually gets set (fall back to a fresh one only if somehow empty).
+        if (data.auto_generate_password) finalPassword = generatedPassword || generatePassword();
+        payload.username = data.username;
+        payload.email = data.email;
+        payload.password = finalPassword;
+      }
       if (data.role === 'doctor') {
         payload.specialization = data.specialization;
         payload.qualification = data.qualification;
@@ -701,7 +743,7 @@ export const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => 
       payload.base_salary = data.base_salary ? Number(data.base_salary) : undefined;
 
       const createdUser = await userService.createUser(payload, false);
-      feLogger.info('staff_create', `Staff member created: ${data.username} (role=${data.role})`);
+      feLogger.info('staff_create', `Staff member created: ${createdUser.username || `${data.first_name} ${data.last_name}`} (role=${data.role})`);
 
       if (photoFile && createdUser.id) {
         try { await userService.uploadPhoto(createdUser.id, photoFile); }
@@ -750,16 +792,20 @@ export const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => 
               <input {...register('last_name')} className={`input-field ${inputErr(errors.last_name)}`} placeholder="e.g. Jenkins" onKeyDown={blockNonAlpha} />
             </Field>
           </div>
-          <Field label="Email Address *" error={errors.email?.message || emailError}>
-            <input {...register('email')} type="email" className={`input-field ${inputErr(errors.email || emailError)}`} placeholder="sarah.j@hospital.com" />
-            {emailChecking && <p className="text-xs text-blue-500 mt-1 flex items-center gap-1"><span className="material-icons text-xs animate-spin">sync</span>Checking availability...</p>}
-            {!emailChecking && !errors.email && !emailError && email.includes('@') && <p className="text-xs text-green-600 mt-1 flex items-center gap-1"><span className="material-icons text-xs">check_circle</span>Email available</p>}
-          </Field>
-          <Field label="Username (for login) *" error={errors.username?.message || usernameError}>
-            <input {...register('username')} className={`input-field ${inputErr(errors.username || usernameError)}`} placeholder="Auto-generated from name (e.g. besasa_001)" />
-            {usernameChecking && <p className="text-xs text-blue-500 mt-1 flex items-center gap-1"><span className="material-icons text-xs animate-spin">sync</span>Checking availability...</p>}
-            {!usernameChecking && !errors.username && !usernameError && username.length >= 3 && <p className="text-xs text-green-600 mt-1 flex items-center gap-1"><span className="material-icons text-xs">check_circle</span>Username available</p>}
-          </Field>
+          {!isStaffRole && (
+            <>
+              <Field label="Email Address *" error={errors.email?.message || emailError}>
+                <input {...register('email')} type="email" className={`input-field ${inputErr(errors.email || emailError)}`} placeholder="sarah.j@hospital.com" />
+                {emailChecking && <p className="text-xs text-blue-500 mt-1 flex items-center gap-1"><span className="material-icons text-xs animate-spin">sync</span>Checking availability...</p>}
+                {!emailChecking && !errors.email && !emailError && (email || '').includes('@') && <p className="text-xs text-green-600 mt-1 flex items-center gap-1"><span className="material-icons text-xs">check_circle</span>Email available</p>}
+              </Field>
+              <Field label="Username (for login) *" error={errors.username?.message || usernameError}>
+                <input {...register('username')} className={`input-field ${inputErr(errors.username || usernameError)}`} placeholder="Auto-generated from name (e.g. besasa_001)" />
+                {usernameChecking && <p className="text-xs text-blue-500 mt-1 flex items-center gap-1"><span className="material-icons text-xs animate-spin">sync</span>Checking availability...</p>}
+                {!usernameChecking && !errors.username && !usernameError && (username || '').length >= 3 && <p className="text-xs text-green-600 mt-1 flex items-center gap-1"><span className="material-icons text-xs">check_circle</span>Username available</p>}
+              </Field>
+            </>
+          )}
           <Field label="Phone Number" error={errors.phone_number?.message}>
             <div className="flex gap-2">
               <select {...register('country_code')} className="input-field w-28">
@@ -790,16 +836,25 @@ export const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => 
 
         <section className="space-y-4">
           <SectionTitle>Security &amp; Status</SectionTitle>
-          <div className="flex items-center justify-between mb-4">
-            <p className="text-sm font-semibold text-slate-700">Set Password</p>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <span className="text-sm text-slate-600">Auto-generate</span>
-              <div className="relative inline-flex items-center">
-                <input {...register('auto_generate_password')} type="checkbox" className="sr-only peer" />
-                <div className="w-11 h-6 bg-slate-300 peer-checked:bg-primary rounded-full transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:w-5 after:h-5 after:shadow-sm after:transition-all peer-checked:after:translate-x-5"></div>
+          {isStaffRole ? (
+            <div className="flex items-start gap-2 p-3 bg-slate-50 border border-slate-200 rounded-lg">
+              <span className="material-icons text-slate-400 text-lg mt-0.5">info</span>
+              <p className="text-xs text-slate-600">
+                Staff is an attendance-only record with no system login — no username, email, or password is created for this person. They'll still show up everywhere Attendance/Workforce Management tracks employees.
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-sm font-semibold text-slate-700">Set Password</p>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <span className="text-sm text-slate-600">Auto-generate</span>
+                  <div className="relative inline-flex items-center">
+                    <input {...register('auto_generate_password')} type="checkbox" className="sr-only peer" />
+                    <div className="w-11 h-6 bg-slate-300 peer-checked:bg-primary rounded-full transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:w-5 after:h-5 after:shadow-sm after:transition-all peer-checked:after:translate-x-5"></div>
+                  </div>
+                </label>
               </div>
-            </label>
-          </div>
           {autoGenPassword && (
             <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg space-y-2">
               <div className="flex items-center justify-between">
@@ -862,6 +917,8 @@ export const CreateStaffModal: React.FC<{ onClose: () => void; onSuccess: () => 
               </Field>
             </>
           )}
+            </>
+          )}
         </section>
 
         <div className="flex gap-3 pt-4 border-t border-slate-200">
@@ -895,7 +952,7 @@ export const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onS
     doctorService.getSpecializations().then(setSpecializations).catch(() => {});
   }, []);
 
-  const { register, handleSubmit, watch, formState: { errors, isSubmitting, isValid } } = useForm<EditFormData>({
+  const { register, handleSubmit, watch, trigger, formState: { errors, isSubmitting, isValid } } = useForm<EditFormData>({
     resolver: zodResolverV4(staffEditSchema),
     mode: 'onTouched',
     defaultValues: {
@@ -931,6 +988,16 @@ export const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onS
   const lastName = watch('last_name', user.last_name || '');
   const fullName = `${firstName} ${lastName}`.trim();
   const selectedRole = watch('role');
+  // 'staff' — attendance-only, no login access at all (see
+  // staffCreateSchema/routers/users.py's create_new_user).
+  const isStaffRole = selectedRole === 'staff';
+
+  // Re-validate email once role flips to/from 'staff' — it goes from
+  // required to optional (or back), and isValid otherwise keeps a stale
+  // result from before the switch.
+  useEffect(() => {
+    trigger('email');
+  }, [isStaffRole, trigger]);
 
   const handlePhotoChange = (file: File) => {
     setPhotoError('');
@@ -945,9 +1012,12 @@ export const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onS
   const onSubmit = async (data: EditFormData) => {
     try {
       const payload: UserUpdateData = {
-        email: data.email, first_name: data.first_name, last_name: data.last_name,
+        first_name: data.first_name, last_name: data.last_name,
         phone_number: data.phone_number, role: data.role, is_active: data.is_active,
       };
+      // 'staff' never had a real email set — don't send the hidden field's
+      // (empty) value and overwrite whatever placeholder the backend generated.
+      if (data.role !== 'staff') payload.email = data.email;
       if (data.role === 'doctor') {
         payload.specialization = data.specialization;
         payload.qualification = data.qualification;
@@ -1005,9 +1075,16 @@ export const EditStaffModal: React.FC<{ user: UserData; onClose: () => void; onS
               <input {...register('last_name')} className={`input-field ${inputErr(errors.last_name)}`} placeholder="e.g. Jenkins" onKeyDown={blockNonAlpha} />
             </Field>
           </div>
-          <Field label="Email" error={errors.email?.message}>
-            <input {...register('email')} type="email" className={`input-field ${inputErr(errors.email)}`} />
-          </Field>
+          {isStaffRole ? (
+            <div className="flex items-start gap-2 p-3 bg-slate-50 border border-slate-200 rounded-lg">
+              <span className="material-icons text-slate-400 text-lg mt-0.5">info</span>
+              <p className="text-xs text-slate-600">Staff is an attendance-only record with no system login — no email is set for this person.</p>
+            </div>
+          ) : (
+            <Field label="Email" error={errors.email?.message}>
+              <input {...register('email')} type="email" className={`input-field ${inputErr(errors.email)}`} />
+            </Field>
+          )}
           <Field label="Phone Number" error={errors.phone_number?.message}>
             <div className="flex gap-2">
               <select {...register('country_code')} className="input-field w-28">

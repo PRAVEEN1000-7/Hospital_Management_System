@@ -94,6 +94,29 @@ def _skip_queue_entry(db: Session, appointment_id: uuid.UUID) -> None:
         entry.status = "skipped"
 
 
+def _sync_queue_entry_status(db: Session, appointment_id: uuid.UUID, new_appt_status: str) -> None:
+    """Keep this appointment's Walk-in Queue entry (if any) in step with a
+    status change made from a screen other than the queue's own Start/
+    Complete actions (e.g. DoctorAppointments.tsx's "My Patients" — see
+    update_status below). Without this, using "Start"/"Complete" there
+    flips the appointment's status but leaves its queue entry stuck at
+    whatever it was (still "waiting"), so the Walk-in Queue ("Today
+    Patients") keeps showing a patient the doctor has already started or
+    finished seeing — the same class of desync _skip_queue_entry already
+    guards against for cancel/reschedule."""
+    entry = (
+        db.query(AppointmentQueue)
+        .filter(AppointmentQueue.appointment_id == appointment_id)
+        .first()
+    )
+    if not entry:
+        return
+    if new_appt_status == "in-progress" and entry.status in ("waiting", "called", "sent_to_doctor"):
+        entry.status = "in_consultation"
+    elif new_appt_status == "completed" and entry.status in ("waiting", "called", "sent_to_doctor", "in_consultation"):
+        entry.status = "completed"
+
+
 # ── Number generation ──────────────────────────────────────────────────────
 
 def generate_appointment_number(appointment_type: str = "scheduled") -> str:
@@ -468,12 +491,23 @@ def update_status(
     
     old_status = appt.status
     appt.status = new_status
-    
-    # Track timestamps
+
+    # Track timestamps — mirrors what the Walk-in Queue's own start-
+    # consultation/complete actions already set (routers/walk_ins.py), so a
+    # doctor using "My Patients" instead of "Today Patients" still produces
+    # the same consultation_start_at/end_at data the avg-consultation-time
+    # analytics (get_doctor_wise_stats) reads, and its linked queue entry (if
+    # any) doesn't get left stuck at its old status — see
+    # _sync_queue_entry_status.
     if new_status == "confirmed":
         pass  # No special timestamp
     elif new_status == "in-progress":
         appt.check_in_at = appt.check_in_at or datetime.now(timezone.utc)
+        appt.consultation_start_at = appt.consultation_start_at or datetime.now(timezone.utc)
+        _sync_queue_entry_status(db, appt.id, "in-progress")
+    elif new_status == "completed":
+        appt.consultation_end_at = appt.consultation_end_at or datetime.now(timezone.utc)
+        _sync_queue_entry_status(db, appt.id, "completed")
     db.commit()
     db.refresh(appt)
     _log_status_change(db, appt.id, old_status, new_status, performed_by, notes)

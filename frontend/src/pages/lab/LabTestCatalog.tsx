@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import labService from '../../services/labService';
 import type { LabTest, LabTestCreateData, LabTestParameterTemplate, LabTestPanel, LabTestPanelCreateData } from '../../types/lab';
 import { useToast } from '../../contexts/ToastContext';
+import { useAuth } from '../../contexts/AuthContext';
 import SearchableSelect, { type SuggestionOption } from '../../components/common/SearchableSelect';
 
 const emptyForm: LabTestCreateData = {
@@ -14,6 +15,14 @@ const emptyPanelForm: LabTestPanelCreateData = { name: '', code: '', test_ids: [
 
 const LabTestCatalog: React.FC = () => {
   const { showToast } = useToast();
+  const { user } = useAuth();
+  // Matches the backend's LAB_STAFF_ROLES vs LAB_VIEW_ROLES split
+  // (routers/lab.py) — a doctor now reaches this page to browse the catalog
+  // (view-only) but create/edit/deactivate/delete are lab-staff operations;
+  // without this check those buttons would render for a doctor too and 403
+  // on click since the backend already rejects them for that role.
+  const roles = user?.roles || [];
+  const canManage = roles.includes('super_admin') || roles.includes('admin') || roles.includes('lab_technician');
   const [activeTab, setActiveTab] = useState<'tests' | 'packages'>('tests');
   const [tests, setTests] = useState<LabTest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -225,10 +234,12 @@ const LabTestCatalog: React.FC = () => {
               : 'Named bundles of tests (e.g. "MHC — Master Health Checkup") a doctor can add in one click from a prescription'}
           </p>
         </div>
-        <button onClick={activeTab === 'tests' ? openCreate : openCreatePanel}
-          className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 transition-colors">
-          <span className="material-symbols-outlined text-base">add</span> {activeTab === 'tests' ? 'Add Test' : 'Add Package'}
-        </button>
+        {canManage && (
+          <button onClick={activeTab === 'tests' ? openCreate : openCreatePanel}
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 transition-colors">
+            <span className="material-symbols-outlined text-base">add</span> {activeTab === 'tests' ? 'Add Test' : 'Add Package'}
+          </button>
+        )}
       </div>
 
       <div className="flex gap-1 border-b border-slate-200">
@@ -280,7 +291,7 @@ const LabTestCatalog: React.FC = () => {
                   <th className="px-4 py-3">Sample</th>
                   <th className="px-4 py-3">Reference Range</th>
                   <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3 text-right">Actions</th>
+                  {canManage && <th className="px-4 py-3 text-right">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -300,19 +311,21 @@ const LabTestCatalog: React.FC = () => {
                         {t.is_active ? 'Active' : 'Inactive'}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-right whitespace-nowrap">
-                      <button onClick={() => openEdit(t)} className="text-slate-400 hover:text-primary p-1" title="Edit">
-                        <span className="material-symbols-outlined text-lg">edit</span>
-                      </button>
-                      {t.is_active && (
-                        <button onClick={() => handleDeactivate(t)} className="text-slate-400 hover:text-red-600 p-1" title="Deactivate">
-                          <span className="material-symbols-outlined text-lg">block</span>
+                    {canManage && (
+                      <td className="px-4 py-3 text-right whitespace-nowrap">
+                        <button onClick={() => openEdit(t)} className="text-slate-400 hover:text-primary p-1" title="Edit">
+                          <span className="material-symbols-outlined text-lg">edit</span>
                         </button>
-                      )}
-                      <button onClick={() => handleDelete(t)} className="text-slate-400 hover:text-red-600 p-1" title="Delete permanently">
-                        <span className="material-symbols-outlined text-lg">delete</span>
-                      </button>
-                    </td>
+                        {t.is_active && (
+                          <button onClick={() => handleDeactivate(t)} className="text-slate-400 hover:text-red-600 p-1" title="Deactivate">
+                            <span className="material-symbols-outlined text-lg">block</span>
+                          </button>
+                        )}
+                        <button onClick={() => handleDelete(t)} className="text-slate-400 hover:text-red-600 p-1" title="Delete permanently">
+                          <span className="material-symbols-outlined text-lg">delete</span>
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -342,7 +355,7 @@ const LabTestCatalog: React.FC = () => {
                   <th className="px-4 py-3">Code</th>
                   <th className="px-4 py-3">Tests Included</th>
                   <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3 text-right">Actions</th>
+                  {canManage && <th className="px-4 py-3 text-right">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -364,16 +377,18 @@ const LabTestCatalog: React.FC = () => {
                         {p.is_active ? 'Active' : 'Inactive'}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-right whitespace-nowrap">
-                      <button onClick={() => openEditPanel(p)} className="text-slate-400 hover:text-primary p-1" title="Edit">
-                        <span className="material-symbols-outlined text-lg">edit</span>
-                      </button>
-                      {p.is_active && (
-                        <button onClick={() => handleDeactivatePanel(p)} className="text-slate-400 hover:text-red-600 p-1" title="Deactivate">
-                          <span className="material-symbols-outlined text-lg">block</span>
+                    {canManage && (
+                      <td className="px-4 py-3 text-right whitespace-nowrap">
+                        <button onClick={() => openEditPanel(p)} className="text-slate-400 hover:text-primary p-1" title="Edit">
+                          <span className="material-symbols-outlined text-lg">edit</span>
                         </button>
-                      )}
-                    </td>
+                        {p.is_active && (
+                          <button onClick={() => handleDeactivatePanel(p)} className="text-slate-400 hover:text-red-600 p-1" title="Deactivate">
+                            <span className="material-symbols-outlined text-lg">block</span>
+                          </button>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

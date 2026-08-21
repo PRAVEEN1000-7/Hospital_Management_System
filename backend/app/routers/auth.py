@@ -170,6 +170,7 @@ async def login(
                 "invalid_password": "Invalid password",
                 "account_inactive": "Your account has been deactivated. Please contact the administrator.",
                 "account_locked": "Your account is temporarily locked due to multiple failed login attempts. Please try again later.",
+                "no_login_access": "This account is for attendance tracking only and has no login access. Please contact your administrator.",
             }
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,

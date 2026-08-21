@@ -330,21 +330,6 @@ const NewOpticalPrescription: React.FC = () => {
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="border border-slate-200 rounded-lg p-4 space-y-3">
-              <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Left Eye (OS)</h4>
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Vision</label>
-                <input value={opticalRx.left_vision || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, left_vision: e.target.value }))} placeholder="6/9" className="input-field" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">IOP / Tension (Schiotz)</label>
-                <input value={opticalRx.left_iop || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, left_iop: e.target.value }))} placeholder="16 mmHg" className="input-field" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">NLD</label>
-                <input value={opticalRx.left_nld || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, left_nld: e.target.value }))} placeholder="Patent" className="input-field" />
-              </div>
-            </div>
-            <div className="border border-slate-200 rounded-lg p-4 space-y-3">
               <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Right Eye (OD)</h4>
               <div>
                 <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Vision</label>
@@ -359,6 +344,21 @@ const NewOpticalPrescription: React.FC = () => {
                 <input value={opticalRx.right_nld || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, right_nld: e.target.value }))} placeholder="Patent" className="input-field" />
               </div>
             </div>
+            <div className="border border-slate-200 rounded-lg p-4 space-y-3">
+              <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Left Eye (OS)</h4>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Vision</label>
+                <input value={opticalRx.left_vision || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, left_vision: e.target.value }))} placeholder="6/9" className="input-field" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">IOP / Tension (Schiotz)</label>
+                <input value={opticalRx.left_iop || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, left_iop: e.target.value }))} placeholder="16 mmHg" className="input-field" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">NLD</label>
+                <input value={opticalRx.left_nld || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, left_nld: e.target.value }))} placeholder="Patent" className="input-field" />
+              </div>
+            </div>
           </div>
         </div>
 
@@ -370,6 +370,32 @@ const NewOpticalPrescription: React.FC = () => {
           </h3>
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Right Eye (OD) — shown first (screen-left) per the clinical
+                  convention of facing the patient, matching Eye Exam above. */}
+              <div className="border border-slate-200 rounded-lg p-4 space-y-3">
+                <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Right Eye (OD)</h4>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">SPH</label>
+                  <input type="number" step="0.25" value={opticalRx.right_sph ?? ''} onChange={opticalNumField('right_sph')} className="input-field" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">CYL</label>
+                  <input type="number" step="0.25" value={opticalRx.right_cyl ?? ''} onChange={opticalNumField('right_cyl')} className="input-field" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Axis</label>
+                  <input type="number" min={0} max={180} value={opticalRx.right_axis ?? ''} onChange={opticalNumField('right_axis')} className="input-field" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Add</label>
+                  <input type="number" step="0.25" value={opticalRx.right_add ?? ''} onChange={opticalNumField('right_add')} className="input-field" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Visual Acuity</label>
+                  <input value={opticalRx.right_va || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, right_va: e.target.value }))} placeholder="6/6" className="input-field" />
+                </div>
+              </div>
+
               {/* Left Eye (OS) */}
               <div className="border border-slate-200 rounded-lg p-4 space-y-3">
                 <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Left Eye (OS)</h4>
@@ -392,31 +418,6 @@ const NewOpticalPrescription: React.FC = () => {
                 <div>
                   <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Visual Acuity</label>
                   <input value={opticalRx.left_va || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, left_va: e.target.value }))} placeholder="6/6" className="input-field" />
-                </div>
-              </div>
-
-              {/* Right Eye (OD) */}
-              <div className="border border-slate-200 rounded-lg p-4 space-y-3">
-                <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Right Eye (OD)</h4>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">SPH</label>
-                  <input type="number" step="0.25" value={opticalRx.right_sph ?? ''} onChange={opticalNumField('right_sph')} className="input-field" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">CYL</label>
-                  <input type="number" step="0.25" value={opticalRx.right_cyl ?? ''} onChange={opticalNumField('right_cyl')} className="input-field" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Axis</label>
-                  <input type="number" min={0} max={180} value={opticalRx.right_axis ?? ''} onChange={opticalNumField('right_axis')} className="input-field" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Add</label>
-                  <input type="number" step="0.25" value={opticalRx.right_add ?? ''} onChange={opticalNumField('right_add')} className="input-field" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Visual Acuity</label>
-                  <input value={opticalRx.right_va || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, right_va: e.target.value }))} placeholder="6/6" className="input-field" />
                 </div>
               </div>
             </div>

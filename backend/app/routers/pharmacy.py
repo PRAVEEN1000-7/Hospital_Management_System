@@ -16,7 +16,7 @@ from ..models.user import User
 from ..models.prescription import Medicine as MedicineModel
 from ..models.pharmacy import MedicineBatch
 from ..dependencies import get_current_active_user, require_admin_or_super_admin, require_any_role
-from ..core.module_roles import require_permission
+from ..core.module_roles import require_permission, check_permission
 from ..core.tenant_security import is_eye_hospital_feature_enabled
 from ..schemas.pharmacy import (
     # Medicine
@@ -50,11 +50,27 @@ pharmacy_view_guard = require_permission("pharmacy", "view")
 pharmacy_edit_guard = require_permission("pharmacy", "edit")
 
 
+# Narrow carve-out for the read-only dashboard/analytics endpoints only — a
+# doctor gets the same aggregate stats an admin sees on the Reports &
+# Analytics dashboard (KPIStrip/PharmacyPanel), without gaining the general
+# "pharmacy" permission (medicine catalog, batches, sales, stock adjustments
+# all keep using pharmacy_view_guard/pharmacy_edit_guard as-is).
+def pharmacy_analytics_view_guard(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+) -> User:
+    if "doctor" in {str(r).strip().lower() for r in (current_user.roles or [])}:
+        return current_user
+    if not check_permission(db, current_user, "pharmacy", "view"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    return current_user
+
+
 # ═══ Dashboard ═══
 @router.get("/dashboard", response_model=PharmacyDashboard)
 async def pharmacy_dashboard(
     db: Session = Depends(get_db),
-    current_user: User = Depends(pharmacy_view_guard),
+    current_user: User = Depends(pharmacy_analytics_view_guard),
 ):
     """Get pharmacy dashboard statistics."""
     return svc.get_pharmacy_dashboard(db, current_user.hospital_id)
@@ -65,7 +81,7 @@ async def pharmacy_dashboard(
 async def pharmacy_sales_trend(
     days: int = Query(30, ge=1, le=90, description="Number of days to retrieve"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(pharmacy_view_guard),
+    current_user: User = Depends(pharmacy_analytics_view_guard),
 ):
     """Get pharmacy sales trend for the last N days."""
     return svc.get_pharmacy_sales_trend(db, current_user.hospital_id, days)
@@ -76,7 +92,7 @@ async def pharmacy_top_medicines(
     days: int = Query(30, ge=1, le=90, description="Number of days to analyze"),
     limit: int = Query(10, ge=1, le=50, description="Number of top medicines to return"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(pharmacy_view_guard),
+    current_user: User = Depends(pharmacy_analytics_view_guard),
 ):
     """Get top selling medicines by quantity and revenue."""
     return svc.get_pharmacy_top_medicines(db, current_user.hospital_id, days, limit)

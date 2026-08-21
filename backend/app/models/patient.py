@@ -51,6 +51,11 @@ class Patient(Base):
     symptoms = Column(JSONB)  # Array of symptom strings (multi-select + custom entries)
     blood_sugar_value = Column(Numeric(10, 2))
     blood_sugar_unit = Column(String(10))  # 'mg/dL' or 'mmol/L'
+    # Fixed "Condition / History" checklist (distinct from the free-text
+    # chronic_conditions column above) — shown in the Prescription Builder
+    # below Prescription History. Array of
+    # {"condition": str, "details": str | None, "currently_in_treatment": bool | None}.
+    medical_conditions = Column(JSONB)
     preferred_language = Column(String(10), default="en")
     # Verification (BRD_OP_1 §3.2) — checkmark requires BOTH true, see
     # schemas.patient.PatientListItem.is_verified. Phone/OTP is scaffolded

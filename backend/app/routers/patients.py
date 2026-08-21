@@ -24,6 +24,7 @@ from ..schemas.patient import (
     PatientVerificationStatus,
     PatientLastVisitResponse,
     PatientTrendResponse,
+    PatientMedicalConditionsUpdate,
 )
 from ..models.patient import Patient
 from ..models.appointment import Doctor
@@ -196,6 +197,26 @@ async def get_patient(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Patient not found",
         )
+    return PatientResponse.model_validate(patient)
+
+
+@router.put("/{patient_id}/medical-conditions", response_model=PatientResponse)
+async def update_medical_conditions(
+    patient_id: str,
+    data: PatientMedicalConditionsUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(patient_update_role_guard),
+):
+    """Save the fixed "Condition / History" checklist (Prescription Builder,
+    below Prescription History) — a narrow, dedicated endpoint rather than
+    routing through the general PUT /{patient_id} (which requires the full
+    PatientUpdate payload); this only ever touches medical_conditions."""
+    patient = get_patient_by_id(db, patient_id, hospital_id=current_user.hospital_id)
+    if not patient:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
+    patient.medical_conditions = [entry.model_dump() for entry in data.medical_conditions]
+    db.commit()
+    db.refresh(patient)
     return PatientResponse.model_validate(patient)
 
 

@@ -542,9 +542,13 @@ const StaffDirectory: React.FC = () => {
             <button onClick={() => { setViewUser(null); setEditUser(viewUser); }} className="flex-1 px-4 py-2.5 text-sm font-bold text-primary bg-primary/5 hover:bg-primary/10 rounded-lg transition-colors flex items-center justify-center gap-2">
               <span className="material-icons text-sm">edit</span> Edit Profile
             </button>
-            <button onClick={() => { setViewUser(null); setResetUser(viewUser); }} className="flex-1 px-4 py-2.5 text-sm font-bold text-amber-600 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors flex items-center justify-center gap-2">
-              <span className="material-icons text-sm">key</span> Reset Password
-            </button>
+            {/* Staff (attendance-only) has no login access at all — resetting
+                a password nobody can use isn't a meaningful action. */}
+            {!viewUser.roles?.includes('staff') && (
+              <button onClick={() => { setViewUser(null); setResetUser(viewUser); }} className="flex-1 px-4 py-2.5 text-sm font-bold text-amber-600 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors flex items-center justify-center gap-2">
+                <span className="material-icons text-sm">key</span> Reset Password
+              </button>
+            )}
           </div>
           )}
         </Drawer>

@@ -194,8 +194,10 @@ const OpticalDialog: React.FC<OpticalDialogProps> = ({ patientId, appointmentId,
             {/* Left/Right eye — Vision/IOP/NLD exam findings and SPH/CYL/Axis/Add/VA
                 spectacle prescription together in one card per eye. */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {eyeCard('left', 'Left Eye (OS)')}
+              {/* Right Eye (OD) shown first (screen-left) per the clinical
+                  convention of facing the patient. */}
               {eyeCard('right', 'Right Eye (OD)')}
+              {eyeCard('left', 'Left Eye (OS)')}
             </div>
           </div>
         )}

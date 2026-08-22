@@ -376,7 +376,7 @@ export interface StockAdjustment {
 export interface StockAdjustmentCreate {
   medicine_id: string;
   batch_id?: string;
-  adjustment_type: 'damage' | 'expired' | 'correction' | 'return';
+  adjustment_type: 'increase' | 'damage' | 'expired' | 'correction' | 'return';
   quantity: number;
   reason?: string;
 }

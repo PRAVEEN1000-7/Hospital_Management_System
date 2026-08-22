@@ -65,7 +65,7 @@ def _require_billing_view(db: Session, current_user: User) -> None:
 # invoice listing/detail, invoice creation, refunds, and settlement all keep
 # using _require_billing_view as-is and stay admin/cashier-only.
 def _require_billing_analytics_view(db: Session, current_user: User) -> None:
-    if _has_any_role(current_user, {"doctor"}):
+    if _has_any_role(current_user, {"doctor", "report_viewer"}):
         return
     _require_billing_view(db, current_user)
 

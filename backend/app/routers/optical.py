@@ -46,6 +46,23 @@ optical_view_guard = require_permission("optical", "view")
 optical_edit_guard = require_permission("optical", "edit")
 
 
+# Narrow carve-out for the read-only analytics endpoint only — a doctor gets
+# the same aggregate optical sales stats an admin sees on the Reports &
+# Analytics dashboard (PharmacyPanel's Optical Sales Trend chart), without
+# gaining the general "optical" permission (products, batches, sales, stock
+# adjustments, dashboard all keep using optical_view_guard/optical_edit_guard
+# as-is). Same pattern as pharmacy_analytics_view_guard / inventory_analytics_view_roles.
+def optical_analytics_view_guard(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+) -> User:
+    if {"doctor", "report_viewer"} & {str(r).strip().lower() for r in (current_user.roles or [])}:
+        return current_user
+    if not check_permission(db, current_user, "optical", "view"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    return current_user
+
+
 def _optical_prescription_entry_guard(level: str):
     """Narrow carve-out for the two "enter an optical prescription's own
     fields" endpoints (create + the by-appointment lookup used to re-open a
@@ -94,7 +111,7 @@ async def optical_dashboard(
 async def optical_sales_trend(
     days: int = Query(30, ge=1, le=90),
     db: Session = Depends(get_db),
-    current_user: User = Depends(optical_view_guard),
+    current_user: User = Depends(optical_analytics_view_guard),
 ):
     return svc.get_optical_sales_trend(db, current_user.hospital_id, days)
 

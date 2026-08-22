@@ -1351,11 +1351,18 @@ def create_stock_adjustment(
     qty = data["quantity"]
     adj_type = data["adjustment_type"]
     
-    # Determine quantity direction based on adjustment type
-    # damage/expired = negative (stock out), correction/return = can be +/-
-    if adj_type in ["damage", "expired"]:
+    # Determine quantity direction based on adjustment type. The schema
+    # (StockAdjustmentCreate.adjustment_type pattern) already accepted
+    # "increase"/"decrease"/"write_off" as valid values, but this function
+    # never gave them an explicit sign — they silently fell through to "keep
+    # the sign as provided", which happened to work for "increase" only
+    # because the frontend's quantity field never allows a negative number;
+    # "decrease"/"write_off" would have silently INCREASED stock instead of
+    # decreasing it the moment either was ever sent. Explicit now, matching
+    # damage/expired/return below.
+    if adj_type in ["damage", "expired", "write_off", "decrease"]:
         qty = -abs(qty)  # Always negative
-    elif adj_type == "return":
+    elif adj_type in ["return", "increase"]:
         qty = abs(qty)   # Always positive
     # correction keeps the sign as provided
 
@@ -1426,7 +1433,11 @@ def create_stock_adjustment(
     # Create adjustment record using inventory model (auto-approved for pharmacy)
     adj = StockAdjustment(
         hospital_id=hospital_id,
-        adjustment_number=f"ADJ-PHARM-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}",
+        # A trailing random suffix (not just the second-precision timestamp)
+        # avoids stock_adjustments_adjustment_number_key collisions when two
+        # adjustments land in the same second — found while testing this
+        # function, same pattern generate_appointment_number already uses.
+        adjustment_number=f"ADJ-PHARM-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:4].upper()}",
         item_type="medicine",
         item_id=medicine_id,  # Use item_id (inventory model field)
         batch_id=batch_id,

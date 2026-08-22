@@ -27,7 +27,7 @@ const StockAdjustments: React.FC = () => {
   const [medicineId, setMedicineId] = useState('');
   const [medicineLabel, setMedicineLabel] = useState('');
   const [batchId, setBatchId] = useState('');
-  const [adjustmentType, setAdjustmentType] = useState<'damage' | 'expired' | 'correction' | 'return'>('damage');
+  const [adjustmentType, setAdjustmentType] = useState<'increase' | 'damage' | 'expired' | 'correction' | 'return'>('increase');
   const [quantity, setQuantity] = useState(1);
   const [reason, setReason] = useState('');
   const [saving, setSaving] = useState(false);
@@ -138,6 +138,7 @@ const StockAdjustments: React.FC = () => {
               <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Type *</label>
               <select value={adjustmentType} onChange={e => setAdjustmentType(e.target.value as typeof adjustmentType)}
                 className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary">
+                <option value="increase">Increase</option>
                 <option value="damage">Damage</option>
                 <option value="expired">Expired</option>
                 <option value="correction">Correction</option>
@@ -153,7 +154,7 @@ const StockAdjustments: React.FC = () => {
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Reason *</label>
             <input value={reason} onChange={e => setReason(e.target.value)} required
-              placeholder="e.g. Damaged in transit, expired stock, physical count correction..."
+              placeholder="e.g. Extra stock found on physical count, damaged in transit, expired stock..."
               className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-primary" />
           </div>
           <div className="flex justify-end">

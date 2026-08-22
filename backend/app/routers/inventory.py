@@ -68,7 +68,7 @@ def inventory_analytics_view_roles(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ) -> User:
-    if "doctor" in {str(r).strip().lower() for r in (current_user.roles or [])}:
+    if {"doctor", "report_viewer"} & {str(r).strip().lower() for r in (current_user.roles or [])}:
         return current_user
     if not check_permission(db, current_user, "inventory", "view"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")

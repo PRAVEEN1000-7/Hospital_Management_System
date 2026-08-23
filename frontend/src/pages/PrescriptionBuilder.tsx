@@ -11,7 +11,7 @@ import scheduleService from '../services/scheduleService';
 import hospitalService, { type HospitalInstitutionOption } from '../services/hospitalService';
 import opticalService from '../services/opticalService';
 import labService from '../services/labService';
-import type { PrescriptionItemCreate, Medicine, PrescriptionTemplate, EyeSide } from '../types/prescription';
+import type { PrescriptionItemCreate, Medicine, EyeSide } from '../types/prescription';
 import type { OpticalPrescriptionCreateData } from '../types/optical';
 import type { LabTest, LabTestPanel, PatientLabResult } from '../types/lab';
 import type { Patient, MedicalConditionEntry } from '../types/patient';
@@ -286,10 +286,6 @@ const PrescriptionBuilder: React.FC = () => {
   const activeMedInputRef = useRef<HTMLInputElement | null>(null);
   const [medDropdownPos, setMedDropdownPos] = useState<{ top: number; left: number; width: number } | null>(null);
 
-  // Templates
-  const [templates, setTemplates] = useState<PrescriptionTemplate[]>([]);
-  const [showTemplates, setShowTemplates] = useState(false);
-
   // Refer to Doctor modal state
   const [showReferModal, setShowReferModal] = useState(false);
   const [referDoctors, setReferDoctors] = useState<DoctorOption[]>([]);
@@ -558,13 +554,6 @@ const PrescriptionBuilder: React.FC = () => {
       .catch(() => { /* no existing optical prescription for this appointment yet */ });
     return () => { cancelled = true; };
   }, [appointmentId, isEyeHospital]);
-
-  // Load templates
-  useEffect(() => {
-    prescriptionService.getTemplates()
-      .then(setTemplates)
-      .catch(() => {});
-  }, []);
 
   // Load doctors for referral (consultation mode only)
   useEffect(() => {
@@ -886,26 +875,6 @@ const PrescriptionBuilder: React.FC = () => {
     setBlocks(newBlocks);
   };
 
-  const applyTemplate = (tmpl: PrescriptionTemplate) => {
-    setAdvice(tmpl.advice || '');
-    const newItems: PrescriptionItemCreate[] = tmpl.items.map((ti, idx) => ({
-      medicine_name: ti.medicine_name,
-      generic_name: ti.generic_name || '',
-      dosage: ti.dosage,
-      frequency: ti.frequency,
-      duration_value: ti.duration_value || 7,
-      duration_unit: ti.duration_unit || 'days',
-      route: ti.route || 'oral',
-      instructions: ti.instructions || '',
-      allow_substitution: true,
-      display_order: idx,
-    }));
-    setBlocks([createBlock(tmpl.diagnosis || '', newItems.length > 0 ? newItems : undefined)]);
-    setShowTemplates(false);
-    prescriptionService.useTemplate(tmpl.id).catch(() => {});
-    showToast('success', `Template "${tmpl.name}" applied`);
-  };
-
   const handleSave = async (
     finalize: boolean = false,
     completeQueue: boolean = false,
@@ -1132,13 +1101,6 @@ const PrescriptionBuilder: React.FC = () => {
         </div>
         <div className="flex gap-3">
           <button
-            onClick={() => setShowTemplates(!showTemplates)}
-            className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-medium hover:bg-slate-50 flex items-center gap-2"
-          >
-            <span className="material-symbols-outlined text-sm">bookmark</span>
-            Load Template
-          </button>
-          <button
             onClick={() => navigate('/prescriptions')}
             className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-medium hover:bg-slate-50 flex items-center gap-2"
           >
@@ -1167,9 +1129,11 @@ const PrescriptionBuilder: React.FC = () => {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Left: Form — expanded to take 3/4 width */}
-        <div className="lg:col-span-3 space-y-6">
+      <div className="grid grid-cols-1 gap-6">
+        {/* Form — full width now that the Favorite Templates / Formulary
+            Search sidebar has been removed (per-item medicine autocomplete
+            below still works via the same medicineSearch state). */}
+        <div className="space-y-6">
           {/* Prescribing Doctor — pharmacist (or any non-doctor reaching this
               route) may optionally attribute the prescription to a real
               doctor; POST /prescriptions accepts an omitted doctor_id and
@@ -2369,75 +2333,6 @@ const PrescriptionBuilder: React.FC = () => {
           </div>
         </div>
 
-        {/* Right Sidebar: Templates + History */}
-        <div className="space-y-6">
-          {/* Templates */}
-          <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-            <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
-              <span className="material-symbols-outlined text-primary text-xs">star</span> Favorite Templates
-            </h4>
-            {templates.length > 0 ? (
-              <div className="space-y-2">
-                {templates.slice(0, 5).map(tmpl => (
-                  <button
-                    key={tmpl.id}
-                    onClick={() => applyTemplate(tmpl)}
-                    className="w-full text-left p-3 rounded-lg bg-slate-50 hover:bg-slate-100 transition-colors"
-                  >
-                    <p className="text-sm font-medium">{tmpl.name}</p>
-                    <p className="text-xs text-slate-500">
-                      {tmpl.items?.map((i: any) => i.medicine_name).join(', ')}
-                    </p>
-                    <p className="text-[10px] text-slate-400 mt-0.5">Used {tmpl.usage_count} times</p>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <p className="text-xs text-slate-400">No templates yet. Create one from a finished prescription.</p>
-            )}
-          </div>
-
-          {/* Medicine Formulary */}
-          <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-            <h4 className="text-sm font-semibold mb-3">Formulary Search</h4>
-            <div className="relative">
-              <span className="absolute inset-y-0 left-0 flex items-center pl-3">
-                <span className="material-symbols-outlined text-slate-400 text-sm">search</span>
-              </span>
-              <input
-                type="text"
-                className="w-full pl-10 pr-9 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
-                placeholder="Search medicines..."
-                value={medicineSearch}
-                onChange={e => { setMedicineSearch(e.target.value); setActiveMedBlockIdx(null); setActiveMedItemIdx(null); }}
-              />
-              {medicineSearch && (
-                <button type="button" onClick={() => setMedicineSearch('')} className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600">
-                  <span className="material-symbols-outlined text-lg">close</span>
-                </button>
-              )}
-            </div>
-            {activeMedBlockIdx === null && medicineResults.length > 0 && (
-              <div className="mt-2 space-y-1 max-h-48 overflow-y-auto">
-                {medicineResults.map(med => (
-                  <div key={med.id} className="p-2 bg-slate-50 rounded text-xs">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="font-medium">{med.name}</span>
-                      {med.strength && <span className="text-slate-500">{med.strength}</span>}
-                      {med.category && (
-                        <span className="px-1.5 py-0.5 bg-primary/10 text-primary rounded-full text-[10px] font-semibold capitalize">
-                          {med.category}
-                        </span>
-                      )}
-                    </div>
-                    <span className="text-slate-400 block">{med.generic_name}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-            <p className="text-xs text-slate-400 mt-2">Search by name, generic name, strength (e.g. "500mg"), dosage form (e.g. "syrup"), or composition.</p>
-          </div>
-        </div>
       </div>
 
       {/* ── Refer to Doctor Modal ──────────────────────────────────── */}

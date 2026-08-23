@@ -647,6 +647,23 @@ async def update_pharmacy_queue_status(
     return result
 
 
+@router.delete("/queue/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_pharmacy_queue_entry(
+    entry_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(pharmacy_edit_guard),
+):
+    """Delete a not-yet-dispensed pharmacy queue entry (mistaken/duplicate
+    add, or a walk-in who left before being served)."""
+    _require_eye_hospital_queue(current_user)
+    try:
+        deleted = queue_svc.delete_pharmacy_queue_entry(db, current_user.hospital_id, entry_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Queue entry not found")
+
+
 # ──────────────────────────────────────────────────
 # Stock Adjustments
 # ──────────────────────────────────────────────────

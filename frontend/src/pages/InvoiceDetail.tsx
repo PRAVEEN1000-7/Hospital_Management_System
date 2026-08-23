@@ -9,6 +9,7 @@ import { patientService } from '../services/patientService';
 import hospitalService from '../services/hospitalService';
 import type { HospitalDetails } from '../services/hospitalService';
 import HospitalLogo from '../components/common/HospitalLogo';
+import DocumentWatermark from '../components/common/DocumentWatermark';
 import { htmlStringToPdf } from '../utils/pdf';
 import { formatDateOnly } from '../utils/calendarDate';
 import type { Patient } from '../types/patient';
@@ -427,7 +428,8 @@ const InvoiceDetail: React.FC = () => {
         <div id="invoice-print-area">
 
           {/* Invoice Header */}
-          <div className="bg-white rounded-xl border border-slate-200 p-6 mb-4">
+          <div className="relative z-0 overflow-hidden bg-white rounded-xl border border-slate-200 p-6 mb-4">
+            <DocumentWatermark logoUrl={hospital?.logo_url} />
             {/* Hospital Letterhead — same identity as the prescription PDF: real
                 logo, hospital name in primary blue, primary-blue rule beneath */}
             {hospital && (
@@ -494,7 +496,8 @@ const InvoiceDetail: React.FC = () => {
           </div>
 
           {/* Line Items Table */}
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden mb-4">
+          <div className="relative z-0 bg-white rounded-xl border border-slate-200 overflow-hidden mb-4">
+            <DocumentWatermark logoUrl={hospital?.logo_url} />
             <div className="px-5 py-3 border-b border-slate-100">
               <p className="text-sm font-semibold text-slate-700">Items</p>
             </div>

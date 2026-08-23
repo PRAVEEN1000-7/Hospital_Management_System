@@ -279,6 +279,28 @@ def advance_pharmacy_queue_entry_status(db: Session, entry_id: str | uuid.UUID, 
     return serialize_pharmacy_queue_entry(entry)
 
 
+def delete_pharmacy_queue_entry(db: Session, hospital_id: uuid.UUID, entry_id: str | uuid.UUID) -> bool:
+    """Remove a queue entry that hasn't been dispensed yet — e.g. added by
+    mistake, or a walk-in who left before being served. Once dispensing has
+    actually happened (sale_id set) the entry is the queue-side record of a
+    real transaction, so it's blocked from deletion rather than silently
+    losing the link between that sale and its original queue token."""
+    from ..models.pharmacy import PharmacyQueueEntry
+
+    entry = (
+        db.query(PharmacyQueueEntry)
+        .filter(PharmacyQueueEntry.id == entry_id, PharmacyQueueEntry.hospital_id == hospital_id)
+        .first()
+    )
+    if not entry:
+        return False
+    if entry.sale_id:
+        raise ValueError("Cannot delete a queue entry that has already been dispensed")
+    db.delete(entry)
+    db.commit()
+    return True
+
+
 def find_open_pharmacy_queue_entry_for_patient(db: Session, hospital_id: uuid.UUID, patient_id: uuid.UUID):
     """Oldest not-yet-collected queue entry for this patient today — used by the
     counter-sale flow (NewSale.tsx) to link a manually-added walk-in to its bill."""

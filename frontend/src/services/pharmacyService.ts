@@ -254,6 +254,10 @@ export const pharmacyService = {
     return res.data;
   },
 
+  async deleteQueueEntry(entryId: string): Promise<void> {
+    await api.delete(`/pharmacy/queue/${entryId}`);
+  },
+
   // ═══ Stock Adjustments ═══
   async getStockAdjustments(medicineId?: string): Promise<StockAdjustment[]> {
     const params: Record<string, string> = {};

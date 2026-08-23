@@ -37,7 +37,12 @@ router = APIRouter(prefix="/public", tags=["Public Queue Display"])
 
 
 def _doctor_walk_in_tokens(db: Session, hospital_id: uuid.UUID, doctor_id: Optional[uuid.UUID], today: date) -> list[dict]:
-    """Today's active walk-in queue tokens for one doctor, explicitly scoped to hospital_id."""
+    """Today's active walk-in queue tokens for one doctor, explicitly scoped
+    to hospital_id. Must include "sent_to_doctor" — a token reception has
+    already handed to this doctor's queue but the doctor hasn't started yet
+    is still very much active from the patient's point of view; omitting it
+    made the token vanish off the display the moment reception sent it,
+    right up until the doctor happened to start that exact patient."""
     query = (
         db.query(AppointmentQueue)
         .join(Appointment, Appointment.id == AppointmentQueue.appointment_id)
@@ -45,7 +50,7 @@ def _doctor_walk_in_tokens(db: Session, hospital_id: uuid.UUID, doctor_id: Optio
             AppointmentQueue.queue_date == today,
             Appointment.appointment_date == today,
             Appointment.hospital_id == hospital_id,
-            AppointmentQueue.status.in_(["waiting", "called", "being_served", "in_consultation"]),
+            AppointmentQueue.status.in_(["waiting", "called", "sent_to_doctor", "being_served", "in_consultation"]),
         )
     )
     if doctor_id:
@@ -82,7 +87,7 @@ def _build_queue_columns(
             Appointment.appointment_date == today,
             Appointment.hospital_id == hospital_id,
             AppointmentQueue.doctor_id.isnot(None),
-            AppointmentQueue.status.in_(["waiting", "called", "being_served", "in_consultation"]),
+            AppointmentQueue.status.in_(["waiting", "called", "sent_to_doctor", "being_served", "in_consultation"]),
         )
         .distinct()
         .all()
@@ -133,11 +138,17 @@ def _build_queue_columns(
 
     if show_opthal:
         optical_entries = optical_service.list_optical_queue(db, hospital_id)
-        # Filter for active tokens only (placed, fitting, ready)
+        # Filter for active tokens only. queue_status (waiting/being_served/
+        # ready/collected — billing_queue_service.QUEUE_STATUSES) is the
+        # dispensing-queue state; it was mistakenly filtered here using values
+        # ("placed"/"fitting") that belong to OpticalSale.status (the order's
+        # own fulfilment stage) instead — a queue_status of "waiting" or
+        # "being_served" never matched, so every optical token except the rare
+        # "ready" one silently vanished from this display.
         active_optical_tokens = [
             PublicQueueToken(token=e["queue_token"], status=e["queue_status"])
             for e in optical_entries
-            if e["queue_status"] in ["placed", "fitting", "ready"]
+            if e["queue_status"] in ["waiting", "being_served", "ready"]
         ]
         columns.append(PublicQueueColumn(
             id="opthal",

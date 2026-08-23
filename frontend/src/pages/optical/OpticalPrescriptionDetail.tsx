@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import opticalService from '../../services/opticalService';
 import type { OpticalPrescription } from '../../types/optical';
+import DocumentWatermark from '../../components/common/DocumentWatermark';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { htmlStringToPdf } from '../../utils/pdf';
@@ -173,7 +174,8 @@ const OpticalPrescriptionDetail: React.FC = () => {
         )
       )}
 
-      <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-6">
+      <div className="relative z-0 overflow-hidden bg-white rounded-xl border border-slate-200 p-6 space-y-6">
+        <DocumentWatermark />
         <div>
           <p className="text-xs text-slate-400 font-medium uppercase mb-1">Patient</p>
           <p className="text-slate-900 font-medium">{rx.patient_name || '—'}</p>

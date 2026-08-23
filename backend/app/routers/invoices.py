@@ -459,6 +459,29 @@ async def get_invoice_pdf(
     hosp_phone = _esc(hospital.phone if hospital else "")
     hosp_email = _esc(hospital.email if hospital else "")
 
+    # Hospital logo → embed as a base64 data URI so it renders in BOTH the print
+    # window and the html2canvas PDF download (relative /uploads paths and
+    # external URLs don't resolve reliably in those contexts). Used as a faint
+    # full-page watermark, same pattern as prescriptions/optical/lab PDFs.
+    def _logo_data_uri(logo_url: str) -> str:
+        if not logo_url:
+            return ""
+        if logo_url.startswith("http://") or logo_url.startswith("https://"):
+            return logo_url
+        import os as _os, base64 as _b64, mimetypes as _mt
+        backend_root = _os.path.dirname(_os.path.dirname(_os.path.dirname(__file__)))
+        fpath = _os.path.join(backend_root, logo_url.lstrip("/").replace("/", _os.sep))
+        if not _os.path.exists(fpath):
+            return ""
+        mime = _mt.guess_type(fpath)[0] or "image/png"
+        try:
+            with open(fpath, "rb") as fh:
+                data = _b64.b64encode(fh.read()).decode("ascii")
+            return f"data:{mime};base64,{data}"
+        except Exception:
+            return ""
+    logo_uri = _logo_data_uri(hospital.logo_url if hospital else "")
+
     item_type_labels = {
         "consultation": "Consultation", "medicine": "Medicine",
         "optical_product": "Optical Product", "service": "Service",
@@ -482,7 +505,9 @@ async def get_invoice_pdf(
 <head>
 <title>Invoice - {_esc(invoice.invoice_number)}</title>
 <style>
-body {{ font-family: Arial, sans-serif; margin: 0; padding: 40px; color: #1e293b; }}
+body {{ font-family: Arial, sans-serif; margin: 0; padding: 40px; color: #1e293b; position: relative; }}
+.watermark {{ position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 55%; max-width: 420px; opacity: 0.06; z-index: 0; pointer-events: none; }}
+.content {{ position: relative; z-index: 1; }}
 .header {{ text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 3px solid #0284c7; }}
 .header h1 {{ margin: 0; color: #0284c7; font-size: 28px; }}
 .header p {{ margin: 4px 0 0; color: #64748b; font-size: 14px; }}
@@ -508,6 +533,8 @@ th {{ color: #64748b; font-weight: 600; font-size: 12px; background: #f8fafc; }}
 </style>
 </head>
 <body>
+{f'<img class="watermark" src="{logo_uri}" alt="" />' if logo_uri else ''}
+<div class="content">
 <div class="header">
     <h1>{hosp_name}</h1>
     <p>{hosp_address}, {hosp_city}, {hosp_state}</p>
@@ -542,6 +569,7 @@ th {{ color: #64748b; font-weight: 600; font-size: 12px; background: #f8fafc; }}
 <div class="footer">
     <p>Generated on {datetime.now().strftime("%B %d, %Y at %I:%M %p")} | {hosp_name}</p>
     <p>This is a computer-generated document. No signature required.</p>
+</div>
 </div>
 </body>
 </html>"""

@@ -6,6 +6,7 @@ import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatDateTime } from '../../utils/calendarDate';
 import { htmlStringToPdf } from '../../utils/pdf';
+import DocumentWatermark from '../../components/common/DocumentWatermark';
 
 const STAFF_ROLES = ['super_admin', 'admin', 'lab_technician'];
 
@@ -347,7 +348,8 @@ const LabOrderDetail: React.FC<LabOrderDetailProps> = ({ orderIdProp, onClose })
         )}
 
         {/* Patient / meta */}
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
+        <div className="relative z-0 overflow-hidden bg-white rounded-xl border border-slate-200 p-5">
+          <DocumentWatermark />
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
             <div>
               <div className="text-xs text-slate-500 uppercase font-semibold mb-1">Patient</div>
@@ -375,7 +377,8 @@ const LabOrderDetail: React.FC<LabOrderDetailProps> = ({ orderIdProp, onClose })
         </div>
 
         {/* Results */}
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
+        <div className="relative z-0 overflow-hidden bg-white rounded-xl border border-slate-200 p-5">
+          <DocumentWatermark />
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold text-slate-900">Results</h2>
             {canFinalize && (

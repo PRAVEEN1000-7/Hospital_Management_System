@@ -48,9 +48,10 @@ const appointmentService = {
     return res.data;
   },
 
-  async getMyAppointments(page = 1, limit = 10, status?: string): Promise<PaginatedResponse<Appointment>> {
+  async getMyAppointments(page = 1, limit = 10, status?: string, search?: string): Promise<PaginatedResponse<Appointment>> {
     const params: Record<string, string | number> = { page, limit };
     if (status) params.status = status;
+    if (search) params.search = search;
     const res = await api.get<PaginatedResponse<Appointment>>('/appointments/my-appointments', { params });
     return res.data;
   },

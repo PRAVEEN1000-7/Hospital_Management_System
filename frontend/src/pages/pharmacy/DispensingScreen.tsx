@@ -763,7 +763,14 @@ const DispensingScreen: React.FC = () => {
   return (
     <div className="px-4 sm:px-6 lg:px-8 py-8">
       {/* Header - Matches PrescriptionDetail layout */}
-      <div className="flex justify-between items-start mb-6">
+      <div className="flex items-start gap-3 mb-6">
+        <button
+          onClick={() => navigate('/pharmacy/pending-prescriptions')}
+          title="Back to Pending Prescriptions"
+          className="p-2 -ml-2 text-slate-500 hover:text-primary hover:bg-slate-100 rounded-lg transition-colors shrink-0"
+        >
+          <span className="material-symbols-outlined text-xl">arrow_back</span>
+        </button>
         <div>
           <nav className="flex text-sm text-slate-400 mb-1">
             <button onClick={() => navigate('/pharmacy/pending-prescriptions')} className="hover:text-primary">
@@ -780,14 +787,6 @@ const DispensingScreen: React.FC = () => {
               {getDisplayStatusLabel(prescription.status)}
             </span>
           </h1>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => navigate('/pharmacy/pending-prescriptions')}
-            className="px-4 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            Back
-          </button>
         </div>
       </div>
 

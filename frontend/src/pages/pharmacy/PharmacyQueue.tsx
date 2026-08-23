@@ -31,6 +31,7 @@ const PharmacyQueue: React.FC = () => {
   const [entries, setEntries] = useState<PharmacyQueueEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [advancing, setAdvancing] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
   const [showManualAdd, setShowManualAdd] = useState(false);
   const [manualPatientName, setManualPatientName] = useState('');
   const [manualDoctorName, setManualDoctorName] = useState('');
@@ -63,6 +64,19 @@ const PharmacyQueue: React.FC = () => {
       toast.error('Failed to update queue status');
     } finally {
       setAdvancing(null);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('Remove this patient from the pharmacy queue?')) return;
+    setDeleting(id);
+    try {
+      await pharmacyService.deleteQueueEntry(id);
+      await fetchQueue();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to delete queue entry');
+    } finally {
+      setDeleting(null);
     }
   };
 
@@ -158,24 +172,38 @@ const PharmacyQueue: React.FC = () => {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-center">
-                      {entry.prescription_id && entry.status !== 'collected' ? (
-                        <button
-                          onClick={() => navigate(`/pharmacy/dispense/${entry.prescription_id}`)}
-                          className="px-3 py-1.5 text-xs font-semibold text-white bg-primary rounded-lg hover:bg-primary/90"
-                        >
-                          Dispense & Bill
-                        </button>
-                      ) : next ? (
-                        <button
-                          onClick={() => handleAdvance(entry.id, next)}
-                          disabled={advancing === entry.id}
-                          className="px-3 py-1.5 text-xs font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 disabled:opacity-50"
-                        >
-                          {advancing === entry.id ? '...' : `Mark ${STATUS_LABELS[next]}`}
-                        </button>
-                      ) : (
-                        <span className="text-xs text-slate-400">Done</span>
-                      )}
+                      <div className="inline-flex items-center gap-2">
+                        {entry.prescription_id && entry.status !== 'collected' ? (
+                          <button
+                            onClick={() => navigate(`/pharmacy/dispense/${entry.prescription_id}`)}
+                            className="px-3 py-1.5 text-xs font-semibold text-white bg-primary rounded-lg hover:bg-primary/90"
+                          >
+                            Dispense & Bill
+                          </button>
+                        ) : next ? (
+                          <button
+                            onClick={() => handleAdvance(entry.id, next)}
+                            disabled={advancing === entry.id}
+                            className="px-3 py-1.5 text-xs font-semibold text-white bg-primary rounded-lg hover:bg-primary/90 disabled:opacity-50"
+                          >
+                            {advancing === entry.id ? '...' : `Mark ${STATUS_LABELS[next]}`}
+                          </button>
+                        ) : (
+                          <span className="text-xs text-slate-400">Done</span>
+                        )}
+                        {!entry.sale_id && (
+                          <button
+                            onClick={() => handleDelete(entry.id)}
+                            disabled={deleting === entry.id}
+                            title="Remove from queue"
+                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                          >
+                            <span className="material-symbols-outlined text-lg">
+                              {deleting === entry.id ? 'progress_activity' : 'delete'}
+                            </span>
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );

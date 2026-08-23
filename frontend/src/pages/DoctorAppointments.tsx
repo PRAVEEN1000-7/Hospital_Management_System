@@ -9,6 +9,7 @@ import type { Appointment } from '../types/appointment';
 import { formatLocalDateISO, formatDateOnly } from '../utils/calendarDate';
 
 type TimeCategory = 'morning' | 'evening' | 'full';
+type PatientsTab = 'schedule' | 'all';
 
 const DoctorAppointments: React.FC = () => {
   const { user } = useAuth();
@@ -36,6 +37,19 @@ const DoctorAppointments: React.FC = () => {
   const [sessionTimes, setSessionTimes] = useState<{ morningEnd: string; eveningStart: string } | null>(null);
   const [timeCategory, setTimeCategory] = useState<TimeCategory>('full');
   const hasAppliedDefaultTimeCategory = useRef(false);
+
+  // ── All Patients tab — every visit this doctor has ever had, any date,
+  // separate from the day-by-day "Schedule" tab above (which keeps its own
+  // Start/Complete daily workflow untouched). Uses /appointments/my-appointments
+  // (no date filter, paginated) rather than getDoctorToday.
+  const [patientsTab, setPatientsTab] = useState<PatientsTab>('schedule');
+  const [allAppointments, setAllAppointments] = useState<Appointment[]>([]);
+  const [allLoading, setAllLoading] = useState(false);
+  const [allPage, setAllPage] = useState(1);
+  const [allTotalPages, setAllTotalPages] = useState(0);
+  const [allTotal, setAllTotal] = useState(0);
+  const [allSearch, setAllSearch] = useState('');
+  const [allSearchInput, setAllSearchInput] = useState('');
 
   useEffect(() => {
     appointmentSettingsService.getSettings()
@@ -68,6 +82,30 @@ const DoctorAppointments: React.FC = () => {
   }, [user?.id, selectedDate]);
 
   useEffect(() => { fetchAppointments(); }, [fetchAppointments]);
+
+  // Debounce the free-text search before it drives a fetch.
+  useEffect(() => {
+    const t = setTimeout(() => { setAllSearch(allSearchInput.trim()); setAllPage(1); }, 300);
+    return () => clearTimeout(t);
+  }, [allSearchInput]);
+
+  const fetchAllPatients = useCallback(async () => {
+    setAllLoading(true);
+    try {
+      const res = await appointmentService.getMyAppointments(allPage, 20, undefined, allSearch || undefined);
+      setAllAppointments(res.data);
+      setAllTotalPages(res.total_pages);
+      setAllTotal(res.total);
+    } catch {
+      toast.error('Failed to load patients');
+    }
+    setAllLoading(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allPage, allSearch]);
+
+  useEffect(() => {
+    if (patientsTab === 'all') fetchAllPatients();
+  }, [patientsTab, fetchAllPatients]);
 
   useEffect(() => {
     if (!user?.id || selectedDate !== today) {
@@ -150,15 +188,104 @@ const DoctorAppointments: React.FC = () => {
   return (
     <div>
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">My Schedule</h1>
-          <p className="text-slate-500 text-sm mt-1">Manage your daily appointments</p>
+          <h1 className="text-2xl font-bold text-slate-900">My Patients</h1>
+          <p className="text-slate-500 text-sm mt-1">
+            {patientsTab === 'schedule' ? 'Manage your daily appointments' : 'Every patient who has visited you, any date'}
+          </p>
         </div>
-        <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)}
-          className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
+        {patientsTab === 'schedule' && (
+          <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)}
+            className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none" />
+        )}
       </div>
 
+      {/* Schedule (today/date-based) vs All Patients (all-time roster) */}
+      <div className="flex gap-1 mb-6 bg-slate-100 rounded-xl p-1 w-fit">
+        {([
+          { key: 'schedule', label: 'Schedule', icon: 'calendar_month' },
+          { key: 'all', label: 'All Patients', icon: 'groups' },
+        ] as { key: PatientsTab; label: string; icon: string }[]).map(opt => (
+          <button key={opt.key} onClick={() => setPatientsTab(opt.key)}
+            className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-all ${
+              patientsTab === opt.key ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'
+            }`}>
+            <span className="material-symbols-outlined text-lg">{opt.icon}</span>
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
+      {patientsTab === 'all' ? (
+        <div>
+          <div className="relative mb-4 max-w-md">
+            <span className="absolute inset-y-0 left-0 flex items-center pl-3">
+              <span className="material-symbols-outlined text-slate-400 text-lg">search</span>
+            </span>
+            <input
+              type="text"
+              value={allSearchInput}
+              onChange={(e) => setAllSearchInput(e.target.value)}
+              placeholder="Search by patient name or appointment number..."
+              className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none"
+            />
+          </div>
+
+          {allLoading ? (
+            <div className="text-center py-20 text-slate-400"><span className="material-symbols-outlined animate-spin text-4xl">progress_activity</span></div>
+          ) : allAppointments.length === 0 ? (
+            <div className="text-center py-20 text-slate-400 bg-white rounded-xl border border-slate-200">
+              <span className="material-symbols-outlined text-5xl mb-3 block">groups</span>
+              <p className="text-sm font-medium">{allSearch ? 'No matching patients' : 'No patients yet'}</p>
+            </div>
+          ) : (
+            <>
+              <p className="text-xs text-slate-400 mb-3">{allTotal} visit{allTotal !== 1 ? 's' : ''} total</p>
+              <div className="space-y-2">
+                {allAppointments.map(appt => (
+                  <div key={appt.id}
+                    onClick={() => appt.patient_id && navigate(`/patients/${appt.patient_id}`)}
+                    title="View patient"
+                    className="bg-white rounded-xl border border-slate-200 p-4 flex items-center gap-4 cursor-pointer hover:border-primary/30 hover:shadow-sm transition-all">
+                    <div className="flex-shrink-0 w-24">
+                      <p className="text-sm font-bold text-slate-900">{formatDateOnly(appt.appointment_date, 'MMM d, yyyy')}</p>
+                      <p className="text-xs text-slate-400">{formatTime(appt.start_time || undefined)}</p>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                        <span className="font-bold text-slate-900">{appt.patient_name || 'Unknown Patient'}</span>
+                        <AppointmentStatusBadge status={appt.status} />
+                        {appt.patient_reference_number && (
+                          <span className="text-xs font-mono text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">PRN: {appt.patient_reference_number}</span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-500">{appt.appointment_number} · {appt.visit_type || 'General'}</p>
+                      {appt.chief_complaint && <p className="text-xs text-slate-400 mt-0.5 truncate">{appt.chief_complaint}</p>}
+                    </div>
+                    <span className="material-symbols-outlined text-slate-300 shrink-0">chevron_right</span>
+                  </div>
+                ))}
+              </div>
+
+              {allTotalPages > 1 && (
+                <div className="flex items-center justify-center gap-3 mt-6">
+                  <button onClick={() => setAllPage(p => Math.max(1, p - 1))} disabled={allPage <= 1}
+                    className="px-3 py-1.5 text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-40">
+                    Previous
+                  </button>
+                  <span className="text-sm text-slate-500">Page {allPage} of {allTotalPages}</span>
+                  <button onClick={() => setAllPage(p => Math.min(allTotalPages, p + 1))} disabled={allPage >= allTotalPages}
+                    className="px-3 py-1.5 text-sm font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-40">
+                    Next
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      ) : (
+      <>
       {/* Morning / Evening / Full Day — defaults to whichever OPD session is
           active right now (see the effect above), switchable any time. Uses
           the same session boundaries configured in Appointment Settings. */}
@@ -304,6 +431,8 @@ const DoctorAppointments: React.FC = () => {
             </div>
           ))}
         </div>
+      )}
+      </>
       )}
 
       {/* Notes Modal */}

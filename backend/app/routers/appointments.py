@@ -181,10 +181,12 @@ async def my_appointments(
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100),
     status_filter: Optional[str] = Query(None, alias="status"),
+    search: Optional[str] = Query(None, description="Match patient name, appointment number, or chief complaint"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    """Doctor: appointments assigned to me."""
+    """Doctor: appointments assigned to me — every visit, any date, not just
+    today (used by the "All Patients" tab in My Patients / DoctorAppointments.tsx)."""
     # Lookup the Doctor record by user_id (user.id != doctor.id)
     doctor = db.query(Doctor).filter(Doctor.user_id == current_user.id).first()
     if not doctor:
@@ -193,7 +195,7 @@ async def my_appointments(
         )
     total, pg, lim, tp, rows = list_appointments(
         db, page, limit, hospital_id=current_user.hospital_id,
-        doctor_id=str(doctor.id), status=status_filter,
+        doctor_id=str(doctor.id), status=status_filter, search=search,
     )
     enriched = enrich_appointments(db, rows)
     return PaginatedAppointmentResponse(

@@ -12,20 +12,26 @@ import { jsPDF } from 'jspdf';
  * @param orientation 'portrait' (default) or 'landscape' — use landscape for
  *                    wide tabular documents (e.g. a multi-column payroll sheet)
  *                    that would otherwise be cramped on a portrait page.
+ * @param pageSize    'a4' (default) or 'a5' — 'a5' is for small till-receipt-style
+ *                    documents (e.g. the pharmacy sale invoice) where a full A4
+ *                    sheet would be mostly blank.
  */
 export async function htmlStringToPdf(
   html: string, filename: string, orientation: 'portrait' | 'landscape' = 'portrait',
+  pageSize: 'a4' | 'a5' = 'a4',
 ): Promise<void> {
-  // A4 at ~96dpi: 794 x 1123px portrait; swapped for landscape.
-  const A4_WIDTH_PX = orientation === 'landscape' ? 1123 : 794;
-  const A4_HEIGHT_PX = orientation === 'landscape' ? 794 : 1123;
+  // ~96dpi page pixel sizes, swapped for landscape.
+  // A4 (210 x 297mm): 794 x 1123px. A5 (148 x 210mm): 559 x 794px.
+  const PORTRAIT_PX = pageSize === 'a5' ? { w: 559, h: 794 } : { w: 794, h: 1123 };
+  const PAGE_WIDTH_PX = orientation === 'landscape' ? PORTRAIT_PX.h : PORTRAIT_PX.w;
+  const PAGE_HEIGHT_PX = orientation === 'landscape' ? PORTRAIT_PX.w : PORTRAIT_PX.h;
 
   const iframe = document.createElement('iframe');
   iframe.style.position = 'fixed';
   iframe.style.left = '-10000px';
   iframe.style.top = '0';
-  iframe.style.width = `${A4_WIDTH_PX}px`;
-  iframe.style.height = `${A4_HEIGHT_PX}px`;
+  iframe.style.width = `${PAGE_WIDTH_PX}px`;
+  iframe.style.height = `${PAGE_HEIGHT_PX}px`;
   iframe.style.border = '0';
   iframe.setAttribute('aria-hidden', 'true');
   document.body.appendChild(iframe);
@@ -86,12 +92,12 @@ export async function htmlStringToPdf(
       scale: Math.min(3, (window.devicePixelRatio || 1) * 2),
       useCORS: true,
       backgroundColor: '#ffffff',
-      windowWidth: A4_WIDTH_PX,
+      windowWidth: PAGE_WIDTH_PX,
       windowHeight: contentHeight,
       height: contentHeight,
     });
 
-    const pdf = new jsPDF({ orientation, unit: 'mm', format: 'a4' });
+    const pdf = new jsPDF({ orientation, unit: 'mm', format: pageSize });
     const pageW = pdf.internal.pageSize.getWidth();
     const pageH = pdf.internal.pageSize.getHeight();
     const imgW = pageW;

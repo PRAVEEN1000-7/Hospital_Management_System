@@ -4,6 +4,7 @@ import pharmacyService from '../../services/pharmacyService';
 import { useToast } from '../../contexts/ToastContext';
 import type { PharmacyQueueEntry, PharmacyQueueStatus } from '../../types/pharmacy';
 import { formatTimeOnly } from '../../utils/calendarDate';
+import { useConfirm } from '../../contexts/ConfirmContext';
 
 const POLL_INTERVAL_MS = 15000;
 
@@ -28,6 +29,7 @@ const NEXT_STATUS: Record<PharmacyQueueStatus, PharmacyQueueStatus | null> = {
 const PharmacyQueue: React.FC = () => {
   const navigate = useNavigate();
   const toast = useToast();
+  const confirm = useConfirm();
   const [entries, setEntries] = useState<PharmacyQueueEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [advancing, setAdvancing] = useState<string | null>(null);
@@ -67,11 +69,17 @@ const PharmacyQueue: React.FC = () => {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm('Remove this patient from the pharmacy queue?')) return;
-    setDeleting(id);
+  const handleDelete = async (entry: PharmacyQueueEntry) => {
+    const ok = await confirm({
+      title: 'Remove From Queue',
+      message: `Remove ${entry.patient_name || 'this patient'} from the pharmacy queue? This cannot be undone.`,
+      confirmLabel: 'Remove',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    setDeleting(entry.id);
     try {
-      await pharmacyService.deleteQueueEntry(id);
+      await pharmacyService.deleteQueueEntry(entry.id);
       await fetchQueue();
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || 'Failed to delete queue entry');
@@ -193,7 +201,7 @@ const PharmacyQueue: React.FC = () => {
                         )}
                         {!entry.sale_id && (
                           <button
-                            onClick={() => handleDelete(entry.id)}
+                            onClick={() => handleDelete(entry)}
                             disabled={deleting === entry.id}
                             title="Remove from queue"
                             className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"

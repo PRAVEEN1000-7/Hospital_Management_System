@@ -7,6 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { formatDateTime } from '../../utils/calendarDate';
 import { htmlStringToPdf } from '../../utils/pdf';
 import DocumentWatermark from '../../components/common/DocumentWatermark';
+import { useConfirm } from '../../contexts/ConfirmContext';
 
 const STAFF_ROLES = ['super_admin', 'admin', 'lab_technician'];
 
@@ -113,6 +114,8 @@ const LabOrderDetail: React.FC<LabOrderDetailProps> = ({ orderIdProp, onClose })
   const [deleting, setDeleting] = useState(false);
   const [confirmatoryDiagnosis, setConfirmatoryDiagnosis] = useState('');
   const [savingDiagnosis, setSavingDiagnosis] = useState(false);
+  const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
+  const confirm = useConfirm();
 
   const load = useCallback(async () => {
     if (!orderId) return;
@@ -201,7 +204,13 @@ const LabOrderDetail: React.FC<LabOrderDetailProps> = ({ orderIdProp, onClose })
 
   const handleFinalize = async () => {
     if (!orderId) return;
-    if (!window.confirm('Finalize this report? Results will be locked and the report will become visible to the doctor.')) return;
+    const ok = await confirm({
+      title: 'Finalize Report?',
+      message: 'Results will be locked and the report will become visible to the doctor. This cannot be undone.',
+      confirmLabel: 'Finalize',
+      variant: 'info',
+    });
+    if (!ok) return;
     setFinalizing(true);
     try {
       const updated = await labService.finalizeReport(orderId);
@@ -216,13 +225,22 @@ const LabOrderDetail: React.FC<LabOrderDetailProps> = ({ orderIdProp, onClose })
 
   const handleDeleteItem = async (itemId: string, testName: string) => {
     if (!orderId) return;
-    if (!window.confirm(`Remove "${testName}" from this order? This test will no longer be billed.`)) return;
+    const ok = await confirm({
+      title: 'Remove Test?',
+      message: `Remove "${testName}" from this order? This test will no longer be billed.`,
+      confirmLabel: 'Remove',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    setDeletingItemId(itemId);
     try {
       const updated = await labService.deleteOrderItem(orderId, itemId);
       setOrder(updated);
       showToast('success', `Removed "${testName}" from the order`);
     } catch (err: any) {
       showToast('error', err?.response?.data?.detail || 'Failed to remove test');
+    } finally {
+      setDeletingItemId(null);
     }
   };
 
@@ -271,7 +289,13 @@ const LabOrderDetail: React.FC<LabOrderDetailProps> = ({ orderIdProp, onClose })
 
   const handleDelete = async () => {
     if (!orderId || !order || deleting) return;
-    if (!window.confirm(`Delete lab order ${order.order_number}? This cannot be undone.`)) return;
+    const ok = await confirm({
+      title: 'Delete Lab Order?',
+      message: `Delete lab order ${order.order_number}? This cannot be undone.`,
+      confirmLabel: 'Delete Order',
+      variant: 'danger',
+    });
+    if (!ok) return;
     setDeleting(true);
     try {
       await labService.deleteOrder(orderId);
@@ -279,7 +303,6 @@ const LabOrderDetail: React.FC<LabOrderDetailProps> = ({ orderIdProp, onClose })
       goBack();
     } catch (err: any) {
       showToast('error', err?.response?.data?.detail || 'Failed to delete lab order');
-    } finally {
       setDeleting(false);
     }
   };
@@ -459,9 +482,12 @@ const LabOrderDetail: React.FC<LabOrderDetailProps> = ({ orderIdProp, onClose })
                       </span>
                       {isStaff && !done && !order.sale_id && order.items.length > 1 && (
                         <button onClick={() => handleDeleteItem(item.id, item.billed_name || item.test_name)}
+                          disabled={deletingItemId === item.id}
                           title="Remove this test — not needed for this patient"
-                          className="print:hidden p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors">
-                          <span className="material-symbols-outlined text-base">delete</span>
+                          className="print:hidden p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50">
+                          <span className="material-symbols-outlined text-base">
+                            {deletingItemId === item.id ? 'progress_activity' : 'delete'}
+                          </span>
                         </button>
                       )}
                     </div>
@@ -616,6 +642,7 @@ const LabOrderDetail: React.FC<LabOrderDetailProps> = ({ orderIdProp, onClose })
           </div>
         )}
       </div>
+
     </div>
   );
 };

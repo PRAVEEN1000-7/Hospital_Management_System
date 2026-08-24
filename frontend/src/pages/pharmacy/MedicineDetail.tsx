@@ -55,6 +55,23 @@ const MedicineDetail: React.FC = () => {
     }
   };
 
+  const handleDeactivateBatch = async (batch: MedicineBatch) => {
+    const ok = await confirm({
+      title: 'Deactivate Batch',
+      message: `Deactivate batch ${batch.batch_number}? It will no longer appear in stock listings or be selectable for dispensing. Its sales/movement history is kept.`,
+      confirmLabel: 'Deactivate',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    try {
+      await pharmacyService.updateBatch(batch.id, { is_active: false });
+      toast.success('Batch deactivated');
+      setBatches((prev) => prev.filter((b) => b.id !== batch.id));
+    } catch {
+      toast.error('Failed to deactivate batch');
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-screen-2xl">
       {/* Header */}
@@ -154,11 +171,12 @@ const MedicineDetail: React.FC = () => {
                 <th className="px-4 py-3 text-center">Selling ₹</th>
                 <th className="px-4 py-3 text-center">MRP ₹</th>
                 <th className="px-4 py-3 text-center">Supplier</th>
+                <th className="px-4 py-3 text-center">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {batches.length === 0 ? (
-                <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400">No batches found</td></tr>
+                <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-400">No batches found</td></tr>
               ) : batches.map((b) => {
                 const isExpired = new Date(b.expiry_date) < new Date();
                 return (
@@ -177,6 +195,16 @@ const MedicineDetail: React.FC = () => {
                     <td className="px-4 py-3 text-right text-slate-600">{Number(b.selling_price).toFixed(2)}</td>
                     <td className="px-4 py-3 text-right text-slate-600">{b.mrp ? Number(b.mrp).toFixed(2) : '—'}</td>
                     <td className="px-4 py-3 text-slate-600">{b.supplier_name || '—'}</td>
+                    <td className="px-4 py-3 text-center">
+                      {b.quantity === 0 ? (
+                        <button onClick={() => handleDeactivateBatch(b)} title="Deactivate empty batch"
+                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                          <span className="material-symbols-outlined text-lg">delete</span>
+                        </button>
+                      ) : (
+                        <span className="text-xs text-slate-300" title="Only an emptied (0 qty) batch can be deactivated — use Stock Adjustments to reduce quantity first">—</span>
+                      )}
+                    </td>
                   </tr>
                 );
               })}

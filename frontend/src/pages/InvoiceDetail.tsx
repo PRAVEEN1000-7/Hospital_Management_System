@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
+import { useConfirm } from '../contexts/ConfirmContext';
 import invoiceService from '../services/invoiceService';
 import paymentService from '../services/paymentService';
 import refundService from '../services/refundService';
@@ -63,6 +64,7 @@ const InvoiceDetail: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { showToast } = useToast();
+  const confirm = useConfirm();
 
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [payments, setPayments] = useState<PaymentListItem[]>([]);
@@ -82,7 +84,6 @@ const InvoiceDetail: React.FC = () => {
   const [paySaving, setPaySaving] = useState(false);
 
   // Void confirm
-  const [showVoidConfirm, setShowVoidConfirm] = useState(false);
 
   // Refund request modal
   const [showRefundModal, setShowRefundModal] = useState(false);
@@ -152,15 +153,20 @@ const InvoiceDetail: React.FC = () => {
 
   const handleVoid = async () => {
     if (!invoice) return;
+    const ok = await confirm({
+      title: 'Void Invoice?',
+      message: `This will void invoice ${invoice.invoice_number}. This action cannot be undone.`,
+      confirmLabel: 'Yes, Void Invoice',
+      variant: 'danger',
+    });
+    if (!ok) return;
     try {
       const updated = await invoiceService.void(invoice.id);
       setInvoice(updated);
-      setShowVoidConfirm(false);
       showToast('success', 'Invoice voided');
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
       showToast('error', msg || 'Failed to void invoice');
-      setShowVoidConfirm(false);
     }
   };
 
@@ -201,9 +207,16 @@ const InvoiceDetail: React.FC = () => {
     }
   };
 
-  const handleApproveRefund = async (refundId: string) => {
+  const handleApproveRefund = async (refund: RefundListItem) => {
+    const ok = await confirm({
+      title: 'Approve Refund?',
+      message: `Approve refund ${refund.refund_number} for ₹${fmt(refund.amount)}? This clears it to be processed.`,
+      confirmLabel: 'Approve',
+      variant: 'warning',
+    });
+    if (!ok) return;
     try {
-      await refundService.approve(refundId);
+      await refundService.approve(refund.id);
       showToast('success', 'Refund approved');
       await load();
     } catch (err: unknown) {
@@ -212,9 +225,16 @@ const InvoiceDetail: React.FC = () => {
     }
   };
 
-  const handleRejectRefund = async (refundId: string) => {
+  const handleRejectRefund = async (refund: RefundListItem) => {
+    const ok = await confirm({
+      title: 'Reject Refund?',
+      message: `Reject refund ${refund.refund_number} for ₹${fmt(refund.amount)}? The requester will need to submit a new request if this was a mistake.`,
+      confirmLabel: 'Reject',
+      variant: 'danger',
+    });
+    if (!ok) return;
     try {
-      await refundService.reject(refundId);
+      await refundService.reject(refund.id);
       showToast('success', 'Refund rejected');
       await load();
     } catch (err: unknown) {
@@ -223,9 +243,16 @@ const InvoiceDetail: React.FC = () => {
     }
   };
 
-  const handleProcessRefund = async (refundId: string) => {
+  const handleProcessRefund = async (refund: RefundListItem) => {
+    const ok = await confirm({
+      title: 'Process Refund?',
+      message: `Process refund ${refund.refund_number} for ₹${fmt(refund.amount)}? This finalizes the refund. This action cannot be undone.`,
+      confirmLabel: 'Process',
+      variant: 'danger',
+    });
+    if (!ok) return;
     try {
-      await refundService.process(refundId);
+      await refundService.process(refund.id);
       showToast('success', 'Refund processed');
       await load();
     } catch (err: unknown) {
@@ -413,7 +440,7 @@ const InvoiceDetail: React.FC = () => {
             )}
             {canMutate && isActionable && invoice.status !== 'draft' && (
               <button
-                onClick={() => setShowVoidConfirm(true)}
+                onClick={handleVoid}
                 className="flex items-center gap-1.5 px-3 py-2 border border-red-200 text-red-600 bg-red-50 rounded-lg text-sm font-medium hover:bg-red-100"
               >
                 <span className="material-symbols-outlined text-[16px]">block</span>
@@ -687,13 +714,13 @@ const InvoiceDetail: React.FC = () => {
                             {r.status === 'pending' && isAdmin && (
                               <>
                                 <button
-                                  onClick={() => handleApproveRefund(r.id)}
+                                  onClick={() => handleApproveRefund(r)}
                                   className="px-2 py-1 bg-blue-50 text-blue-600 border border-blue-200 rounded text-xs font-medium hover:bg-blue-100"
                                 >
                                   Approve
                                 </button>
                                 <button
-                                  onClick={() => handleRejectRefund(r.id)}
+                                  onClick={() => handleRejectRefund(r)}
                                   className="px-2 py-1 bg-red-50 text-red-600 border border-red-200 rounded text-xs font-medium hover:bg-red-100"
                                 >
                                   Reject
@@ -702,7 +729,7 @@ const InvoiceDetail: React.FC = () => {
                             )}
                             {r.status === 'approved' && (
                               <button
-                                onClick={() => handleProcessRefund(r.id)}
+                                onClick={() => handleProcessRefund(r)}
                                 className="px-2 py-1 bg-green-50 text-green-600 border border-green-200 rounded text-xs font-medium hover:bg-green-100"
                               >
                                 Process
@@ -968,34 +995,6 @@ const InvoiceDetail: React.FC = () => {
         </div>
       )}
 
-      {/* ── Void Confirm Modal ── */}
-      {showVoidConfirm && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 no-print">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <span className="material-symbols-outlined text-red-500 text-[28px]">warning</span>
-              <h3 className="text-lg font-bold text-slate-900">Void Invoice?</h3>
-            </div>
-            <p className="text-slate-600 text-sm mb-6">
-              This will void invoice <strong>{invoice.invoice_number}</strong>. This action cannot be undone.
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={handleVoid}
-                className="flex-1 py-2.5 bg-red-600 text-white rounded-lg font-semibold text-sm hover:bg-red-700"
-              >
-                Yes, Void Invoice
-              </button>
-              <button
-                onClick={() => setShowVoidConfirm(false)}
-                className="flex-1 py-2.5 border border-slate-200 text-slate-600 rounded-lg font-medium text-sm hover:bg-slate-50"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 };

@@ -441,28 +441,35 @@ async def get_sale_pdf(
 <meta charset="UTF-8">
 <title>Invoice - {_esc(sale.invoice_number)}</title>
 <style>
-body {{ font-family: Arial, sans-serif; margin: 0; padding: 40px; color: #1e293b; }}
-.header {{ text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 3px solid #0284c7; }}
-.header h1 {{ margin: 0; color: #0284c7; font-size: 28px; }}
-.header p {{ margin: 4px 0 0; color: #64748b; font-size: 14px; }}
-.invoice-number {{ font-size: 20px; font-weight: bold; color: #0284c7; text-align: center; margin: 20px 0; padding: 12px; background: #f0f9ff; border-radius: 8px; }}
-.meta {{ display: flex; justify-content: space-between; margin: 16px 0; font-size: 13px; color: #64748b; }}
-table {{ width: 100%; border-collapse: collapse; margin: 16px 0; }}
-th, td {{ text-align: left; padding: 10px 12px; border-bottom: 1px solid #e2e8f0; font-size: 13px; }}
-th {{ color: #64748b; font-weight: 600; font-size: 12px; background: #f8fafc; }}
+/* A5 (148 x 210mm) — a pharmacy sale invoice is a till-receipt-style
+   document, not a full A4 letter; this sizes both the real browser print
+   (@page, respected by window.print()) and the visual layout below. The
+   client-side PDF download path (htmlStringToPdf) is told the same 'a5'
+   page size separately, since it rasterises to a fixed pixel canvas rather
+   than reading this @page rule. */
+@page {{ size: A5; margin: 10mm; }}
+body {{ font-family: Arial, sans-serif; margin: 0; padding: 12px; color: #1e293b; font-size: 12px; }}
+.header {{ text-align: center; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 2px solid #0284c7; }}
+.header h1 {{ margin: 0; color: #0284c7; font-size: 18px; }}
+.header p {{ margin: 3px 0 0; color: #64748b; font-size: 10px; }}
+.invoice-number {{ font-size: 14px; font-weight: bold; color: #0284c7; text-align: center; margin: 10px 0; padding: 6px; background: #f0f9ff; border-radius: 6px; }}
+.meta {{ display: flex; justify-content: space-between; margin: 10px 0; font-size: 10px; color: #64748b; }}
+table {{ width: 100%; border-collapse: collapse; margin: 8px 0; }}
+th, td {{ text-align: left; padding: 5px 6px; border-bottom: 1px solid #e2e8f0; font-size: 10px; }}
+th {{ color: #64748b; font-weight: 600; font-size: 9px; background: #f8fafc; }}
 .right {{ text-align: right; }}
-.muted {{ color: #94a3b8; font-size: 11px; }}
-.section-title {{ font-size: 16px; font-weight: bold; color: #0284c7; margin: 24px 0 8px; padding-bottom: 4px; border-bottom: 2px solid #e2e8f0; }}
-.status {{ display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: bold; text-transform: uppercase; }}
+.muted {{ color: #94a3b8; font-size: 9px; }}
+.section-title {{ font-size: 11px; font-weight: bold; color: #0284c7; margin: 12px 0 5px; padding-bottom: 3px; border-bottom: 1px solid #e2e8f0; }}
+.status {{ display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 9px; font-weight: bold; text-transform: uppercase; }}
 .status-paid {{ background: #dcfce7; color: #166534; }}
 .status-pending {{ background: #fef3c7; color: #92400e; }}
 .status-partially_paid {{ background: #fef3c7; color: #92400e; }}
 .status-cancelled, .status-returned {{ background: #fee2e2; color: #991b1b; }}
-.summary {{ width: 280px; margin-left: auto; margin-top: 16px; }}
-.summary-row {{ display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }}
-.summary-total {{ font-size: 16px; font-weight: bold; border-top: 2px solid #e2e8f0; padding-top: 8px; margin-top: 8px; }}
-.footer {{ margin-top: 40px; text-align: center; color: #94a3b8; font-size: 11px; border-top: 1px solid #e2e8f0; padding-top: 16px; }}
-@media print {{ body {{ padding: 20px; }} }}
+.summary {{ width: 100%; max-width: 220px; margin-left: auto; margin-top: 10px; }}
+.summary-row {{ display: flex; justify-content: space-between; padding: 2px 0; font-size: 10px; }}
+.summary-total {{ font-size: 12px; font-weight: bold; border-top: 1px solid #e2e8f0; padding-top: 5px; margin-top: 5px; }}
+.footer {{ margin-top: 20px; text-align: center; color: #94a3b8; font-size: 9px; border-top: 1px solid #e2e8f0; padding-top: 10px; }}
+@media print {{ body {{ padding: 6px; }} }}
 </style>
 </head>
 <body>

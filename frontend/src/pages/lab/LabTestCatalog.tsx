@@ -4,6 +4,7 @@ import type { LabTest, LabTestCreateData, LabTestParameterTemplate, LabTestPanel
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
 import SearchableSelect, { type SuggestionOption } from '../../components/common/SearchableSelect';
+import { useConfirm } from '../../contexts/ConfirmContext';
 
 const emptyForm: LabTestCreateData = {
   name: '', code: '', category: '', sample_type: '',
@@ -39,6 +40,9 @@ const LabTestCatalog: React.FC = () => {
   const [editingPanel, setEditingPanel] = useState<LabTestPanel | null>(null);
   const [panelForm, setPanelForm] = useState<LabTestPanelCreateData>(emptyPanelForm);
   const [panelSaving, setPanelSaving] = useState(false);
+
+  const [actionLoading, setActionLoading] = useState(false);
+  const confirm = useConfirm();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -133,27 +137,42 @@ const LabTestCatalog: React.FC = () => {
   };
 
   const handleDeactivate = async (t: LabTest) => {
-    if (!window.confirm(`Deactivate "${t.name}"? It will no longer be orderable.`)) return;
+    const ok = await confirm({
+      title: 'Deactivate Test?',
+      message: `Deactivate "${t.name}"? It will no longer be orderable.`,
+      confirmLabel: 'Deactivate',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    setActionLoading(true);
     try {
       await labService.deleteTest(t.id);
       showToast('success', 'Test deactivated');
       load();
     } catch {
       showToast('error', 'Failed to deactivate test');
+    } finally {
+      setActionLoading(false);
     }
   };
 
   const handleDelete = async (t: LabTest) => {
-    if (!window.confirm(
-      `Permanently delete "${t.name}"? This completely removes it from the catalog and cannot be undone. ` +
-      `If it's ever been ordered, this will be blocked — deactivate it instead in that case.`
-    )) return;
+    const ok = await confirm({
+      title: 'Delete Test Permanently?',
+      message: `Permanently delete "${t.name}"? This completely removes it from the catalog and cannot be undone. If it's ever been ordered, this will be blocked — deactivate it instead in that case.`,
+      confirmLabel: 'Delete Permanently',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    setActionLoading(true);
     try {
       await labService.permanentlyDeleteTest(t.id);
       showToast('success', 'Test deleted');
       load();
     } catch (err: any) {
       showToast('error', err?.response?.data?.detail || 'Failed to delete test');
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -213,13 +232,22 @@ const LabTestCatalog: React.FC = () => {
   };
 
   const handleDeactivatePanel = async (p: LabTestPanel) => {
-    if (!window.confirm(`Deactivate "${p.name}"? It will no longer be selectable from Prescription.`)) return;
+    const ok = await confirm({
+      title: 'Deactivate Package?',
+      message: `Deactivate "${p.name}"? It will no longer be selectable from Prescription.`,
+      confirmLabel: 'Deactivate',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    setActionLoading(true);
     try {
       await labService.deletePanel(p.id);
       showToast('success', 'Package deactivated');
       loadPanels();
     } catch {
       showToast('error', 'Failed to deactivate package');
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -317,11 +345,11 @@ const LabTestCatalog: React.FC = () => {
                           <span className="material-symbols-outlined text-lg">edit</span>
                         </button>
                         {t.is_active && (
-                          <button onClick={() => handleDeactivate(t)} className="text-slate-400 hover:text-red-600 p-1" title="Deactivate">
+                          <button onClick={() => handleDeactivate(t)} disabled={actionLoading} className="text-slate-400 hover:text-red-600 p-1 disabled:opacity-50" title="Deactivate">
                             <span className="material-symbols-outlined text-lg">block</span>
                           </button>
                         )}
-                        <button onClick={() => handleDelete(t)} className="text-slate-400 hover:text-red-600 p-1" title="Delete permanently">
+                        <button onClick={() => handleDelete(t)} disabled={actionLoading} className="text-slate-400 hover:text-red-600 p-1 disabled:opacity-50" title="Delete permanently">
                           <span className="material-symbols-outlined text-lg">delete</span>
                         </button>
                       </td>
@@ -383,7 +411,7 @@ const LabTestCatalog: React.FC = () => {
                           <span className="material-symbols-outlined text-lg">edit</span>
                         </button>
                         {p.is_active && (
-                          <button onClick={() => handleDeactivatePanel(p)} className="text-slate-400 hover:text-red-600 p-1" title="Deactivate">
+                          <button onClick={() => handleDeactivatePanel(p)} disabled={actionLoading} className="text-slate-400 hover:text-red-600 p-1 disabled:opacity-50" title="Deactivate">
                             <span className="material-symbols-outlined text-lg">block</span>
                           </button>
                         )}
@@ -597,6 +625,7 @@ const LabTestCatalog: React.FC = () => {
           </div>
         </div>
       )}
+
     </div>
   );
 };

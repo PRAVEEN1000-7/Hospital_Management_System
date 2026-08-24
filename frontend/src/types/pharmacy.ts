@@ -121,6 +121,7 @@ export interface BatchCreateData {
   discount_percent?: number;
   location?: string;
   supplier_id?: string;
+  is_active?: boolean;
 }
 
 // ── Supplier ──

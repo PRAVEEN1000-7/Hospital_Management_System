@@ -833,13 +833,25 @@ def delete_prescription(
     deleted_by: uuid.UUID,
     hospital_id: Optional[uuid.UUID] = None,
 ) -> Optional[Prescription]:
-    """Soft-delete a prescription."""
+    """Soft-delete a prescription. A draft (never finalized) can always be
+    removed. A finalized one — e.g. sitting in the pharmacist's "Prescription
+    Queue" (PendingPrescriptions.tsx) — can also be removed, but only before
+    any of its medicines have actually been dispensed: rx.status alone isn't
+    a reliable enough signal (a PARTIAL dispense leaves status at
+    "finalized" until every line closes — see dispensing_service.py), so
+    this checks PrescriptionItem.dispensed_quantity directly, the same
+    field dispense_prescription() itself writes to."""
     rx = get_prescription(db, prescription_id, hospital_id=hospital_id)
     if not rx:
         return None
 
     if rx.is_finalized:
-        raise ValueError("Cannot delete a finalized prescription")
+        any_dispensed = db.query(PrescriptionItem).filter(
+            PrescriptionItem.prescription_id == rx.id,
+            PrescriptionItem.dispensed_quantity > 0,
+        ).first() is not None
+        if any_dispensed:
+            raise ValueError("Cannot delete a prescription that has already been dispensed")
 
     rx.is_deleted = True
     db.commit()

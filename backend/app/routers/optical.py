@@ -357,8 +357,17 @@ async def list_optical_prescriptions(
     patient_id: Optional[str] = None,
     doctor_id: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(optical_view_guard),
+    # optical_entry_view_guard (not the plain optical_view_guard) so a doctor
+    # — who only holds "optical.exam", not the full "optical" key — can pull
+    # up one patient's optical prescription history (Patient History page),
+    # same tier of access they already have to open any single prescription
+    # by id. Kept narrow: a patient_id-less "browse everything" call (the
+    # Optical Store's own prescriptions list) still requires the full
+    # "optical" permission, enforced just below.
+    current_user: User = Depends(optical_entry_view_guard),
 ):
+    if not patient_id and not check_permission(db, current_user, "optical", "view"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role permissions")
     result = svc.list_optical_prescriptions(db, current_user.hospital_id, page, limit, patient_id, doctor_id)
     # Bulk-check which prescriptions already have a linked sale so the UI
     # can hide the Dispense button for already-dispensed prescriptions.

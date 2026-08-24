@@ -7,6 +7,7 @@ import { format } from 'date-fns';
 import DateRangeFilter from '../../components/common/DateRangeFilter';
 import LabCollectPaymentModal from '../../components/lab/LabCollectPaymentModal';
 import LabOrderDetail from './LabOrderDetail';
+import { useConfirm } from '../../contexts/ConfirmContext';
 
 const STAFF_ROLES = ['super_admin', 'admin', 'lab_technician'];
 
@@ -37,7 +38,9 @@ const LabBilling: React.FC = () => {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [payingOrderId, setPayingOrderId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const canReceivePayment = Boolean(user?.roles?.some((r) => STAFF_ROLES.includes(r)));
+  const confirm = useConfirm();
 
   // View — the exact same LabOrderDetail content (order info, items,
   // results, Finalize, its own Print Report/Download PDF buttons already at
@@ -61,14 +64,23 @@ const LabBilling: React.FC = () => {
 
   useEffect(() => { fetchOrders(); }, [fetchOrders]);
 
-  const handleDelete = async (orderId: string, orderNumber: string) => {
-    if (!window.confirm(`Delete lab order ${orderNumber}? This cannot be undone.`)) return;
+  const handleDelete = async (id: string, orderNumber: string) => {
+    const ok = await confirm({
+      title: 'Delete Lab Order?',
+      message: `Delete lab order ${orderNumber}? This cannot be undone.`,
+      confirmLabel: 'Delete Order',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    setDeletingId(id);
     try {
-      await labService.deleteOrder(orderId);
+      await labService.deleteOrder(id);
       toast.success('Lab order deleted');
       fetchOrders();
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || 'Failed to delete lab order');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -163,8 +175,9 @@ const LabBilling: React.FC = () => {
                       )}
                       {canReceivePayment && !o.has_sale && (
                         <button onClick={() => handleDelete(o.id, o.order_number)}
+                          disabled={deletingId === o.id}
                           title="Delete this lab order"
-                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-red-600 bg-white border border-slate-200 rounded-lg hover:bg-red-50">
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-red-600 bg-white border border-slate-200 rounded-lg hover:bg-red-50 disabled:opacity-50">
                           <span className="material-symbols-outlined text-sm">delete</span> Delete
                         </button>
                       )}

@@ -6,6 +6,7 @@ import incentiveService, { type Incentive } from '../services/incentiveService';
 import advancePaymentService, { type AdvancePayment } from '../services/advancePaymentService';
 import type { UserData } from '../types/user';
 import { useToast } from '../contexts/ToastContext';
+import { useConfirm } from '../contexts/ConfirmContext';
 
 type Tab = 'allowance' | 'incentive' | 'advance';
 
@@ -28,6 +29,7 @@ const today = new Date();
 
 const AllowancePage: React.FC = () => {
   const toast = useToast();
+  const confirm = useConfirm();
   const [tab, setTab] = useState<Tab>('allowance');
 
   const [year, setYear] = useState(today.getFullYear());
@@ -221,10 +223,17 @@ const AllowancePage: React.FC = () => {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    setDeletingId(id);
+  const handleDelete = async (a: Allowance) => {
+    const ok = await confirm({
+      title: 'Remove Allowance',
+      message: `Remove the ₹${a.amount.toLocaleString('en-IN')} ${TYPE_LABELS[a.allowance_type]} allowance (${a.reason})? This cannot be undone.`,
+      confirmLabel: 'Remove',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    setDeletingId(a.id);
     try {
-      await allowanceService.delete(id);
+      await allowanceService.delete(a.id);
       loadMonth();
     } catch {
       toast.error('Failed to remove allowance');
@@ -267,10 +276,17 @@ const AllowancePage: React.FC = () => {
     }
   };
 
-  const handleDeleteIncentive = async (id: string) => {
-    setDeletingIncentiveId(id);
+  const handleDeleteIncentive = async (i: Incentive) => {
+    const ok = await confirm({
+      title: 'Remove Incentive',
+      message: `Remove the ₹${i.incentive_amount.toLocaleString('en-IN')} incentive (₹${i.sales_amount.toLocaleString('en-IN')} sales × ${i.incentive_percent}%)? This cannot be undone.`,
+      confirmLabel: 'Remove',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    setDeletingIncentiveId(i.id);
     try {
-      await incentiveService.delete(id);
+      await incentiveService.delete(i.id);
       loadMonthIncentives();
     } catch {
       toast.error('Failed to remove incentive');
@@ -315,10 +331,19 @@ const AllowancePage: React.FC = () => {
     }
   };
 
-  const handleDeleteAdvance = async (id: string) => {
-    setDeletingAdvanceId(id);
+  const handleDeleteAdvance = async (a: AdvancePayment) => {
+    const ok = await confirm({
+      title: 'Remove Advance Payment',
+      message: `Remove the ₹${a.amount.toLocaleString('en-IN')} advance (${a.reason})${
+        a.is_completed ? '' : ` — ₹${a.remaining_amount.toLocaleString('en-IN')} still outstanding`
+      }? This cannot be undone.`,
+      confirmLabel: 'Remove',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    setDeletingAdvanceId(a.id);
     try {
-      await advancePaymentService.delete(id);
+      await advancePaymentService.delete(a.id);
       loadAdvances();
     } catch {
       toast.error('Failed to remove advance payment');
@@ -565,7 +590,7 @@ const AllowancePage: React.FC = () => {
                         </div>
                         <button
                           type="button"
-                          onClick={() => handleDelete(a.id)}
+                          onClick={() => handleDelete(a)}
                           disabled={deletingId === a.id}
                           title="Remove"
                           className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors disabled:opacity-50 flex-shrink-0"
@@ -681,7 +706,7 @@ const AllowancePage: React.FC = () => {
                         </div>
                         <button
                           type="button"
-                          onClick={() => handleDeleteIncentive(i.id)}
+                          onClick={() => handleDeleteIncentive(i)}
                           disabled={deletingIncentiveId === i.id}
                           title="Remove"
                           className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors disabled:opacity-50 flex-shrink-0"
@@ -790,7 +815,7 @@ const AllowancePage: React.FC = () => {
                         </div>
                         <button
                           type="button"
-                          onClick={() => handleDeleteAdvance(a.id)}
+                          onClick={() => handleDeleteAdvance(a)}
                           disabled={deletingAdvanceId === a.id}
                           title="Remove"
                           className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors disabled:opacity-50 flex-shrink-0"

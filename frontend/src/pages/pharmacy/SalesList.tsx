@@ -8,6 +8,7 @@ import { canEdit } from '../../config/modulePermissions';
 import { format } from 'date-fns';
 import DateRangeFilter from '../../components/common/DateRangeFilter';
 import { htmlStringToPdf } from '../../utils/pdf';
+import { useConfirm } from '../../contexts/ConfirmContext';
 
 const PAYMENT_STATUS_COLORS: Record<string, string> = {
   paid: 'bg-green-100 text-green-700',
@@ -49,6 +50,7 @@ const SalesList: React.FC = () => {
   const navigate = useNavigate();
   const toast = useToast();
   const { user } = useAuth();
+  const confirm = useConfirm();
   const [sales, setSales] = useState<Sale[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -132,10 +134,14 @@ const SalesList: React.FC = () => {
     // (rejected cleanly by the backend if insufficient), so no confirm there.
     if (editQty < item.quantity) {
       const diff = item.quantity - editQty;
-      if (!window.confirm(
-        `Reduce dispensed quantity of ${item.medicine_name} from ${item.quantity} to ${editQty}? ` +
-        `${diff} unit(s) will be credited back to batch ${item.batch_number || ''}'s stock.`
-      )) {
+      const ok = await confirm({
+        title: 'Reduce Dispensed Quantity',
+        message: `Reduce dispensed quantity of ${item.medicine_name} from ${item.quantity} to ${editQty}? ` +
+          `${diff} unit(s) will be credited back to batch ${item.batch_number || ''}'s stock.`,
+        confirmLabel: 'Reduce',
+        variant: 'warning',
+      });
+      if (!ok) {
         return;
       }
     }
@@ -224,7 +230,7 @@ const SalesList: React.FC = () => {
     if (!viewingSale || !viewHtml) return;
     setDownloadingSaleId(viewingSale.id);
     try {
-      await htmlStringToPdf(viewHtml, `Invoice_${viewingSale.invoice_number}.pdf`);
+      await htmlStringToPdf(viewHtml, `Invoice_${viewingSale.invoice_number}.pdf`, 'portrait', 'a5');
     } catch {
       toast.error('Failed to download invoice');
     } finally {

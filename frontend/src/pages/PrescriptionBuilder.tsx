@@ -26,6 +26,7 @@ import AutocompleteField from '../components/common/AutocompleteField';
 import { formatLocalDateISO, formatMonthKey } from '../utils/calendarDate';
 import PrescriptionHistoryGrid from '../components/patients/PrescriptionHistoryGrid';
 import VitalsCard from '../components/prescription/VitalsCard';
+import { useConfirm } from '../contexts/ConfirmContext';
 
 const FREQUENCY_OPTIONS = ['1-0-0', '0-1-0', '0-0-1', '1-0-1', '1-1-0', '0-1-1', '1-1-1', '1-1-1-1', '1 hrs', '2 hrs'];
 // Fixed "Condition / History" checklist, shown below Prescription History —
@@ -126,6 +127,7 @@ const PrescriptionBuilder: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { user, isModuleEnabled } = useAuth();
   const { showToast } = useToast();
+  const confirm = useConfirm();
 
   const isEditMode = Boolean(editId);
   const pharmacyEnabled = isModuleEnabled('pharmacy');
@@ -386,6 +388,35 @@ const PrescriptionBuilder: React.FC = () => {
   };
   const updateConditionTreatment = (condition: string, value: boolean) => {
     setMedicalConditions(prev => prev.map(e => (e.condition === condition ? { ...e, currently_in_treatment: value } : e)));
+  };
+  // Delete one condition's recorded history (details + Currently in
+  // Treatment) — e.g. entered by mistake, or no longer accurate. The
+  // condition itself stays in the fixed checklist; only its data is
+  // cleared. Saves immediately (not just a local edit awaiting the card's
+  // own Save button) since deletion is expected to take effect right away.
+  const handleDeleteConditionEntry = async (condition: string) => {
+    if (!patient) return;
+    const ok = await confirm({
+      title: 'Delete Condition History?',
+      message: `Delete recorded history for "${condition}"?`,
+      confirmLabel: 'Delete',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    const updatedList = medicalConditions.map(e =>
+      e.condition === condition ? { ...e, details: '', currently_in_treatment: null } : e
+    );
+    setMedicalConditions(updatedList);
+    setSavingConditions(true);
+    try {
+      const updated = await patientService.updateMedicalConditions(patient.id, updatedList);
+      setPatient(updated);
+      showToast('success', `Cleared history for "${condition}"`);
+    } catch {
+      showToast('error', 'Failed to delete condition history');
+    } finally {
+      setSavingConditions(false);
+    }
   };
   const handleSaveMedicalConditions = async () => {
     if (!patient) return;
@@ -1448,10 +1479,13 @@ const PrescriptionBuilder: React.FC = () => {
                       <th className="py-2 pr-3">Condition / History</th>
                       <th className="py-2 pr-3">Details</th>
                       <th className="py-2">Currently in Treatment</th>
+                      <th className="py-2 w-8"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {medicalConditions.filter(e => MEDICAL_CONDITIONS_CHECKLIST.includes(e.condition)).map(entry => (
+                    {medicalConditions.filter(e => MEDICAL_CONDITIONS_CHECKLIST.includes(e.condition)).map(entry => {
+                      const hasData = Boolean(entry.details) || entry.currently_in_treatment !== null;
+                      return (
                       <tr key={entry.condition}>
                         <td className="py-2 pr-3 font-medium text-slate-700 whitespace-nowrap">{entry.condition}</td>
                         <td className="py-2 pr-3 min-w-[160px]">
@@ -1484,8 +1518,21 @@ const PrescriptionBuilder: React.FC = () => {
                             </label>
                           </div>
                         </td>
+                        <td className="py-2">
+                          {hasData && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteConditionEntry(entry.condition)}
+                              title="Delete recorded history for this condition"
+                              className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                            >
+                              <span className="material-symbols-outlined text-base">delete</span>
+                            </button>
+                          )}
+                        </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1496,7 +1543,19 @@ const PrescriptionBuilder: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {medicalConditions.filter(e => OTHER_MEDICAL_CONDITIONS.includes(e.condition)).map(entry => (
                     <div key={entry.condition}>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">{entry.condition}</label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-xs font-medium text-slate-600">{entry.condition}</label>
+                        {Boolean(entry.details) && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteConditionEntry(entry.condition)}
+                            title="Delete recorded history for this condition"
+                            className="p-0.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                          >
+                            <span className="material-symbols-outlined text-sm">delete</span>
+                          </button>
+                        )}
+                      </div>
                       <input
                         value={entry.details || ''}
                         onChange={(e) => updateConditionDetails(entry.condition, e.target.value)}
@@ -2460,6 +2519,7 @@ const PrescriptionBuilder: React.FC = () => {
           document.body
         )
       }
+
     </div>
   );
 };

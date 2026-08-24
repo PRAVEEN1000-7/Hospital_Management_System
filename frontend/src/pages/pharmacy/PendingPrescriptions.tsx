@@ -4,8 +4,10 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import pharmacyService from '../../services/pharmacyService';
 import type { PendingPrescription } from '../../services/pharmacyService';
+import prescriptionService from '../../services/prescriptionService';
 import { formatDateTime } from '../../utils/calendarDate';
 import { hasAccess } from '../../config/modulePermissions';
+import { useConfirm } from '../../contexts/ConfirmContext';
 
 const STATUS_BADGES: Record<string, { label: string; color: string; icon: string }> = {
   finalized: { label: 'Pending', color: 'bg-blue-100 text-blue-700', icon: '⏳' },
@@ -16,6 +18,7 @@ const PendingPrescriptions: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { showToast } = useToast();
+  const confirm = useConfirm();
 
   const [prescriptions, setPrescriptions] = useState<PendingPrescription[]>([]);
   const [loading, setLoading] = useState(true);
@@ -26,6 +29,7 @@ const PendingPrescriptions: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<'pending' | 'dispensed' | ''>('');
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // This is a read-only queue view — the route itself is already gated to
   // view-level pharmacy access (allowedRoles('pharmacy') in App.tsx), so this
@@ -84,6 +88,31 @@ const PendingPrescriptions: React.FC = () => {
 
   const handleViewPrescription = (prescriptionId: string) => {
     navigate(`/pharmacy/dispense/${prescriptionId}?mode=view`);
+  };
+
+  // Only a "Pending (Not Started)" prescription can be removed — the
+  // backend blocks this the moment any medicine on it has actually been
+  // dispensed (see prescription_service.delete_prescription), so this is a
+  // safe way to clear a mistakenly-finalized or no-longer-needed entry out
+  // of the queue without risking a real dispensed record.
+  const handleDelete = async (rx: PendingPrescription) => {
+    const ok = await confirm({
+      title: 'Remove Prescription',
+      message: `Remove prescription ${rx.prescription_number} from the queue? This cannot be undone.`,
+      confirmLabel: 'Remove',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    setDeletingId(rx.id);
+    try {
+      await prescriptionService.deletePrescription(rx.id);
+      showToast('success', 'Prescription removed from the queue');
+      fetchPrescriptions();
+    } catch (err: any) {
+      showToast('error', err?.response?.data?.detail || 'Failed to remove prescription');
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -314,23 +343,37 @@ const PendingPrescriptions: React.FC = () => {
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        {rx.status === 'dispensed' ? (
-                          <button
-                            onClick={() => handleViewPrescription(rx.id)}
-                            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-white border border-slate-300 text-slate-700 hover:bg-slate-50"
-                          >
-                            <span className="material-symbols-outlined text-sm">visibility</span>
-                            View
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => handleStartDispensing(rx.id)}
-                            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-primary hover:bg-primary/90 text-white"
-                          >
-                            <span className="material-symbols-outlined text-sm">local_pharmacy</span>
-                            Dispense
-                          </button>
-                        )}
+                        <div className="inline-flex items-center gap-2">
+                          {rx.status === 'dispensed' ? (
+                            <button
+                              onClick={() => handleViewPrescription(rx.id)}
+                              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-white border border-slate-300 text-slate-700 hover:bg-slate-50"
+                            >
+                              <span className="material-symbols-outlined text-sm">visibility</span>
+                              View
+                            </button>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => handleStartDispensing(rx.id)}
+                                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-primary hover:bg-primary/90 text-white"
+                              >
+                                <span className="material-symbols-outlined text-sm">local_pharmacy</span>
+                                Dispense
+                              </button>
+                              <button
+                                onClick={() => handleDelete(rx)}
+                                disabled={deletingId === rx.id}
+                                title="Remove from queue"
+                                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                              >
+                                <span className="material-symbols-outlined text-base">
+                                  {deletingId === rx.id ? 'progress_activity' : 'delete'}
+                                </span>
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -419,13 +462,25 @@ const PendingPrescriptions: React.FC = () => {
                       View Prescription
                     </button>
                   ) : (
-                    <button
-                      onClick={() => handleStartDispensing(rx.id)}
-                      className="w-full mt-4 inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors bg-primary hover:bg-primary/90 text-white"
-                    >
-                      <span className="material-symbols-outlined text-sm">local_pharmacy</span>
-                      Start Dispensing
-                    </button>
+                    <div className="flex gap-2 mt-4">
+                      <button
+                        onClick={() => handleStartDispensing(rx.id)}
+                        className="flex-1 inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors bg-primary hover:bg-primary/90 text-white"
+                      >
+                        <span className="material-symbols-outlined text-sm">local_pharmacy</span>
+                        Start Dispensing
+                      </button>
+                      <button
+                        onClick={() => handleDelete(rx)}
+                        disabled={deletingId === rx.id}
+                        title="Remove from queue"
+                        className="px-3 py-2.5 text-slate-400 hover:text-red-600 hover:bg-red-50 border border-slate-200 rounded-lg transition-colors disabled:opacity-50"
+                      >
+                        <span className="material-symbols-outlined text-base">
+                          {deletingId === rx.id ? 'progress_activity' : 'delete'}
+                        </span>
+                      </button>
+                    </div>
                   )}
                 </div>
               );

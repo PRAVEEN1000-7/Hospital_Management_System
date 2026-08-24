@@ -3,8 +3,10 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { format, differenceInYears } from 'date-fns';
 import patientService from '../services/patientService';
 import labService from '../services/labService';
+import opticalService from '../services/opticalService';
 import type { Patient } from '../types/patient';
 import type { PatientLabResult } from '../types/lab';
+import type { OpticalPrescription } from '../types/optical';
 import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
 import { hasAccess } from '../config/modulePermissions';
@@ -15,6 +17,7 @@ import PhoneVerificationField from '../components/patients/PhoneVerificationFiel
 import PrescriptionHistoryGrid from '../components/patients/PrescriptionHistoryGrid';
 import PatientBillingSection from '../components/patients/PatientBillingSection';
 import { canEdit as canEditModule } from '../config/modulePermissions';
+import { useConfirm } from '../contexts/ConfirmContext';
 
 // Returns the section heading to render above rows[idx] (or undefined) — a
 // heading only appears when a row's non-empty section differs from the
@@ -30,12 +33,14 @@ const PatientDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const toast = useToast();
-  const { user, isModuleEnabled, hasRole } = useAuth();
+  const confirm = useConfirm();
+  const { user, isModuleEnabled, hasRole, isEyeHospitalFeatureEnabled } = useAuth();
   const canEdit = canEditModule('general.patients', user?.roles);
   // Lab is deliberately outside the shared module-permission matrix (see
   // modulePermissions.ts) — mirrors LabOrderDetail.tsx's own STAFF_ROLES.
   const canDeleteLabOrder = hasRole('super_admin', 'admin', 'lab_technician');
   const [labResults, setLabResults] = useState<PatientLabResult[]>([]);
+  const [opticalPrescriptions, setOpticalPrescriptions] = useState<OpticalPrescription[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [patient, setPatient] = useState<Patient | null>(null);
   const [loading, setLoading] = useState(true);
@@ -66,14 +71,33 @@ const PatientDetail: React.FC = () => {
     labService.getPatientResults(id).then(setLabResults).catch(() => {});
   }, [id, isModuleEnabled]);
 
+  // Optical prescriptions — eye-hospital feature pack only; non-fatal on
+  // failure (e.g. a role with no optical access at all still sees the rest
+  // of the page).
+  useEffect(() => {
+    if (!id || !isModuleEnabled('optical') || !isEyeHospitalFeatureEnabled) return;
+    opticalService.getPrescriptions(1, 50, id).then(res => setOpticalPrescriptions(res.data)).catch(() => {});
+  }, [id, isModuleEnabled, isEyeHospitalFeatureEnabled]);
+
+  const [deletingLabOrderId, setDeletingLabOrderId] = useState<string | null>(null);
+
   const handleDeleteLabOrder = async (orderId: string, orderNumber: string) => {
-    if (!window.confirm(`Delete lab order ${orderNumber}? This cannot be undone.`)) return;
+    const ok = await confirm({
+      title: 'Delete Lab Order?',
+      message: `Delete lab order ${orderNumber}? This cannot be undone.`,
+      confirmLabel: 'Delete Order',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    setDeletingLabOrderId(orderId);
     try {
       await labService.deleteOrder(orderId);
       setLabResults(prev => prev.filter(o => o.id !== orderId));
       toast.success('Lab order deleted');
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || 'Failed to delete lab order');
+    } finally {
+      setDeletingLabOrderId(null);
     }
   };
 
@@ -320,6 +344,54 @@ const PatientDetail: React.FC = () => {
           <PrescriptionHistoryGrid patientId={patient.id} />
         )}
 
+        {/* Optical Prescriptions — eye-hospital feature pack only. GET
+            /optical/prescriptions?patient_id=... accepts a doctor's narrower
+            "optical.exam" permission when patient_id is given (see
+            optical.py's list_optical_prescriptions), same tier of access a
+            doctor already has to open any single optical prescription. */}
+        {isModuleEnabled('optical') && isEyeHospitalFeatureEnabled && opticalPrescriptions.length > 0 && (
+          <div className="p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <span className="w-8 h-[2px] bg-primary/20 rounded-full"></span>
+              <h2 className="text-sm font-bold text-primary uppercase tracking-wider">Optical Prescriptions</h2>
+            </div>
+            <div className="border border-slate-200 rounded-lg overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr className="text-left text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    <th className="px-4 py-2.5">Rx #</th>
+                    <th className="px-4 py-2.5">Date</th>
+                    <th className="px-4 py-2.5">Doctor</th>
+                    <th className="px-4 py-2.5">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {opticalPrescriptions.map((rx) => (
+                    <tr
+                      key={rx.id}
+                      onClick={() => navigate(`/optical/prescriptions/${rx.id}`)}
+                      className="cursor-pointer hover:bg-primary/5 transition-colors"
+                    >
+                      <td className="px-4 py-3 font-mono text-xs text-slate-600 whitespace-nowrap">{rx.prescription_number}</td>
+                      <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">
+                        {(() => { try { return format(new Date(rx.created_at), 'dd MMM yyyy'); } catch { return ''; } })()}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{rx.doctor_name || '—'}</td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                          rx.is_finalized ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                        }`}>
+                          {rx.is_finalized ? 'Finalized' : 'Draft'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {/* Billing History (BRD-001) — GET /invoices/patient/{id} requires
             billing view (admin/cashier only). */}
         {isModuleEnabled('billing') && hasAccess('billing', user?.roles) && (
@@ -354,10 +426,11 @@ const PatientDetail: React.FC = () => {
                       {canDeleteLabOrder && (
                         <button
                           onClick={() => handleDeleteLabOrder(order.id, order.order_number)}
+                          disabled={deletingLabOrderId === order.id}
                           title="Delete this lab order"
-                          className="text-xs font-semibold text-red-500 hover:underline"
+                          className="text-xs font-semibold text-red-500 hover:underline disabled:opacity-50"
                         >
-                          Delete
+                          {deletingLabOrderId === order.id ? 'Deleting…' : 'Delete'}
                         </button>
                       )}
                     </div>

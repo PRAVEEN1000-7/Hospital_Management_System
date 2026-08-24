@@ -10,6 +10,7 @@ import type { DoctorSchedule, DoctorScheduleCreate, DoctorLeave, DoctorLeaveCrea
 import { formatDateOnly, formatLocalDateISO } from '../utils/calendarDate';
 import { getErrorMessage } from '../utils/errorMessage';
 import SearchableSelect, { type SuggestionOption } from '../components/common/SearchableSelect';
+import { useConfirm } from '../contexts/ConfirmContext';
 
 // Backend uses 0=Sunday, 1=Monday ... 6=Saturday
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -32,6 +33,7 @@ const DoctorSchedulePage: React.FC = () => {
 
   // Form state
   const [showForm, setShowForm] = useState(false);
+  const confirm = useConfirm();
   const todayStr = new Date().toISOString().split('T')[0];
   const [formDate, setFormDate] = useState(todayStr);
   // OPD session defaults come from hospital settings (Appointment Settings →
@@ -200,9 +202,14 @@ const DoctorSchedulePage: React.FC = () => {
     }
   };
 
-  const handleDeleteSchedule = async (id: string) => {
+  const handleDeleteSchedule = async (s: DoctorSchedule) => {
+    const ok = await confirm({
+      title: 'Delete Schedule Slot?',
+      message: `Remove the ${formatTimeStr(s.start_time)} – ${formatTimeStr(s.end_time)} slot${s.effective_from ? ` (recurring every ${WEEKDAYS[s.day_of_week]})` : ''}? This cannot be undone.`,
+    });
+    if (!ok) return;
     try {
-      await scheduleService.deleteSchedule(id);
+      await scheduleService.deleteSchedule(s.id);
       toast.success('Schedule slot removed');
       fetchData();
     } catch {
@@ -245,6 +252,11 @@ const DoctorSchedulePage: React.FC = () => {
   // rest of the series (if any) untouched.
   const handleDeleteSlotForDate = async (s: DoctorSchedule, iso: string) => {
     if (!selectedDoctorId) return;
+    const ok = await confirm({
+      title: 'Delete Schedule Slot?',
+      message: `Remove the ${formatTimeStr(s.start_time)} – ${formatTimeStr(s.end_time)} slot for ${formatDateOnly(iso, 'EEEE, MMMM d, yyyy')} only? This cannot be undone.`,
+    });
+    if (!ok) return;
     try {
       await excludeDateFromSchedule(selectedDoctorId, s, iso);
       toast.success('Schedule slot removed for this date');
@@ -321,9 +333,14 @@ const DoctorSchedulePage: React.FC = () => {
     }
   };
 
-  const handleDeleteBlock = async (id: string) => {
+  const handleDeleteBlock = async (lv: DoctorLeave) => {
+    const ok = await confirm({
+      title: 'Remove Leave?',
+      message: `Remove the ${lv.leave_type?.replace('_', ' ')} leave on ${lv.leave_date}? This cannot be undone.`,
+    });
+    if (!ok) return;
     try {
-      await scheduleService.deleteDoctorLeave(id);
+      await scheduleService.deleteDoctorLeave(lv.id);
       toast.success('Leave removed');
       fetchData();
     } catch {
@@ -425,7 +442,10 @@ const DoctorSchedulePage: React.FC = () => {
               doctorLeaves={doctorLeaves}
               onEditSlotForDate={openEditSlotForDate}
               onDeleteSlotForDate={handleDeleteSlotForDate}
-              onDeleteLeave={handleDeleteBlock}
+              onDeleteLeave={(id) => {
+                const leave = doctorLeaves.find(lv => lv.id === id);
+                if (leave) handleDeleteBlock(leave);
+              }}
               onAddSlotForDate={openAddSlotForDate}
               onAddLeaveForDate={openAddLeaveForDate}
             />
@@ -481,7 +501,7 @@ const DoctorSchedulePage: React.FC = () => {
                             className="text-slate-400 hover:text-primary transition-colors p-1" title="Edit slot">
                             <span className="material-symbols-outlined text-lg">edit</span>
                           </button>
-                          <button onClick={() => handleDeleteSchedule(s.id)}
+                          <button onClick={() => handleDeleteSchedule(s)}
                             className="text-slate-400 hover:text-red-500 transition-colors p-1" title="Delete slot">
                             <span className="material-symbols-outlined text-lg">delete</span>
                           </button>
@@ -519,7 +539,7 @@ const DoctorSchedulePage: React.FC = () => {
                       </p>
                       {lv.reason && <p className="text-xs text-slate-400 mt-0.5">[{lv.reason}]</p>}
                     </div>
-                    <button onClick={() => handleDeleteBlock(lv.id)}
+                    <button onClick={() => handleDeleteBlock(lv)}
                       className="text-slate-400 hover:text-red-500 transition-colors p-1">
                       <span className="material-symbols-outlined text-lg">delete</span>
                     </button>

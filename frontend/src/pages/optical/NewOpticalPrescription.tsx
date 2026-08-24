@@ -91,6 +91,10 @@ const NewOpticalPrescription: React.FC = () => {
       setExistingRxId(rx.id);
       setExistingRxFinalized(!!rx.is_finalized);
       setOpticalRx({
+        right_machine_sph: rx.right_machine_sph ?? undefined, right_machine_cyl: rx.right_machine_cyl ?? undefined,
+        right_machine_axis: rx.right_machine_axis ?? undefined, right_machine_add: rx.right_machine_add ?? undefined,
+        left_machine_sph: rx.left_machine_sph ?? undefined, left_machine_cyl: rx.left_machine_cyl ?? undefined,
+        left_machine_axis: rx.left_machine_axis ?? undefined, left_machine_add: rx.left_machine_add ?? undefined,
         right_sph: rx.right_sph ?? undefined, right_cyl: rx.right_cyl ?? undefined,
         right_axis: rx.right_axis ?? undefined, right_add: rx.right_add ?? undefined, right_va: rx.right_va ?? undefined,
         right_vision: rx.right_vision ?? undefined, right_iop: rx.right_iop ?? undefined, right_nld: rx.right_nld ?? undefined,
@@ -362,11 +366,62 @@ const NewOpticalPrescription: React.FC = () => {
           </div>
         </div>
 
-        {/* Optical (Spectacle) Prescription */}
+        {/* Machine Prescribed — auto-refractometer / measurement-machine
+            reading, taken before the doctor reviews it. Stored as its own
+            set of columns, separate from Doctor Prescribed below, so both
+            are kept on the record independently. */}
+        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+          <h3 className="font-semibold flex items-center gap-2 mb-4">
+            <span className="material-symbols-outlined text-primary text-sm">precision_manufacturing</span>
+            Machine Prescribed
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="border border-slate-200 rounded-lg p-4 space-y-3">
+              <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Right Eye (OD)</h4>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">SPH</label>
+                <input type="number" step="0.25" value={opticalRx.right_machine_sph ?? ''} onChange={opticalNumField('right_machine_sph')} className="input-field" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">CYL</label>
+                <input type="number" step="0.25" value={opticalRx.right_machine_cyl ?? ''} onChange={opticalNumField('right_machine_cyl')} className="input-field" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Axis</label>
+                <input type="number" min={0} max={180} value={opticalRx.right_machine_axis ?? ''} onChange={opticalNumField('right_machine_axis')} className="input-field" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Add</label>
+                <input type="number" step="0.25" value={opticalRx.right_machine_add ?? ''} onChange={opticalNumField('right_machine_add')} className="input-field" />
+              </div>
+            </div>
+            <div className="border border-slate-200 rounded-lg p-4 space-y-3">
+              <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Left Eye (OS)</h4>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">SPH</label>
+                <input type="number" step="0.25" value={opticalRx.left_machine_sph ?? ''} onChange={opticalNumField('left_machine_sph')} className="input-field" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">CYL</label>
+                <input type="number" step="0.25" value={opticalRx.left_machine_cyl ?? ''} onChange={opticalNumField('left_machine_cyl')} className="input-field" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Axis</label>
+                <input type="number" min={0} max={180} value={opticalRx.left_machine_axis ?? ''} onChange={opticalNumField('left_machine_axis')} className="input-field" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Add</label>
+                <input type="number" step="0.25" value={opticalRx.left_machine_add ?? ''} onChange={opticalNumField('left_machine_add')} className="input-field" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Doctor Prescribed — the final clinical spectacle prescription. */}
         <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
           <h3 className="font-semibold flex items-center gap-2 mb-4">
             <span className="material-symbols-outlined text-primary text-sm">visibility</span>
-            Optical (Spectacle) Prescription
+            Doctor Prescribed
           </h3>
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

@@ -1,0 +1,27 @@
+Prescription, Nurse Billing & Optical Prescription Enhancements
+Priority: HIGH PRIORITY
+1. Doctor Prescription – Post-Prescription Editing
+•	Enable doctors to edit the prescription even after the prescription has been generated/saved.
+•	The doctor should be able to modify medicines, dosage, frequency, duration, instructions, and other prescription details as required.
+•	The latest edited prescription should be reflected in the patient record and available for printing/downloading.
+•	Maintain an audit trail of prescription edits, including the doctor, date, and time of modification.
+2. Consultation Fee Collection – Nurse Login
+•	Enable consultation fee collection functionality in the Nurse Login.
+•	Nurses should be able to collect and record the consultation fee on behalf of the hospital.
+•	Provide appropriate payment modes such as Cash, UPI, Card, and other configured payment methods.
+•	The payment status should be updated automatically in the patient's billing/consultation record.
+•	The system should capture payment details, amount, date/time, and the staff member who collected the payment.
+3. Optical Prescription – Machine Prescribed vs Doctor Prescribed
+•	Split the Optical Prescription into two clearly identifiable sections:
+•	• Machine Prescribed – values/results generated or recommended based on the optical/measurement machine.
+•	• Doctor Prescribed – the final prescription values entered or approved by the doctor.
+•	Both sections should be stored separately in the patient record.
+•	The doctor-prescribed values should be clearly identified as the final clinical prescription.
+•	Both machine and doctor prescription details should be available for viewing, printing, and future reference.
+
+Implementation Priority: HIGH
+These changes are required to improve prescription workflow flexibility, streamline consultation fee collection, and clearly distinguish machine-generated optical measurements from the doctor's final prescription.
+4. Prescription Page – Diagnosis & Medicines Placement
+•	Rearrange the prescription sections so that Diagnosis and Medicines appear immediately below the Laboratory Tests section and above the Advice section.
+•	The revised order should be: Patient Details → Clinical Notes → Optical Notes → Eye Examination → Laboratory Tests → Diagnosis → Medicines → Advice → Follow-up.
+•	Ensure the updated sequence is reflected consistently in the prescription display, print, and download formats.

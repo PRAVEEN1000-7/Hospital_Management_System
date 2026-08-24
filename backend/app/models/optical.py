@@ -89,6 +89,20 @@ class OpticalPrescription(Base):
     patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id"), nullable=False)
     doctor_id = Column(UUID(as_uuid=True), ForeignKey("doctors.id"), nullable=True)
     appointment_id = Column(UUID(as_uuid=True), ForeignKey("appointments.id"))
+    # Machine Prescribed — the auto-refractometer/measurement-machine
+    # reading, taken before the doctor reviews it. Kept as its own set of
+    # columns, separate from the doctor-prescribed ones below, so both are
+    # preserved on the record (not overwritten) — see NewOpticalPrescription.tsx.
+    right_machine_sph = Column(Numeric(5, 2))
+    right_machine_cyl = Column(Numeric(5, 2))
+    right_machine_axis = Column(Integer)
+    right_machine_add = Column(Numeric(4, 2))
+    left_machine_sph = Column(Numeric(5, 2))
+    left_machine_cyl = Column(Numeric(5, 2))
+    left_machine_axis = Column(Integer)
+    left_machine_add = Column(Numeric(4, 2))
+    # Doctor Prescribed — the final clinical prescription (unchanged meaning
+    # from before this split existed).
     right_sph = Column(Numeric(5, 2))
     right_cyl = Column(Numeric(5, 2))
     right_axis = Column(Integer)

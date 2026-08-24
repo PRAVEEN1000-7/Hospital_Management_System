@@ -193,6 +193,16 @@ class OpticalPrescriptionCreate(BaseModel):
     # Prescriptions page still passes this explicitly for walk-ins).
     doctor_id: Optional[str] = None
     appointment_id: Optional[str] = None
+    # Machine Prescribed — auto-refractometer/measurement-machine reading.
+    right_machine_sph: Optional[Decimal] = None
+    right_machine_cyl: Optional[Decimal] = None
+    right_machine_axis: Optional[int] = Field(None, ge=0, le=180)
+    right_machine_add: Optional[Decimal] = None
+    left_machine_sph: Optional[Decimal] = None
+    left_machine_cyl: Optional[Decimal] = None
+    left_machine_axis: Optional[int] = Field(None, ge=0, le=180)
+    left_machine_add: Optional[Decimal] = None
+    # Doctor Prescribed — the final clinical prescription.
     right_sph: Optional[Decimal] = None
     right_cyl: Optional[Decimal] = None
     right_axis: Optional[int] = Field(None, ge=0, le=180)
@@ -218,6 +228,14 @@ class OpticalPrescriptionCreate(BaseModel):
 
 
 class OpticalPrescriptionUpdate(BaseModel):
+    right_machine_sph: Optional[Decimal] = None
+    right_machine_cyl: Optional[Decimal] = None
+    right_machine_axis: Optional[int] = Field(None, ge=0, le=180)
+    right_machine_add: Optional[Decimal] = None
+    left_machine_sph: Optional[Decimal] = None
+    left_machine_cyl: Optional[Decimal] = None
+    left_machine_axis: Optional[int] = Field(None, ge=0, le=180)
+    left_machine_add: Optional[Decimal] = None
     right_sph: Optional[Decimal] = None
     right_cyl: Optional[Decimal] = None
     right_axis: Optional[int] = Field(None, ge=0, le=180)
@@ -249,6 +267,14 @@ class OpticalPrescriptionResponse(BaseModel):
     patient_id: str
     doctor_id: Optional[str] = None
     appointment_id: Optional[str] = None
+    right_machine_sph: Optional[Decimal] = None
+    right_machine_cyl: Optional[Decimal] = None
+    right_machine_axis: Optional[int] = None
+    right_machine_add: Optional[Decimal] = None
+    left_machine_sph: Optional[Decimal] = None
+    left_machine_cyl: Optional[Decimal] = None
+    left_machine_axis: Optional[int] = None
+    left_machine_add: Optional[Decimal] = None
     right_sph: Optional[Decimal] = None
     right_cyl: Optional[Decimal] = None
     right_axis: Optional[int] = None

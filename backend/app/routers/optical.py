@@ -656,6 +656,40 @@ td:first-child, th:first-child {{ text-align:left; }}
        <strong>Gender:</strong> {_esc(patient.gender) if patient else '—'}</p>
 </div>
 
+{f'''<p style="font-size:13px;font-weight:600;color:#137fec;margin:0 0 4px;">Machine Prescribed</p>
+<table>
+<thead>
+<tr>
+    <th style="width:34%;">Parameter</th>
+    <th style="width:33%;">Right (OD)</th>
+    <th style="width:33%;">Left (OS)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+    <td><strong>SPH</strong></td>
+    <td>{fmt_power(rx.right_machine_sph)}</td>
+    <td>{fmt_power(rx.left_machine_sph)}</td>
+</tr>
+<tr>
+    <td><strong>CYL</strong></td>
+    <td>{fmt_power(rx.right_machine_cyl)}</td>
+    <td>{fmt_power(rx.left_machine_cyl)}</td>
+</tr>
+<tr>
+    <td><strong>Axis</strong></td>
+    <td>{fmt_axis(rx.right_machine_axis)}</td>
+    <td>{fmt_axis(rx.left_machine_axis)}</td>
+</tr>
+<tr>
+    <td><strong>Add</strong></td>
+    <td>{fmt_power(rx.right_machine_add)}</td>
+    <td>{fmt_power(rx.left_machine_add)}</td>
+</tr>
+</tbody>
+</table>''' if any([rx.right_machine_sph, rx.right_machine_cyl, rx.right_machine_axis, rx.right_machine_add, rx.left_machine_sph, rx.left_machine_cyl, rx.left_machine_axis, rx.left_machine_add]) else ''}
+
+<p style="font-size:13px;font-weight:600;color:#137fec;margin:0 0 4px;">Doctor Prescribed</p>
 <table>
 <thead>
 <tr>

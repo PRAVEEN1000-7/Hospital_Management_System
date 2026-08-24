@@ -143,9 +143,14 @@ const PrescriptionDetail: React.FC = () => {
   // Edit rights come straight from the shared "rx.all" permission matrix
   // (nurse's rx.all access is view-only, so canEditModule correctly excludes
   // them) — see docs/security/ROLE_PERMISSIONS_DECISIONS_2026-07-25.md.
-  // Finalize is a deliberately narrower business rule (excludes plain admin,
-  // unlike general edit access), so it stays its own explicit check.
-  const canEdit = !rx.is_finalized && canEditModule('rx.all', user?.roles);
+  // A finalized prescription can still be corrected (dosage typo, add/
+  // remove a medicine) as long as pharmacy hasn't actually dispensed
+  // anything against it yet — matches the backend's own guard in
+  // update_prescription. Finalize is a deliberately narrower business rule
+  // (excludes plain admin, unlike general edit access), so it stays its own
+  // explicit check, unaffected by this.
+  const anyItemDispensed = (rx.items || []).some(item => (item.dispensed_quantity || 0) > 0);
+  const canEdit = !anyItemDispensed && canEditModule('rx.all', user?.roles);
   // Finalize requires BOTH the business-rule role restriction (excludes plain
   // admin, unlike general edit access) AND actual edit-level permission — a
   // role downgraded to "view" on rx.all must lose the Finalize button too,
@@ -370,17 +375,17 @@ const PrescriptionDetail: React.FC = () => {
               Clinical Details
             </h3>
 
-            {rx.diagnosis && (
-              <div className="mb-4">
-                <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Diagnosis</h4>
-                <p className="text-sm text-slate-700">{rx.diagnosis}</p>
-              </div>
-            )}
-
             {rx.clinical_notes && (
               <div className="mb-4">
                 <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Clinical Notes</h4>
                 <p className="text-sm text-slate-700 whitespace-pre-wrap">{rx.clinical_notes}</p>
+              </div>
+            )}
+
+            {rx.diagnosis && (
+              <div className="mb-4">
+                <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Diagnosis</h4>
+                <p className="text-sm text-slate-700">{rx.diagnosis}</p>
               </div>
             )}
 

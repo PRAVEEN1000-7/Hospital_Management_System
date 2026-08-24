@@ -130,6 +130,14 @@ const PrescriptionBuilder: React.FC = () => {
   const confirm = useConfirm();
 
   const isEditMode = Boolean(editId);
+  // True once the edit-mode load effect confirms this prescription was
+  // already finalized (and nothing on it has been dispensed yet, or it
+  // would have redirected away instead — see that effect). Changes what
+  // the primary save button does: re-finalizing an already-finalized
+  // prescription would just 400 on the backend, so this correction editing
+  // flow needs its own "Save Changes" action instead of "Save & Send to
+  // Pharmacy" / "Save & Complete".
+  const [editingFinalizedRx, setEditingFinalizedRx] = useState(false);
   const pharmacyEnabled = isModuleEnabled('pharmacy');
   const opticalModuleEnabled = isModuleEnabled('optical');
   // Walk-in-at-the-pharmacy-counter flow: a pharmacist (no linked Doctor row)
@@ -484,11 +492,18 @@ const PrescriptionBuilder: React.FC = () => {
     setLoading(true);
     prescriptionService.getPrescription(editId)
       .then(rx => {
-        if (rx.is_finalized) {
-          showToast('error', 'Cannot edit a finalized prescription');
+        // A finalized prescription can still be corrected (dosage typo, add/
+        // remove a medicine, etc.) — but only before pharmacy has actually
+        // dispensed anything against it (see update_prescription's own
+        // guard on the backend, which is the real enforcement; this is just
+        // the friendlier front-door version of the same rule).
+        const anyDispensed = (rx.items || []).some(item => (item.dispensed_quantity || 0) > 0);
+        if (rx.is_finalized && anyDispensed) {
+          showToast('error', 'This prescription has already been dispensed and can no longer be edited');
           navigate(`/prescriptions/${editId}`);
           return;
         }
+        setEditingFinalizedRx(!!rx.is_finalized);
         setPatientId(rx.patient_id);
         setAppointmentId(rx.appointment_id || '');
         setClinicalNotes(rx.clinical_notes || '');
@@ -577,6 +592,10 @@ const PrescriptionBuilder: React.FC = () => {
         setExistingOpticalRxFinalized(!!rx.is_finalized);
         setAddOpticalRx(true);
         setOpticalRx({
+          right_machine_sph: rx.right_machine_sph ?? undefined, right_machine_cyl: rx.right_machine_cyl ?? undefined,
+          right_machine_axis: rx.right_machine_axis ?? undefined, right_machine_add: rx.right_machine_add ?? undefined,
+          left_machine_sph: rx.left_machine_sph ?? undefined, left_machine_cyl: rx.left_machine_cyl ?? undefined,
+          left_machine_axis: rx.left_machine_axis ?? undefined, left_machine_add: rx.left_machine_add ?? undefined,
           right_sph: rx.right_sph ?? undefined, right_cyl: rx.right_cyl ?? undefined,
           right_axis: rx.right_axis ?? undefined, right_add: rx.right_add ?? undefined, right_va: rx.right_va ?? undefined,
           right_vision: rx.right_vision ?? undefined, right_iop: rx.right_iop ?? undefined, right_nld: rx.right_nld ?? undefined,
@@ -1703,6 +1722,55 @@ const PrescriptionBuilder: React.FC = () => {
               </div>
               {addOpticalRx && (
                 <div className="space-y-4">
+                  {/* Machine Prescribed — auto-refractometer / measurement-
+                      machine reading, taken before the doctor's final call.
+                      Stored as its own set of fields, separate from Doctor
+                      Prescribed below. */}
+                  <div>
+                    <p className="text-xs font-bold text-primary uppercase tracking-wide mb-2">Machine Prescribed</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="border border-slate-200 rounded-lg p-4 space-y-3">
+                        <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Right Eye (OD)</h4>
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">SPH</label>
+                          <input type="number" step="0.25" value={opticalRx.right_machine_sph ?? ''} onChange={opticalNumField('right_machine_sph')} className="input-field" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">CYL</label>
+                          <input type="number" step="0.25" value={opticalRx.right_machine_cyl ?? ''} onChange={opticalNumField('right_machine_cyl')} className="input-field" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Axis</label>
+                          <input type="number" min={0} max={180} value={opticalRx.right_machine_axis ?? ''} onChange={opticalNumField('right_machine_axis')} className="input-field" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Add</label>
+                          <input type="number" step="0.25" value={opticalRx.right_machine_add ?? ''} onChange={opticalNumField('right_machine_add')} className="input-field" />
+                        </div>
+                      </div>
+                      <div className="border border-slate-200 rounded-lg p-4 space-y-3">
+                        <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Left Eye (OS)</h4>
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">SPH</label>
+                          <input type="number" step="0.25" value={opticalRx.left_machine_sph ?? ''} onChange={opticalNumField('left_machine_sph')} className="input-field" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">CYL</label>
+                          <input type="number" step="0.25" value={opticalRx.left_machine_cyl ?? ''} onChange={opticalNumField('left_machine_cyl')} className="input-field" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Axis</label>
+                          <input type="number" min={0} max={180} value={opticalRx.left_machine_axis ?? ''} onChange={opticalNumField('left_machine_axis')} className="input-field" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Add</label>
+                          <input type="number" step="0.25" value={opticalRx.left_machine_add ?? ''} onChange={opticalNumField('left_machine_add')} className="input-field" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <p className="text-xs font-bold text-primary uppercase tracking-wide mb-2">Doctor Prescribed</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {/* Right Eye (OD) — shown first (screen-left) per the
                         clinical convention of facing the patient, matching
@@ -1830,6 +1898,150 @@ const PrescriptionBuilder: React.FC = () => {
                   </div>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Laboratory Tests — any hospital type (gated by the lab module),
+              create-mode only. Ordered as an independent record; the server-side
+              finalize links + queues it when the doctor finalizes this Rx. */}
+          {labModuleEnabled && !isEditMode && (
+            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold flex items-center gap-2">
+                  <span className="material-symbols-outlined text-primary text-sm">biotech</span>
+                  Laboratory Tests
+                </h3>
+                {selectedLabTestIds.length > 0 && (
+                  <span className="px-3 py-1 text-xs font-bold rounded-lg bg-primary/10 text-primary">
+                    {selectedLabTestIds.length} selected
+                  </span>
+                )}
+              </div>
+              {labTests.length === 0 ? (
+                <p className="text-sm text-slate-400">
+                  No active lab tests in the catalog yet. Add tests under Laboratory → Test Catalog.
+                </p>
+              ) : (
+                <div className="space-y-4">
+                  {labPanels.length > 0 && (
+                    <div>
+                      <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">
+                        Health Checkup Packages
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {labPanels.map(panel => {
+                          // Same toggle mechanic as the per-category "Select
+                          // all" checkbox below — just triggered from a named
+                          // package instead of a single category, since a
+                          // package's tests can span several categories.
+                          const panelIds = panel.test_ids;
+                          const allSelected = panelIds.length > 0 && panelIds.every(id => selectedLabTestIds.includes(id));
+                          return (
+                            <button
+                              key={panel.id}
+                              type="button"
+                              onClick={() => setSelectedLabTestIds(prev =>
+                                allSelected
+                                  ? prev.filter(id => !panelIds.includes(id))
+                                  : [...new Set([...prev, ...panelIds])]
+                              )}
+                              className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${
+                                allSelected ? 'border-primary bg-primary/10 text-primary' : 'border-slate-200 text-slate-600 hover:border-primary/40'
+                              }`}
+                            >
+                              {allSelected && <span className="material-symbols-outlined text-sm align-middle mr-1">check_circle</span>}
+                              {panel.name} <span className="text-slate-400 font-normal">({panel.test_ids.length})</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  <div className="relative">
+                    <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-lg">search</span>
+                    <input
+                      value={labTestSearch}
+                      onChange={e => setLabTestSearch(e.target.value)}
+                      placeholder="Search tests by name, code, or category..."
+                      className="w-full pl-10 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                  </div>
+                  <div className="max-h-64 overflow-y-auto space-y-3">
+                    {labTestGroups.length === 0 ? (
+                      <p className="text-sm text-slate-400">No tests match "{labTestSearch}".</p>
+                    ) : (
+                      labTestGroups.map(({ category, tests }) => {
+                        // "Select all" toggles every test in this one category
+                        // group at once — for a patient who needs the whole
+                        // panel (e.g. all Liver Function Tests) — without
+                        // disturbing the existing per-test checkboxes, which
+                        // still work individually exactly as before.
+                        const groupIds = tests.map(t => t.id);
+                        const allChecked = groupIds.length > 0 && groupIds.every(id => selectedLabTestIds.includes(id));
+                        const someChecked = groupIds.some(id => selectedLabTestIds.includes(id));
+                        return (
+                        <div key={category}>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <div className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                              {category}
+                            </div>
+                            <label className="flex items-center gap-1.5 text-xs font-semibold text-primary cursor-pointer select-none">
+                              <input
+                                type="checkbox"
+                                checked={allChecked}
+                                ref={el => { if (el) el.indeterminate = someChecked && !allChecked; }}
+                                onChange={() => setSelectedLabTestIds(prev =>
+                                  allChecked
+                                    ? prev.filter(id => !groupIds.includes(id))
+                                    : [...new Set([...prev, ...groupIds])]
+                                )}
+                                className="accent-primary"
+                              />
+                              Select all
+                            </label>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                            {tests.map(t => {
+                              const checked = selectedLabTestIds.includes(t.id);
+                              return (
+                                <label
+                                  key={t.id}
+                                  className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer text-sm transition-colors ${
+                                    checked ? 'border-primary bg-primary/5' : 'border-slate-200 hover:border-primary/40'
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => setSelectedLabTestIds(prev =>
+                                      prev.includes(t.id) ? prev.filter(id => id !== t.id) : [...prev, t.id]
+                                    )}
+                                    className="accent-primary"
+                                  />
+                                  <span className="min-w-0 flex-1">
+                                    <span className="block font-medium text-slate-800 truncate">{t.name}</span>
+                                  </span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        );
+                      })
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Lab Notes</label>
+                    <textarea
+                      rows={2}
+                      value={labNotes}
+                      onChange={e => setLabNotes(e.target.value)}
+                      className="input-field"
+                      placeholder="Instructions for the lab (optional)..."
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -2082,150 +2294,6 @@ const PrescriptionBuilder: React.FC = () => {
             </div>
           ))}
 
-          {/* Laboratory Tests — any hospital type (gated by the lab module),
-              create-mode only. Ordered as an independent record; the server-side
-              finalize links + queues it when the doctor finalizes this Rx. */}
-          {labModuleEnabled && !isEditMode && (
-            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold flex items-center gap-2">
-                  <span className="material-symbols-outlined text-primary text-sm">biotech</span>
-                  Laboratory Tests
-                </h3>
-                {selectedLabTestIds.length > 0 && (
-                  <span className="px-3 py-1 text-xs font-bold rounded-lg bg-primary/10 text-primary">
-                    {selectedLabTestIds.length} selected
-                  </span>
-                )}
-              </div>
-              {labTests.length === 0 ? (
-                <p className="text-sm text-slate-400">
-                  No active lab tests in the catalog yet. Add tests under Laboratory → Test Catalog.
-                </p>
-              ) : (
-                <div className="space-y-4">
-                  {labPanels.length > 0 && (
-                    <div>
-                      <div className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">
-                        Health Checkup Packages
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {labPanels.map(panel => {
-                          // Same toggle mechanic as the per-category "Select
-                          // all" checkbox below — just triggered from a named
-                          // package instead of a single category, since a
-                          // package's tests can span several categories.
-                          const panelIds = panel.test_ids;
-                          const allSelected = panelIds.length > 0 && panelIds.every(id => selectedLabTestIds.includes(id));
-                          return (
-                            <button
-                              key={panel.id}
-                              type="button"
-                              onClick={() => setSelectedLabTestIds(prev =>
-                                allSelected
-                                  ? prev.filter(id => !panelIds.includes(id))
-                                  : [...new Set([...prev, ...panelIds])]
-                              )}
-                              className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${
-                                allSelected ? 'border-primary bg-primary/10 text-primary' : 'border-slate-200 text-slate-600 hover:border-primary/40'
-                              }`}
-                            >
-                              {allSelected && <span className="material-symbols-outlined text-sm align-middle mr-1">check_circle</span>}
-                              {panel.name} <span className="text-slate-400 font-normal">({panel.test_ids.length})</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                  <div className="relative">
-                    <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-lg">search</span>
-                    <input
-                      value={labTestSearch}
-                      onChange={e => setLabTestSearch(e.target.value)}
-                      placeholder="Search tests by name, code, or category..."
-                      className="w-full pl-10 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-                    />
-                  </div>
-                  <div className="max-h-64 overflow-y-auto space-y-3">
-                    {labTestGroups.length === 0 ? (
-                      <p className="text-sm text-slate-400">No tests match "{labTestSearch}".</p>
-                    ) : (
-                      labTestGroups.map(({ category, tests }) => {
-                        // "Select all" toggles every test in this one category
-                        // group at once — for a patient who needs the whole
-                        // panel (e.g. all Liver Function Tests) — without
-                        // disturbing the existing per-test checkboxes, which
-                        // still work individually exactly as before.
-                        const groupIds = tests.map(t => t.id);
-                        const allChecked = groupIds.length > 0 && groupIds.every(id => selectedLabTestIds.includes(id));
-                        const someChecked = groupIds.some(id => selectedLabTestIds.includes(id));
-                        return (
-                        <div key={category}>
-                          <div className="flex items-center justify-between mb-1.5">
-                            <div className="text-xs font-bold text-slate-500 uppercase tracking-wide">
-                              {category}
-                            </div>
-                            <label className="flex items-center gap-1.5 text-xs font-semibold text-primary cursor-pointer select-none">
-                              <input
-                                type="checkbox"
-                                checked={allChecked}
-                                ref={el => { if (el) el.indeterminate = someChecked && !allChecked; }}
-                                onChange={() => setSelectedLabTestIds(prev =>
-                                  allChecked
-                                    ? prev.filter(id => !groupIds.includes(id))
-                                    : [...new Set([...prev, ...groupIds])]
-                                )}
-                                className="accent-primary"
-                              />
-                              Select all
-                            </label>
-                          </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                            {tests.map(t => {
-                              const checked = selectedLabTestIds.includes(t.id);
-                              return (
-                                <label
-                                  key={t.id}
-                                  className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer text-sm transition-colors ${
-                                    checked ? 'border-primary bg-primary/5' : 'border-slate-200 hover:border-primary/40'
-                                  }`}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    onChange={() => setSelectedLabTestIds(prev =>
-                                      prev.includes(t.id) ? prev.filter(id => id !== t.id) : [...prev, t.id]
-                                    )}
-                                    className="accent-primary"
-                                  />
-                                  <span className="min-w-0 flex-1">
-                                    <span className="block font-medium text-slate-800 truncate">{t.name}</span>
-                                  </span>
-                                </label>
-                              );
-                            })}
-                          </div>
-                        </div>
-                        );
-                      })
-                    )}
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Lab Notes</label>
-                    <textarea
-                      rows={2}
-                      value={labNotes}
-                      onChange={e => setLabNotes(e.target.value)}
-                      className="input-field"
-                      placeholder="Instructions for the lab (optional)..."
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
           {/* Advice */}
           <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
             <h3 className="font-semibold mb-4 flex items-center gap-2">
@@ -2309,33 +2377,51 @@ const PrescriptionBuilder: React.FC = () => {
               )}
             </div>
             <div className="flex gap-3">
-              <button
-                onClick={() => handleSave(false, false)}
-                disabled={saving}
-                className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
-              >
-                {saving ? 'Saving...' : 'Save Draft'}
-              </button>
-              {isConsultationMode ? (
+              {editingFinalizedRx ? (
+                // Correcting an already-finalized prescription — no second
+                // finalize/complete action here (the backend would reject
+                // re-finalizing, and pharmacy already has this prescription
+                // in its queue either way); just save the correction in
+                // place. Recorded as a new version snapshot automatically.
                 <button
-                  onClick={() => handleSave(false, true)}
-                  disabled={saving}
-                  className="bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2 disabled:opacity-50 transition-colors shadow-sm"
-                >
-                  <span className="material-symbols-outlined text-sm">task_alt</span>
-                  {saving ? 'Saving...' : 'Save & Complete'}
-                </button>
-              ) : (
-                <button
-                  onClick={() => handleSave(true, false)}
+                  onClick={() => handleSave(false, false)}
                   disabled={saving}
                   className="bg-primary hover:bg-primary/90 text-white px-6 py-2 rounded-lg text-sm font-medium flex items-center gap-2 disabled:opacity-50 transition-colors"
                 >
-                  <span className="material-symbols-outlined text-sm">{pharmacyEnabled ? 'send' : 'verified'}</span>
-                  {saving
-                    ? 'Saving...'
-                    : pharmacyEnabled ? 'Save & Send to Pharmacy' : 'Save & Finalize'}
+                  <span className="material-symbols-outlined text-sm">save</span>
+                  {saving ? 'Saving...' : 'Save Changes'}
                 </button>
+              ) : (
+                <>
+                  <button
+                    onClick={() => handleSave(false, false)}
+                    disabled={saving}
+                    className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    {saving ? 'Saving...' : 'Save Draft'}
+                  </button>
+                  {isConsultationMode ? (
+                    <button
+                      onClick={() => handleSave(false, true)}
+                      disabled={saving}
+                      className="bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2 disabled:opacity-50 transition-colors shadow-sm"
+                    >
+                      <span className="material-symbols-outlined text-sm">task_alt</span>
+                      {saving ? 'Saving...' : 'Save & Complete'}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleSave(true, false)}
+                      disabled={saving}
+                      className="bg-primary hover:bg-primary/90 text-white px-6 py-2 rounded-lg text-sm font-medium flex items-center gap-2 disabled:opacity-50 transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-sm">{pharmacyEnabled ? 'send' : 'verified'}</span>
+                      {saving
+                        ? 'Saving...'
+                        : pharmacyEnabled ? 'Save & Send to Pharmacy' : 'Save & Finalize'}
+                    </button>
+                  )}
+                </>
               )}
             </div>
           </div>

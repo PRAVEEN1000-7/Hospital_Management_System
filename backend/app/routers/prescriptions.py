@@ -290,7 +290,8 @@ async def update_rx(
     db: Session = Depends(get_db),
     current_user: User = Depends(rx_all_edit_guard),
 ):
-    """Update prescription (only drafts)."""
+    """Update prescription — drafts freely, finalized ones too as long as
+    nothing on them has been dispensed yet (see update_prescription)."""
     try:
         rx_check = get_prescription(db, prescription_id, hospital_id=current_user.hospital_id)
         if not rx_check:
@@ -727,8 +728,8 @@ td {{ font-size:13px; }}
 
 {f'<div class="diagnosis"><strong>Patient History:</strong> {"Blood Sugar: " + _esc(rx.vitals_blood_sugar) if rx.vitals_blood_sugar else ""}{" | Symptoms: " + _esc(", ".join(patient.symptoms)) if patient and patient.symptoms else ""}</div>' if rx.vitals_blood_sugar or (patient and patient.symptoms) else ''}
 
-{f'<div class="diagnosis"><strong>{t["diagnosis"]}:</strong> {_esc(rx.diagnosis)}</div>' if rx.diagnosis else ''}
 {f'<div class="diagnosis"><strong>{t["clinical_notes"]}:</strong> {_esc(rx.clinical_notes)}</div>' if rx.clinical_notes else ''}
+{f'<div class="diagnosis"><strong>{t["diagnosis"]}:</strong> {_esc(rx.diagnosis)}</div>' if rx.diagnosis else ''}
 
 {f'''<div class="diagnosis" style="background:#fef3c7;position:relative;padding-right:100px;">
     <strong>Ophthalmology Examination:</strong><br/>{_esc(rx.opthal_notes)}

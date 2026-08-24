@@ -95,6 +95,17 @@ export interface OpticalPrescription {
   patient_id: string;
   doctor_id: string | null;
   appointment_id: string | null;
+  // Machine Prescribed — auto-refractometer reading, kept separate from the
+  // doctor-prescribed values below (both stored independently).
+  right_machine_sph: number | null;
+  right_machine_cyl: number | null;
+  right_machine_axis: number | null;
+  right_machine_add: number | null;
+  left_machine_sph: number | null;
+  left_machine_cyl: number | null;
+  left_machine_axis: number | null;
+  left_machine_add: number | null;
+  // Doctor Prescribed
   right_sph: number | null;
   right_cyl: number | null;
   right_axis: number | null;
@@ -130,6 +141,16 @@ export interface OpticalPrescriptionCreateData {
   /** Optional — omit to resolve server-side from the logged-in doctor. */
   doctor_id?: string;
   appointment_id?: string;
+  // Machine Prescribed
+  right_machine_sph?: number;
+  right_machine_cyl?: number;
+  right_machine_axis?: number;
+  right_machine_add?: number;
+  left_machine_sph?: number;
+  left_machine_cyl?: number;
+  left_machine_axis?: number;
+  left_machine_add?: number;
+  // Doctor Prescribed
   right_sph?: number;
   right_cyl?: number;
   right_axis?: number;

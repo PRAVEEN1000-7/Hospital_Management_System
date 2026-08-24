@@ -1589,10 +1589,14 @@ const WalkInQueue: React.FC = () => {
                               wider than the viewport for no benefit. */}
                           {/* Consultation Fee (BRD 5.1) — collected/uncollected state right
                               in the queue row, no navigation to another module needed.
-                              Receptionist is allowed here too even without general "billing"
-                              access — the backend narrowly permits receptionist on the
-                              consultation-invoice/payment endpoints only, not general billing. */}
-                          {(canEdit('billing', roles) || isReception) && item.appointment_id && (
+                              Receptionist AND nurse are allowed here too even without general
+                              "billing" access — the backend narrowly permits both on the
+                              consultation-invoice/payment endpoints only, not general billing
+                              (see _require_billing_staff_or_receptionist /
+                              _require_billing_staff_or_consultation_payment). The backend side
+                              of this carve-out already existed; this button was the missing
+                              half — nurse could never actually reach it before. */}
+                          {(canEdit('billing', roles) || isReception || isNurse) && item.appointment_id && (
                             item.consultation_fee_collected ? (
                               // Compact icon-only once collected — it's a status marker at
                               // this point, not an action, so it doesn't need a text label

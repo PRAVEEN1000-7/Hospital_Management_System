@@ -52,6 +52,10 @@ const OpticalDialog: React.FC<OpticalDialogProps> = ({ patientId, appointmentId,
         setExistingRxId(existing.id);
         setExistingRxFinalized(!!existing.is_finalized);
         setRx({
+          right_machine_sph: existing.right_machine_sph ?? undefined, right_machine_cyl: existing.right_machine_cyl ?? undefined,
+          right_machine_axis: existing.right_machine_axis ?? undefined, right_machine_add: existing.right_machine_add ?? undefined,
+          left_machine_sph: existing.left_machine_sph ?? undefined, left_machine_cyl: existing.left_machine_cyl ?? undefined,
+          left_machine_axis: existing.left_machine_axis ?? undefined, left_machine_add: existing.left_machine_add ?? undefined,
           right_sph: existing.right_sph ?? undefined, right_cyl: existing.right_cyl ?? undefined,
           right_axis: existing.right_axis ?? undefined, right_add: existing.right_add ?? undefined, right_va: existing.right_va ?? undefined,
           right_vision: existing.right_vision ?? undefined, right_iop: existing.right_iop ?? undefined, right_nld: existing.right_nld ?? undefined,
@@ -88,6 +92,33 @@ const OpticalDialog: React.FC<OpticalDialogProps> = ({ patientId, appointmentId,
       setSaving(false);
     }
   };
+
+  // Machine Prescribed — auto-refractometer reading, kept as its own set of
+  // fields (SPH/CYL/Axis/Add only, no VA/Vision/IOP/NLD) separate from the
+  // doctor-prescribed values in eyeCard() below.
+  const machineCard = (side: 'left' | 'right', label: string) => (
+    <div className="border border-slate-200 rounded-lg p-4">
+      <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-2 mb-3 border-b border-slate-100">{label}</h4>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">SPH</label>
+          <input type="number" step="0.25" value={(rx as any)[`${side}_machine_sph`] ?? ''} onChange={numField(`${side}_machine_sph` as keyof OpticalFields)} className="input-field" disabled={saving} />
+        </div>
+        <div>
+          <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">CYL</label>
+          <input type="number" step="0.25" value={(rx as any)[`${side}_machine_cyl`] ?? ''} onChange={numField(`${side}_machine_cyl` as keyof OpticalFields)} className="input-field" disabled={saving} />
+        </div>
+        <div>
+          <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Axis</label>
+          <input type="number" min={0} max={180} value={(rx as any)[`${side}_machine_axis`] ?? ''} onChange={numField(`${side}_machine_axis` as keyof OpticalFields)} className="input-field" disabled={saving} />
+        </div>
+        <div>
+          <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Add</label>
+          <input type="number" step="0.25" value={(rx as any)[`${side}_machine_add`] ?? ''} onChange={numField(`${side}_machine_add` as keyof OpticalFields)} className="input-field" disabled={saving} />
+        </div>
+      </div>
+    </div>
+  );
 
   const eyeCard = (side: 'left' | 'right', label: string) => (
     <div className="border border-slate-200 rounded-lg p-4">
@@ -191,13 +222,26 @@ const OpticalDialog: React.FC<OpticalDialogProps> = ({ patientId, appointmentId,
               </div>
             </div>
 
-            {/* Left/Right eye — Vision/IOP/NLD exam findings and SPH/CYL/Axis/Add/VA
-                spectacle prescription together in one card per eye. */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {/* Right Eye (OD) shown first (screen-left) per the clinical
-                  convention of facing the patient. */}
-              {eyeCard('right', 'Right Eye (OD)')}
-              {eyeCard('left', 'Left Eye (OS)')}
+            {/* Machine Prescribed — auto-refractometer reading. */}
+            <div>
+              <h4 className="text-xs font-bold text-primary uppercase tracking-wide mb-2">Machine Prescribed</h4>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {machineCard('right', 'Right Eye (OD)')}
+                {machineCard('left', 'Left Eye (OS)')}
+              </div>
+            </div>
+
+            {/* Doctor Prescribed — Vision/IOP/NLD exam findings and
+                SPH/CYL/Axis/Add/VA spectacle prescription together in one
+                card per eye. */}
+            <div>
+              <h4 className="text-xs font-bold text-primary uppercase tracking-wide mb-2">Doctor Prescribed</h4>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* Right Eye (OD) shown first (screen-left) per the clinical
+                    convention of facing the patient. */}
+                {eyeCard('right', 'Right Eye (OD)')}
+                {eyeCard('left', 'Left Eye (OS)')}
+              </div>
             </div>
           </div>
         )}

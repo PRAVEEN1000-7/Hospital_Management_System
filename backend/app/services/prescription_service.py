@@ -502,13 +502,29 @@ def update_prescription(
     performed_by: uuid.UUID,
     hospital_id: Optional[uuid.UUID] = None,
 ) -> Optional[Prescription]:
-    """Update prescription fields and optionally replace items."""
+    """Update prescription fields and optionally replace items.
+
+    A finalized prescription CAN still be edited (correct a dosage, add/
+    remove a medicine, etc.) — but only up until pharmacy has actually
+    dispensed something against it. Once any item has a real
+    dispensed_quantity, its stock has already been deducted and a sale
+    already created from the OLD content, so further edits would silently
+    disagree with what was physically handed to the patient; block that
+    case specifically rather than blocking every finalized prescription
+    outright. Every edit — draft or finalized — is recorded as a version
+    snapshot (see _save_version_snapshot below), so this doubles as the
+    audit trail: who changed what, and when."""
     rx = get_prescription(db, prescription_id, hospital_id=hospital_id)
     if not rx:
         return None
 
     if rx.is_finalized:
-        raise ValueError("Cannot update a finalized prescription")
+        any_dispensed = db.query(PrescriptionItem).filter(
+            PrescriptionItem.prescription_id == rx.id,
+            PrescriptionItem.dispensed_quantity > 0,
+        ).first() is not None
+        if any_dispensed:
+            raise ValueError("Cannot edit a prescription that has already been dispensed")
 
     eye_features = _eye_hospital_features_enabled(db, rx.hospital_id)
 

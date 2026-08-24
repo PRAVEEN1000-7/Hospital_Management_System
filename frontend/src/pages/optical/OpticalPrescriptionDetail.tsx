@@ -181,7 +181,46 @@ const OpticalPrescriptionDetail: React.FC = () => {
           <p className="text-slate-900 font-medium">{rx.patient_name || '—'}</p>
         </div>
 
+        {(rx.right_machine_sph != null || rx.right_machine_cyl != null || rx.right_machine_axis != null || rx.right_machine_add != null ||
+          rx.left_machine_sph != null || rx.left_machine_cyl != null || rx.left_machine_axis != null || rx.left_machine_add != null) && (
+          <div className="overflow-x-auto">
+            <p className="text-xs font-semibold text-primary uppercase tracking-wide mb-2">Machine Prescribed</p>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-slate-50 text-center text-xs font-semibold text-slate-500 uppercase">
+                  <th className="px-3 py-2 text-left">Parameter</th>
+                  <th className="px-3 py-2">Right (OD)</th>
+                  <th className="px-3 py-2">Left (OS)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-center">
+                <tr>
+                  <td className="px-3 py-2 text-left font-semibold text-slate-700">SPH</td>
+                  <td className="px-3 py-2">{fmtPower(rx.right_machine_sph)}</td>
+                  <td className="px-3 py-2">{fmtPower(rx.left_machine_sph)}</td>
+                </tr>
+                <tr>
+                  <td className="px-3 py-2 text-left font-semibold text-slate-700">CYL</td>
+                  <td className="px-3 py-2">{fmtPower(rx.right_machine_cyl)}</td>
+                  <td className="px-3 py-2">{fmtPower(rx.left_machine_cyl)}</td>
+                </tr>
+                <tr>
+                  <td className="px-3 py-2 text-left font-semibold text-slate-700">Axis</td>
+                  <td className="px-3 py-2">{fmtAxis(rx.right_machine_axis)}</td>
+                  <td className="px-3 py-2">{fmtAxis(rx.left_machine_axis)}</td>
+                </tr>
+                <tr>
+                  <td className="px-3 py-2 text-left font-semibold text-slate-700">Add</td>
+                  <td className="px-3 py-2">{fmtPower(rx.right_machine_add)}</td>
+                  <td className="px-3 py-2">{fmtPower(rx.left_machine_add)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
+
         <div className="overflow-x-auto">
+          <p className="text-xs font-semibold text-primary uppercase tracking-wide mb-2">Doctor Prescribed</p>
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-50 text-center text-xs font-semibold text-slate-500 uppercase">

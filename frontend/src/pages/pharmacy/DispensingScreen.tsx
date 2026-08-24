@@ -33,6 +33,10 @@ interface DispensingItem extends DispensingPrescriptionItem {
   remainingQty: number;
   skip: boolean;
   skipReason?: string;
+  // Explicit pharmacist confirmation to dispense more than remainingQty —
+  // required before the backend will accept a quantity above what was
+  // prescribed; every such override is written to the audit log.
+  overridePrescribedLimit?: boolean;
 }
 
 // A medicine (or cataloged non-medicine pharmacy item — Medicine.category
@@ -253,7 +257,13 @@ const DispensingScreen: React.FC = () => {
     );
   };
 
-  // Update dispensed quantity with prescription limit validation
+  // Update dispensed quantity. Capped only by physical stock — the
+  // prescribed/remaining quantity is no longer a hard ceiling here; a
+  // pharmacist can go above it, but must explicitly confirm via
+  // overridePrescribedLimit (see the warning banner below) before the
+  // backend will accept it. Resetting the override flag whenever the
+  // quantity drops back to within the normal range avoids silently sending
+  // a stale confirmation the pharmacist never meant for the new value.
   const handleQuantityChange = (itemIndex: number, quantity: number) => {
     setDispensingItems((prev) =>
       prev.map((item, idx) => {
@@ -262,18 +272,21 @@ const DispensingScreen: React.FC = () => {
         const maxQty = item.available_batches.find(
           (b) => b.id === item.selectedBatchId
         )?.quantity;
-        
-        // Ensure quantity doesn't exceed remaining prescribed quantity OR total available stock.
-        const maxAllowed = Math.min(
-          item.remainingQty,
-          item.available_quantity || maxQty || 0
-        );
+        const maxStock = item.available_quantity || maxQty || 0;
+        const nextQty = Math.min(Math.max(0, quantity), maxStock);
 
         return {
           ...item,
-          dispensedQty: Math.min(Math.max(0, quantity), maxAllowed),
+          dispensedQty: nextQty,
+          overridePrescribedLimit: nextQty > item.remainingQty ? item.overridePrescribedLimit : false,
         };
       })
+    );
+  };
+
+  const handleOverrideToggle = (itemIndex: number, value: boolean) => {
+    setDispensingItems((prev) =>
+      prev.map((item, idx) => (idx === itemIndex ? { ...item, overridePrescribedLimit: value } : item))
     );
   };
 
@@ -635,6 +648,17 @@ const DispensingScreen: React.FC = () => {
       return;
     }
 
+    const unconfirmedOverrides = dispensingItems.filter(
+      (item) => !item.skip && item.dispensedQty > item.remainingQty && !item.overridePrescribedLimit
+    );
+    if (unconfirmedOverrides.length > 0) {
+      showToast(
+        'error',
+        `Confirm dispensing more than prescribed for: ${unconfirmedOverrides.map((i) => i.medicine_name).join(', ')}`
+      );
+      return;
+    }
+
     if (!prescription) return;
 
     setSaving(true);
@@ -675,6 +699,7 @@ const DispensingScreen: React.FC = () => {
           batch_id: item.selectedBatchId!,
           quantity: item.dispensedQty,
           unit_price: Number(batch.selling_price) || 0,
+          override_prescribed_limit: item.dispensedQty > item.remainingQty ? true : undefined,
         });
       });
 
@@ -1162,7 +1187,7 @@ const DispensingScreen: React.FC = () => {
                             <input
                               type="number"
                               min="0"
-                              max={Math.min(item.available_quantity || 0, item.remainingQty)}
+                              max={item.available_quantity || undefined}
                               value={item.dispensedQty || ''} placeholder="0"
                               onChange={(e) =>
                                 handleQuantityChange(index, parseInt(e.target.value) || 0)
@@ -1209,6 +1234,26 @@ const DispensingScreen: React.FC = () => {
                             <div className="text-xs text-emerald-700 mt-1 flex items-center gap-1">
                               <span className="material-symbols-outlined text-sm">sync_alt</span>
                               Remaining quantity will be auto-allocated from additional batches in this dispense.
+                            </div>
+                          )}
+                          {item.dispensedQty > item.remainingQty && (
+                            <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                              <div className="flex items-start gap-2 text-sm text-amber-800">
+                                <span className="material-symbols-outlined text-amber-600 text-lg flex-shrink-0">warning</span>
+                                <p>
+                                  This dispenses <strong>{item.dispensedQty - item.remainingQty} more unit{item.dispensedQty - item.remainingQty !== 1 ? 's' : ''}</strong> than
+                                  prescribed (prescribed {item.prescribedQty}, remaining {item.remainingQty}). This will be recorded in the audit log.
+                                </p>
+                              </div>
+                              <label className="flex items-center gap-2 mt-2 text-xs font-semibold text-amber-800 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={item.overridePrescribedLimit === true}
+                                  onChange={(e) => handleOverrideToggle(index, e.target.checked)}
+                                  className="w-4 h-4 rounded border-amber-300 text-amber-600 focus:ring-2 focus:ring-amber-300"
+                                />
+                                Confirm dispensing more than prescribed
+                              </label>
                             </div>
                           )}
                           {(() => {

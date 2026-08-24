@@ -773,6 +773,25 @@ def finalize_prescription(
             appointment_id=rx.appointment_id,
         )
 
+    # Completing a consultation IS what finalizing a prescription means from
+    # the doctor's point of view — previously only the dedicated
+    # finalize-and-complete-queue endpoint (the queue-driven "Save & Complete"
+    # button, used when this prescription started from a live Walk-in Queue
+    # entry) touched the appointment/queue status. Finalizing any other way
+    # — e.g. "My Patients" → Rx → "Save & Send to Pharmacy", which has no
+    # live queue_id — left the appointment stuck "in-progress" and its
+    # Walk-in Queue entry stuck "in_consultation" forever, forcing a separate
+    # manual "Complete" click in Today Patients/My Patients/etc. Guarded so
+    # it's a no-op for an appointment already resolved (completed/cancelled/
+    # no-show) or with no appointment at all.
+    if rx.appointment_id:
+        appt = db.query(Appointment).filter(Appointment.id == rx.appointment_id).first()
+        if appt and appt.status not in ("completed", "cancelled", "no-show"):
+            from .appointment_service import _sync_queue_entry_status
+            appt.status = "completed"
+            appt.consultation_end_at = appt.consultation_end_at or datetime.now(timezone.utc)
+            _sync_queue_entry_status(db, rx.appointment_id, "completed")
+
     db.commit()
     db.refresh(rx)
 

@@ -61,6 +61,17 @@ const LabBilling: React.FC = () => {
 
   useEffect(() => { fetchOrders(); }, [fetchOrders]);
 
+  const handleDelete = async (orderId: string, orderNumber: string) => {
+    if (!window.confirm(`Delete lab order ${orderNumber}? This cannot be undone.`)) return;
+    try {
+      await labService.deleteOrder(orderId);
+      toast.success('Lab order deleted');
+      fetchOrders();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to delete lab order');
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -148,6 +159,13 @@ const LabBilling: React.FC = () => {
                         <button onClick={() => setPayingOrderId(o.id)}
                           className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg hover:bg-emerald-100">
                           <span className="material-symbols-outlined text-sm">payments</span> Receive Payment
+                        </button>
+                      )}
+                      {canReceivePayment && !o.has_sale && (
+                        <button onClick={() => handleDelete(o.id, o.order_number)}
+                          title="Delete this lab order"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-red-600 bg-white border border-slate-200 rounded-lg hover:bg-red-50">
+                          <span className="material-symbols-outlined text-sm">delete</span> Delete
                         </button>
                       )}
                     </div>

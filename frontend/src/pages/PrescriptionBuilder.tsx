@@ -37,12 +37,18 @@ const MEDICAL_CONDITIONS_CHECKLIST = [
   'Thyroid Disorder',
   'Asthma / COPD',
   'Coronary Artery Disease',
+  'Chronic Kidney Disease',
+];
+// "Others" — free-text only (no Currently in Treatment Yes/No; just a
+// details box per condition), rendered as their own group below the main
+// checklist.
+const OTHER_MEDICAL_CONDITIONS = [
   'Tuberculosis',
   'Epilepsy',
-  'Chronic Kidney Disease',
   'Liver Disease',
   'Cancer / Malignancy',
 ];
+const ALL_MEDICAL_CONDITIONS = [...MEDICAL_CONDITIONS_CHECKLIST, ...OTHER_MEDICAL_CONDITIONS];
 const DURATION_UNITS = ['days', 'weeks', 'months'];
 const ROUTE_OPTIONS = ['oral', 'topical', 'injection', 'inhalation', 'sublingual', 'rectal', 'nasal', 'ophthalmic', 'otic'];
 const FOOD_TIMING_OPTIONS = ['', 'Before food', 'After food'];
@@ -156,9 +162,9 @@ const PrescriptionBuilder: React.FC = () => {
   const [queueId] = useState(searchParams.get('queue_id') || '');
   const isConsultationMode = Boolean(queueId);
   const [patient, setPatient] = useState<Patient | null>(null);
-  // "Condition / History" checklist — see MEDICAL_CONDITIONS_CHECKLIST.
+  // "Condition / History" checklist — see MEDICAL_CONDITIONS_CHECKLIST / OTHER_MEDICAL_CONDITIONS.
   const [medicalConditions, setMedicalConditions] = useState<MedicalConditionEntry[]>(
-    MEDICAL_CONDITIONS_CHECKLIST.map(condition => ({ condition, details: '', currently_in_treatment: null }))
+    ALL_MEDICAL_CONDITIONS.map(condition => ({ condition, details: '', currently_in_treatment: null }))
   );
   const [savingConditions, setSavingConditions] = useState(false);
   // Referral context (who referred this patient in, and why) — fetched so it's
@@ -369,17 +375,17 @@ const PrescriptionBuilder: React.FC = () => {
   useEffect(() => {
     if (!patient) return;
     const saved = patient.medical_conditions || [];
-    setMedicalConditions(MEDICAL_CONDITIONS_CHECKLIST.map(condition => {
+    setMedicalConditions(ALL_MEDICAL_CONDITIONS.map(condition => {
       const existing = saved.find(e => e.condition === condition);
       return existing || { condition, details: '', currently_in_treatment: null };
     }));
   }, [patient]);
 
-  const updateConditionDetails = (idx: number, details: string) => {
-    setMedicalConditions(prev => prev.map((e, i) => (i === idx ? { ...e, details } : e)));
+  const updateConditionDetails = (condition: string, details: string) => {
+    setMedicalConditions(prev => prev.map(e => (e.condition === condition ? { ...e, details } : e)));
   };
-  const updateConditionTreatment = (idx: number, value: boolean) => {
-    setMedicalConditions(prev => prev.map((e, i) => (i === idx ? { ...e, currently_in_treatment: value } : e)));
+  const updateConditionTreatment = (condition: string, value: boolean) => {
+    setMedicalConditions(prev => prev.map(e => (e.condition === condition ? { ...e, currently_in_treatment: value } : e)));
   };
   const handleSaveMedicalConditions = async () => {
     if (!patient) return;
@@ -1411,7 +1417,7 @@ const PrescriptionBuilder: React.FC = () => {
               sidebar, so the doctor sees it inline while reviewing the
               patient before writing a new prescription. Renders nothing of
               its own accord when the patient has no prior prescriptions. */}
-          {patient && <PrescriptionHistoryGrid patientId={patient.id} variant="card" />}
+          {patient && <PrescriptionHistoryGrid patientId={patient.id} variant="card" labResults={pastLabResults} />}
 
           {/* Condition / History — a fixed checklist of common chronic
               conditions, patient-level (persists across every future visit,
@@ -1445,13 +1451,13 @@ const PrescriptionBuilder: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {medicalConditions.map((entry, idx) => (
+                    {medicalConditions.filter(e => MEDICAL_CONDITIONS_CHECKLIST.includes(e.condition)).map(entry => (
                       <tr key={entry.condition}>
                         <td className="py-2 pr-3 font-medium text-slate-700 whitespace-nowrap">{entry.condition}</td>
                         <td className="py-2 pr-3 min-w-[160px]">
                           <input
                             value={entry.details || ''}
-                            onChange={(e) => updateConditionDetails(idx, e.target.value)}
+                            onChange={(e) => updateConditionDetails(entry.condition, e.target.value)}
                             placeholder="—"
                             className="input-field"
                           />
@@ -1462,7 +1468,7 @@ const PrescriptionBuilder: React.FC = () => {
                               <input
                                 type="checkbox"
                                 checked={entry.currently_in_treatment === true}
-                                onChange={() => updateConditionTreatment(idx, true)}
+                                onChange={() => updateConditionTreatment(entry.condition, true)}
                                 className="w-4 h-4 rounded border-slate-300 text-primary focus:ring-2 focus:ring-primary/30"
                               />
                               Yes
@@ -1471,7 +1477,7 @@ const PrescriptionBuilder: React.FC = () => {
                               <input
                                 type="checkbox"
                                 checked={entry.currently_in_treatment === false}
-                                onChange={() => updateConditionTreatment(idx, false)}
+                                onChange={() => updateConditionTreatment(entry.condition, false)}
                                 className="w-4 h-4 rounded border-slate-300 text-primary focus:ring-2 focus:ring-primary/30"
                               />
                               No
@@ -1483,80 +1489,23 @@ const PrescriptionBuilder: React.FC = () => {
                   </tbody>
                 </table>
               </div>
-            </div>
-          )}
 
-          {/* Lab Results (read-only) — the outcome of tests advised for this
-              patient, so the doctor reviews them in-consultation without
-              leaving the screen. Moved up to sit alongside Prescription
-              History (same "read the patient's past before writing today's
-              notes" flow) instead of its old position near the bottom of the
-              form, past Diagnosis/Medicines/Lab-order-entry/Optical/Clinical
-              Notes, where a doctor would have to scroll past the entire
-              consultation form to find it — easy to miss, and too late to
-              inform anything written above it. Shown whenever there are any
-              (create or edit mode); data itself was already correct
-              (get_patient_lab_results only ever returns report_status =
-              'finalized' orders) — this was a placement fix, not a data fix. */}
-          {labModuleEnabled && pastLabResults.length > 0 && (
-            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-              <h3 className="font-semibold mb-4 flex items-center gap-2">
-                <span className="material-symbols-outlined text-primary text-sm">biotech</span>
-                Lab Results
-              </h3>
-              <div className="space-y-3">
-                {pastLabResults.map(order => (
-                  <div key={order.id} className="border border-slate-200 rounded-lg overflow-hidden">
-                    <div className="flex items-center justify-between px-3 py-2 bg-slate-50 border-b border-slate-100">
-                      <span className="text-xs font-mono text-slate-600">
-                        {order.order_number}
-                        <span className={`ml-2 px-1.5 py-0.5 rounded-full text-[10px] font-medium capitalize ${
-                          order.status === 'completed' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
-                        }`}>{order.status.replace('_', ' ')}</span>
-                      </span>
-                      <span className="text-[11px] text-slate-400">
-                        {new Date(order.created_at).toLocaleDateString()}
-                      </span>
+              {/* Others — free-text only, no Currently in Treatment toggle */}
+              <div className="mt-5 pt-4 border-t border-slate-100">
+                <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2">Others</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {medicalConditions.filter(e => OTHER_MEDICAL_CONDITIONS.includes(e.condition)).map(entry => (
+                    <div key={entry.condition}>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">{entry.condition}</label>
+                      <input
+                        value={entry.details || ''}
+                        onChange={(e) => updateConditionDetails(entry.condition, e.target.value)}
+                        placeholder="Details, if any"
+                        className="input-field"
+                      />
                     </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <tbody className="divide-y divide-slate-100">
-                          {order.items.flatMap(item => (
-                            item.parameters.length > 0 ? item.parameters.map((p, idx) => (
-                              <tr key={`${item.id}-${idx}`}>
-                                <td className="px-3 py-1.5 text-slate-700">{p.name}</td>
-                                <td className="px-3 py-1.5 text-slate-900">
-                                  {p.value}{p.unit ? ` ${p.unit}` : ''}
-                                </td>
-                                <td className="px-3 py-1.5 text-slate-400 text-xs">{p.reference_range || ''}</td>
-                                <td className="px-3 py-1.5">
-                                  {p.flag && (
-                                    <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-medium capitalize ${
-                                      p.flag === 'normal' ? 'bg-emerald-50 text-emerald-700'
-                                        : p.flag === 'high' ? 'bg-red-50 text-red-600'
-                                        : p.flag === 'low' ? 'bg-amber-50 text-amber-700'
-                                        : 'bg-orange-50 text-orange-700'
-                                    }`}>{p.flag}</span>
-                                  )}
-                                </td>
-                              </tr>
-                            )) : [(
-                              <tr key={item.id}>
-                                <td className="px-3 py-1.5 text-slate-700">
-                                  {item.billed_name || item.test_name}
-                                  {item.billed_name && item.billed_name !== item.test_name && (
-                                    <span className="block text-xs text-slate-400">Catalog reference: {item.test_name}</span>
-                                  )}
-                                </td>
-                                <td className="px-3 py-1.5 text-slate-400 italic" colSpan={3}>Pending</td>
-                              </tr>
-                            )]
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </div>
           )}
@@ -1676,47 +1625,6 @@ const PrescriptionBuilder: React.FC = () => {
               being revised, not a fresh visit. Optical module (store)
               controls whether the patient is sent to the optical store after
               finalization. */}
-          {isEyeHospital && (!isEditMode || !!appointmentId) && canCreateOpticalRx && addOpticalRx && (
-            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-              <h3 className="font-semibold flex items-center gap-2 mb-4">
-                <span className="material-symbols-outlined text-primary text-sm">visibility</span>
-                Eye Exam
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="border border-slate-200 rounded-lg p-4 space-y-3">
-                  <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Right Eye (OD)</h4>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Vision</label>
-                    <input value={opticalRx.right_vision || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, right_vision: e.target.value }))} placeholder="6/9" className="input-field" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">IOP / Tension (Schiotz)</label>
-                    <input value={opticalRx.right_iop || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, right_iop: e.target.value }))} placeholder="16 mmHg" className="input-field" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">NLD</label>
-                    <input value={opticalRx.right_nld || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, right_nld: e.target.value }))} placeholder="Patent" className="input-field" />
-                  </div>
-                </div>
-                <div className="border border-slate-200 rounded-lg p-4 space-y-3">
-                  <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Left Eye (OS)</h4>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Vision</label>
-                    <input value={opticalRx.left_vision || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, left_vision: e.target.value }))} placeholder="6/9" className="input-field" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">IOP / Tension (Schiotz)</label>
-                    <input value={opticalRx.left_iop || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, left_iop: e.target.value }))} placeholder="16 mmHg" className="input-field" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">NLD</label>
-                    <input value={opticalRx.left_nld || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, left_nld: e.target.value }))} placeholder="Patent" className="input-field" />
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
           {isEyeHospital && (!isEditMode || !!appointmentId) && canCreateOpticalRx && (
             <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
               <div className="flex items-center justify-between mb-4">
@@ -1739,7 +1647,7 @@ const PrescriptionBuilder: React.FC = () => {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {/* Right Eye (OD) — shown first (screen-left) per the
                         clinical convention of facing the patient, matching
-                        the Eye Exam section above. */}
+                        the Eye Exam section below. */}
                     <div className="border border-slate-200 rounded-lg p-4 space-y-3">
                       <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Right Eye (OD)</h4>
                       <div>
@@ -1822,6 +1730,47 @@ const PrescriptionBuilder: React.FC = () => {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {isEyeHospital && (!isEditMode || !!appointmentId) && canCreateOpticalRx && addOpticalRx && (
+            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+              <h3 className="font-semibold flex items-center gap-2 mb-4">
+                <span className="material-symbols-outlined text-primary text-sm">visibility</span>
+                Eye Exam
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="border border-slate-200 rounded-lg p-4 space-y-3">
+                  <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Right Eye (OD)</h4>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Vision</label>
+                    <input value={opticalRx.right_vision || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, right_vision: e.target.value }))} placeholder="6/9" className="input-field" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">IOP / Tension (Schiotz)</label>
+                    <input value={opticalRx.right_iop || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, right_iop: e.target.value }))} placeholder="16 mmHg" className="input-field" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">NLD</label>
+                    <input value={opticalRx.right_nld || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, right_nld: e.target.value }))} placeholder="Patent" className="input-field" />
+                  </div>
+                </div>
+                <div className="border border-slate-200 rounded-lg p-4 space-y-3">
+                  <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Left Eye (OS)</h4>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Vision</label>
+                    <input value={opticalRx.left_vision || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, left_vision: e.target.value }))} placeholder="6/9" className="input-field" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">IOP / Tension (Schiotz)</label>
+                    <input value={opticalRx.left_iop || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, left_iop: e.target.value }))} placeholder="16 mmHg" className="input-field" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">NLD</label>
+                    <input value={opticalRx.left_nld || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, left_nld: e.target.value }))} placeholder="Patent" className="input-field" />
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 

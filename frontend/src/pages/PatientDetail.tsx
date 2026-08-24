@@ -416,6 +416,12 @@ const PatientDetail: React.FC = () => {
                       </tbody>
                     </table>
                   </div>
+                  {order.confirmatory_diagnosis && (
+                    <div className="px-4 py-2.5 bg-primary/5 border-t border-slate-100 text-sm">
+                      <span className="font-semibold text-primary">Confirmatory Diagnosis: </span>
+                      <span className="text-slate-700">{order.confirmatory_diagnosis}</span>
+                    </div>
+                  )}
                   {(order.finalized_by_name || order.finalized_at) && (
                     <div className="px-4 py-2 bg-slate-50 border-t border-slate-100 text-xs text-slate-400">
                       Finalized{order.finalized_by_name ? ` by ${order.finalized_by_name}` : ''}

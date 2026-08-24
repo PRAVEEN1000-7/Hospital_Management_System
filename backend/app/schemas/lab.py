@@ -237,6 +237,10 @@ class LabOrderItemResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class LabOrderDiagnosisUpdate(BaseModel):
+    confirmatory_diagnosis: Optional[str] = None
+
+
 class LabOrderResponse(BaseModel):
     id: str
     hospital_id: str
@@ -246,6 +250,7 @@ class LabOrderResponse(BaseModel):
     appointment_id: Optional[str] = None
     prescription_id: Optional[str] = None
     notes: Optional[str] = None
+    confirmatory_diagnosis: Optional[str] = None
     is_finalized: bool = False
     status: str = "ordered"
     report_status: str = "pending"
@@ -349,6 +354,7 @@ class LabBillingItemResponse(BaseModel):
     payment_status: str = "pending"
     report_status: str = "pending"
     created_at: datetime
+    has_sale: bool = False
 
 
 class LabBillingListResponse(BaseModel):

@@ -74,6 +74,10 @@ export interface DispenseItemData {
   batch_id: string;
   quantity: number;
   unit_price: number;
+  // Explicit pharmacist confirmation to dispense more than the prescribed/
+  // remaining quantity for this line — without it, the backend rejects
+  // exceeding that amount. Every override is written to the audit log.
+  override_prescribed_limit?: boolean;
 }
 
 export interface SkippedDispenseItemData {

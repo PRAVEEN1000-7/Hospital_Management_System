@@ -185,6 +185,13 @@ class DispenseItemInput(BaseModel):
     batch_id: str
     quantity: int = Field(gt=0)
     unit_price: float = Field(ge=0)
+    # Explicit pharmacist opt-in to dispense MORE than the doctor prescribed
+    # for this line (e.g. genuine clinical need, patient travelling, etc.).
+    # Without this flag, exceeding the prescribed/remaining quantity is still
+    # rejected exactly as before — this only unlocks the override when the
+    # pharmacist deliberately asks for it, and every such override is written
+    # to the audit log (see dispensing_service.dispense_prescription).
+    override_prescribed_limit: bool = False
 
 class DispenseRequest(BaseModel):
     items: list[DispenseItemInput]

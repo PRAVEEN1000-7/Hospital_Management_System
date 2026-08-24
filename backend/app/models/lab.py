@@ -90,6 +90,11 @@ class LabOrder(Base):
     appointment_id = Column(UUID(as_uuid=True), ForeignKey("appointments.id"))
     prescription_id = Column(UUID(as_uuid=True), ForeignKey("prescriptions.id"))
     notes = Column(Text)
+    # Doctor's diagnosis once results come back — distinct from the
+    # provisional diagnosis on the originating prescription (that's recorded
+    # at order time, before any result exists). Entered on the Lab Order
+    # Detail page; also surfaced in the patient's Lab Reports history.
+    confirmatory_diagnosis = Column(Text)
     is_finalized = Column(Boolean, default=False)
     status = Column(String(20), default="ordered")  # 'ordered','in_progress','completed','cancelled'
 

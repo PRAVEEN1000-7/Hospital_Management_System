@@ -94,6 +94,11 @@ export const labService = {
     await api.delete(`/lab/orders/${id}`);
   },
 
+  async deleteOrderItem(orderId: string, itemId: string): Promise<LabOrder> {
+    const res = await api.delete<LabOrder>(`/lab/orders/${orderId}/items/${itemId}`);
+    return res.data;
+  },
+
   async updateQueueStatus(orderId: string, queueStatus: LabQueueStatus): Promise<LabQueueEntry> {
     const res = await api.put<LabQueueEntry>(`/lab/orders/${orderId}/queue-status`, { queue_status: queueStatus });
     return res.data;
@@ -155,6 +160,11 @@ export const labService = {
 
   async finalizeReport(orderId: string): Promise<LabOrder> {
     const res = await api.post<LabOrder>(`/lab/orders/${orderId}/finalize`);
+    return res.data;
+  },
+
+  async updateConfirmatoryDiagnosis(orderId: string, confirmatoryDiagnosis: string): Promise<LabOrder> {
+    const res = await api.put<LabOrder>(`/lab/orders/${orderId}/diagnosis`, { confirmatory_diagnosis: confirmatoryDiagnosis });
     return res.data;
   },
 

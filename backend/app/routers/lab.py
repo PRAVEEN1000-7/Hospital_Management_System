@@ -22,7 +22,7 @@ from ..schemas.lab import (
     LabTestCreate, LabTestUpdate, LabTestResponse, LabTestListResponse,
     LabTestPanelCreate, LabTestPanelUpdate, LabTestPanelResponse, LabTestPanelListResponse,
     LabOrderCreate, LabOrderResponse, LabResultEntry, LabOrderItemTestUpdate,
-    LabOrderItemBillingUpdate,
+    LabOrderItemBillingUpdate, LabOrderDiagnosisUpdate,
     LabQueueEntryResponse, LabQueueStatusUpdate,
     LabSaleResponse, LabMarkPaidRequest,
     LabBillingItemResponse, LabBillingListResponse,
@@ -270,6 +270,42 @@ async def delete_lab_order(
     )
 
 
+@router.delete("/orders/{order_id}/items/{item_id}", response_model=LabOrderResponse)
+async def delete_lab_order_item(
+    order_id: str,
+    item_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Remove one test from an order — e.g. a doctor selected a whole test
+    category and one of the auto-included tests isn't actually needed. Only
+    before billing starts and before that test has a result recorded (see
+    delete_lab_order_item); the remaining tests can then be finalized and
+    billed normally."""
+    _require(current_user, LAB_STAFF_ROLES)
+    order = svc.get_lab_order_by_id(db, order_id, hospital_id=current_user.hospital_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Lab order not found")
+    if svc.is_lab_order_billed(db, order.id):
+        raise HTTPException(status_code=409, detail="This order has already been billed — tests can no longer be removed")
+    try:
+        removed_item = svc.delete_lab_order_item(db, order, item_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    AuditLogger.log(
+        action=AuditAction.LAB_TEST_DELETE,
+        user=current_user,
+        tenant=None,
+        resource_type="lab_order_item",
+        resource_id=removed_item["id"],
+        old_values={"order_number": order.order_number, "test_name": removed_item["test_name"]},
+    )
+
+    db.refresh(order)
+    return svc._enrich_order(db, order)
+
+
 @router.get("/orders/{order_id}/pdf")
 async def get_lab_order_pdf(
     order_id: str,
@@ -455,6 +491,8 @@ th {{ color:#64748b; font-weight:600; font-size:12px; }}
 </div>
 
 {tests_html}
+
+{f'<div class="patient-box"><p><strong>Confirmatory Diagnosis:</strong> {_esc(order.confirmatory_diagnosis)}</p></div>' if order.confirmatory_diagnosis else ''}
 
 {f'<p class="generated-note">Finalized by {_esc(resp.finalized_by_name)} on {fmt_date(resp.finalized_at)}</p>' if resp.finalized_by_name else ''}
 
@@ -669,6 +707,25 @@ async def finalize_lab_report(
         order = svc.finalize_lab_report(db, order_id, current_user.hospital_id, current_user.id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    return svc._enrich_order(db, order)
+
+
+@router.put("/orders/{order_id}/diagnosis", response_model=LabOrderResponse)
+async def update_confirmatory_diagnosis(
+    order_id: str,
+    data: LabOrderDiagnosisUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Doctor's diagnosis once lab results are back — distinct from the
+    provisional diagnosis recorded on the originating prescription."""
+    _require(current_user, {"super_admin", "admin", "doctor"})
+    order = svc.get_lab_order_by_id(db, order_id, hospital_id=current_user.hospital_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Lab order not found")
+    order.confirmatory_diagnosis = data.confirmatory_diagnosis
+    db.commit()
+    db.refresh(order)
     return svc._enrich_order(db, order)
 
 

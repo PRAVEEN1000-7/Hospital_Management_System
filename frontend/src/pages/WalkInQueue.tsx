@@ -684,12 +684,6 @@ const WalkInQueue: React.FC = () => {
   );
   // Always show active items first, then completed/skipped at the bottom
   const displayItems = [...activeItems, ...completedItems];
-  // Patients reception has already sent to this doctor. The first one is
-  // spotlighted in the "Next Up" card below; the rest previously had no
-  // way to be started except by waiting for the first to finish — the
-  // doctor can pick any of them in any order, so all of them (beyond the
-  // spotlighted one) are folded into the Waiting list further down.
-  const sentToDoctorPatients = activeItems.filter(i => i.status === 'sent_to_doctor');
 
   // ── Reception Tabs Derived Data ────────────────────────────────
   // New: waiting patients + called patients + sent_to_doctor (called = highlighted, waiting for reception to send)
@@ -1025,90 +1019,17 @@ const WalkInQueue: React.FC = () => {
                 );
               })()}
 
-              {/* Next Up — Sent by Reception (only sent_to_doctor patients) */}
-              {(() => {
-                const nextPatient = sentToDoctorPatients[0];
-                if (!nextPatient) return null;
-                const pri = PRIORITY_CONFIG[nextPatient.priority] || PRIORITY_CONFIG.normal;
-                const hasCalledOrConsulting = activeItems.some(i => i.status === 'called' || i.status === 'in_consultation');
-                return (
-                  <div onClick={() => setDetailItem(nextPatient)}
-                    className={`bg-white rounded-xl border-2 p-5 cursor-pointer hover:shadow-sm transition-all ${hasCalledOrConsulting ? 'border-slate-200' : 'border-teal-300 bg-teal-50/30'}`}>
-                    <div className="flex items-center gap-2 mb-4">
-                      <span className={`material-symbols-outlined ${hasCalledOrConsulting ? 'text-slate-500' : 'text-teal-600'}`}>send</span>
-                      <span className={`text-xs font-bold uppercase tracking-wider ${hasCalledOrConsulting ? 'text-slate-500' : 'text-teal-700'}`}>
-                        Next Up {sentToDoctorPatients.length > 1 ? `(+${sentToDoctorPatients.length - 1} more ready below)` : ''}
-                      </span>
-                      <span className="text-[10px] text-teal-600 bg-teal-100 px-2 py-0.5 rounded-full font-semibold">Sent by Reception</span>
-                    </div>
-                    <div className="flex flex-col lg:flex-row lg:items-center gap-4">
-                      <div className="flex items-center gap-4 flex-1 min-w-0">
-                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-lg font-bold shrink-0 ${
-                          nextPatient.priority === 'emergency' ? 'bg-red-100 text-red-700' :
-                          nextPatient.priority === 'urgent' ? 'bg-amber-100 text-amber-700' :
-                          'bg-teal-100 text-teal-700'
-                        }`}>
-                          {nextPatient.queue_number}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="font-bold text-slate-900">{nextPatient.patient_name || 'Unknown'}</p>
-                          <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-                            {nextPatient.patient_reference_number && (
-                              <span className="text-sm font-mono text-slate-500 bg-slate-50 px-2 py-0.5 rounded">PRN: {nextPatient.patient_reference_number}</span>
-                            )}
-                            {nextPatient.patient_gender && (
-                              <span className="text-sm text-slate-500 font-medium capitalize">{nextPatient.patient_gender}</span>
-                            )}
-                            {nextPatient.patient_age != null && (
-                              <span className="text-sm text-slate-500 font-medium">{nextPatient.patient_age}y</span>
-                            )}
-                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${pri.bg} ${pri.text}`}>
-                              {pri.label}
-                            </span>
-                            {nextPatient.is_specialist_assignment && (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary/10 text-primary" title="Locked to this doctor — cannot be reassigned or referred">
-                                <span className="material-symbols-outlined" style={{ fontSize: 11 }}>lock</span>
-                                Specialist
-                              </span>
-                            )}
-                            <span className="text-xs text-slate-400">• {timeAgo(nextPatient.check_in_at)}</span>
-                          </div>
-                          {nextPatient.chief_complaint && (
-                            <p className="text-sm text-slate-500 mt-1 truncate">{nextPatient.chief_complaint}</p>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
-                        <button onClick={() => setDetailItem(nextPatient)}
-                          className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
-                          <span className="material-symbols-outlined text-sm">person</span>
-                          Info
-                        </button>
-                        {canActOnQueue && (
-                          <button onClick={() => handleStartConsultation(nextPatient.queue_id)}
-                            className="inline-flex items-center gap-1.5 px-5 py-2.5 text-sm font-bold text-white bg-purple-500 rounded-lg hover:bg-purple-600 transition-colors shadow-sm">
-                            <span className="material-symbols-outlined text-base">clinical_notes</span>
-                            Start Consultation
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* Waiting Queue — every remaining today-patient not already
-                  spotlighted above (plain "waiting", "called", and any
-                  "sent_to_doctor" patient beyond the single Next Up card).
+              {/* Waiting Queue — every today-patient sent by reception or
+                  still waiting (plain "waiting", "called", "sent_to_doctor"),
+                  shown as one flat, fully-visible list — no single patient
+                  spotlighted while the rest hide behind a "+N ready" count.
                   The token number is shown for each; the doctor can start
                   consultation with any of them in whatever order they
                   choose — the token only identifies queue position, it
                   doesn't dictate consultation order. */}
               {(() => {
-                const spotlightedQueueId = sentToDoctorPatients[0]?.queue_id;
                 const waitingPatients = activeItems.filter(
-                  i => (i.status === 'waiting' || i.status === 'called' || i.status === 'sent_to_doctor')
-                    && i.queue_id !== spotlightedQueueId,
+                  i => i.status === 'waiting' || i.status === 'called' || i.status === 'sent_to_doctor',
                 );
                 if (waitingPatients.length === 0) return null;
                 return (
@@ -2575,7 +2496,7 @@ const WalkInQueue: React.FC = () => {
                   <span className="material-symbols-outlined text-base">send</span> Send to Doctor
                 </button>
               )}
-              {canActOnQueue && isSelectedDateToday && (detailItem.status === 'called' || detailItem.status === 'sent_to_doctor') && (
+              {canActOnQueue && isSelectedDateToday && (detailItem.status === 'waiting' || detailItem.status === 'called' || detailItem.status === 'sent_to_doctor') && (
                 <button onClick={() => { handleStartConsultation(detailItem.queue_id); setDetailItem(null); }}
                   className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-purple-500 rounded-lg hover:bg-purple-600 shadow-sm transition-colors">
                   <span className="material-symbols-outlined text-base">clinical_notes</span> Start Consultation

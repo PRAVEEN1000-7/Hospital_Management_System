@@ -664,6 +664,7 @@ def dispense_prescription(
         batch_id = item_data.get("batch_id")
         quantity = item_data.get("quantity", 0)
         requested_unit_price = Decimal(str(item_data.get("unit_price", 0)))
+        override_prescribed_limit = bool(item_data.get("override_prescribed_limit", False))
 
         if not medicine_id or not batch_id or quantity <= 0:
             continue
@@ -758,13 +759,15 @@ def dispense_prescription(
             )
             continue
 
-        if quantity > remaining_qty:
+        exceeds_prescribed = quantity > remaining_qty
+        if exceeds_prescribed and not override_prescribed_limit:
             failed_items.append({
                 "medicine_name": rx_item.medicine_name,
                 "reason": (
                     f"Cannot dispense {quantity} units. Prescribed: {prescribed_qty}, "
                     f"Already dispensed: {already_dispensed}, Remaining: {remaining_qty}. "
-                    f"You can dispense up to {remaining_qty} units."
+                    f"You can dispense up to {remaining_qty} units, or explicitly confirm "
+                    f"dispensing more than prescribed."
                 ),
             })
             continue
@@ -790,8 +793,14 @@ def dispense_prescription(
 
                 # Cap at prescribed quantity and mark as dispensed if complete.
                 # Patient-requested partial closure is allowed: dispensing less than
-                # prescribed quantity can still close the line item.
-                if rx_item.dispensed_quantity >= prescribed_qty:
+                # prescribed quantity can still close the line item. An explicit
+                # override (see exceeds_prescribed above) is the one case that
+                # legitimately dispenses ABOVE prescribed_qty — don't clamp it
+                # back down, or the audit trail's "requested vs recorded"
+                # quantities would silently disagree.
+                if exceeds_prescribed and override_prescribed_limit:
+                    rx_item.is_dispensed = True
+                elif rx_item.dispensed_quantity >= prescribed_qty:
                     rx_item.is_dispensed = True
                     rx_item.dispensed_quantity = prescribed_qty  # Ensure exact match
                 else:
@@ -802,6 +811,33 @@ def dispense_prescription(
             continue
 
         total_amount += line_total_sum
+
+        if exceeds_prescribed and override_prescribed_limit:
+            try:
+                from ..models.user import User
+                from ..core.audit_logger import AuditLogger, AuditAction
+                pharmacist = db.query(User).filter(User.id == user_id).first()
+                AuditLogger.log(
+                    action=AuditAction.PRESCRIPTION_DISPENSE,
+                    user=pharmacist,
+                    tenant=None,
+                    resource_type="prescription_item",
+                    resource_id=prescription_item_id,
+                    old_values={"prescribed_quantity": str(prescribed_qty), "already_dispensed": str(already_dispensed)},
+                    new_values={"dispensed_quantity": str(rx_item.dispensed_quantity)},
+                    metadata={
+                        "exceeded_prescribed": True,
+                        "prescription_id": str(prescription_id),
+                        "medicine_name": rx_item.medicine_name,
+                        "excess_quantity": str(quantity - remaining_qty),
+                    },
+                )
+            except Exception:
+                logger.warning("Failed to write audit log for prescribed-quantity override", exc_info=True)
+            logger.warning(
+                "Pharmacist %s dispensed %s of '%s' — %s more than prescribed (prescribed %s, already dispensed %s)",
+                user_id, quantity, rx_item.medicine_name, quantity - remaining_qty, prescribed_qty, already_dispensed,
+            )
         processed_items_count += 1
 
         logger.info(

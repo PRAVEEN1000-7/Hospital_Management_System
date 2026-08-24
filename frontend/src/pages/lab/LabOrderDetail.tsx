@@ -92,6 +92,8 @@ const LabOrderDetail: React.FC<LabOrderDetailProps> = ({ orderIdProp, onClose })
   const { showToast } = useToast();
   const { user } = useAuth();
   const isStaff = Boolean(user?.roles?.some((r) => STAFF_ROLES.includes(r)));
+  const isDoctor = Boolean(user?.roles?.includes('doctor'));
+  const canEditConfirmatoryDiagnosis = isDoctor || Boolean(user?.roles?.some((r) => ['super_admin', 'admin'].includes(r)));
 
   // Single "leave this screen" action — dismisses the dialog when embedded,
   // otherwise falls back to the original full-page navigation.
@@ -109,6 +111,8 @@ const LabOrderDetail: React.FC<LabOrderDetailProps> = ({ orderIdProp, onClose })
   const [savingItem, setSavingItem] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [confirmatoryDiagnosis, setConfirmatoryDiagnosis] = useState('');
+  const [savingDiagnosis, setSavingDiagnosis] = useState(false);
 
   const load = useCallback(async () => {
     if (!orderId) return;
@@ -118,6 +122,7 @@ const LabOrderDetail: React.FC<LabOrderDetailProps> = ({ orderIdProp, onClose })
       setOrder(data);
       setDrafts(Object.fromEntries(data.items.map((i) => [i.id, draftFromItem(i)])));
       setNotesDrafts(Object.fromEntries(data.items.map((i) => [i.id, i.result_notes || ''])));
+      setConfirmatoryDiagnosis(data.confirmatory_diagnosis || '');
     } catch (err: any) {
       showToast('error', err?.response?.data?.detail || 'Failed to load order');
       goBack();
@@ -206,6 +211,32 @@ const LabOrderDetail: React.FC<LabOrderDetailProps> = ({ orderIdProp, onClose })
       showToast('error', err?.response?.data?.detail || 'Failed to finalize report');
     } finally {
       setFinalizing(false);
+    }
+  };
+
+  const handleDeleteItem = async (itemId: string, testName: string) => {
+    if (!orderId) return;
+    if (!window.confirm(`Remove "${testName}" from this order? This test will no longer be billed.`)) return;
+    try {
+      const updated = await labService.deleteOrderItem(orderId, itemId);
+      setOrder(updated);
+      showToast('success', `Removed "${testName}" from the order`);
+    } catch (err: any) {
+      showToast('error', err?.response?.data?.detail || 'Failed to remove test');
+    }
+  };
+
+  const handleSaveConfirmatoryDiagnosis = async () => {
+    if (!orderId) return;
+    setSavingDiagnosis(true);
+    try {
+      const updated = await labService.updateConfirmatoryDiagnosis(orderId, confirmatoryDiagnosis);
+      setOrder(updated);
+      showToast('success', 'Confirmatory diagnosis saved');
+    } catch (err: any) {
+      showToast('error', err?.response?.data?.detail || 'Failed to save confirmatory diagnosis');
+    } finally {
+      setSavingDiagnosis(false);
     }
   };
 
@@ -420,11 +451,20 @@ const LabOrderDetail: React.FC<LabOrderDetailProps> = ({ orderIdProp, onClose })
                         <div className="text-xs text-slate-400">Catalog reference: {item.test_name}</div>
                       )}
                     </div>
-                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium capitalize ${
-                      done ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
-                    }`}>
-                      {done ? 'Completed' : 'Pending'}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium capitalize ${
+                        done ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                      }`}>
+                        {done ? 'Completed' : 'Pending'}
+                      </span>
+                      {isStaff && !done && !order.sale_id && order.items.length > 1 && (
+                        <button onClick={() => handleDeleteItem(item.id, item.billed_name || item.test_name)}
+                          title="Remove this test — not needed for this patient"
+                          className="print:hidden p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors">
+                          <span className="material-symbols-outlined text-base">delete</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   <div className="overflow-x-auto">
@@ -546,6 +586,35 @@ const LabOrderDetail: React.FC<LabOrderDetailProps> = ({ orderIdProp, onClose })
             })}
           </div>
         </div>
+
+        {/* Confirmatory Diagnosis — doctor's diagnosis once results are
+            back, distinct from the provisional diagnosis on the
+            originating prescription. Editable by doctor/admin; visible
+            read-only to lab staff once set. */}
+        {(canEditConfirmatoryDiagnosis || order.confirmatory_diagnosis) && (
+          <div className="relative z-0 overflow-hidden bg-white rounded-xl border border-slate-200 p-5">
+            <DocumentWatermark />
+            <h2 className="text-lg font-bold text-slate-900 mb-3">Confirmatory Diagnosis</h2>
+            {canEditConfirmatoryDiagnosis ? (
+              <div className="space-y-3">
+                <textarea
+                  value={confirmatoryDiagnosis}
+                  onChange={(e) => setConfirmatoryDiagnosis(e.target.value)}
+                  rows={3}
+                  placeholder="Diagnosis confirmed based on these lab results..."
+                  className="print:hidden w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+                <button onClick={handleSaveConfirmatoryDiagnosis} disabled={savingDiagnosis}
+                  className="print:hidden px-4 py-1.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 disabled:opacity-50">
+                  {savingDiagnosis ? 'Saving...' : 'Save Diagnosis'}
+                </button>
+                <p className="hidden print:block text-sm text-slate-900 whitespace-pre-line">{confirmatoryDiagnosis || '—'}</p>
+              </div>
+            ) : (
+              <p className="text-sm text-slate-700 whitespace-pre-line">{order.confirmatory_diagnosis || '—'}</p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -123,6 +123,9 @@ export interface LabOrder {
   appointment_id?: string | null;
   prescription_id?: string | null;
   notes?: string | null;
+  // Doctor's diagnosis once results are back — distinct from the
+  // provisional diagnosis on the originating prescription.
+  confirmatory_diagnosis?: string | null;
   is_finalized: boolean;
   status: string;
   report_status: LabReportStatus;
@@ -213,6 +216,7 @@ export interface LabBillingItem {
   payment_status: string;
   report_status: LabReportStatus;
   created_at: string;
+  has_sale: boolean;
 }
 
 export interface LabBillingListResponse {
@@ -249,6 +253,7 @@ export interface PatientLabResult {
   doctor_name?: string | null;
   finalized_at?: string | null;
   finalized_by_name?: string | null;
+  confirmatory_diagnosis?: string | null;
   items: PatientLabResultItem[];
 }
 

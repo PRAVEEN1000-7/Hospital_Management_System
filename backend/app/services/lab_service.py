@@ -221,6 +221,33 @@ def delete_lab_order(db: Session, order: LabOrder) -> None:
     db.commit()
 
 
+def delete_lab_order_item(db: Session, order: LabOrder, item_id: str | uuid.UUID) -> dict:
+    """Remove one test from an order — e.g. a doctor picked a whole test
+    category/panel and the lab technician finds one of the auto-selected
+    tests isn't actually needed for this patient. Only for a test that
+    hasn't been run yet (no result recorded) on an order that hasn't been
+    billed (see is_lab_order_billed) — callers enforce both before calling
+    this. Never removes the last remaining item; the whole order should be
+    deleted instead (see delete_lab_order) so an order is never left with
+    zero tests. Returns the removed item's id/test_name as plain values —
+    the ORM row is gone after commit, and the session's default
+    expire-on-commit would otherwise raise on any attribute access off the
+    now-deleted object."""
+    if isinstance(item_id, str):
+        item_id = uuid.UUID(item_id)
+    item = next((i for i in order.items if i.id == item_id), None)
+    if not item:
+        raise ValueError("Test not found on this order")
+    if len(order.items) <= 1:
+        raise ValueError("Cannot remove the last test on an order — delete the whole order instead")
+    if item.status == "completed" or item.resulted_at:
+        raise ValueError("Cannot remove a test that already has a result recorded")
+    removed = {"id": item.id, "test_name": item.test_name}
+    db.delete(item)
+    db.commit()
+    return removed
+
+
 # ══════════════════════════════════════════════════
 # Lab Order
 # ══════════════════════════════════════════════════
@@ -720,6 +747,12 @@ def list_lab_billing(
             "payment_status": sale.payment_status if sale else "pending",
             "report_status": order.report_status,
             "created_at": order.created_at,
+            # Distinct from payment_status == "pending": a LabSale row can
+            # exist (created the moment someone opens the payment modal)
+            # with payment_status still "pending" — is_lab_order_billed
+            # blocks deletion the instant a sale row exists at all, so the
+            # billing worklist's Delete action needs this, not payment_status.
+            "has_sale": sale is not None,
         })
 
     return {
@@ -1050,6 +1083,7 @@ def get_patient_lab_results(db: Session, patient_id: str | uuid.UUID, hospital_i
             "doctor_name": f"Dr. {o.doctor.user.full_name}" if getattr(o, "doctor", None) and o.doctor.user else None,
             "finalized_at": o.finalized_at,
             "finalized_by_name": finalizer_name,
+            "confirmatory_diagnosis": o.confirmatory_diagnosis,
             "items": items,
         })
     return result

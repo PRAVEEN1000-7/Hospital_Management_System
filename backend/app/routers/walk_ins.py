@@ -379,6 +379,21 @@ async def get_queue_status(
         doc = db.query(Doctor).filter(Doctor.user_id == current_user.id).first()
         if doc:
             resolved_doctor_id = doc.id
+        else:
+            # No Doctor record for this user — fail safe with an empty queue
+            # instead of falling through with no doctor filter below (which
+            # would silently hand this doctor-role user every OTHER doctor's
+            # patients in the hospital for today). Matches doctor_today's
+            # existing "no doctor found → return empty" behavior above.
+            logger.warning("get_queue_status: no Doctor record for user_id=%s hospital=%s", current_user.id, current_user.hospital_id)
+            return {
+                "doctor_id": None,
+                "queue_date": target_date.isoformat(),
+                "total_waiting": 0,
+                "total_in_progress": 0,
+                "total_completed": 0,
+                "items": [],
+            }
     elif doctor_id:
         try:
             resolved_doctor_id = uuid.UUID(doctor_id)
@@ -1158,6 +1173,12 @@ async def get_upcoming_queue(
         doc = db.query(Doctor).filter(Doctor.user_id == current_user.id).first()
         if doc:
             resolved_doctor_id = doc.id
+        else:
+            # Same fail-safe as GET /walk-ins/queue: no Doctor record for
+            # this doctor-role user must not fall through to an unfiltered
+            # (every doctor's) upcoming list.
+            logger.warning("get_upcoming_queue: no Doctor record for user_id=%s hospital=%s", current_user.id, current_user.hospital_id)
+            return {"doctor_id": None, "days": days, "date_groups": [], "total_upcoming": 0}
 
     today = hospital_today(current_user.hospital.timezone if current_user.hospital else None)
     end_date = today + timedelta(days=days)

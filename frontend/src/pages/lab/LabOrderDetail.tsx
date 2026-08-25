@@ -4,6 +4,7 @@ import labService from '../../services/labService';
 import type { LabOrder, LabOrderItem, LabResultFlag, LabQueueStatus } from '../../types/lab';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { hasAccess } from '../../config/modulePermissions';
 import { formatDateTime } from '../../utils/calendarDate';
 import { htmlStringToPdf } from '../../utils/pdf';
 import DocumentWatermark from '../../components/common/DocumentWatermark';
@@ -95,6 +96,11 @@ const LabOrderDetail: React.FC<LabOrderDetailProps> = ({ orderIdProp, onClose })
   const isStaff = Boolean(user?.roles?.some((r) => STAFF_ROLES.includes(r)));
   const isDoctor = Boolean(user?.roles?.includes('doctor'));
   const canEditConfirmatoryDiagnosis = isDoctor || Boolean(user?.roles?.some((r) => ['super_admin', 'admin'].includes(r)));
+  // lab_technician has no "general.patients" access at all (Layout.tsx/
+  // modulePermissions.ts intentionally exclude it from that matrix), so the
+  // patient-name link below only lights up for roles that can actually reach
+  // /patients/:id — everyone else still sees the plain name, same as before.
+  const canViewPatientProfile = hasAccess('general.patients', user?.roles);
 
   // Single "leave this screen" action — dismisses the dialog when embedded,
   // otherwise falls back to the original full-page navigation.
@@ -407,7 +413,18 @@ const LabOrderDetail: React.FC<LabOrderDetailProps> = ({ orderIdProp, onClose })
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
             <div>
               <div className="text-xs text-slate-500 uppercase font-semibold mb-1">Patient</div>
-              <div className="font-medium text-slate-900">{order.patient_name || '—'}</div>
+              {canViewPatientProfile && order.patient_id ? (
+                <button
+                  type="button"
+                  onClick={() => navigate(`/patients/${order.patient_id}`)}
+                  className="font-medium text-primary hover:underline text-left"
+                  title="View patient profile"
+                >
+                  {order.patient_name || '—'}
+                </button>
+              ) : (
+                <div className="font-medium text-slate-900">{order.patient_name || '—'}</div>
+              )}
             </div>
             <div>
               <div className="text-xs text-slate-500 uppercase font-semibold mb-1">Doctor</div>

@@ -37,6 +37,11 @@ interface DispensingItem extends DispensingPrescriptionItem {
   // required before the backend will accept a quantity above what was
   // prescribed; every such override is written to the audit log.
   overridePrescribedLimit?: boolean;
+  // Pharmacist-adjusted rate for this line, overriding the selected batch's
+  // stored selling_price — undefined means "use the batch price as-is".
+  // The backend now honors this over the batch price (see
+  // _allocate_batches_and_create_sale_items in dispensing_service.py).
+  overrideUnitPrice?: number;
 }
 
 // A medicine (or cataloged non-medicine pharmacy item — Medicine.category
@@ -252,6 +257,10 @@ const DispensingScreen: React.FC = () => {
           ...item,
           selectedBatchId: batchId,
           dispensedQty: newQty,
+          // A different batch can carry a different price — drop any manual
+          // rate override so the newly selected batch's own price shows,
+          // rather than silently carrying over a rate meant for the old one.
+          overrideUnitPrice: undefined,
         };
       })
     );
@@ -287,6 +296,12 @@ const DispensingScreen: React.FC = () => {
   const handleOverrideToggle = (itemIndex: number, value: boolean) => {
     setDispensingItems((prev) =>
       prev.map((item, idx) => (idx === itemIndex ? { ...item, overridePrescribedLimit: value } : item))
+    );
+  };
+
+  const handleUnitPriceChange = (itemIndex: number, value: number | undefined) => {
+    setDispensingItems((prev) =>
+      prev.map((item, idx) => (idx === itemIndex ? { ...item, overrideUnitPrice: value } : item))
     );
   };
 
@@ -505,7 +520,7 @@ const DispensingScreen: React.FC = () => {
                 medicine_id: item.medicine_id!,
                 batch_id: item.selectedBatchId || '',
                 quantity: item.dispensedQty,
-                unit_price: Number(fallbackBatch?.selling_price || 0),
+                unit_price: item.overrideUnitPrice ?? Number(fallbackBatch?.selling_price || 0),
               };
             }),
           ...extraItemsPayload,
@@ -698,7 +713,7 @@ const DispensingScreen: React.FC = () => {
           medicine_id: item.medicine_id,
           batch_id: item.selectedBatchId!,
           quantity: item.dispensedQty,
-          unit_price: Number(batch.selling_price) || 0,
+          unit_price: item.overrideUnitPrice ?? (Number(batch.selling_price) || 0),
           override_prescribed_limit: item.dispensedQty > item.remainingQty ? true : undefined,
         });
       });
@@ -1173,6 +1188,27 @@ const DispensingScreen: React.FC = () => {
                               </option>
                             ))}
                           </select>
+                          {/* Rate — defaults to the selected batch's stored selling
+                              price, but the pharmacist can raise or lower it for
+                              this dispense (e.g. a discount, or a price correction);
+                              the backend now honors this over the batch price. */}
+                          <div className="mt-2">
+                            <label className="block text-xs font-semibold text-slate-600 uppercase mb-1.5">
+                              Rate (₹)
+                            </label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={item.overrideUnitPrice ?? (Number(selectedBatch?.selling_price) || '')}
+                              placeholder="0.00"
+                              onChange={(e) => {
+                                const raw = e.target.value;
+                                handleUnitPriceChange(index, raw === '' ? undefined : Math.max(0, parseFloat(raw) || 0));
+                              }}
+                              className="w-full px-3 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 transition-all"
+                            />
+                          </div>
                         </div>
 
                         {/* Quantity Input */}
@@ -1261,7 +1297,9 @@ const DispensingScreen: React.FC = () => {
                             // selling_price arrives as a string (Decimal serialized by the
                             // API) despite the MedicineBatch type claiming number — Number()
                             // it here since unitPrice.toFixed() below needs a real number.
-                            const unitPrice = Number(selectedBatch?.selling_price) || 0;
+                            // Reflects the pharmacist's rate override when set, same value
+                            // that will actually be billed (see the submit payload below).
+                            const unitPrice = item.overrideUnitPrice ?? (Number(selectedBatch?.selling_price) || 0);
                             if (!dailyDoseCount || !unitPrice || item.dispensedQty <= 0) return null;
                             const totalDays = prescribedQuantity / dailyDoseCount;
                             const daysCoveredNow = item.dispensedQty / dailyDoseCount;

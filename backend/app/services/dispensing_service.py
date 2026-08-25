@@ -523,8 +523,15 @@ def _allocate_batches_and_create_sale_items(
         # Reduce batch stock
         alloc_batch.quantity -= alloc_qty
 
-        # Use actual batch selling price for accurate financial traceability.
-        effective_unit_price = Decimal(str(alloc_batch.selling_price)) if alloc_batch.selling_price is not None else requested_unit_price
+        # The pharmacist can adjust the rate at dispense time (DispensingScreen.tsx's
+        # editable Unit Price field) — honor that requested price when given;
+        # only fall back to the batch's stored selling_price if the caller sent
+        # nothing usable (0/negative), which also covers callers that never
+        # populate unit_price at all.
+        effective_unit_price = (
+            requested_unit_price if requested_unit_price and requested_unit_price > 0
+            else (Decimal(str(alloc_batch.selling_price)) if alloc_batch.selling_price is not None else Decimal("0"))
+        )
         line_total = effective_unit_price * alloc_qty
         line_total_sum += line_total
 

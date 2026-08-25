@@ -28,8 +28,14 @@ logger = logging.getLogger(__name__)
 
 # Roles allowed to be picked as "who actually collected" a payment — matches
 # the roles already permitted to record payments in the first place
-# (routers/payments.py: BILLING_STAFF_ROLES).
-COLLECTOR_ROLES = {"super_admin", "admin", "cashier", "pharmacist", "receptionist"}
+# (routers/payments.py: BILLING_STAFF_ROLES). "nurse" was missing here even
+# though nurse already has the same narrow consultation-fee carve-out as
+# receptionist in _require_billing_staff_or_receptionist /
+# _require_billing_staff_or_consultation_payment — without it, a nurse's own
+# "Collect Fee" submission (WalkInQueue.tsx defaults "Collected By" to the
+# logged-in user) 400'd on this eligibility check even though the nurse was
+# otherwise fully authorized to record the payment.
+COLLECTOR_ROLES = {"super_admin", "admin", "cashier", "pharmacist", "receptionist", "nurse"}
 
 
 def generate_payment_number() -> str:

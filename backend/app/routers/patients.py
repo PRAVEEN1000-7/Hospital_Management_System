@@ -69,27 +69,32 @@ patient_delete_role_guard = require_permission("general.patients", "edit")
 patient_trend_role_guard = require_any_role("doctor", "admin", "super_admin")
 
 
-_PATIENT_SEARCH_CARVEOUT_ROLES = {"pharmacist", "optical_staff"}
+_PATIENT_SEARCH_CARVEOUT_ROLES = {"pharmacist", "optical_staff", "lab_technician"}
 
 
 def _patient_read_or_write_with_pharmacist(level: str):
-    """Narrow carve-out letting a pharmacist or optical_staff user search
-    for/view an existing patient, or register a new one, from their own
-    walk-in flows (PrescriptionBuilder.tsx's patient search + "Register as
-    new patient" round trip via Register.tsx for pharmacist;
+    """Narrow carve-out letting a pharmacist, optical_staff, or lab_technician
+    user search for/view an existing patient, or register a new one, from
+    their own walk-in flows (PrescriptionBuilder.tsx's patient search +
+    "Register as new patient" round trip via Register.tsx for pharmacist;
     NewOpticalPrescription.tsx / NewOpticalSale.tsx's own patient search +
-    the same Register.tsx round trip for optical_staff) — without granting
-    the full "general.patients" edit right, which also gates updating and
-    soft-deleting ANY patient's demographic record (patient_update_role_guard
-    / patient_delete_role_guard below, deliberately left untouched by this
-    carve-out). Only the three endpoints these roles actually need here
-    (list/search, get one, create) use this guard instead.
+    the same Register.tsx round trip for optical_staff; NewLabOrder.tsx /
+    LabReferralForm.tsx's patient search + the same round trip for
+    lab_technician) — without granting the full "general.patients" edit
+    right, which also gates updating and soft-deleting ANY patient's
+    demographic record (patient_update_role_guard / patient_delete_role_guard
+    below, deliberately left untouched by this carve-out). Only the three
+    endpoints these roles actually need here (list/search, get one, create)
+    use this guard instead.
 
-    optical_staff has no entry at all in the "general.patients" matrix (see
-    module_roles.py), so every patient search in the Optical module 403'd
-    silently — NewOpticalPrescription.tsx's search effect swallows the error
-    into an empty suggestion list, which read as "the patient number isn't
-    suggesting anything" rather than an obvious permission error.
+    None of these three roles has any entry at all in the "general.patients"
+    matrix (see module_roles.py), so every patient search in their modules
+    403'd silently — e.g. NewOpticalPrescription.tsx's search effect
+    swallows the error into an empty suggestion list, which read as "the
+    patient number isn't suggesting anything" rather than an obvious
+    permission error. lab_technician had the exact same gap in
+    NewLabOrder.tsx/LabReferralForm.tsx's patient search until this was
+    added alongside the other two.
 
     Mirrors the rx_new_edit_or_pharmacist_guard carve-out pattern already
     used in prescriptions.py for the same kind of narrowly-scoped addition.
@@ -104,7 +109,7 @@ def _patient_read_or_write_with_pharmacist(level: str):
         if check_permission(db, current_user, "general.patients", level):
             return current_user
         logger.warning(
-            "RBAC deny (general.patients/pharmacist+optical_staff carve-out) user=%s roles=%s level=%s",
+            "RBAC deny (general.patients/pharmacist+optical_staff+lab_technician carve-out) user=%s roles=%s level=%s",
             getattr(current_user, "username", "unknown"), roles, level,
         )
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role permissions")

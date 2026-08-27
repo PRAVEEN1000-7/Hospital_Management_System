@@ -578,18 +578,47 @@ def reschedule_appointment(
         return None
     
     old_status = appt.status
-    # Drop the token under the old date before moving it — otherwise the old
-    # slot keeps showing "waiting" on the Queue Display under a date the
-    # appointment no longer occupies.
-    _skip_queue_entry(db, appt.id)
+    date_changed = appt.appointment_date != new_date
+    existing_entry = (
+        db.query(AppointmentQueue)
+        .filter(AppointmentQueue.appointment_id == appt.id)
+        .first()
+    )
+
     appt.appointment_date = new_date
     appt.start_time = new_time
     appt.status = "rescheduled"
     appt.reschedule_count = (appt.reschedule_count or 0) + 1
     appt.reschedule_reason = reason
-    # Re-issue a token under the new date so it still shows up on the Queue
-    # Display for whichever day it now falls on.
-    _create_queue_entry(db, appt)
+
+    if date_changed:
+        # Old slot's queue entry no longer applies — mark it skipped so it
+        # stops showing "waiting" there, then mint a fresh queue entry (and
+        # a fresh token: the daily counter the old one was minted against
+        # was scoped to the OLD date, so carrying it over verbatim risks
+        # colliding with — or being wildly out of sequence from — whatever
+        # number a different patient legitimately gets minted under the
+        # NEW date's own count).
+        if existing_entry and existing_entry.status not in ("completed", "skipped"):
+            existing_entry.status = "skipped"
+        appt.visit_token = None
+        _create_queue_entry(db, appt)
+    elif existing_entry:
+        # Same day, just a different time — reuse this SAME queue row in
+        # place instead of skip-then-insert-a-new-one. A new row here would
+        # carry the identical (doctor_id, queue_date, queue_number) as the
+        # row being skipped, which the DB's uniqueness constraint on that
+        # triple rejects outright — every same-day reschedule 500'd before
+        # this fix. Reactivating in place also means the patient doesn't
+        # lose their spot in the queue over what's really just a time tweak.
+        if existing_entry.status in ("completed", "skipped"):
+            existing_entry.status = "waiting"
+            existing_entry.called_at = None
+            existing_entry.position = _next_queue_position(db, appt.doctor_id, appt.appointment_date)
+    else:
+        # No prior queue entry at all (e.g. booked in a state that wasn't
+        # queue-eligible at creation time) — create one now.
+        _create_queue_entry(db, appt)
 
     db.commit()
     db.refresh(appt)

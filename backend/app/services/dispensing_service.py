@@ -641,7 +641,7 @@ def dispense_prescription(
         created_by=user_id,  # Use created_by (which maps to dispensed_by in DB)
         notes=notes,
         created_at=datetime.now(timezone.utc),
-        queue_token=get_or_assign_visit_token(db, hospital_id, appointment_id=rx.appointment_id),
+        queue_token=get_or_assign_visit_token(db, hospital_id, appointment_id=rx.appointment_id, patient_id=rx.patient_id),
     )
     db.add(dispensing)
     db.flush()

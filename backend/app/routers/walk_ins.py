@@ -272,7 +272,7 @@ async def register_walk_in(
         if doctor_id:
             from ..services.billing_queue_service import get_or_assign_visit_token
 
-            q_num = get_or_assign_visit_token(db, current_user.hospital_id, appointment_id=appt.id)
+            q_num = get_or_assign_visit_token(db, current_user.hospital_id, appointment_id=appt.id, patient_id=patient_id)
             q_pos = _next_position(db, doctor_id, today)
             queue_entry = AppointmentQueue(
                 appointment_id=appt.id,
@@ -932,7 +932,7 @@ async def assign_doctor_to_walkin(
     # Reuses appt's existing visit_token (set when the walk-in was first
     # registered) rather than minting a new one — reassigning to a
     # different doctor must not change the patient's token.
-    q_num = get_or_assign_visit_token(db, appt.hospital_id, appointment_id=appt.id)
+    q_num = get_or_assign_visit_token(db, appt.hospital_id, appointment_id=appt.id, patient_id=appt.patient_id)
     # Queue by the appointment's own date, not "today" — a future-dated
     # follow-up/referral assigned through this endpoint must not show up in
     # today's waiting count (see get_doctor_queue_loads below, and the
@@ -1469,7 +1469,7 @@ async def refer_patient_to_doctor(
             referral_appt.visit_token = original_appt.visit_token
 
         # ── Add to target doctor's queue for the referral date ──
-        q_num = get_or_assign_visit_token(db, original_appt.hospital_id, appointment_id=referral_appt.id)
+        q_num = get_or_assign_visit_token(db, original_appt.hospital_id, appointment_id=referral_appt.id, patient_id=original_appt.patient_id)
         q_pos = _next_position(db, to_doctor_uuid, referral_date)
         new_queue = AppointmentQueue(
             appointment_id=referral_appt.id,

@@ -409,8 +409,13 @@ def enqueue_lab_queue_entry(db: Session, lab_order: LabOrder) -> None:
 
     if lab_order.queue_token:
         return
+    # patient_id fallback: a standalone lab order (NewLabOrder.tsx — "no
+    # prior doctor consultation required") has no appointment_id at all, so
+    # without this it always minted a brand-new token even when the patient
+    # already had one from a doctor visit earlier the same day — see
+    # get_or_assign_visit_token.
     lab_order.queue_token = get_or_assign_visit_token(
-        db, lab_order.hospital_id, lab_order.appointment_id
+        db, lab_order.hospital_id, lab_order.appointment_id, patient_id=lab_order.patient_id
     )
     lab_order.queue_status = "waiting"
     db.flush()

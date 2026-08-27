@@ -134,11 +134,81 @@ def _next_hospital_wide_daily_token(
     return max((m for m in maxes if m is not None), default=0) + 1
 
 
+def _find_existing_token_for_patient(
+    db: Session, hospital_id: uuid.UUID, patient_id: uuid.UUID, target_date: date,
+) -> Optional[int]:
+    """Any token already issued to this patient today, across every
+    department (doctor queue, pharmacy, optical, lab) — checked before
+    minting a new one for a call that has no appointment_id of its own
+    (a pharmacy/optical counter sale not tied to a specific prescription, a
+    manually-added pharmacy walk-in, or a standalone "New Lab Order" with no
+    prior consultation). Without this, any of those "no appointment_id"
+    paths minted a brand-new token even when the same patient already had
+    one from earlier that same day via a different department — the most
+    common real-world cause of one patient ending up with two different
+    token numbers for what was really one visit.
+
+    Same five sources _next_hospital_wide_daily_token maxes over, just
+    filtered by patient instead of taking the hospital-wide max. Checked in
+    roughly chronological order (a doctor visit typically happens before
+    pharmacy/optical/lab), but any hit is equally valid — they're all the
+    same shared token once assigned.
+    """
+    from ..models.appointment import Appointment
+    from ..models.pharmacy import PharmacyQueueEntry, PharmacySale
+    from ..models.optical import OpticalSale
+    from ..models.lab import LabOrder
+
+    day_start, day_end = hospital_today_utc_range_by_id(db, hospital_id, target_date)
+
+    appt_token = (
+        db.query(Appointment.visit_token)
+        .filter(
+            Appointment.hospital_id == hospital_id,
+            Appointment.patient_id == patient_id,
+            Appointment.appointment_date == target_date,
+            Appointment.visit_token.isnot(None),
+        )
+        .order_by(Appointment.created_at.asc())
+        .limit(1)
+        .scalar()
+    )
+    if appt_token:
+        return appt_token
+
+    def _first_today(model, token_col):
+        return (
+            db.query(token_col)
+            .filter(
+                model.hospital_id == hospital_id,
+                model.patient_id == patient_id,
+                model.created_at >= day_start,
+                model.created_at < day_end,
+                token_col.isnot(None),
+            )
+            .order_by(model.created_at.asc())
+            .limit(1)
+            .scalar()
+        )
+
+    for model, col in (
+        (PharmacyQueueEntry, PharmacyQueueEntry.queue_token),
+        (PharmacySale, PharmacySale.queue_token),
+        (OpticalSale, OpticalSale.queue_token),
+        (LabOrder, LabOrder.queue_token),
+    ):
+        found = _first_today(model, col)
+        if found:
+            return found
+    return None
+
+
 def get_or_assign_visit_token(
     db: Session,
     hospital_id: uuid.UUID,
     appointment_id: Optional[uuid.UUID] = None,
     visit_date: Optional[date] = None,
+    patient_id: Optional[uuid.UUID] = None,
 ) -> int:
     """
     The one token for a patient's whole visit — shared by every department
@@ -151,9 +221,14 @@ def get_or_assign_visit_token(
     walk_ins.py's referral flow, which copies the parent's visit_token onto
     the child before calling this), that same token is returned — a visit
     is only ever assigned one token, no matter how many times this is
-    called for it. Otherwise a new hospital-wide token is minted and, if an
-    appointment was given, persisted onto it so every later lookup for this
-    visit reuses it.
+    called for it. Otherwise, if `patient_id` is given, any token already
+    issued to this patient today via a different department is reused (see
+    _find_existing_token_for_patient) — this is what keeps a standalone
+    pharmacy/optical/lab entry with no appointment_id of its own from
+    minting a second, mismatched token for a patient who already has one
+    from a doctor visit earlier the same day. Only when neither produces a
+    token is a new hospital-wide one minted and, if an appointment was
+    given, persisted onto it so every later lookup for this visit reuses it.
 
     `visit_date` defaults to the hospital's today (every same-day caller —
     walk-ins, pharmacy, optical). Pass the appointment's own date for a
@@ -161,12 +236,22 @@ def get_or_assign_visit_token(
     count instead of the (irrelevant) day it happened to be booked on.
     """
     from ..models.appointment import Appointment
+    from ..core.hospital_time import hospital_today_by_id
 
     appt = None
     if appointment_id:
         appt = db.query(Appointment).filter(Appointment.id == appointment_id).first()
         if appt and appt.visit_token:
             return appt.visit_token
+
+    if patient_id:
+        target_date = visit_date or hospital_today_by_id(db, hospital_id)
+        existing = _find_existing_token_for_patient(db, hospital_id, patient_id, target_date)
+        if existing:
+            if appt:
+                appt.visit_token = existing
+                db.flush()
+            return existing
 
     token = _next_hospital_wide_daily_token(db, hospital_id, visit_date)
     if appt:
@@ -209,12 +294,15 @@ def enqueue_pharmacy_queue_entry(
     prescription) or manual (walk-in, no prescription). `appointment_id`
     (the finalized prescription's own, when there is one) lets this entry
     inherit the patient's existing visit token instead of minting a new
-    one — see get_or_assign_visit_token."""
+    one; `patient_id` is passed through too so a manually-added walk-in
+    still finds and reuses that same token when the patient already has one
+    from a doctor visit today, even without an appointment_id at hand — see
+    get_or_assign_visit_token."""
     from ..models.pharmacy import PharmacyQueueEntry
 
     entry = PharmacyQueueEntry(
         hospital_id=hospital_id,
-        queue_token=get_or_assign_visit_token(db, hospital_id, appointment_id),
+        queue_token=get_or_assign_visit_token(db, hospital_id, appointment_id, patient_id=patient_id),
         prescription_id=prescription.id if prescription else None,
         patient_id=patient_id,
         patient_name=patient_name,

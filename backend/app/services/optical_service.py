@@ -604,7 +604,12 @@ def create_sale(db: Session, hospital_id: uuid.UUID, data: dict, user_id: uuid.U
         payment_method=data.get("payment_method", "cash"),
         amount_tendered=Decimal(str(data.get("amount_tendered", 0))),
         advance_amount=Decimal(str(data.get("advance_amount", 0))),
-        queue_token=get_or_assign_visit_token(db, hospital_id, sale_appointment_id),
+        # patient_id fallback: without it, a sale not tied to a specific
+        # optical prescription (a replacement/repair order, or the counter
+        # simply not linking one) minted a brand-new token even when this
+        # same patient already had one from a doctor visit or another
+        # department earlier today — see get_or_assign_visit_token.
+        queue_token=get_or_assign_visit_token(db, hospital_id, sale_appointment_id, patient_id=uuid.UUID(data["patient_id"])),
         queue_status="waiting",
     )
     db.add(sale)

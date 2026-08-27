@@ -17,9 +17,29 @@ interface VitalsCardProps {
   // eye hospitals do (NurseVitals.tsx / PrescriptionBuilder.tsx). Kept
   // separate from VitalsValues rather than folded in, so a non-eye-hospital
   // caller isn't forced to carry an unused field through its own state.
+  // Stored/sent as a single "{number} {unit}" string (e.g. "110 mg/dL") —
+  // unchanged externally — so the print template (which prints this string
+  // as-is, see prescriptions.py's PDF route) always includes the unit with
+  // no backend changes needed.
   bloodSugar?: string;
   onBloodSugarChange?: (value: string) => void;
 }
+
+const BLOOD_SUGAR_UNITS = ['mg/dL', 'mmol/L', 'dg/ml'];
+
+// Splits "110 mg/dL" -> { amount: "110", unit: "mg/dL" }. Falls back to
+// mg/dL when the string has no recognized unit yet (a brand-new entry, or
+// an old value saved before this split existed) so the dropdown always has
+// a valid selection.
+const splitBloodSugar = (raw: string): { amount: string; unit: string } => {
+  const trimmed = raw.trim();
+  for (const unit of BLOOD_SUGAR_UNITS) {
+    if (trimmed.toLowerCase().endsWith(unit.toLowerCase())) {
+      return { amount: trimmed.slice(0, trimmed.length - unit.length).trim(), unit };
+    }
+  }
+  return { amount: trimmed, unit: 'mg/dL' };
+};
 
 // Shared between the doctor's PrescriptionBuilder and the nurse's Vitals
 // entry screen (NurseVitals.tsx) — same fields, same labels, same layout,
@@ -27,6 +47,12 @@ interface VitalsCardProps {
 const VitalsCard: React.FC<VitalsCardProps> = ({ values, onChange, disabled, bloodSugar, onBloodSugarChange }) => {
   const set = (key: keyof VitalsValues) => (e: React.ChangeEvent<HTMLInputElement>) =>
     onChange({ ...values, [key]: e.target.value });
+
+  const { amount: bsAmount, unit: bsUnit } = bloodSugar !== undefined ? splitBloodSugar(bloodSugar) : { amount: '', unit: 'mg/dL' };
+  const emitBloodSugar = (amount: string, unit: string) => {
+    if (!onBloodSugarChange) return;
+    onBloodSugarChange(amount.trim() ? `${amount.trim()} ${unit}` : '');
+  };
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
@@ -66,8 +92,14 @@ const VitalsCard: React.FC<VitalsCardProps> = ({ values, onChange, disabled, blo
         {bloodSugar !== undefined && onBloodSugarChange && (
           <div>
             <label className="block text-xs font-semibold text-slate-500 mb-1.5">Blood Sugar</label>
-            <input type="text" value={bloodSugar} onChange={(e) => onBloodSugarChange(e.target.value)} disabled={disabled}
-              placeholder="110 mg/dL" className="input-field" />
+            <div className="flex gap-1.5">
+              <input type="text" value={bsAmount} onChange={(e) => emitBloodSugar(e.target.value, bsUnit)} disabled={disabled}
+                placeholder="110" className="input-field flex-1 min-w-0" />
+              <select value={bsUnit} onChange={(e) => emitBloodSugar(bsAmount, e.target.value)} disabled={disabled}
+                className="input-field w-[5.5rem] shrink-0 px-1.5">
+                {BLOOD_SUGAR_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+              </select>
+            </div>
           </div>
         )}
       </div>

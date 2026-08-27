@@ -97,6 +97,7 @@ export interface Prescription {
   consultation_invoice_status?: string | null;
   final_amount?: number | null;
   dispensed_at?: string | null;
+  has_lab_order?: boolean;
   items: PrescriptionItem[];
 }
 

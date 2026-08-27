@@ -727,6 +727,7 @@ const Register: React.FC = () => {
                   <select value={bloodSugarUnit} onChange={(e) => setBloodSugarUnit(e.target.value)} className={selectClass}>
                     <option value="mg/dL">mg/dL</option>
                     <option value="mmol/L">mmol/L</option>
+                    <option value="dg/ml">dg/ml</option>
                   </select>
                 </div>
               </div>

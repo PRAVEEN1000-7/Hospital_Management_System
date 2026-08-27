@@ -926,6 +926,10 @@ def enrich_prescription(db: Session, rx: Prescription) -> dict:
     else:
         d["doctor_name"] = None
 
+    # Whether this visit already has a lab order — see has_lab_order's
+    # docstring on PrescriptionResponse.
+    d["has_lab_order"] = _find_linked_lab_order(db, rx) is not None
+
     # Items
     items = db.query(PrescriptionItem).filter(
         PrescriptionItem.prescription_id == rx.id

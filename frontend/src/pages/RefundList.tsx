@@ -169,6 +169,12 @@ const RefundList: React.FC = () => {
           <h1 className="text-2xl font-bold text-slate-900">Refunds</h1>
           <p className="text-sm text-slate-500 mt-0.5">{total} record{total !== 1 ? 's' : ''}</p>
         </div>
+        {isBillingStaff && (
+          <button onClick={() => navigate('/billing/refunds/new')}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors">
+            <span className="material-symbols-outlined text-lg">currency_exchange</span> New Refund
+          </button>
+        )}
       </div>
 
       {/* Filters */}

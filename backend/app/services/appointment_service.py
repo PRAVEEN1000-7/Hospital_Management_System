@@ -1056,10 +1056,7 @@ def get_doctor_today_summary(db: Session, doctor_id: uuid.UUID, hospital_id: uui
     doctor_rate = float(doctor.consultation_fee) if doctor and doctor.consultation_fee is not None else 0.0
 
     patients = []
-    seen_patient_ids = set()
     for appt in appointments:
-        seen_patient_ids.add(appt.patient_id)
-
         invoice = (
             db.query(Invoice)
             .filter(Invoice.appointment_id == appt.id, Invoice.is_deleted == False)
@@ -1108,7 +1105,15 @@ def get_doctor_today_summary(db: Session, doctor_id: uuid.UUID, hospital_id: uui
         "doctor_id": str(doctor_id),
         "date": str(today),
         "consultation_fee_rate": doctor_rate,
-        "patients_handled": len(seen_patient_ids),
+        # Per VISIT (appointment), not per distinct patient — a patient with
+        # two completed visits with this doctor today (e.g. a consultation
+        # plus a separate same-day follow-up) counts as 2 here, matching how
+        # every other "Completed" count in the app (the My Patients stat
+        # tiles, the Walk-in Queue's own Completed count) is per-visit. This
+        # used to be len(seen_patient_ids) — deduping by patient made this
+        # number silently undercount relative to those other counts whenever
+        # any patient had more than one handled visit the same day.
+        "patients_handled": len(appointments),
         "consultation_fee_collected_total": round(float(collected_total or 0), 2),
         "patients": patients,
     }

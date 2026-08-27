@@ -138,6 +138,15 @@ const PrescriptionBuilder: React.FC = () => {
   // flow needs its own "Save Changes" action instead of "Save & Send to
   // Pharmacy" / "Save & Complete".
   const [editingFinalizedRx, setEditingFinalizedRx] = useState(false);
+  // Whether this visit already has a lab order — distinct from isEditMode.
+  // A prescription commonly enters edit mode on its very first real save
+  // (e.g. a nurse's draft-vitals record already exists for this visit — see
+  // the by-appointment redirect effect below), at which point it has NO lab
+  // order yet even though isEditMode is true. Using isEditMode itself to
+  // decide "should we create the lab order" skipped that first-ever
+  // creation silently — the doctor picked lab tests and finalized, but no
+  // order was ever created, so results never showed up anywhere downstream.
+  const [hasExistingLabOrder, setHasExistingLabOrder] = useState(false);
   const pharmacyEnabled = isModuleEnabled('pharmacy');
   const opticalModuleEnabled = isModuleEnabled('optical');
   // Walk-in-at-the-pharmacy-counter flow: a pharmacist (no linked Doctor row)
@@ -504,6 +513,7 @@ const PrescriptionBuilder: React.FC = () => {
           return;
         }
         setEditingFinalizedRx(!!rx.is_finalized);
+        setHasExistingLabOrder(!!rx.has_lab_order);
         setPatientId(rx.patient_id);
         setAppointmentId(rx.appointment_id || '');
         setClinicalNotes(rx.clinical_notes || '');
@@ -1060,9 +1070,14 @@ const PrescriptionBuilder: React.FC = () => {
       // Lab order — independent, non-blocking, same sequencing as optical:
       // a failure here doesn't roll back the drug prescription. The
       // server-side finalize_prescription links + queues it automatically.
-      // Only relevant on first creation (a lab order is only ever created
-      // once per prescription, never re-created on a later edit/save).
-      if (hasLab && !isEditMode) {
+      // Gated on hasExistingLabOrder (does THIS visit already have one),
+      // not isEditMode (is the prescription record itself new) — a
+      // prescription commonly starts in edit mode on its very first real
+      // save (a nurse's draft-vitals record already existed for this visit)
+      // with no lab order yet, and !isEditMode alone silently skipped
+      // creating one in that case even though this was the first and only
+      // time lab tests were ever selected for this visit.
+      if (hasLab && !hasExistingLabOrder) {
         try {
           await labService.createOrder({
             patient_id: patient.id,
@@ -1071,6 +1086,10 @@ const PrescriptionBuilder: React.FC = () => {
             test_ids: selectedLabTestIds,
             notes: labNotes || undefined,
           });
+          // Flip immediately so a second "Save Draft" click later in this
+          // same edit session (isEditMode saves without finalizing don't
+          // navigate away — see below) doesn't create a duplicate order.
+          setHasExistingLabOrder(true);
         } catch (labErr: any) {
           showToast(
             'error',

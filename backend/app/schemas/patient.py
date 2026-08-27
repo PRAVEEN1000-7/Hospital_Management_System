@@ -64,7 +64,7 @@ class PatientBase(BaseModel):
     reason_for_visit: Optional[str] = Field(None, max_length=2000)
     symptoms: Optional[list[str]] = None
     blood_sugar_value: Optional[Decimal] = Field(None, ge=0, le=1000)
-    blood_sugar_unit: Optional[str] = Field(None, pattern="^(mg/dL|mmol/L)$")
+    blood_sugar_unit: Optional[str] = Field(None, pattern="^(mg/dL|mmol/L|dg/ml)$")
 
     @field_validator("title")
     @classmethod

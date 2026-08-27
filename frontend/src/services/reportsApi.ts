@@ -5,7 +5,7 @@
  */
 import api from './api';
 import appointmentService from './appointmentService';
-import type { AppointmentStats, EnhancedAppointmentStats } from '../types/appointment';
+import type { EnhancedAppointmentStats } from '../types/appointment';
 import type {
   DashboardFilters,
   DashboardSummary,
@@ -36,29 +36,23 @@ const warn = (panel: string) =>
 async function getDashboardSummary(
   filters: DashboardFilters,
 ): Promise<DashboardSummary> {
-  const [stats, revenue] = await Promise.all([
-    appointmentService.getStats(filters.dateFrom, filters.dateTo, filters.doctorId || undefined)
-      .catch((): AppointmentStats => ({
-        total_appointments: 0, total_scheduled: 0, total_walk_ins: 0, total_completed: 0,
-        total_cancelled: 0, total_no_shows: 0, total_pending: 0, completion_rate: 0,
-        cancellation_rate: 0, no_show_rate: 0, average_wait_time: 0,
-      })),
-    api.get('/invoices/stats/revenue-summary', {
-      params: { date_from: filters.dateFrom, date_to: filters.dateTo },
-    }).then((r) => r.data).catch(() => {
-      warn('DashboardSummary (revenue)');
-      return { total_revenue: 0, revenue_change_pct: 0, outstanding_dues: 0, dues_change_pct: 0 };
-    }),
-  ]);
+  const revenue = await api.get('/invoices/stats/revenue-summary', {
+    params: { date_from: filters.dateFrom, date_to: filters.dateTo },
+  }).then((r) => r.data).catch(() => {
+    warn('DashboardSummary (revenue)');
+    return { total_revenue: 0, revenue_change_pct: 0, outstanding_dues: 0, dues_change_pct: 0 };
+  });
 
   return {
     total_revenue: revenue.total_revenue,
     revenue_change_pct: revenue.revenue_change_pct,
-    opd_patients_today: stats.total_completed + stats.total_pending,
-    opd_change_pct:
-      stats.total_appointments > 0
-        ? Number(((stats.completion_rate - 80) / 80 * 100).toFixed(1))
-        : 0,
+    // OPD Patients Today is fetched directly by KPIStrip, always scoped to
+    // literally today — it used to be computed here from this same
+    // period-filtered `stats` (7d/30d/90d/custom), which showed under a
+    // "Today" label regardless of the selected period. Left at 0 here since
+    // nothing reads them from DashboardSummary anymore.
+    opd_patients_today: 0,
+    opd_change_pct: 0,
     // Pending Rx / Low Stock are read directly from usePharmacyDashboard /
     // useInventoryDashboard by KPIStrip, not from this object — left at 0
     // here since nothing reads them from DashboardSummary anymore.

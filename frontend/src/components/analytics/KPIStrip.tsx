@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useDashboardSummary, usePharmacyDashboard, useInventoryDashboard } from '../../hooks/useAnalyticsQueries';
 import { useAnalyticsStore } from '../../stores/analyticsStore';
+import appointmentService from '../../services/appointmentService';
+import { formatLocalDateISO } from '../../utils/calendarDate';
 
 // ── Currency formatter ───────────────────────────────────────────────────
 
@@ -79,9 +81,41 @@ const KPIStrip: React.FC = () => {
   const { data: pharmacyData } = usePharmacyDashboard();
   const { data: inventoryData } = useInventoryDashboard();
 
+  // "OPD Patients Today" must always mean literally today, regardless of
+  // whatever historical period (7d/30d/90d/custom) the rest of this strip is
+  // scoped to — dashboardData.opd_patients_today is derived from that SAME
+  // shared period filter (see reportsApi.getDashboardSummary), so with the
+  // default 30-day period this card was silently showing a 30-day total
+  // under a "Today" label. Fetched independently here so it's correct no
+  // matter what the user has the period selector set to.
+  const [opdToday, setOpdToday] = useState(0);
+  // A real day-over-day change (today vs yesterday) — replaces
+  // dashboardData.opd_change_pct, which was actually "how far the selected
+  // period's completion rate sits from an assumed 80% baseline", not a
+  // period-over-period trend, and doesn't apply once this card is pinned to
+  // today regardless of the period filter.
+  const [opdChangePct, setOpdChangePct] = useState(0);
+  useEffect(() => {
+    const today = formatLocalDateISO();
+    const yesterday = formatLocalDateISO(new Date(Date.now() - 86400000));
+    Promise.all([
+      appointmentService.getStats(today, today),
+      appointmentService.getStats(yesterday, yesterday),
+    ]).then(([todayStats, yesterdayStats]) => {
+      const todayCount = todayStats.total_completed + todayStats.total_pending;
+      const yesterdayCount = yesterdayStats.total_completed + yesterdayStats.total_pending;
+      setOpdToday(todayCount);
+      setOpdChangePct(
+        yesterdayCount > 0
+          ? Number((((todayCount - yesterdayCount) / yesterdayCount) * 100).toFixed(1))
+          : 0
+      );
+    }).catch(() => { setOpdToday(0); setOpdChangePct(0); });
+  }, []);
+
   // Combine data from multiple sources
   const revenue = useCountUp(dashboardData?.total_revenue ?? 0);
-  const opd = useCountUp(dashboardData?.opd_patients_today ?? 0);
+  const opd = useCountUp(opdToday);
   // Real pending-orders count from the pharmacy dashboard, already fetched
   // here for Low Stock below — not from DashboardSummary, which no longer
   // carries a real value for this field.
@@ -102,7 +136,7 @@ const KPIStrip: React.FC = () => {
       iconBg: 'bg-emerald-500',
       label: 'OPD Patients Today',
       value: String(opd),
-      change: dashboardData?.opd_change_pct ?? 0,
+      change: opdChangePct,
     },
     {
       icon: 'prescriptions',

@@ -134,11 +134,19 @@ const DoctorAppointments: React.FC = () => {
     ? timeFiltered.filter(a => a.status === statusFilter)
     : timeFiltered;
 
+  // Deliberately computed from the full day's `appointments`, NOT
+  // `timeFiltered` — these are whole-day summary tiles (matching "Patients
+  // Handled Today" above them and the Walk-in Queue's own Completed count),
+  // not a reflection of whichever Morning/Evening/Full Day session tab
+  // happens to be selected. Using timeFiltered here made "Completed" quietly
+  // shrink to just that session's count (e.g. 8 instead of the day's actual
+  // 55+) whenever the page auto-selected Morning/Evening based on the
+  // current time, with nothing on screen indicating the number was scoped.
   const stats = {
-    total: timeFiltered.length,
-    pending: timeFiltered.filter(a => a.status === 'pending' || a.status === 'confirmed').length,
-    inProgress: timeFiltered.filter(a => a.status === 'in-progress').length,
-    completed: timeFiltered.filter(a => a.status === 'completed').length,
+    total: appointments.length,
+    pending: appointments.filter(a => a.status === 'pending' || a.status === 'confirmed').length,
+    inProgress: appointments.filter(a => a.status === 'in-progress').length,
+    completed: appointments.filter(a => a.status === 'completed').length,
   };
 
   const handleStatusChange = async (id: string, status: string) => {

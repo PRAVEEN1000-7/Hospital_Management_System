@@ -320,6 +320,12 @@ class PrescriptionResponse(BaseModel):
     consultation_invoice_status: Optional[str] = None
     final_amount: Optional[float] = None
     dispensed_at: Optional[str] = None
+    # Whether a lab order already exists for this visit — lets the frontend
+    # tell "editing a prescription that never had a lab order" (still needs
+    # to create one the first time the doctor picks lab tests) apart from
+    # "this prescription already has its one lab order" (never create a
+    # second). See PrescriptionBuilder.tsx's save handler.
+    has_lab_order: bool = False
     items: list[PrescriptionItemResponse] = []
 
     @model_validator(mode="before")

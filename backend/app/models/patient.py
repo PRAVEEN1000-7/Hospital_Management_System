@@ -50,7 +50,7 @@ class Patient(Base):
     reason_for_visit = Column(Text)
     symptoms = Column(JSONB)  # Array of symptom strings (multi-select + custom entries)
     blood_sugar_value = Column(Numeric(10, 2))
-    blood_sugar_unit = Column(String(10))  # 'mg/dL' or 'mmol/L'
+    blood_sugar_unit = Column(String(10))  # 'mg/dL', 'mmol/L', or 'dg/ml'
     # Fixed "Condition / History" checklist (distinct from the free-text
     # chronic_conditions column above) — shown in the Prescription Builder
     # below Prescription History. Array of

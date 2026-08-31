@@ -419,18 +419,37 @@ def get_revenue_summary(db: Session, hospital_id, date_from: date, date_to: date
     on this dashboard), not scoped to the period — an unpaid invoice from
     3 months ago is still owed today regardless of which period is selected.
     """
+    from ..models.pharmacy import PharmacySale
+    from ..models.optical import OpticalSale
+
     period_days = (date_to - date_from).days + 1
     prev_to = date_from - timedelta(days=1)
     prev_from = prev_to - timedelta(days=period_days - 1)
 
     def _collected(d_from: date, d_to: date) -> float:
-        val = db.query(func.coalesce(func.sum(Payment.amount), 0)).filter(
+        # OPD + Lab are billed through Invoice/Payment. Pharmacy and Optical
+        # are NOT — their sale revenue lives only on PharmacySale/OpticalSale
+        # and never creates an Invoice/Payment row — see get_revenue_trend's
+        # docstring for the full reasoning. Must be added here too, or this
+        # KPI tile permanently undercounts total revenue by the entire
+        # pharmacy + optical take.
+        invoice_val = db.query(func.coalesce(func.sum(Payment.amount), 0)).filter(
             Payment.hospital_id == hospital_id,
             Payment.status == "completed",
             Payment.payment_date >= d_from,
             Payment.payment_date <= d_to,
         ).scalar()
-        return float(val or 0)
+        pharmacy_val = db.query(func.coalesce(func.sum(PharmacySale.paid_amount), 0)).filter(
+            PharmacySale.hospital_id == hospital_id,
+            func.date(PharmacySale.created_at) >= d_from,
+            func.date(PharmacySale.created_at) <= d_to,
+        ).scalar()
+        optical_val = db.query(func.coalesce(func.sum(OpticalSale.paid_amount), 0)).filter(
+            OpticalSale.hospital_id == hospital_id,
+            func.date(OpticalSale.created_at) >= d_from,
+            func.date(OpticalSale.created_at) <= d_to,
+        ).scalar()
+        return float(invoice_val or 0) + float(pharmacy_val or 0) + float(optical_val or 0)
 
     revenue = _collected(date_from, date_to)
     prev_revenue = _collected(prev_from, prev_to)
@@ -452,24 +471,42 @@ def get_revenue_summary(db: Session, hospital_id, date_from: date, date_to: date
     }
 
 
-_REVENUE_MODULES = ("opd", "pharmacy", "optical")
-_REVENUE_MODULE_COLORS = {"opd": "#137fec", "pharmacy": "#10b981", "optical": "#8b5cf6"}
+_REVENUE_MODULES = ("opd", "pharmacy", "optical", "lab")
+_REVENUE_MODULE_COLORS = {"opd": "#137fec", "pharmacy": "#10b981", "optical": "#8b5cf6", "lab": "#ec4899"}
+
+
+def _new_bucket() -> dict:
+    return {m: 0.0 for m in _REVENUE_MODULES} | {"total": 0.0}
 
 
 def get_revenue_trend(
     db: Session, hospital_id, granularity: str, date_from: date, date_to: date,
 ) -> list[dict]:
-    """Revenue collected per day/month, broken down by module (Invoice.invoice_type).
+    """Revenue collected per day/month, broken down by module.
 
-    `invoice_type='combined'` spans more than one module, so it's folded into
-    each period's `total` only, never attributed to a single opd/pharmacy/
-    optical bucket.
+    OPD and Lab revenue is billed through the generic Invoice/Payment system
+    (Invoice.invoice_type). Pharmacy and Optical are NOT — dispensing/sale
+    revenue is recorded directly on PharmacySale/OpticalSale and never
+    creates an Invoice or Payment row at all, so those two modules are
+    pulled from their own tables and merged into the same per-period
+    buckets. `invoice_type='combined'` spans more than one module, so it's
+    folded into each period's `total` only, never attributed to a single
+    bucket.
     """
+    from ..models.pharmacy import PharmacySale
+    from ..models.optical import OpticalSale
+
+    buckets: dict = {}
+
+    def bucket_for(period) -> dict:
+        key = period if isinstance(period, date) else period.date()
+        return buckets.setdefault(key, _new_bucket())
+
     period_col = (
         func.date(Payment.payment_date) if granularity == "daily"
         else func.date_trunc("month", Payment.payment_date)
     )
-    rows = (
+    invoice_rows = (
         db.query(period_col.label("period"), Invoice.invoice_type, func.coalesce(func.sum(Payment.amount), 0))
         .join(Invoice, Invoice.id == Payment.invoice_id)
         .filter(
@@ -482,14 +519,51 @@ def get_revenue_trend(
         .order_by("period")
         .all()
     )
-
-    buckets: dict = {}
-    for period, inv_type, amount in rows:
-        key = period if isinstance(period, date) else period.date()
-        b = buckets.setdefault(key, {"opd": 0.0, "pharmacy": 0.0, "optical": 0.0, "total": 0.0})
+    for period, inv_type, amount in invoice_rows:
+        b = bucket_for(period)
         amt = float(amount or 0)
         if inv_type in _REVENUE_MODULES:
             b[inv_type] += amt
+        b["total"] += amt
+
+    pharmacy_period_col = (
+        func.date(PharmacySale.created_at) if granularity == "daily"
+        else func.date_trunc("month", PharmacySale.created_at)
+    )
+    pharmacy_rows = (
+        db.query(pharmacy_period_col.label("period"), func.coalesce(func.sum(PharmacySale.paid_amount), 0))
+        .filter(
+            PharmacySale.hospital_id == hospital_id,
+            func.date(PharmacySale.created_at) >= date_from,
+            func.date(PharmacySale.created_at) <= date_to,
+        )
+        .group_by("period")
+        .all()
+    )
+    for period, amount in pharmacy_rows:
+        b = bucket_for(period)
+        amt = float(amount or 0)
+        b["pharmacy"] += amt
+        b["total"] += amt
+
+    optical_period_col = (
+        func.date(OpticalSale.created_at) if granularity == "daily"
+        else func.date_trunc("month", OpticalSale.created_at)
+    )
+    optical_rows = (
+        db.query(optical_period_col.label("period"), func.coalesce(func.sum(OpticalSale.paid_amount), 0))
+        .filter(
+            OpticalSale.hospital_id == hospital_id,
+            func.date(OpticalSale.created_at) >= date_from,
+            func.date(OpticalSale.created_at) <= date_to,
+        )
+        .group_by("period")
+        .all()
+    )
+    for period, amount in optical_rows:
+        b = bucket_for(period)
+        amt = float(amount or 0)
+        b["optical"] += amt
         b["total"] += amt
 
     result = []
@@ -503,7 +577,13 @@ def get_revenue_trend(
 
 
 def get_revenue_by_module(db: Session, hospital_id, date_from: date, date_to: date) -> list[dict]:
-    """Single-period revenue totals per module, for the Revenue-by-Module pie chart."""
+    """Single-period revenue totals per module, for the Revenue-by-Module pie chart.
+
+    Same OPD/Lab-via-Invoice vs Pharmacy/Optical-via-their-own-tables split
+    as get_revenue_trend — see that function's docstring for why."""
+    from ..models.pharmacy import PharmacySale
+    from ..models.optical import OpticalSale
+
     rows = (
         db.query(Invoice.invoice_type, func.coalesce(func.sum(Payment.amount), 0))
         .join(Invoice, Invoice.id == Payment.invoice_id)
@@ -523,6 +603,30 @@ def get_revenue_by_module(db: Session, hospital_id, date_from: date, date_to: da
         if inv_type in totals:
             totals[inv_type] += amt
         grand_total += amt  # 'combined' counts toward the denominator, no single bucket
+
+    pharmacy_total = float(
+        db.query(func.coalesce(func.sum(PharmacySale.paid_amount), 0))
+        .filter(
+            PharmacySale.hospital_id == hospital_id,
+            func.date(PharmacySale.created_at) >= date_from,
+            func.date(PharmacySale.created_at) <= date_to,
+        )
+        .scalar() or 0
+    )
+    totals["pharmacy"] += pharmacy_total
+    grand_total += pharmacy_total
+
+    optical_total = float(
+        db.query(func.coalesce(func.sum(OpticalSale.paid_amount), 0))
+        .filter(
+            OpticalSale.hospital_id == hospital_id,
+            func.date(OpticalSale.created_at) >= date_from,
+            func.date(OpticalSale.created_at) <= date_to,
+        )
+        .scalar() or 0
+    )
+    totals["optical"] += optical_total
+    grand_total += optical_total
 
     return [
         {

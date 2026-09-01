@@ -875,6 +875,33 @@ def delete_prescription(
     return rx
 
 
+def ignore_prescription_in_queue(
+    db: Session,
+    prescription_id: str | uuid.UUID,
+    hospital_id: Optional[uuid.UUID] = None,
+) -> Optional[Prescription]:
+    """Mark a prescription as ignored in the pharmacist's Pending Prescriptions
+    queue (PendingPrescriptions.tsx) WITHOUT deleting it — the prescription
+    must keep showing on the doctor's own /prescriptions list exactly as
+    before. Same "not already dispensed" guard as delete_prescription, for the
+    same reason: a pharmacist still mid-dispensing shouldn't lose it from view."""
+    rx = get_prescription(db, prescription_id, hospital_id=hospital_id)
+    if not rx:
+        return None
+
+    any_dispensed = db.query(PrescriptionItem).filter(
+        PrescriptionItem.prescription_id == rx.id,
+        PrescriptionItem.dispensed_quantity > 0,
+    ).first() is not None
+    if any_dispensed:
+        raise ValueError("Cannot ignore a prescription in the queue that has already been dispensed")
+
+    rx.hidden_from_pharmacy_queue = True
+    db.commit()
+    db.refresh(rx)
+    return rx
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Prescription Enrichment (add patient/doctor names)
 # ═══════════════════════════════════════════════════════════════════════════

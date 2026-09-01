@@ -12,7 +12,7 @@ import type {
 export interface PendingPrescription {
   id: string;
   prescription_number: string;
-  status: 'finalized' | 'partially_dispensed' | 'dispensed';
+  status: 'finalized' | 'partially_dispensed' | 'dispensed' | 'ignored';
   patient_name: string;
   patient_reference_number?: string;
   patient_age?: number;
@@ -282,7 +282,7 @@ export const pharmacyService = {
   async getPendingPrescriptions(
     page = 1,
     limit = 20,
-    statusFilter?: 'pending' | 'dispensed',
+    statusFilter?: 'pending' | 'dispensed' | 'ignored',
     doctorId?: string,
     search?: string
   ): Promise<{ total: number; page: number; limit: number; total_pages: number; data: PendingPrescription[] }> {
@@ -293,6 +293,15 @@ export const pharmacyService = {
     
     const res = await api.get('/pharmacy/prescriptions/pending', { params });
     return res.data;
+  },
+
+  /**
+   * Mark a prescription as ignored in this pharmacy's pending-dispensing
+   * queue — does NOT delete the prescription itself, it stays visible on the
+   * doctor's own All Prescriptions list.
+   */
+  async ignorePrescription(prescriptionId: string): Promise<void> {
+    await api.post(`/pharmacy/prescriptions/${prescriptionId}/ignore`);
   },
 
   /**

@@ -95,6 +95,13 @@ class Prescription(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"))
     is_deleted = Column(Boolean, default=False)
+    # Set when a pharmacist ignores a not-yet-dispensed prescription in
+    # their own pending-dispensing queue (PendingPrescriptions.tsx) — this is
+    # NOT is_deleted: the prescription itself is untouched and must keep
+    # showing on the doctor's own /prescriptions ("All Prescription") list.
+    # Only the pharmacy queue's own listing (dispensing_service.get_pending_
+    # prescriptions) filters this out.
+    hidden_from_pharmacy_queue = Column(Boolean, default=False, nullable=False)
 
     # Relationships
     hospital = relationship("Hospital", foreign_keys=[hospital_id])

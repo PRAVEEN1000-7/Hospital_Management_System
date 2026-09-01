@@ -50,9 +50,10 @@ async def get_pending_prescriptions(
     This is the main work queue for pharmacists.
     
     **Status filters:**
-    - `pending` → Finalized, not started dispensing
+    - `pending` → Finalized, not started dispensing, not ignored
     - `dispensed` → Fully dispensed (complete)
-    - (none) → Shows all (both pending and dispensed)
+    - `ignored` → Pharmacist dismissed it from the active queue
+    - (none) → Shows all (pending, dispensed, and ignored)
     """
     try:
         result = svc.get_pending_prescriptions(
@@ -68,6 +69,27 @@ async def get_pending_prescriptions(
     except Exception as e:
         logger.error(f"Error fetching pending prescriptions: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch pending prescriptions")
+
+
+@router.post("/prescriptions/{prescription_id}/ignore")
+async def ignore_prescription_in_queue(
+    prescription_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(pharmacy_edit_guard),
+):
+    """Mark a prescription as ignored in this pharmacy's pending-dispensing
+    queue — does NOT delete the prescription; it keeps showing on the
+    doctor's own /prescriptions list. Use DELETE /prescriptions/{id} for a
+    real delete."""
+    from ..services.prescription_service import ignore_prescription_in_queue as ignore_prescription
+
+    try:
+        rx = ignore_prescription(db, prescription_id, hospital_id=current_user.hospital_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not rx:
+        raise HTTPException(status_code=404, detail="Prescription not found")
+    return {"success": True}
 
 
 # ═══════════════════════════════════════════════════════════════════════════

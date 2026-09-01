@@ -139,6 +139,7 @@ const RevenuePanel: React.FC = () => {
             <Bar dataKey="opd" name="OPD" fill="#137fec" radius={[3, 3, 0, 0]} />
             <Bar dataKey="pharmacy" name="Pharmacy" fill="#10b981" radius={[3, 3, 0, 0]} />
             <Bar dataKey="optical" name="Optical" fill="#f59e0b" radius={[3, 3, 0, 0]} />
+            <Bar dataKey="lab" name="Lab" fill="#ec4899" radius={[3, 3, 0, 0]} />
             <Line
               dataKey="total"
               name="Total"
@@ -161,6 +162,7 @@ const RevenuePanel: React.FC = () => {
             <Bar dataKey="opd" name="OPD" fill="#137fec" radius={[3, 3, 0, 0]} />
             <Bar dataKey="pharmacy" name="Pharmacy" fill="#10b981" radius={[3, 3, 0, 0]} />
             <Bar dataKey="optical" name="Optical" fill="#f59e0b" radius={[3, 3, 0, 0]} />
+            <Bar dataKey="lab" name="Lab" fill="#ec4899" radius={[3, 3, 0, 0]} />
             <Line
               dataKey="total"
               name="Total"

@@ -223,10 +223,16 @@ def get_pending_prescriptions(
     Status logic:
     - 'finalized' → Pending work queue
     - 'dispensed' → Closed/completed
+    - 'ignored' → Pharmacist dismissed it (hidden_from_pharmacy_queue); stays
+      in this list, just flagged, and still switches to 'dispensed' if later
+      actually dispensed via direct URL
     """
     from math import ceil
     
-    # Base query: finalized prescriptions for this hospital
+    # Base query: finalized prescriptions for this hospital. Ignored
+    # prescriptions (hidden_from_pharmacy_queue) are NOT filtered out here —
+    # they stay in the queue, just flagged with an "Ignored" status by
+    # _enrich_prescription_for_dispensing below.
     query = db.query(Prescription).filter(
         Prescription.hospital_id == hospital_id,
         Prescription.is_finalized == True,
@@ -234,14 +240,19 @@ def get_pending_prescriptions(
     )
     
     # Filter by status. No filter (the "All Status" choice) intentionally
-    # shows BOTH pending and dispensed — it previously fell through to the
-    # same 'finalized'-only filter as 'pending', so a prescription you just
-    # finished dispensing would silently vanish from the default view
+    # shows pending, dispensed, AND ignored — it previously fell through to
+    # the same 'finalized'-only filter as 'pending', so a prescription you
+    # just finished dispensing would silently vanish from the default view
     # instead of showing up here with its "Dispensed" status.
+    # 'pending' excludes ignored rows — a pharmacist filtering to "Pending
+    # (Not Started)" wants only what's actually still actionable; ignored
+    # ones have their own filter option below.
     if status_filter == 'pending':
-        query = query.filter(Prescription.status == 'finalized')
+        query = query.filter(Prescription.status == 'finalized', Prescription.hidden_from_pharmacy_queue == False)
     elif status_filter == 'dispensed':
         query = query.filter(Prescription.status == 'dispensed')
+    elif status_filter == 'ignored':
+        query = query.filter(Prescription.hidden_from_pharmacy_queue == True)
     
     # Filter by doctor
     if doctor_id:
@@ -300,7 +311,12 @@ def get_pending_prescriptions(
 
 def _enrich_prescription_for_dispensing(db: Session, rx: Prescription) -> dict:
     """Add patient name, doctor name, and item details for dispensing view."""
-    queue_status = "dispensed" if rx.status == "dispensed" else "finalized"
+    if rx.hidden_from_pharmacy_queue:
+        queue_status = "ignored"
+    elif rx.status == "dispensed":
+        queue_status = "dispensed"
+    else:
+        queue_status = "finalized"
 
     d = {
         "id": str(rx.id),

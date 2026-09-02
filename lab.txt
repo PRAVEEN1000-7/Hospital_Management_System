@@ -1,5 +1,0 @@
-1.	After edit.. name is not changing in patient directory
-2.	In laboratory, the patient name is not linking
-3.	The token number is not in order..
-4.	Allow the pharmacist to increase or decrease the rate
-5.	The scheduled patients in today’s date only visible in manage appointments.. not in the patient with all the dates.

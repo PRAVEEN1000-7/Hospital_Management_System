@@ -1,6 +1,12 @@
 -- ==============================================================================
 -- WORKFORCE / ATTENDANCE MODULE — one-shot patch for an EXISTING database
 --
+-- UPDATE: database_hole/production_schema.sql (a full pg_dump of the current
+-- schema, covering every table including these) now exists as the
+-- single-file option for a brand-new server deploy — see its own header.
+-- This file's original purpose is unchanged and still valid below: patching
+-- an EXISTING, already-running database that predates Section 8.
+--
 -- IMPORTANT: this schema is NOT missing from 01_full_schema.sql. It's
 -- already there in full, as Section 8 (search for "SECTION 8 — WORKFORCE
 -- MANAGEMENT") plus the password_reset_tokens block in Section 7 — every

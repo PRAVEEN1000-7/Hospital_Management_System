@@ -14,19 +14,27 @@ from ..models.user import User
 from ..models.invoice import Invoice
 from ..schemas.payment import PaymentCreate, PaymentResponse, PaginatedPaymentResponse
 from ..services.payment_service import (
-    record_payment, list_payments, get_payment_by_id, list_collectors
+    record_payment, list_payments, get_payment_by_id, list_collectors, COLLECTOR_ROLES
 )
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/payments", tags=["Billing — Payments"])
 
-# Driven by the shared "billing" permission matrix — see the flagged
-# conflict in docs/security/ROLE_PERMISSIONS_DECISIONS_2026-07-25.md.
-def _require_billing_staff(db: Session, current_user: User) -> None:
-    if not check_permission(db, current_user, "billing", "edit"):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
-                            detail="Billing staff access required")
+# Full "billing" edit (admin/cashier per module_roles.py) OR one of the
+# narrower COLLECTOR_ROLES that's allowed to record a payment in some
+# carved-out flow (see payment_service.COLLECTOR_ROLES and
+# _require_billing_staff_or_consultation_payment below). Used by
+# GET /collectors, whose own dropdown is meant for exactly those roles —
+# a receptionist/nurse recording a fee still needs to see who's eligible to
+# be picked as "Collected By", not just admins/cashiers.
+def _require_billing_staff_or_collector_role(db: Session, current_user: User) -> None:
+    if check_permission(db, current_user, "billing", "edit"):
+        return
+    if _has_any_role(current_user, COLLECTOR_ROLES):
+        return
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Billing staff access required")
 
 
 def _require_billing_view(db: Session, current_user: User) -> None:
@@ -55,8 +63,8 @@ def _has_any_role(current_user: User, allowed_roles: set[str]) -> bool:
 #   - a lab_technician, when the target invoice is invoice_type="lab" (see
 #     LabOrderDetail.tsx's Collect Payment flow / invoices.py's matching
 #     _require_billing_staff_or_lab_invoice carve-out for create/issue).
-# Cashier/admin/anyone who already passes _require_billing_staff is
-# unaffected — they never reach this fallback.
+# Cashier/admin/anyone with full "billing" edit is unaffected — they never
+# reach this fallback.
 def _require_billing_staff_or_consultation_payment(
     db: Session, current_user: User, data: PaymentCreate
 ) -> None:
@@ -167,8 +175,16 @@ async def list_payment_collectors(
     """Staff eligible to be selected as "who collected" a payment — used to
     populate the Collected By dropdown at fee-collection time. Open to the
     same billing-staff roles that can record payments (not admin-only) so
-    receptionists can populate it themselves."""
-    _require_billing_staff(db, current_user)
+    receptionists can populate it themselves.
+
+    Was gated on full "billing:edit" (admin/cashier only) despite this
+    docstring, which 403'd receptionist/nurse — exactly the roles calling
+    this from WalkInQueue.tsx/AppointmentManagement.tsx's Collected By
+    dropdown, and exactly who COLLECTOR_ROLES already lists as eligible
+    collectors. Gate on that instead (still falling back to full billing
+    access, so admin/cashier and any hospital-level override keep working).
+    """
+    _require_billing_staff_or_collector_role(db, current_user)
     return list_collectors(db, current_user.hospital_id)
 
 

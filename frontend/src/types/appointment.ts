@@ -150,7 +150,8 @@ export interface WalkInRegister {
 export interface QueueItem {
   queue_id: string;
   appointment_id: string;
-  queue_number: number;
+  // null = "NT" (No Token) — a follow-up booking awaiting Assign Token.
+  queue_number: number | null;
   position: number;
   status: string;
   priority: string;

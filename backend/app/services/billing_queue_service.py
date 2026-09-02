@@ -168,6 +168,14 @@ def _find_existing_token_for_patient(
             Appointment.patient_id == patient_id,
             Appointment.appointment_date == target_date,
             Appointment.visit_token.isnot(None),
+            # A cancelled/rescheduled appointment keeps its old visit_token
+            # (nothing clears it), and that token's AppointmentQueue row
+            # still physically occupies it — resurrecting it onto a new
+            # booking hits the (doctor_id, queue_date, queue_number) unique
+            # constraint and 500s. Excluding these forces a fresh mint
+            # instead, which is also the correct semantics: a visit that
+            # never happened shouldn't reserve the day's shared token.
+            Appointment.status.notin_(["cancelled", "rescheduled"]),
         )
         .order_by(Appointment.created_at.asc())
         .limit(1)

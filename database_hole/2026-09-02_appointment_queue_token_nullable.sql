@@ -1,0 +1,23 @@
+-- ==============================================================================
+-- 2026-09-02 — appointment_queue.queue_number MUST BE NULLABLE
+--
+-- Follow-up bookings (Book Follow-up button, and the follow-up appointment
+-- auto-created when a doctor finalizes a prescription with a follow-up date)
+-- no longer mint a real token at booking time. They land in the queue as
+-- "NT" (No Token) — sorted first — until a staff member clicks "Assign
+-- Token" on that row, which mints the next available token at that moment.
+-- See backend/app/services/appointment_service.py's _create_queue_entry()
+-- and backend/app/routers/walk_ins.py's new
+-- PATCH /walk-ins/queue/{queue_id}/assign-token endpoint.
+--
+-- appointment_queue.queue_number was NOT NULL, which made it impossible to
+-- insert a queue row with no token yet. Postgres treats multiple NULLs as
+-- distinct under a UNIQUE constraint, so the existing
+-- uq_doctor_queue (doctor_id, queue_date, queue_number) constraint needs no
+-- change — several NT rows for the same doctor/date can coexist.
+--
+-- Safe to run against an existing DB — idempotent (DROP NOT NULL is a no-op
+-- if the column is already nullable).
+-- ==============================================================================
+
+ALTER TABLE appointment_queue ALTER COLUMN queue_number DROP NOT NULL;

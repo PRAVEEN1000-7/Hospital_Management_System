@@ -54,6 +54,10 @@ export interface Patient {
   updated_by: string | null;
   created_at: string;
   updated_at: string;
+  // Computed live from the patient's appointments (not a stored column) —
+  // the nearest upcoming follow-up date, or null if none. See
+  // backend's appointment_service.get_next_follow_up_date.
+  next_follow_up_date: string | null;
 }
 
 export interface PatientListItem {

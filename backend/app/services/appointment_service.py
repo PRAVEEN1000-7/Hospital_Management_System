@@ -53,6 +53,13 @@ def _next_queue_position(db: Session, doctor_id: uuid.UUID, queue_date: date) ->
 QUEUE_SUPPORTED_TYPES = {"scheduled", "follow-up", "follow_up", "referral", "walk-in", "walk_in"}
 
 
+# Appointment types that land in the queue as "NT" (No Token) — no token is
+# minted at booking time, only once staff clicks "Assign Token" on the row
+# (see walk_ins.py's PATCH .../assign-token). Every other QUEUE_SUPPORTED_TYPES
+# entry keeps minting immediately, unchanged.
+NO_TOKEN_AT_BOOKING_TYPES = {"follow-up", "follow_up"}
+
+
 def _create_queue_entry(db: Session, appt: Appointment) -> None:
     """Assign a queue token for today-or-later appointments so the patient
     shows up on the Doctor Queue Display. Walk-ins created via walk_ins.py
@@ -65,9 +72,24 @@ def _create_queue_entry(db: Session, appt: Appointment) -> None:
         and appt.appointment_type in QUEUE_SUPPORTED_TYPES
     ):
         return
-    from .billing_queue_service import get_or_assign_visit_token
 
     db.flush()
+
+    if appt.appointment_type in NO_TOKEN_AT_BOOKING_TYPES:
+        db.add(
+            AppointmentQueue(
+                appointment_id=appt.id,
+                doctor_id=appt.doctor_id,
+                queue_date=appt.appointment_date,
+                queue_number=None,
+                position=_next_queue_position(db, appt.doctor_id, appt.appointment_date),
+                status="waiting",
+            )
+        )
+        return
+
+    from .billing_queue_service import get_or_assign_visit_token
+
     db.add(
         AppointmentQueue(
             appointment_id=appt.id,
@@ -81,6 +103,26 @@ def _create_queue_entry(db: Session, appt: Appointment) -> None:
             status="waiting",
         )
     )
+
+
+def get_next_follow_up_date(
+    db: Session, patient_id: uuid.UUID, hospital_id: Optional[uuid.UUID]
+) -> Optional[date]:
+    """The patient's nearest upcoming follow-up appointment date, computed
+    live from Appointment rows rather than a separately stored/stamped
+    field — so it never drifts out of sync if that appointment is later
+    rescheduled or cancelled. Shown on the patient's detail page."""
+    q = db.query(Appointment).filter(
+        Appointment.patient_id == patient_id,
+        Appointment.appointment_type.in_(["follow-up", "follow_up"]),
+        Appointment.appointment_date >= hospital_today_by_id(db, hospital_id),
+        Appointment.status.notin_(["cancelled", "rescheduled"]),
+        Appointment.is_deleted == False,
+    )
+    if hospital_id is not None:
+        q = q.filter(Appointment.hospital_id == hospital_id)
+    next_appt = q.order_by(Appointment.appointment_date.asc()).first()
+    return next_appt.appointment_date if next_appt else None
 
 
 def _skip_queue_entry(db: Session, appointment_id: uuid.UUID) -> None:

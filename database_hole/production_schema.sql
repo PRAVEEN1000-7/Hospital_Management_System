@@ -1205,7 +1205,7 @@ CREATE TABLE public.appointment_queue (
     appointment_id uuid NOT NULL,
     doctor_id uuid NOT NULL,
     queue_date date NOT NULL,
-    queue_number integer NOT NULL,
+    queue_number integer,
     "position" integer NOT NULL,
     status character varying(20) DEFAULT 'waiting'::character varying,
     called_at timestamp with time zone,

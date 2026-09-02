@@ -281,6 +281,11 @@ const PatientDetail: React.FC = () => {
             <InfoItem icon="wc" label="Gender" value={patient.gender} />
             <InfoItem icon="cake" label="Date of Birth" value={format(new Date(patient.date_of_birth), 'dd MMM yyyy')} />
             <InfoItem icon="water_drop" label="Blood Group" value={patient.blood_group || '—'} />
+            <InfoItem
+              icon="event_upcoming"
+              label="Next Follow-up"
+              value={patient.next_follow_up_date ? format(new Date(patient.next_follow_up_date), 'dd MMM yyyy') : '—'}
+            />
           </div>
         </div>
 

@@ -419,13 +419,17 @@ async def get_queue_status(
     if resolved_doctor_id:
         query = query.filter(AppointmentQueue.doctor_id == resolved_doctor_id)
 
+    # "NT" (no token yet — a follow-up booking awaiting Assign Token) always
+    # sorts first, ahead of urgency/queue_number, so staff see it at the top
+    # instead of it silently falling to the end (NULL sorts last by default).
+    no_token_first = case((AppointmentQueue.queue_number.is_(None), 0), else_=1)
     # Order by urgency (emergency=0, urgent=1, normal=2) then queue_number
     priority_order = case(
         (Appointment.priority == "emergency", 0),
         (Appointment.priority == "urgent", 1),
         else_=2,
     )
-    queue_entries = query.order_by(priority_order, AppointmentQueue.queue_number.asc()).all()
+    queue_entries = query.order_by(no_token_first, priority_order, AppointmentQueue.queue_number.asc()).all()
 
     # Consultation-fee state per queue entry (BRD 5.1 "Collect Fee" button) —
     # batched by appointment_id in one query rather than per-row, since a
@@ -1029,6 +1033,62 @@ async def mark_opd_assigned(
     return {"ok": True, "queue_id": str(qe.id), "opd_assigned_at": qe.opd_assigned_at.isoformat()}
 
 
+@router.patch("/queue/{queue_id}/assign-token")
+async def assign_token(
+    queue_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(walkin_edit_guard),
+):
+    """Assign the next available token to a follow-up booking's "NT" (No
+    Token) queue entry (see appointment_service._create_queue_entry /
+    NO_TOKEN_AT_BOOKING_TYPES). Mints at click time, not whatever would have
+    been next back when the follow-up was booked. Same shape as
+    mark_opd_assigned above: a front-desk-style action, gated only by
+    walkin_edit_guard (admin/doctor/nurse/receptionist), not the clinical
+    _require_queue_actor. Idempotent: a second call for an already-assigned
+    entry just returns the existing number rather than erroring.
+    """
+    try:
+        q_uuid = uuid.UUID(queue_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid queue_id")
+
+    qe = db.query(AppointmentQueue).filter(AppointmentQueue.id == q_uuid).first()
+    if not qe:
+        raise HTTPException(status_code=404, detail="Queue entry not found")
+
+    # Tenant isolation: AppointmentQueue has no hospital_id of its own — scope
+    # via the queue entry's doctor, same technique as mark_opd_assigned.
+    doctor = db.query(Doctor).filter(Doctor.id == qe.doctor_id).first()
+    if not doctor:
+        raise HTTPException(status_code=404, detail="Queue entry not found")
+    if getattr(current_user, "hospital_id", None) and str(doctor.hospital_id) != str(current_user.hospital_id):
+        raise HTTPException(status_code=404, detail="Queue entry not found")
+
+    if qe.queue_number is None:
+        appt = db.query(Appointment).filter(Appointment.id == qe.appointment_id).first()
+        if not appt:
+            raise HTTPException(status_code=404, detail="Appointment not found")
+
+        from ..services.billing_queue_service import get_or_assign_visit_token
+        qe.queue_number = get_or_assign_visit_token(
+            db, doctor.hospital_id, appointment_id=appt.id,
+            visit_date=qe.queue_date, patient_id=appt.patient_id,
+        )
+        db.commit()
+
+        AuditLogger.log(
+            action=AuditAction.APPOINTMENT_UPDATE,
+            user=current_user,
+            tenant=None,
+            resource_type="appointment_queue",
+            resource_id=qe.id,
+            new_values={"queue_number": qe.queue_number},
+        )
+
+    return {"ok": True, "queue_id": str(qe.id), "queue_number": qe.queue_number}
+
+
 @router.get("/today")
 async def get_today_walkins(
     doctor_id: Optional[str] = Query(None),
@@ -1200,8 +1260,12 @@ async def get_upcoming_queue(
     if resolved_doctor_id:
         query = query.filter(AppointmentQueue.doctor_id == resolved_doctor_id)
 
+    # "NT" (no token yet) sorts first within its date, same reasoning as
+    # GET /walk-ins/queue above.
+    no_token_first = case((AppointmentQueue.queue_number.is_(None), 0), else_=1)
     queue_entries = query.order_by(
         AppointmentQueue.queue_date.asc(),
+        no_token_first,
         AppointmentQueue.queue_number.asc(),
     ).all()
 

@@ -51,6 +51,11 @@ const walkInService = {
     return res.data;
   },
 
+  async assignToken(queueId: string): Promise<{ ok: boolean; queue_id: string; queue_number: number }> {
+    const res = await api.patch(`/walk-ins/queue/${queueId}/assign-token`);
+    return res.data;
+  },
+
   async saveConsultationNotes(queueId: string, data: {
     notes?: string;
     diagnosis?: string;

@@ -409,6 +409,14 @@ const WalkInQueue: React.FC = () => {
     } catch { toast.error('Failed to call patient'); }
   };
 
+  const handleAssignToken = async (queueId: string) => {
+    try {
+      const res = await walkInService.assignToken(queueId);
+      toast.success(`Token #${res.queue_number} assigned`);
+      fetchQueue();
+    } catch { toast.error('Failed to assign token'); }
+  };
+
   const handleStartConsultation = async (queueId: string) => {
     try {
       if (!isSelectedDateToday) {
@@ -1064,11 +1072,14 @@ const WalkInQueue: React.FC = () => {
                               item.priority === 'urgent' ? 'bg-amber-100 text-amber-700' :
                               'bg-slate-100 text-slate-600'
                             }`}>
-                              {item.queue_number}
+                              {item.queue_number ?? 'NT'}
                             </span>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <p className="text-sm font-bold text-slate-900">{item.patient_name || 'Unknown'}</p>
+                                {item.queue_number == null && (
+                                  <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-full" title="Follow-up booking awaiting a token">No Token Yet</span>
+                                )}
                                 {isCalled && (
                                   <span className="text-[10px] font-bold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded-full">Called</span>
                                 )}
@@ -1093,6 +1104,13 @@ const WalkInQueue: React.FC = () => {
                               </div>
                             </div>
                             <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                              {item.queue_number == null && (
+                                <button onClick={() => handleAssignToken(item.queue_id)}
+                                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-orange-600 bg-orange-50 hover:bg-orange-100 rounded-lg transition-colors">
+                                  <span className="material-symbols-outlined text-sm">confirmation_number</span>
+                                  Assign Token
+                                </button>
+                              )}
                               {canActOnQueue && item.status === 'waiting' && isSelectedDateToday && (
                                 <button onClick={() => handleCall(item.queue_id)}
                                   className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors">
@@ -1343,7 +1361,7 @@ const WalkInQueue: React.FC = () => {
                             const apptType = typeConfig[item.appointment_type] || { label: item.appointment_type, bg: 'bg-slate-100', text: 'text-slate-600' };
                             return (
                               <tr key={item.queue_id} className="hover:bg-slate-50/50">
-                                <td className="px-5 py-2.5 text-sm font-bold text-slate-400">{item.queue_number}</td>
+                                <td className="px-5 py-2.5 text-sm font-bold text-slate-400">{item.queue_number ?? 'NT'}</td>
                                 <td className="px-4 py-2.5">
                                   <span className="inline-flex items-center gap-1 text-sm font-semibold text-slate-700">
                                     <span className="material-symbols-outlined text-slate-400" style={{ fontSize: 14 }}>schedule</span>
@@ -1453,15 +1471,16 @@ const WalkInQueue: React.FC = () => {
                       }`}>
                       {/* Token / Queue Number */}
                       <td className="px-4 py-3">
-                        <span className={`inline-flex items-center justify-center w-8 h-8 rounded-lg text-sm font-bold ${
+                        <span className={`inline-flex items-center justify-center min-w-8 h-8 px-1 rounded-lg text-sm font-bold ${
+                          item.queue_number == null ? 'bg-slate-100 text-slate-500' :
                           isCalled ? 'bg-blue-500 text-white ring-2 ring-blue-300' :
                           isSentToDoctor ? 'bg-teal-100 text-teal-700' :
                           isCompleted ? 'bg-emerald-100 text-emerald-700' :
                           item.priority === 'emergency' ? 'bg-red-100 text-red-700' :
                           item.priority === 'urgent' ? 'bg-amber-100 text-amber-700' :
                           'bg-primary/10 text-primary'
-                        }`}>
-                          {item.queue_number}
+                        }`} title={item.queue_number == null ? 'Follow-up booking awaiting a token' : undefined}>
+                          {item.queue_number ?? 'NT'}
                         </span>
                       </td>
 
@@ -1546,6 +1565,19 @@ const WalkInQueue: React.FC = () => {
                       {/* Actions */}
                       <td className="px-4 py-3 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1">
+                          {/* Assign Token: for a follow-up booking's "NT" (No Token)
+                              queue entry — mints the next available token at click
+                              time and puts the patient in the real queue. Not
+                              date-restricted like Call/Start, since these are
+                              future-dated follow-ups by design. */}
+                          {(canFilter || isNurse) && item.queue_number == null && (
+                            <button onClick={() => handleAssignToken(item.queue_id)}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-orange-500 text-white hover:bg-orange-600 hover:scale-105 active:scale-95 transition-all shadow-sm text-xs font-semibold"
+                              title="Assign Token">
+                              <span className="material-symbols-outlined text-base">confirmation_number</span>
+                              Assign Token
+                            </button>
+                          )}
                           {/* Send to Doctor: for reception/admin on waiting OR called items */}
                           {canFilter && isSelectedDateToday && (item.status === 'waiting' || item.status === 'called') && item.doctor_id && (
                             <button onClick={() => {
@@ -1795,7 +1827,7 @@ const WalkInQueue: React.FC = () => {
                     <div className="flex flex-col lg:flex-row lg:items-center gap-4">
                       <div className="flex items-center gap-4 flex-1 min-w-0">
                         <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center text-lg font-bold text-emerald-700 shrink-0">
-                          {item.queue_number}
+                          {item.queue_number ?? 'NT'}
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2 mb-1">
@@ -1950,7 +1982,7 @@ const WalkInQueue: React.FC = () => {
                             const apptType = typeConfig[item.appointment_type] || { label: item.appointment_type, bg: 'bg-slate-100', text: 'text-slate-600' };
                             return (
                               <tr key={item.queue_id} className="hover:bg-slate-50/50">
-                                <td className="px-5 py-2.5 text-sm font-bold text-slate-400">{item.queue_number}</td>
+                                <td className="px-5 py-2.5 text-sm font-bold text-slate-400">{item.queue_number ?? 'NT'}</td>
                                 <td className="px-4 py-2.5">
                                   <span className="inline-flex items-center gap-1 text-sm font-semibold text-slate-700">
                                     <span className="material-symbols-outlined text-slate-400" style={{ fontSize: 14 }}>schedule</span>
@@ -2352,10 +2384,6 @@ const WalkInQueue: React.FC = () => {
                 <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-3">
                   <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider mb-1">Assigned Doctor</p>
                   <p className="text-sm font-semibold text-indigo-900 truncate">{detailItem.doctor_name || '—'}</p>
-                </div>
-                <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-3">
-                  <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider mb-1">Time Slot</p>
-                  <p className="text-sm font-semibold text-indigo-900">{formatTime(detailItem.start_time || undefined)}</p>
                 </div>
                 <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-3">
                   <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider mb-1">Queue Date</p>

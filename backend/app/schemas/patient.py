@@ -223,6 +223,12 @@ class PatientResponse(BaseModel):
     is_deleted: bool = False
     created_at: datetime
     updated_at: datetime
+    # Computed live from the patient's Appointment rows (not a stored
+    # column) — always reflects the current nearest upcoming follow-up,
+    # never stale if that appointment is later rescheduled or cancelled.
+    # Set by the router after model_validate(), not present on the ORM
+    # model itself. See appointment_service.get_next_follow_up_date.
+    next_follow_up_date: Optional[date] = None
 
     @model_validator(mode="before")
     @classmethod

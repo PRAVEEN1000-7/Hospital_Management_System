@@ -191,7 +191,11 @@ class AppointmentQueue(Base):
     appointment_id = Column(UUID(as_uuid=True), ForeignKey("appointments.id", ondelete="CASCADE"), nullable=False)
     doctor_id = Column(UUID(as_uuid=True), ForeignKey("doctors.id"), nullable=False)
     queue_date = Column(Date, nullable=False)
-    queue_number = Column(Integer, nullable=False)
+    # NULL = "NT" (No Token) — a follow-up booking that hasn't had a token
+    # assigned yet (see appointment_service._create_queue_entry and
+    # walk_ins.py's PATCH .../assign-token). Every other queue-supported
+    # appointment type still gets a real number immediately at creation.
+    queue_number = Column(Integer, nullable=True)
     position = Column(Integer, nullable=False)
     status = Column(String(20), default="waiting")  # 'waiting','called','sent_to_doctor','in_consultation','completed','skipped'
     called_at = Column(DateTime(timezone=True))

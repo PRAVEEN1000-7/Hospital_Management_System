@@ -202,7 +202,10 @@ async def get_patient(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Patient not found",
         )
-    return PatientResponse.model_validate(patient)
+    resp = PatientResponse.model_validate(patient)
+    from ..services.appointment_service import get_next_follow_up_date
+    resp.next_follow_up_date = get_next_follow_up_date(db, patient.id, current_user.hospital_id)
+    return resp
 
 
 @router.put("/{patient_id}/medical-conditions", response_model=PatientResponse)

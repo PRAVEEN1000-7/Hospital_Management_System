@@ -11,7 +11,7 @@ import scheduleService from '../services/scheduleService';
 import hospitalService, { type HospitalInstitutionOption } from '../services/hospitalService';
 import opticalService from '../services/opticalService';
 import labService from '../services/labService';
-import type { PrescriptionItemCreate, Medicine, EyeSide } from '../types/prescription';
+import type { PrescriptionItemCreate, Medicine, EyeSide, FrequentMedicine } from '../types/prescription';
 import type { OpticalPrescriptionCreateData } from '../types/optical';
 import type { LabTest, LabTestPanel, PatientLabResult } from '../types/lab';
 import type { Patient, MedicalConditionEntry } from '../types/patient';
@@ -303,6 +303,12 @@ const PrescriptionBuilder: React.FC = () => {
   const [medicineResults, setMedicineResults] = useState<Medicine[]>([]);
   const [medicineStockById, setMedicineStockById] = useState<Record<string, number>>({});
   const [medicineInfoById, setMedicineInfoById] = useState<Record<string, MedInfo>>({});
+
+  // Frequently Prescribed panel — top medicines by prescribing history at
+  // this hospital, so a doctor can one-click add a common medicine instead
+  // of typing/searching it every time.
+  const [frequentMedicines, setFrequentMedicines] = useState<FrequentMedicine[]>([]);
+  const [loadingFrequent, setLoadingFrequent] = useState(true);
   const [activeMedBlockIdx, setActiveMedBlockIdx] = useState<number | null>(null);
   const [activeMedItemIdx, setActiveMedItemIdx] = useState<number | null>(null);
   const [activeMedResultIdx, setActiveMedResultIdx] = useState<number>(-1);
@@ -785,6 +791,59 @@ const PrescriptionBuilder: React.FC = () => {
     setActiveMedBlockIdx(null);
     setActiveMedItemIdx(null);
     setActiveMedResultIdx(-1);
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const meds = await prescriptionService.getFrequentMedicines(10);
+        if (!cancelled) setFrequentMedicines(meds);
+      } catch {
+        // Non-critical panel — fail silently, form still works without it.
+        if (!cancelled) setFrequentMedicines([]);
+      } finally {
+        if (!cancelled) setLoadingFrequent(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  /** One-click add from the Frequently Prescribed panel — fills the first
+   * empty medicine row (block 0, the only block), or appends a new row if
+   * every row is already filled in. */
+  const appendFrequentMedicine = (med: FrequentMedicine) => {
+    const blockIdx = 0;
+    setBlocks((prev) => {
+      const next = [...prev];
+      const block = next[blockIdx];
+      const items = block.items;
+      const emptyIdx = items.findIndex((i) => !i.medicine_name.trim());
+      const filledItem: PrescriptionItemCreate = {
+        ...(emptyIdx !== -1 ? items[emptyIdx] : emptyItem()),
+        medicine_id: med.id,
+        medicine_name: getDisplayMedicineName(med),
+        generic_name: med.generic_name,
+        dosage: med.strength || '',
+      };
+      const updatedItems = emptyIdx !== -1
+        ? items.map((it, i) => (i === emptyIdx ? filledItem : it))
+        : [...items, { ...filledItem, display_order: items.length }];
+      next[blockIdx] = { ...block, items: updatedItems };
+      return next;
+    });
+    // Deliberately not touching medicineStockById here — the Frequently
+    // Prescribed panel doesn't fetch stock (that's the pharmacist's concern
+    // at dispensing time), so there's nothing to record and no out-of-stock
+    // warning should show on a row filled this way.
+    setMedicineInfoById((prev) => ({
+      ...prev,
+      [med.id]: {
+        category: med.category,
+        units_per_pack: med.units_per_pack ?? 1,
+        unit_of_measure: med.unit_of_measure ?? 'units',
+      },
+    }));
   };
 
   /**
@@ -1741,105 +1800,113 @@ const PrescriptionBuilder: React.FC = () => {
               </div>
               {addOpticalRx && (
                 <div className="space-y-4">
-                  {/* Machine Prescribed — auto-refractometer / measurement-
-                      machine reading, taken before the doctor's final call.
-                      Stored as its own set of fields, separate from Doctor
-                      Prescribed below. */}
-                  <div>
-                    <p className="text-xs font-bold text-primary uppercase tracking-wide mb-2">Machine Prescribed</p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="border border-slate-200 rounded-lg p-4 space-y-3">
-                        <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Right Eye (OD)</h4>
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">SPH</label>
-                          <input type="number" step="0.25" value={opticalRx.right_machine_sph ?? ''} onChange={opticalNumField('right_machine_sph')} className="input-field" />
+                  {/* Machine Prescribed (left) vs Doctor Prescribed (right) —
+                      side by side instead of stacked, so the doctor can read
+                      the auto-refractometer reading and their own final call
+                      for the same eye at a glance and see the difference.
+                      Within each side, Right Eye (OD) is shown above Left Eye
+                      (OS). */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-4">
+                    {/* Machine Prescribed — auto-refractometer / measurement-
+                        machine reading, taken before the doctor's final call.
+                        Stored as its own set of fields, separate from Doctor
+                        Prescribed on the right. */}
+                    <div>
+                      <p className="text-xs font-bold text-primary uppercase tracking-wide mb-2">Machine Prescribed</p>
+                      <div className="space-y-4">
+                        <div className="border border-slate-200 rounded-lg p-4 space-y-3">
+                          <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Right Eye (OD)</h4>
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">SPH</label>
+                            <input type="number" step="0.25" value={opticalRx.right_machine_sph ?? ''} onChange={opticalNumField('right_machine_sph')} className="input-field" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">CYL</label>
+                            <input type="number" step="0.25" value={opticalRx.right_machine_cyl ?? ''} onChange={opticalNumField('right_machine_cyl')} className="input-field" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Axis</label>
+                            <input type="number" min={0} max={180} value={opticalRx.right_machine_axis ?? ''} onChange={opticalNumField('right_machine_axis')} className="input-field" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Add</label>
+                            <input type="number" step="0.25" value={opticalRx.right_machine_add ?? ''} onChange={opticalNumField('right_machine_add')} className="input-field" />
+                          </div>
                         </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">CYL</label>
-                          <input type="number" step="0.25" value={opticalRx.right_machine_cyl ?? ''} onChange={opticalNumField('right_machine_cyl')} className="input-field" />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Axis</label>
-                          <input type="number" min={0} max={180} value={opticalRx.right_machine_axis ?? ''} onChange={opticalNumField('right_machine_axis')} className="input-field" />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Add</label>
-                          <input type="number" step="0.25" value={opticalRx.right_machine_add ?? ''} onChange={opticalNumField('right_machine_add')} className="input-field" />
-                        </div>
-                      </div>
-                      <div className="border border-slate-200 rounded-lg p-4 space-y-3">
-                        <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Left Eye (OS)</h4>
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">SPH</label>
-                          <input type="number" step="0.25" value={opticalRx.left_machine_sph ?? ''} onChange={opticalNumField('left_machine_sph')} className="input-field" />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">CYL</label>
-                          <input type="number" step="0.25" value={opticalRx.left_machine_cyl ?? ''} onChange={opticalNumField('left_machine_cyl')} className="input-field" />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Axis</label>
-                          <input type="number" min={0} max={180} value={opticalRx.left_machine_axis ?? ''} onChange={opticalNumField('left_machine_axis')} className="input-field" />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Add</label>
-                          <input type="number" step="0.25" value={opticalRx.left_machine_add ?? ''} onChange={opticalNumField('left_machine_add')} className="input-field" />
+                        <div className="border border-slate-200 rounded-lg p-4 space-y-3">
+                          <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Left Eye (OS)</h4>
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">SPH</label>
+                            <input type="number" step="0.25" value={opticalRx.left_machine_sph ?? ''} onChange={opticalNumField('left_machine_sph')} className="input-field" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">CYL</label>
+                            <input type="number" step="0.25" value={opticalRx.left_machine_cyl ?? ''} onChange={opticalNumField('left_machine_cyl')} className="input-field" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Axis</label>
+                            <input type="number" min={0} max={180} value={opticalRx.left_machine_axis ?? ''} onChange={opticalNumField('left_machine_axis')} className="input-field" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Add</label>
+                            <input type="number" step="0.25" value={opticalRx.left_machine_add ?? ''} onChange={opticalNumField('left_machine_add')} className="input-field" />
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
 
-                  <p className="text-xs font-bold text-primary uppercase tracking-wide mb-2">Doctor Prescribed</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {/* Right Eye (OD) — shown first (screen-left) per the
-                        clinical convention of facing the patient, matching
-                        the Eye Exam section below. */}
-                    <div className="border border-slate-200 rounded-lg p-4 space-y-3">
-                      <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Right Eye (OD)</h4>
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">SPH</label>
-                        <input type="number" step="0.25" value={opticalRx.right_sph ?? ''} onChange={opticalNumField('right_sph')} className="input-field" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">CYL</label>
-                        <input type="number" step="0.25" value={opticalRx.right_cyl ?? ''} onChange={opticalNumField('right_cyl')} className="input-field" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Axis</label>
-                        <input type="number" min={0} max={180} value={opticalRx.right_axis ?? ''} onChange={opticalNumField('right_axis')} className="input-field" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Add</label>
-                        <input type="number" step="0.25" value={opticalRx.right_add ?? ''} onChange={opticalNumField('right_add')} className="input-field" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Visual Acuity</label>
-                        <input value={opticalRx.right_va || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, right_va: e.target.value }))} placeholder="6/6" className="input-field" />
-                      </div>
-                    </div>
+                    {/* Doctor Prescribed — the doctor's final call, mirrored
+                        on the right so it lines up beside Machine Prescribed. */}
+                    <div>
+                      <p className="text-xs font-bold text-primary uppercase tracking-wide mb-2">Doctor Prescribed</p>
+                      <div className="space-y-4">
+                        <div className="border border-slate-200 rounded-lg p-4 space-y-3">
+                          <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Right Eye (OD)</h4>
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">SPH</label>
+                            <input type="number" step="0.25" value={opticalRx.right_sph ?? ''} onChange={opticalNumField('right_sph')} className="input-field" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">CYL</label>
+                            <input type="number" step="0.25" value={opticalRx.right_cyl ?? ''} onChange={opticalNumField('right_cyl')} className="input-field" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Axis</label>
+                            <input type="number" min={0} max={180} value={opticalRx.right_axis ?? ''} onChange={opticalNumField('right_axis')} className="input-field" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Add</label>
+                            <input type="number" step="0.25" value={opticalRx.right_add ?? ''} onChange={opticalNumField('right_add')} className="input-field" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Visual Acuity</label>
+                            <input value={opticalRx.right_va || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, right_va: e.target.value }))} placeholder="6/6" className="input-field" />
+                          </div>
+                        </div>
 
-                    {/* Left Eye (OS) */}
-                    <div className="border border-slate-200 rounded-lg p-4 space-y-3">
-                      <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Left Eye (OS)</h4>
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">SPH</label>
-                        <input type="number" step="0.25" value={opticalRx.left_sph ?? ''} onChange={opticalNumField('left_sph')} className="input-field" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">CYL</label>
-                        <input type="number" step="0.25" value={opticalRx.left_cyl ?? ''} onChange={opticalNumField('left_cyl')} className="input-field" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Axis</label>
-                        <input type="number" min={0} max={180} value={opticalRx.left_axis ?? ''} onChange={opticalNumField('left_axis')} className="input-field" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Add</label>
-                        <input type="number" step="0.25" value={opticalRx.left_add ?? ''} onChange={opticalNumField('left_add')} className="input-field" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Visual Acuity</label>
-                        <input value={opticalRx.left_va || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, left_va: e.target.value }))} placeholder="6/6" className="input-field" />
+                        <div className="border border-slate-200 rounded-lg p-4 space-y-3">
+                          <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Left Eye (OS)</h4>
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">SPH</label>
+                            <input type="number" step="0.25" value={opticalRx.left_sph ?? ''} onChange={opticalNumField('left_sph')} className="input-field" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">CYL</label>
+                            <input type="number" step="0.25" value={opticalRx.left_cyl ?? ''} onChange={opticalNumField('left_cyl')} className="input-field" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Axis</label>
+                            <input type="number" min={0} max={180} value={opticalRx.left_axis ?? ''} onChange={opticalNumField('left_axis')} className="input-field" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Add</label>
+                            <input type="number" step="0.25" value={opticalRx.left_add ?? ''} onChange={opticalNumField('left_add')} className="input-field" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Visual Acuity</label>
+                            <input value={opticalRx.left_va || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, left_va: e.target.value }))} placeholder="6/6" className="input-field" />
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -2064,7 +2131,9 @@ const PrescriptionBuilder: React.FC = () => {
             </div>
           )}
 
-          {/* Single Diagnosis & Medicines block */}
+          {/* Diagnosis & Medicines, with the Frequently Prescribed quick-pick
+              panel alongside it on wide screens (stacks below on mobile). */}
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_260px] gap-4 items-start">
           {blocks.slice(0, 1).map((block, blockIdx) => (
             <div key={block.id} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-visible">
               {/* Block header */}
@@ -2312,6 +2381,39 @@ const PrescriptionBuilder: React.FC = () => {
               </div>
             </div>
           ))}
+
+            {/* Frequently Prescribed — one-click add of this hospital's
+                most-prescribed medicines into the table on the left. */}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 lg:sticky lg:top-4 h-fit">
+              <h3 className="font-semibold flex items-center gap-2 mb-3 text-sm">
+                <span className="material-symbols-outlined text-primary text-sm">trending_up</span>
+                Frequently Prescribed
+              </h3>
+              {loadingFrequent ? (
+                <p className="text-xs text-slate-400">Loading…</p>
+              ) : frequentMedicines.length === 0 ? (
+                <p className="text-xs text-slate-400">No prescribing history yet.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {frequentMedicines.map((med) => (
+                    <button
+                      key={med.id}
+                      type="button"
+                      onClick={() => appendFrequentMedicine(med)}
+                      title={`Add ${med.name} to this prescription`}
+                      className="w-full text-left px-2.5 py-2 rounded-lg border border-slate-100 hover:border-primary/40 hover:bg-primary/5 transition-colors group"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-medium text-slate-700 group-hover:text-primary truncate">{med.name}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 shrink-0">×{med.times_prescribed}</span>
+                      </div>
+                      {med.strength && <span className="text-[10px] text-slate-400">{med.strength}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
 
           {/* Advice */}
           <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">

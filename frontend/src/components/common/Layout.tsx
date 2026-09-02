@@ -567,6 +567,7 @@ const Layout: React.FC = () => {
     if (hasRole('pharmacist') && !hasRole('super_admin', 'admin', 'inventory_manager')) {
       // Simplified pharmacy menu for pharmacists - essential items only
       pharmacyItems.push(
+        { to: '/pharmacy', label: 'Dashboard', icon: 'dashboard' },
         // Lets a pharmacist author a walk-in prescription directly (no
         // doctor consultation first), attributed to a doctor they pick —
         // reuses PrescriptionBuilder via the /prescriptions/new route,

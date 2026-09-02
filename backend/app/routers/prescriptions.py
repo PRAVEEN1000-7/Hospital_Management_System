@@ -29,6 +29,8 @@ from ..schemas.prescription import (
     MedicineUpdate,
     MedicineResponse,
     PaginatedMedicineResponse,
+    FrequentMedicineResponse,
+    FrequentMedicinesResponse,
     PrescriptionTemplateCreate,
     PrescriptionTemplateUpdate,
     PrescriptionTemplateResponse,
@@ -47,6 +49,7 @@ from ..services.prescription_service import (
     get_prescription_versions,
     create_medicine,
     list_medicines,
+    list_frequent_medicines,
     update_medicine,
     create_template,
     list_templates,
@@ -831,6 +834,24 @@ async def list_all_medicines(
         total=total, page=pg, limit=lim, total_pages=tp,
         data=response_rows,
     )
+
+
+@medicines_router.get("/frequent", response_model=FrequentMedicinesResponse)
+async def get_frequent_medicines(
+    limit: int = Query(10, ge=1, le=50),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(rx_new_view_or_pharmacist_guard),
+):
+    """Top medicines by prescribing frequency at this hospital — feeds the
+    'Frequently Prescribed' quick-pick panel on the New Prescription form."""
+    rows = list_frequent_medicines(db, hospital_id=current_user.hospital_id, limit=limit)
+    response_rows = []
+    for med, count in rows:
+        model = MedicineResponse.model_validate(med)
+        combined = model.model_dump()
+        combined["times_prescribed"] = count
+        response_rows.append(FrequentMedicineResponse(**combined))
+    return FrequentMedicinesResponse(data=response_rows)
 
 
 @medicines_router.put("/{medicine_id}", response_model=MedicineResponse)

@@ -7,6 +7,7 @@ import type {
   PrescriptionVitalsUpdate,
   Medicine,
   MedicineCreate,
+  FrequentMedicine,
   PrescriptionTemplate,
   PrescriptionTemplateCreate,
   PrescriptionVersion,
@@ -145,6 +146,13 @@ const prescriptionService = {
     if (category) params.category = category;
     const res = await api.get<PaginatedResponse<Medicine>>('/medicines', { params });
     return res.data;
+  },
+
+  /** Top prescribed medicines at this hospital, for the 'Frequently
+   * Prescribed' quick-pick panel on the New Prescription form. */
+  async getFrequentMedicines(limit = 10): Promise<FrequentMedicine[]> {
+    const res = await api.get<{ data: FrequentMedicine[] }>('/medicines/frequent', { params: { limit } });
+    return res.data.data;
   },
 
   async createMedicine(data: MedicineCreate): Promise<Medicine> {

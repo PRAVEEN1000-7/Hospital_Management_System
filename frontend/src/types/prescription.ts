@@ -209,6 +209,12 @@ export interface Medicine {
   updated_at: string;
 }
 
+/** A medicine plus how many times it's been prescribed at this hospital —
+ * returned by the 'Frequently Prescribed' quick-pick endpoint. */
+export interface FrequentMedicine extends Medicine {
+  times_prescribed: number;
+}
+
 export interface MedicineCreate {
   name: string;
   generic_name: string;

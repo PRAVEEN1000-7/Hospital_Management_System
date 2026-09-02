@@ -1348,6 +1348,41 @@ def list_medicines(
     return total, page, limit, total_pages, rows, stock_map
 
 
+def list_frequent_medicines(
+    db: Session,
+    hospital_id: Optional[uuid.UUID] = None,
+    limit: int = 10,
+):
+    """Top medicines by how many times they've been prescribed at this
+    hospital — powers the 'Frequently Prescribed' quick-pick panel on the
+    New Prescription form. Only counts finalized/dispensed prescriptions
+    (drafts don't reflect an actual clinical decision) and only medicines
+    linked to the formulary (medicine_id set — free-typed one-off names
+    aren't reusable quick-picks).
+
+    Deliberately doesn't look at stock: this just ranks by prescribing
+    frequency so a doctor can quick-add a commonly used medicine. Stock
+    availability is the pharmacist's concern at dispensing time, not the
+    doctor's at prescribing time."""
+    rows = (
+        db.query(Medicine, func.count(PrescriptionItem.id).label("cnt"))
+        .join(PrescriptionItem, PrescriptionItem.medicine_id == Medicine.id)
+        .join(Prescription, Prescription.id == PrescriptionItem.prescription_id)
+        .filter(
+            Prescription.hospital_id == hospital_id,
+            Prescription.is_deleted == False,
+            Prescription.status.in_(["finalized", "dispensed"]),
+            Medicine.is_active == True,
+        )
+        .group_by(Medicine.id)
+        .order_by(func.count(PrescriptionItem.id).desc())
+        .limit(limit)
+        .all()
+    )
+
+    return [(med, int(cnt)) for med, cnt in rows]
+
+
 def update_medicine(
     db: Session,
     medicine_id: str | uuid.UUID,

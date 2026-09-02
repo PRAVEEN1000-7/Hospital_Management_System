@@ -46,6 +46,7 @@ export interface DailyRevenue {
   opd: number;
   pharmacy: number;
   optical: number;
+  lab: number;
   total: number;
 }
 
@@ -54,6 +55,7 @@ export interface MonthlyRevenue {
   opd: number;
   pharmacy: number;
   optical: number;
+  lab: number;
   total: number;
 }
 

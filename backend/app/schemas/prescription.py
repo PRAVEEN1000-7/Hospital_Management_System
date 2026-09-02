@@ -128,6 +128,16 @@ class PaginatedMedicineResponse(BaseModel):
     data: list[MedicineResponse]
 
 
+class FrequentMedicineResponse(MedicineResponse):
+    """A medicine plus how many times it's been prescribed, for the
+    'Frequently Prescribed' quick-pick panel on the prescription form."""
+    times_prescribed: int
+
+
+class FrequentMedicinesResponse(BaseModel):
+    data: list[FrequentMedicineResponse]
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Prescription Item Schemas
 # ═══════════════════════════════════════════════════════════════════════════

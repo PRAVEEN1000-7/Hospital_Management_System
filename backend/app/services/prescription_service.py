@@ -875,6 +875,33 @@ def delete_prescription(
     return rx
 
 
+def ignore_prescription_in_queue(
+    db: Session,
+    prescription_id: str | uuid.UUID,
+    hospital_id: Optional[uuid.UUID] = None,
+) -> Optional[Prescription]:
+    """Mark a prescription as ignored in the pharmacist's Pending Prescriptions
+    queue (PendingPrescriptions.tsx) WITHOUT deleting it — the prescription
+    must keep showing on the doctor's own /prescriptions list exactly as
+    before. Same "not already dispensed" guard as delete_prescription, for the
+    same reason: a pharmacist still mid-dispensing shouldn't lose it from view."""
+    rx = get_prescription(db, prescription_id, hospital_id=hospital_id)
+    if not rx:
+        return None
+
+    any_dispensed = db.query(PrescriptionItem).filter(
+        PrescriptionItem.prescription_id == rx.id,
+        PrescriptionItem.dispensed_quantity > 0,
+    ).first() is not None
+    if any_dispensed:
+        raise ValueError("Cannot ignore a prescription in the queue that has already been dispensed")
+
+    rx.hidden_from_pharmacy_queue = True
+    db.commit()
+    db.refresh(rx)
+    return rx
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Prescription Enrichment (add patient/doctor names)
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1319,6 +1346,41 @@ def list_medicines(
 
     total_pages = ceil(total / limit) if total > 0 else 0
     return total, page, limit, total_pages, rows, stock_map
+
+
+def list_frequent_medicines(
+    db: Session,
+    hospital_id: Optional[uuid.UUID] = None,
+    limit: int = 10,
+):
+    """Top medicines by how many times they've been prescribed at this
+    hospital — powers the 'Frequently Prescribed' quick-pick panel on the
+    New Prescription form. Only counts finalized/dispensed prescriptions
+    (drafts don't reflect an actual clinical decision) and only medicines
+    linked to the formulary (medicine_id set — free-typed one-off names
+    aren't reusable quick-picks).
+
+    Deliberately doesn't look at stock: this just ranks by prescribing
+    frequency so a doctor can quick-add a commonly used medicine. Stock
+    availability is the pharmacist's concern at dispensing time, not the
+    doctor's at prescribing time."""
+    rows = (
+        db.query(Medicine, func.count(PrescriptionItem.id).label("cnt"))
+        .join(PrescriptionItem, PrescriptionItem.medicine_id == Medicine.id)
+        .join(Prescription, Prescription.id == PrescriptionItem.prescription_id)
+        .filter(
+            Prescription.hospital_id == hospital_id,
+            Prescription.is_deleted == False,
+            Prescription.status.in_(["finalized", "dispensed"]),
+            Medicine.is_active == True,
+        )
+        .group_by(Medicine.id)
+        .order_by(func.count(PrescriptionItem.id).desc())
+        .limit(limit)
+        .all()
+    )
+
+    return [(med, int(cnt)) for med, cnt in rows]
 
 
 def update_medicine(

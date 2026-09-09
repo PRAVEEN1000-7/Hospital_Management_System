@@ -132,6 +132,8 @@ const walkInService = {
         patient_reference_number: string | null;
         patient_gender: string | null;
         patient_age: number | null;
+        patient_phone: string | null;
+        patient_city: string | null;
         chief_complaint: string | null;
         doctor_id: string | null;
         doctor_name: string | null;

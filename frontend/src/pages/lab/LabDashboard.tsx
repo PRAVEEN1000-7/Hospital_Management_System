@@ -1,30 +1,41 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import labService from '../../services/labService';
 import type { LabDashboard as DashboardData } from '../../types/lab';
 import { useAuth } from '../../contexts/AuthContext';
+import DateRangeFilter from '../../components/common/DateRangeFilter';
+import { formatLocalDateISO, formatDateOnly } from '../../utils/calendarDate';
 
 const LabDashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [stats, setStats] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const today = formatLocalDateISO();
+  // Bug fix: date-wise statistics were missing entirely — Orders/Revenue
+  // were always hardcoded to "today" with no way to look at another day or
+  // a range. Defaults to today (unchanged at-a-glance behavior on load).
+  const [dateFrom, setDateFrom] = useState(today);
+  const [dateTo, setDateTo] = useState(today);
+  const isTodayOnly = dateFrom === today && dateTo === today;
 
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      try {
-        setStats(await labService.getDashboard());
-      } catch (err) {
-        console.error('Failed to load lab dashboard:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
-  }, []);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      setStats(await labService.getDashboard(dateFrom || undefined, dateTo || undefined));
+    } catch (err) {
+      console.error('Failed to load lab dashboard:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [dateFrom, dateTo]);
 
-  if (loading) {
+  useEffect(() => { load(); }, [load]);
+
+  // Full-page spinner only on the very first load — switching the date
+  // filter afterward re-fetches without blanking the whole page (the cards
+  // just briefly hold their previous values).
+  if (loading && !stats) {
     return (
       <div className="flex items-center justify-center h-64">
         <span className="material-symbols-outlined animate-spin text-4xl text-primary">progress_activity</span>
@@ -40,10 +51,10 @@ const LabDashboard: React.FC = () => {
       color: 'text-blue-600', bg: (stats?.waiting_count ?? 0) > 0 ? 'bg-blue-100' : 'bg-blue-50',
       to: '/lab/queue', highlight: (stats?.waiting_count ?? 0) > 0,
     },
-    { label: "Today's Orders", value: stats?.today_orders_count ?? 0, icon: 'science', color: 'text-indigo-500', bg: 'bg-indigo-50', to: '/lab/queue' },
+    { label: isTodayOnly ? "Today's Orders" : 'Orders', value: stats?.today_orders_count ?? 0, icon: 'science', color: 'text-indigo-500', bg: 'bg-indigo-50', to: '/lab/queue' },
     { label: 'Pending Results', value: stats?.pending_results_count ?? 0, icon: 'pending_actions', color: 'text-amber-500', bg: 'bg-amber-50', to: '/lab/queue' },
     { label: 'Test Catalog', value: stats?.total_tests ?? 0, icon: 'biotech', color: 'text-purple-500', bg: 'bg-purple-50', to: '/lab/tests' },
-    { label: "Today's Revenue", value: `₹${Number(stats?.today_revenue ?? 0).toLocaleString()}`, icon: 'payments', color: 'text-green-600', bg: 'bg-green-50', to: '/lab/queue' },
+    { label: isTodayOnly ? "Today's Revenue" : 'Revenue', value: `₹${Number(stats?.today_revenue ?? 0).toLocaleString()}`, icon: 'payments', color: 'text-green-600', bg: 'bg-green-50', to: '/lab/queue' },
   ];
 
   return (
@@ -59,6 +70,20 @@ const LabDashboard: React.FC = () => {
           className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-primary bg-white border border-primary/30 rounded-lg hover:bg-primary/5 transition-colors">
           <span className="material-symbols-outlined text-base">add</span> Manage Tests
         </button>
+      </div>
+
+      {/* Date-wise statistics — Orders/Revenue below scope to whichever
+          range is selected here; Waiting/Pending Results stay live
+          regardless (they're "what's in the queue right now", not
+          historical). Defaults to today. */}
+      <div className="bg-white rounded-xl border border-slate-200 p-4">
+        <DateRangeFilter dateFrom={dateFrom} dateTo={dateTo} maxDate={today}
+          onChange={(from, to) => { setDateFrom(from || today); setDateTo(to || today); }} />
+        {!isTodayOnly && (
+          <p className="text-xs text-slate-400 mt-2">
+            Showing Orders/Revenue for {formatDateOnly(dateFrom, 'MMM d, yyyy')} – {formatDateOnly(dateTo, 'MMM d, yyyy')}. Waiting/Pending Results always reflect today.
+          </p>
+        )}
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">

@@ -12,8 +12,11 @@ import type {
 export const labService = {
 
   // ═══ Dashboard ═══
-  async getDashboard(): Promise<LabDashboard> {
-    const res = await api.get<LabDashboard>('/lab/dashboard');
+  async getDashboard(dateFrom?: string, dateTo?: string): Promise<LabDashboard> {
+    const params: Record<string, string> = {};
+    if (dateFrom) params.date_from = dateFrom;
+    if (dateTo) params.date_to = dateTo;
+    const res = await api.get<LabDashboard>('/lab/dashboard', { params });
     return res.data;
   },
 

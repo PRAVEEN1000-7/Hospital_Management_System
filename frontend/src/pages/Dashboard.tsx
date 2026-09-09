@@ -6,16 +6,16 @@ import { formatRole } from '../utils/constants';
 import { hasAccess } from '../config/modulePermissions';
 import patientService from '../services/patientService';
 import hospitalService from '../services/hospitalService';
-import userService from '../services/userService';
 import doctorService from '../services/doctorService';
 import walkInService from '../services/walkInService';
 import waitlistService from '../services/waitlistService';
 import appointmentService, { type DoctorTodaySummary } from '../services/appointmentService';
+import { formatLocalDateISO } from '../utils/calendarDate';
 import reportsApi from '../services/reportsApi';
 import { useToast } from '../contexts/ToastContext';
 import PatientTrendChart from '../components/dashboard/PatientTrendChart';
 import type { DoctorProfile } from '../types/doctor';
-import type { QueueItem } from '../types/appointment';
+import type { QueueItem, AppointmentStats } from '../types/appointment';
 import type { PaymentStatusSummary } from '../types/analytics.types';
 
 /* ────────────────────────────── helpers ────────────────────────────── */
@@ -186,7 +186,6 @@ const Dashboard: React.FC = () => {
   const toast = useToast();
   const { refreshTrigger } = useDashboardRefresh();
   const [totalPatients, setTotalPatients] = useState<number>(0);
-  const [activeUsers, setActiveUsers] = useState<number>(0);
   const [hospitalName, setHospitalName] = useState<string>('HMS Core');
   const [loading, setLoading] = useState(true);
   const [doctorProfile, setDoctorProfile] = useState<DoctorProfile | null>(null);
@@ -203,6 +202,9 @@ const Dashboard: React.FC = () => {
   const [todayQueueItems, setTodayQueueItems] = useState<QueueItem[]>([]);
   const [upcomingPreview, setUpcomingPreview] = useState<{ date: string; patient_name: string | null; appointment_type: string }[]>([]);
   const [upcomingTotal, setUpcomingTotal] = useState<number>(0);
+  // Admin Dashboard "Today Registered Patients" breakdown (New / Follow-up /
+  // Total) — see get_appointment_stats on the backend for exact definitions.
+  const [todayRegistration, setTodayRegistration] = useState<AppointmentStats | null>(null);
 
   const role = user?.roles?.[0] || '';
   const isDoctor = role === 'doctor' || role === 'visiting_doctor';
@@ -305,19 +307,12 @@ const Dashboard: React.FC = () => {
         } catch { /* silent */ }
       }
 
-      // Admin-only: user count (requires super_admin or admin)
+      // Admin-only: today's registered-patient breakdown (New / Follow-up / Total)
       if (isAdmin) {
         try {
-          const firstPage = await userService.getUsers(1, 100);
-          let allUsers = [...firstPage.data];
-          const totalPages = firstPage.total_pages;
-          if (totalPages > 1) {
-            const remaining = [];
-            for (let page = 2; page <= totalPages; page++) remaining.push(userService.getUsers(page, 100));
-            const results = await Promise.all(remaining);
-            results.forEach(res => { allUsers = [...allUsers, ...res.data]; });
-          }
-          setActiveUsers(allUsers.filter((u: any) => u.is_active === true).length);
+          const today = formatLocalDateISO();
+          const stats = await appointmentService.getStats(today, today);
+          setTodayRegistration(stats);
         } catch { /* silent */ }
       }
 
@@ -349,9 +344,9 @@ const Dashboard: React.FC = () => {
       case 'admin':
         return [
           { label: 'Total Patients', value: totalPatients.toLocaleString(), icon: 'group', iconColor: 'text-blue-500' },
-          { label: 'Active Staff', value: activeUsers.toLocaleString(), icon: 'badge', iconColor: 'text-purple-500' },
-          { label: 'System Status', value: 'Online', icon: 'check_circle', iconColor: 'text-emerald-500' },
-          { label: 'Pending Tasks', value: '0', icon: 'receipt_long', iconColor: 'text-amber-500' },
+          { label: 'New Today', value: (todayRegistration?.new_patients ?? 0).toLocaleString(), icon: 'person_add', iconColor: 'text-emerald-500' },
+          { label: 'Follow-up Today', value: (todayRegistration?.follow_up_patients ?? 0).toLocaleString(), icon: 'event_repeat', iconColor: 'text-amber-500' },
+          { label: 'Total Today', value: (todayRegistration?.total_patients ?? 0).toLocaleString(), icon: 'today', iconColor: 'text-purple-500' },
         ];
       case 'receptionist':
         return [
@@ -370,7 +365,10 @@ const Dashboard: React.FC = () => {
         const notPaid = paymentStatus?.not_paid;
         const partial = paymentStatus?.partially_paid;
         const paid = paymentStatus?.paid;
-        const outstanding = (notPaid?.total_amount || 0) + (partial?.total_amount || 0);
+        // Money actually still owed — SUM(balance_amount), not total_amount
+        // (which for a partially-paid invoice is its full billed value, not
+        // what's left after the payment(s) already collected against it).
+        const outstanding = (notPaid?.outstanding_amount || 0) + (partial?.outstanding_amount || 0);
         return [
           { label: 'Pending Invoices', value: (notPaid?.count ?? 0).toLocaleString(), icon: 'pending_actions', iconColor: 'text-amber-500' },
           { label: 'Partially Paid', value: (partial?.count ?? 0).toLocaleString(), icon: 'hourglass_top', iconColor: 'text-blue-500' },
@@ -495,11 +493,14 @@ const Dashboard: React.FC = () => {
 
       {/* Patient Registration Trend — analytics content, so it follows the
           same rule as the dedicated Analytics module (general.analytics):
-          full doctors and admins see it, visiting doctors do not. Deliberately
-          NOT gated by isDoctor (which also covers visiting_doctor, correct
-          for operational widgets like the profile card above) — this one
-          specifically checks role === 'doctor'. */}
-      {(role === 'doctor' || isAdmin) && <PatientTrendChart />}
+          full doctors, admins, and receptionists see it; visiting doctors do
+          not. Deliberately NOT gated by isDoctor (which also covers
+          visiting_doctor, correct for operational widgets like the profile
+          card above) — this one specifically checks role === 'doctor'.
+          Receptionist was previously excluded here, which is why the graph
+          never showed on the Reception Dashboard — see the matching backend
+          guard, patients.py's patient_trend_role_guard. */}
+      {(role === 'doctor' || isAdmin || isReceptionist) && <PatientTrendChart />}
 
       {/* Quick Actions — full width */}
       <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm mb-8">
@@ -690,18 +691,6 @@ const Dashboard: React.FC = () => {
                       <div className="p-4 rounded-lg bg-purple-50">
                         <p className="text-[10px] font-bold text-purple-500 uppercase mb-1">Waitlisted</p>
                         <p className="text-sm font-semibold text-purple-700">{waitlistWaiting}</p>
-                      </div>
-                    </>
-                  )}
-                  {isAdmin && (
-                    <>
-                      <div className="p-4 rounded-lg bg-purple-50">
-                        <p className="text-[10px] font-bold text-purple-500 uppercase mb-1">Active Staff</p>
-                        <p className="text-sm font-semibold text-purple-700">{activeUsers}</p>
-                      </div>
-                      <div className="p-4 rounded-lg bg-emerald-50">
-                        <p className="text-[10px] font-bold text-emerald-500 uppercase mb-1">System</p>
-                        <p className="text-sm font-semibold text-emerald-700">All Operational</p>
                       </div>
                     </>
                   )}

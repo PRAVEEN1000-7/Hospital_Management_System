@@ -865,6 +865,9 @@ def get_appointment_stats(
             "cancellation_rate": 0,
             "no_show_rate": 0,
             "average_wait_time": 0,
+            "new_patients": 0,
+            "follow_up_patients": 0,
+            "total_patients": 0,
         }
 
     completed = sum(1 for a in appointments if a.status == "completed")
@@ -876,6 +879,21 @@ def get_appointment_stats(
     pending = sum(1 for a in appointments if a.status in ("pending", "confirmed", "in-progress"))
     # walk-ins by appointment type (hyphen is the stored value)
     walk_ins = sum(1 for a in appointments if a.appointment_type == "walk-in")
+
+    # Admin Dashboard "Today Registered Patients" breakdown — distinct
+    # patients (not appointment count), so a patient with two visits in the
+    # range isn't counted twice. "New" = visit_type set at booking time (see
+    # register_walk_in/create_appointment); "Follow-up" = appointment_type is
+    # one of the follow-up values (NO_TOKEN_AT_BOOKING_TYPES). The two sets
+    # aren't exhaustive of total_patients — a returning walk-in that isn't a
+    # follow-up booking counts toward the total but neither bucket, which is
+    # intentional (it's neither a first-ever visit nor a scheduled follow-up).
+    live_appointments = [a for a in appointments if a.status not in ("cancelled", "no-show")]
+    new_patient_ids = {a.patient_id for a in live_appointments if a.visit_type == "new"}
+    follow_up_patient_ids = {
+        a.patient_id for a in live_appointments if a.appointment_type in ("follow-up", "follow_up")
+    }
+    total_patient_ids = {a.patient_id for a in live_appointments if a.patient_id}
 
     return {
         "total_appointments": total,
@@ -889,6 +907,9 @@ def get_appointment_stats(
         "cancellation_rate": round(cancelled / total * 100, 1) if total else 0,
         "no_show_rate": round(no_shows / total * 100, 1) if total else 0,
         "average_wait_time": 0,
+        "new_patients": len(new_patient_ids),
+        "follow_up_patients": len(follow_up_patient_ids),
+        "total_patients": len(total_patient_ids),
     }
 
 

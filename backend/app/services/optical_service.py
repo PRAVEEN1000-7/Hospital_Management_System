@@ -388,12 +388,22 @@ def list_pending_optical_prescriptions(
     status_filter: Optional[str] = None,
     search: Optional[str] = None,
 ) -> dict:
-    """Return finalized optical prescriptions with patient/doctor info, for the optical queue page."""
+    """Return finalized optical prescriptions with patient/doctor info, for the optical queue page.
+
+    Status logic (mirrors dispensing_service.get_pending_prescriptions):
+    - 'finalized' -> Pending, awaiting a glasses/lens sale
+    - 'dispensed' -> Already sold (has a linked OpticalSale)
+    - 'ignored'   -> Optical staff dismissed it (hidden_from_optical_queue);
+      stays in this list, just flagged, never deleted
+    """
     from ..models.patient import Patient
     from ..models.appointment import Doctor as DoctorModel
     from ..models.user import User as UserModel
 
-    # Base: only finalized prescriptions for this hospital
+    # Base: only finalized prescriptions for this hospital. Ignored
+    # prescriptions are NOT filtered out here — they stay in the queue, just
+    # flagged with an "ignored" status below, unless the caller explicitly
+    # filters them in/out via status_filter.
     query = db.query(OpticalPrescription).filter(
         OpticalPrescription.hospital_id == hospital_id,
         OpticalPrescription.is_finalized == True,
@@ -426,9 +436,17 @@ def list_pending_optical_prescriptions(
         .subquery()
     )
     if status_filter == "pending":
-        query = query.filter(~OpticalPrescription.id.in_(dispensed_rx_sub))
+        # "Pending (Not Dispensed)" excludes ignored rows too — a staff member
+        # filtering to what's actually still actionable doesn't want dismissed
+        # prescriptions cluttering it back in; 'ignored' has its own filter.
+        query = query.filter(
+            ~OpticalPrescription.id.in_(dispensed_rx_sub),
+            OpticalPrescription.hidden_from_optical_queue == False,
+        )
     elif status_filter == "dispensed":
         query = query.filter(OpticalPrescription.id.in_(dispensed_rx_sub))
+    elif status_filter == "ignored":
+        query = query.filter(OpticalPrescription.hidden_from_optical_queue == True)
 
     total = query.count()
     items = query.order_by(OpticalPrescription.created_at.desc()).offset((page - 1) * limit).limit(limit).all()
@@ -466,10 +484,17 @@ def list_pending_optical_prescriptions(
                 ln = doctor.user.last_name or ""
                 doctor_name = f"Dr. {fn} {ln}".strip()
 
+        if rx.id in sold_ids:
+            rx_status = "dispensed"
+        elif rx.hidden_from_optical_queue:
+            rx_status = "ignored"
+        else:
+            rx_status = "finalized"
+
         result_data.append({
             "id": str(rx.id),
             "prescription_number": rx.prescription_number,
-            "status": "dispensed" if rx.id in sold_ids else "finalized",
+            "status": rx_status,
             "patient_name": patient.full_name if patient else "Unknown",
             "patient_reference_number": getattr(patient, "patient_reference_number", None) if patient else None,
             "patient_age": patient_age,
@@ -488,6 +513,28 @@ def list_pending_optical_prescriptions(
         "total_pages": ceil(total / limit) if limit else 1,
         "data": result_data,
     }
+
+
+def ignore_optical_prescription_in_queue(
+    db: Session, prescription_id: str | uuid.UUID, hospital_id: Optional[uuid.UUID] = None,
+) -> Optional[OpticalPrescription]:
+    """Mark a finalized eye prescription as ignored in the optical Prescription
+    Queue (OpticalPendingPrescriptions.tsx) — for a patient who never came
+    back to buy glasses/lenses. Does NOT delete the prescription; it keeps
+    showing on the patient's optical history exactly as before. Mirrors
+    prescription_service.ignore_prescription_in_queue for the pharmacy queue."""
+    rx = get_optical_prescription_by_id(db, prescription_id, hospital_id=hospital_id)
+    if not rx:
+        return None
+
+    already_sold = db.query(OpticalSale).filter(OpticalSale.prescription_id == rx.id).first() is not None
+    if already_sold:
+        raise ValueError("Cannot ignore a prescription in the queue that has already been dispensed")
+
+    rx.hidden_from_optical_queue = True
+    db.commit()
+    db.refresh(rx)
+    return rx
 
 
 def update_optical_prescription(db: Session, prescription_id: str | uuid.UUID, data: dict) -> Optional[OpticalPrescription]:
@@ -1174,6 +1221,7 @@ def get_optical_dashboard(db: Session, hospital_id: uuid.UUID) -> dict:
         OpticalPrescription.hospital_id == hospital_id,
         OpticalPrescription.is_finalized == True,
         ~OpticalPrescription.id.in_(dispensed_rx_ids),
+        OpticalPrescription.hidden_from_optical_queue == False,
     ).scalar() or 0
 
     return {

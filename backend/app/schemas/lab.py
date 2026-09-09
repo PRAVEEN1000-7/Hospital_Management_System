@@ -410,3 +410,8 @@ class LabDashboard(BaseModel):
     waiting_count: int = 0
     pending_results_count: int = 0
     today_revenue: Decimal = Decimal("0")
+    # Echoes back the resolved range (defaults to today when the caller
+    # passes neither) so the frontend can label the orders_count/revenue
+    # cards correctly without re-deriving "today" itself.
+    date_from: Optional[str] = None
+    date_to: Optional[str] = None

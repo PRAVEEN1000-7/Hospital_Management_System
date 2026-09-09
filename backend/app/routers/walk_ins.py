@@ -162,6 +162,43 @@ async def register_walk_in(
         if not patient:
             raise HTTPException(status_code=404, detail="Patient not found")
 
+        # ── Check duplicate: patient must not already have an active queue
+        # entry today. Without this, registering a patient who's already
+        # queued mints them the SAME hospital-wide daily token a second time
+        # (get_or_assign_visit_token below reuses it) and the INSERT below
+        # collides with the existing row's (doctor_id, queue_date,
+        # queue_number) unique constraint — that raw IntegrityError fell
+        # through to the generic except-Exception handler at the bottom of
+        # this function, surfacing only as "Walk-in registration failed.
+        # Please try again." with no indication of the actual cause. Most
+        # visible with follow-up bookings, whose queue entry is created
+        # automatically at booking time (see appointment_service._create_queue_entry)
+        # so the patient can already be sitting in today's queue before
+        # reception ever touches OPD Assignment for them.
+        existing_active_queue = (
+            db.query(AppointmentQueue)
+            .join(Appointment, Appointment.id == AppointmentQueue.appointment_id)
+            .filter(
+                Appointment.patient_id == patient_id,
+                Appointment.hospital_id == current_user.hospital_id,
+                AppointmentQueue.queue_date == today,
+                AppointmentQueue.status.notin_(["completed", "skipped"]),
+            )
+            .first()
+        )
+        if existing_active_queue:
+            existing_appt = db.query(Appointment).filter(
+                Appointment.id == existing_active_queue.appointment_id
+            ).first()
+            is_follow_up = bool(
+                existing_appt and existing_appt.appointment_type in ("follow-up", "follow_up")
+            )
+            raise HTTPException(
+                status_code=409,
+                detail="The patient is already in Followup queue" if is_follow_up
+                else "The patient is already in queue",
+            )
+
         # Resolve doctor (required for walk-in registration)
         doctor_id = None
         raw_doctor = data.doctor_id
@@ -1348,6 +1385,11 @@ async def get_upcoming_queue(
             "patient_reference_number": patient.patient_reference_number if patient else None,
             "patient_gender": patient.gender if patient else None,
             "patient_age": patient_age,
+            # Added for the date-wise Upcoming Queue export (Name / Phone /
+            # Place / Status columns) — not previously included since the
+            # on-screen table never needed them.
+            "patient_phone": patient.phone_number if patient else None,
+            "patient_city": patient.city if patient else None,
             "chief_complaint": appt.chief_complaint,
             "doctor_id": str(appt.doctor_id) if appt.doctor_id else None,
             "doctor_name": doctor_name,

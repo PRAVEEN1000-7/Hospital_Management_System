@@ -96,6 +96,14 @@ def create_doctor(
     db.add(doctor)
     db.commit()
     db.refresh(doctor)
+
+    # New doctor gets a working schedule for every day immediately — see
+    # schedule_service.create_default_weekly_schedule for why (Bug: doctor
+    # availability wasn't defaulted to all days, requiring staff to
+    # manually configure each weekday before OPD Assignment/booking worked).
+    from ..services.schedule_service import create_default_weekly_schedule
+    create_default_weekly_schedule(db, doctor)
+
     logger.info(f"Doctor profile created for user_id={user_id}")
     return doctor
 

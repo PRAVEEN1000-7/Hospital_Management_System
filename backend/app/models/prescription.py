@@ -81,6 +81,10 @@ class Prescription(Base):
     vitals_weight = Column(String(10))   # e.g. "70"
     vitals_spo2 = Column(String(10))     # e.g. "98"
     vitals_blood_sugar = Column(String(20))  # e.g. "120 mg/dL"
+    # DRS = Diabetic Retinopathy Screening finding, entered by the nurse
+    # (below Vitals, eye-hospital only — same gating as vitals_blood_sugar)
+    # and shown read-only in the doctor's consultation without re-entry.
+    vitals_drs = Column(Text)
     # Opthal-specific fields
     is_opthal = Column(Boolean, default=False)  # Toggle for ophthalmology prescriptions
     opthal_notes = Column(Text)  # Opthal-specific clinical notes/eye diagram data

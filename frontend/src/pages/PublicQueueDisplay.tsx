@@ -165,8 +165,16 @@ export const QueueColumn: React.FC<{ column: PublicQueueColumn; animKey: number 
 };
 
 // ── Grid column count ────────────────────────────────────────────────────────
+// Previously capped at 4 (Math.min(columns.length, 4) at the call site) — a
+// 5th+ active doctor column got silently crammed into a 4-column row instead
+// of the grid ever widening, which is exactly the kind of "layout looks
+// wrong" symptom a busy multi-doctor day would produce. Supports up to 6
+// side-by-side columns (a wall-mounted display doesn't usefully fit more);
+// beyond that it wraps to a second row via the shared grid-cols-4 rather
+// than squeezing further.
 export const GRID: Record<number, string> = {
   1: 'lg:grid-cols-1', 2: 'lg:grid-cols-2', 3: 'lg:grid-cols-3', 4: 'lg:grid-cols-4',
+  5: 'lg:grid-cols-5', 6: 'lg:grid-cols-6',
 };
 
 // ── Root component ───────────────────────────────────────────────────────────
@@ -242,7 +250,7 @@ const PublicQueueDisplay: React.FC = () => {
     );
   }
 
-  const gridCols = GRID[Math.min(data.columns.length, 4)] || 'lg:grid-cols-4';
+  const gridCols = GRID[Math.min(data.columns.length, 6)] || 'lg:grid-cols-4';
   const totalActive = data.columns.reduce((s, c) => s + c.tokens.filter(t => !['completed', 'collected', 'skipped'].includes(t.status)).length, 0);
 
   return (

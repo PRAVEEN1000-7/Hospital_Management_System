@@ -233,6 +233,8 @@ export interface LabDashboard {
   waiting_count: number;
   pending_results_count: number;
   today_revenue: number;
+  date_from?: string;
+  date_to?: string;
 }
 
 export interface PatientLabResultItem {

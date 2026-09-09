@@ -48,11 +48,13 @@ def _require(current_user: User, allowed: set) -> None:
 # ═══ Dashboard ═══
 @router.get("/dashboard", response_model=LabDashboard)
 async def lab_dashboard(
+    date_from: Optional[date] = Query(None, description="Defaults to today when omitted"),
+    date_to: Optional[date] = Query(None, description="Defaults to date_from (or today) when omitted"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
     _require(current_user, LAB_STAFF_ROLES)
-    return svc.get_lab_dashboard(db, current_user.hospital_id)
+    return svc.get_lab_dashboard(db, current_user.hospital_id, date_from=date_from, date_to=date_to)
 
 
 # ═══ Test catalog ═══

@@ -76,6 +76,12 @@ export interface OPDSummary {
   follow_ups: number;
   avg_wait_time: number;       // minutes
   completion_rate: number;     // 0-100
+  // Patients actually seen (status=completed) in the selected day/period —
+  // distinct from total_today, which also counts no-shows/cancelled/still-
+  // pending appointments. Same source (get_appointment_stats.total_completed)
+  // feeds both the on-screen mini-stat and the exported CSV row, so the two
+  // can never drift apart.
+  patients_consulted: number;
 }
 
 export interface DoctorWiseReport {
@@ -193,6 +199,9 @@ export interface TaxSummary {
 export interface PaymentStatusBucketSummary {
   count: number;
   total_amount: number;
+  // Actual money still owed (differs from total_amount for partially_paid,
+  // where part of the invoice has already been collected).
+  outstanding_amount: number;
 }
 
 export interface PaymentStatusSummary {

@@ -436,6 +436,11 @@ class AppointmentStats(BaseModel):
     cancellation_rate: float = 0.0
     no_show_rate: float = 0.0
     average_wait_time: float = 0.0
+    # Distinct-patient breakdown for the Admin Dashboard's "Today Registered
+    # Patients" section — see get_appointment_stats for exact definitions.
+    new_patients: int = 0
+    follow_up_patients: int = 0
+    total_patients: int = 0
 
 
 class EnhancedAppointmentStats(AppointmentStats):

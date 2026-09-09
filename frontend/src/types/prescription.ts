@@ -64,6 +64,7 @@ export interface Prescription {
   vitals_weight: string | null;
   vitals_spo2: string | null;
   vitals_blood_sugar: string | null;
+  vitals_drs: string | null;
   follow_up_date: string | null;
   queue_id: string | null;
   institution_id: string | null;
@@ -142,6 +143,7 @@ export interface PrescriptionCreate {
   vitals_weight?: string | null;
   vitals_spo2?: string | null;
   vitals_blood_sugar?: string | null;
+  vitals_drs?: string | null;
   follow_up_date?: string | null;
   queue_id?: string | null;
   valid_until?: string | null;
@@ -161,6 +163,7 @@ export interface PrescriptionUpdate {
   vitals_weight?: string | null;
   vitals_spo2?: string | null;
   vitals_blood_sugar?: string | null;
+  vitals_drs?: string | null;
   follow_up_date?: string | null;
   valid_until?: string | null;
   institution_id?: string | null;
@@ -182,6 +185,7 @@ export interface PrescriptionVitalsUpdate {
   vitals_weight?: string;
   vitals_spo2?: string;
   vitals_blood_sugar?: string;
+  vitals_drs?: string;
 }
 
 // —— Medicine ———————————————————————————————————————————————————

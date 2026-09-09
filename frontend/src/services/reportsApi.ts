@@ -81,9 +81,14 @@ async function getOPDSummary(
       walk_ins: stats.total_walk_ins,
       scheduled: stats.total_scheduled,
       emergency: 0,
-      follow_ups: 0,
+      // Was hardcoded to 0 — stats.follow_up_patients now exists (distinct-
+      // patient follow-up count, same source as the Admin Dashboard's
+      // "Follow-up Today" card).
+      follow_ups: stats.follow_up_patients,
       avg_wait_time: stats.average_wait_time,
       completion_rate: stats.completion_rate,
+      // Patients actually seen — status=completed, not just "booked".
+      patients_consulted: stats.total_completed,
     };
   } catch {
     warn('OPDSummary (fallback)');
@@ -95,6 +100,7 @@ async function getOPDSummary(
       follow_ups: 0,
       avg_wait_time: 0,
       completion_rate: 0,
+      patients_consulted: 0,
     };
   }
 }

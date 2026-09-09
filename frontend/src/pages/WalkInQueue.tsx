@@ -22,6 +22,7 @@ import type { Invoice, PaymentMode, PaymentCollector } from '../types/billing';
 import SearchableSelect, { type SuggestionOption } from '../components/common/SearchableSelect';
 import VitalsDialog from '../components/queue/VitalsDialog';
 import OpticalDialog from '../components/queue/OpticalDialog';
+import { downloadCsv } from '../utils/csv';
 
 const PAYMENT_MODES: { value: PaymentMode; label: string }[] = [
   { value: 'cash', label: 'Cash' },
@@ -174,8 +175,8 @@ const WalkInQueue: React.FC = () => {
   const [referDoctorLoad, setReferDoctorLoad] = useState<number | null>(null);
   const [referCalendarMonth, setReferCalendarMonth] = useState<string>(formatMonthKey());
 
-  // ── Reception View: Tab for New/Ongoing/Completed/Upcoming ─────────
-  const [receptionTab, setReceptionTab] = useState<'new' | 'ongoing' | 'completed' | 'upcoming'>('new');
+  // ── Reception View: Tab for New/Follow up/Ongoing/Completed/Upcoming ────
+  const [receptionTab, setReceptionTab] = useState<'new' | 'followup' | 'ongoing' | 'completed' | 'upcoming'>('new');
   const tomorrow = formatLocalDateISO(new Date(Date.now() + 86400000));
 
   const {
@@ -280,7 +281,17 @@ const WalkInQueue: React.FC = () => {
 
   useEffect(() => { fetchQueue(); }, [fetchQueue]);
 
-  useEffect(() => { paymentService.getCollectors().then(setCollectors).catch(() => {}); }, []);
+  // Bug fix: this fired unconditionally for every role that can view the
+  // Walk-in Queue (including doctor/report_viewer/etc., via appt.walkin_queue
+  // view access) — none of whom can actually collect a fee, so it 403'd on
+  // every page load for them (silently caught, but still a console error).
+  // Gated on the exact same condition the "Fee" button itself uses below,
+  // so this only ever fires for a role that could actually use the result.
+  const canCollectFee = canEdit('billing', roles) || isReception || isNurse;
+  useEffect(() => {
+    if (!canCollectFee) return;
+    paymentService.getCollectors().then(setCollectors).catch(() => {});
+  }, [canCollectFee]);
 
   const openCollectFee = async (item: QueueItem) => {
     const requestId = ++collectRequestRef.current;
@@ -636,6 +647,25 @@ const WalkInQueue: React.FC = () => {
     return `${h % 12 || 12}:${m.toString().padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
   };
 
+  // Date-wise export for the Upcoming Walk Queue — Name / Phone Number /
+  // Place / Status, plus one blank "Notes" column staff can fill in by hand
+  // (e.g. call outcome) after opening the file. Exports exactly the one
+  // date's records the button sits next to, using data already loaded in
+  // this tab (no extra API call).
+  const exportUpcomingDateGroup = (group: {
+    date: string;
+    items: Array<{ patient_name: string | null; patient_phone: string | null; patient_city: string | null; status: string }>;
+  }) => {
+    const rows = group.items.map(item => ({
+      Name: item.patient_name || '',
+      'Phone Number': item.patient_phone || '',
+      Place: item.patient_city || '',
+      Status: item.status,
+      Notes: '',
+    }));
+    downloadCsv(`upcoming-queue-${group.date}`, rows, `Upcoming Queue — ${group.date}`);
+  };
+
   const handleSendToDoctor = async () => {
     if (!sendModalId || !sendDoctorId) return;
     setSendingInProgress(true);
@@ -684,8 +714,18 @@ const WalkInQueue: React.FC = () => {
   };
 
   // ── Derived data ───────────────────────────────────────────────
+  // A follow-up booking's queue entry is created automatically at booking
+  // time (see appointment_service._create_queue_entry / NO_TOKEN_AT_BOOKING_TYPES)
+  // with queue_number left NULL ("NT") — it exists in today's queue purely
+  // because the date arrived, not because reception has confirmed the
+  // patient actually walked in. Excluding queue_number == null from
+  // activeItems keeps every doctor-facing view (Current/Called/Waiting
+  // cards below, and the shared "In Queue"/"Total Active" stat cards) from
+  // showing that patient until reception hands them a real token via
+  // "Assign Token" — the same moment the original NT feature's own spec
+  // says the patient "will [be] in the queue."
   const activeItems = (queueData?.items || []).filter(
-    i => !['completed', 'skipped'].includes(i.status),
+    i => !['completed', 'skipped'].includes(i.status) && i.queue_number != null,
   );
   const completedItems = (queueData?.items || []).filter(
     i => ['completed', 'skipped'].includes(i.status),
@@ -694,8 +734,19 @@ const WalkInQueue: React.FC = () => {
   const displayItems = [...activeItems, ...completedItems];
 
   // ── Reception Tabs Derived Data ────────────────────────────────
-  // New: waiting patients + called patients + sent_to_doctor (called = highlighted, waiting for reception to send)
-  const receptionNewItems = (queueData?.items || []).filter(i => ['waiting', 'called', 'sent_to_doctor'].includes(i.status));
+  // New: waiting patients + called patients + sent_to_doctor (called = highlighted, waiting for reception to send).
+  // Excludes queue_number == null (NT) entries — those are follow-up
+  // bookings and live in their own "Follow up" tab (receptionFollowUpItems)
+  // until reception assigns them a token.
+  const receptionNewItems = (queueData?.items || []).filter(
+    i => ['waiting', 'called', 'sent_to_doctor'].includes(i.status) && i.queue_number != null,
+  );
+  // Follow-up bookings awaiting a token ("NT") for this queue date — kept
+  // separate from the New/Waiting tab so reception can see who's expected
+  // today without them being mistaken for a doctor-visible waiting patient.
+  const receptionFollowUpItems = (queueData?.items || []).filter(
+    i => i.queue_number == null && !['completed', 'skipped'].includes(i.status),
+  );
   // Ongoing: only in consultation (doctor has started consultation)
   const receptionOngoingItems = (queueData?.items || []).filter(i => i.status === 'in_consultation');
   // Completed: finished consultations
@@ -705,6 +756,7 @@ const WalkInQueue: React.FC = () => {
   const getReceptionDisplayItems = () => {
     switch (receptionTab) {
       case 'new': return receptionNewItems;
+      case 'followup': return receptionFollowUpItems;
       case 'ongoing': return receptionOngoingItems;
       case 'completed': return receptionCompletedItems;
       default: return displayItems;
@@ -1027,14 +1079,19 @@ const WalkInQueue: React.FC = () => {
                 );
               })()}
 
-              {/* Waiting Queue — every today-patient sent by reception or
-                  still waiting (plain "waiting", "called", "sent_to_doctor"),
-                  shown as one flat, fully-visible list — no single patient
-                  spotlighted while the rest hide behind a "+N ready" count.
-                  The token number is shown for each; the doctor can start
-                  consultation with any of them in whatever order they
-                  choose — the token only identifies queue position, it
-                  doesn't dictate consultation order. */}
+              {/* Waiting Queue — every today-patient with a real token
+                  (plain "waiting", "called", "sent_to_doctor"), shown as one
+                  flat, fully-visible list — no single patient spotlighted
+                  while the rest hide behind a "+N ready" count. The token
+                  number is shown for each; the doctor can start consultation
+                  with any of them in whatever order they choose — the token
+                  only identifies queue position, it doesn't dictate
+                  consultation order.
+                  Follow-up bookings still awaiting a token ("NT") are
+                  excluded from `activeItems` entirely (see its filter above)
+                  — they only appear here once reception clicks "Assign
+                  Token" on the Follow up tab, so a doctor never sees a
+                  patient who hasn't actually been confirmed for today. */}
               {(() => {
                 const waitingPatients = activeItems.filter(
                   i => i.status === 'waiting' || i.status === 'called' || i.status === 'sent_to_doctor',
@@ -1072,14 +1129,11 @@ const WalkInQueue: React.FC = () => {
                               item.priority === 'urgent' ? 'bg-amber-100 text-amber-700' :
                               'bg-slate-100 text-slate-600'
                             }`}>
-                              {item.queue_number ?? 'NT'}
+                              {item.queue_number}
                             </span>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <p className="text-sm font-bold text-slate-900">{item.patient_name || 'Unknown'}</p>
-                                {item.queue_number == null && (
-                                  <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-full" title="Follow-up booking awaiting a token">No Token Yet</span>
-                                )}
                                 {isCalled && (
                                   <span className="text-[10px] font-bold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded-full">Called</span>
                                 )}
@@ -1104,13 +1158,6 @@ const WalkInQueue: React.FC = () => {
                               </div>
                             </div>
                             <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                              {item.queue_number == null && (
-                                <button onClick={() => handleAssignToken(item.queue_id)}
-                                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-orange-600 bg-orange-50 hover:bg-orange-100 rounded-lg transition-colors">
-                                  <span className="material-symbols-outlined text-sm">confirmation_number</span>
-                                  Assign Token
-                                </button>
-                              )}
                               {canActOnQueue && item.status === 'waiting' && isSelectedDateToday && (
                                 <button onClick={() => handleCall(item.queue_id)}
                                   className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors">
@@ -1180,6 +1227,16 @@ const WalkInQueue: React.FC = () => {
             Waiting
             <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${receptionTab === 'new' ? 'bg-primary/10 text-primary' : 'bg-slate-200 text-slate-500'}`}>
               {receptionNewItems.length + unassigned.length}
+            </span>
+          </button>
+          <button onClick={() => setReceptionTab('followup')}
+            className={`inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-lg transition-all ${
+              receptionTab === 'followup' ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+            }`}>
+            <span className="material-symbols-outlined text-lg">event_repeat</span>
+            Follow up
+            <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${receptionTab === 'followup' ? 'bg-orange-100 text-orange-600' : 'bg-slate-200 text-slate-500'}`}>
+              {receptionFollowUpItems.length}
             </span>
           </button>
           <button onClick={() => setReceptionTab('ongoing')}
@@ -1327,12 +1384,20 @@ const WalkInQueue: React.FC = () => {
                           <p className="text-[10px] text-slate-400 uppercase tracking-wider">{group.count} patient{group.count !== 1 ? 's' : ''}</p>
                         </div>
                       </div>
-                      <button
-                        onClick={() => { setSelectedDate(group.date); setReceptionTab('new'); setLoading(true); }}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-primary bg-primary/10 rounded-lg hover:bg-primary/20 transition-colors">
-                        <span className="material-symbols-outlined text-sm">visibility</span>
-                        View Queue
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => exportUpcomingDateGroup(group)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
+                          <span className="material-symbols-outlined text-sm">download</span>
+                          Export
+                        </button>
+                        <button
+                          onClick={() => { setSelectedDate(group.date); setReceptionTab('new'); setLoading(true); }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-primary bg-primary/10 rounded-lg hover:bg-primary/20 transition-colors">
+                          <span className="material-symbols-outlined text-sm">visibility</span>
+                          View Queue
+                        </button>
+                      </div>
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full">
@@ -1418,16 +1483,20 @@ const WalkInQueue: React.FC = () => {
       ) : getReceptionDisplayItems().length === 0 ? (
         <div className="text-center py-20 text-slate-400 bg-white rounded-xl border border-slate-200">
           <span className="material-symbols-outlined text-5xl mb-3 block">
-            {receptionTab === 'new' ? 'hourglass_empty' : receptionTab === 'ongoing' ? 'clinical_notes' : 'task_alt'}
+            {receptionTab === 'new' ? 'hourglass_empty' :
+             receptionTab === 'followup' ? 'event_repeat' :
+             receptionTab === 'ongoing' ? 'clinical_notes' : 'task_alt'}
           </span>
           <p className="text-sm font-medium">
-            {receptionTab === 'new' ? 'No patients waiting or called' : 
-             receptionTab === 'ongoing' ? 'No ongoing consultations' : 
+            {receptionTab === 'new' ? 'No patients waiting or called' :
+             receptionTab === 'followup' ? 'No follow-up patients due' :
+             receptionTab === 'ongoing' ? 'No ongoing consultations' :
              'No completed consultations today'}
           </p>
           <p className="text-xs mt-1">
-            {receptionTab === 'new' ? 'Waiting & doctor-called patients appear here' : 
-             receptionTab === 'ongoing' ? 'Patients in consultation appear here' : 
+            {receptionTab === 'new' ? 'Waiting & doctor-called patients appear here' :
+             receptionTab === 'followup' ? 'Follow-up bookings scheduled for this date appear here, awaiting a token' :
+             receptionTab === 'ongoing' ? 'Patients in consultation appear here' :
              'Completed patients will appear here'}
           </p>
         </div>
@@ -1578,8 +1647,12 @@ const WalkInQueue: React.FC = () => {
                               Assign Token
                             </button>
                           )}
-                          {/* Send to Doctor: for reception/admin on waiting OR called items */}
-                          {canFilter && isSelectedDateToday && (item.status === 'waiting' || item.status === 'called') && item.doctor_id && (
+                          {/* Send to Doctor: for reception/admin on waiting OR called items.
+                              Excludes queue_number == null (NT) rows — those are follow-up
+                              bookings still awaiting "Assign Token" above, which is the action
+                              that actually surfaces them in the doctor's queue; showing Send
+                              here too would look like a second way to do the same thing. */}
+                          {canFilter && isSelectedDateToday && (item.status === 'waiting' || item.status === 'called') && item.doctor_id && item.queue_number != null && (
                             <button onClick={() => {
                               setSendModalId(item.appointment_id);
                               setSendModalQueueId(item.queue_id);
@@ -1948,12 +2021,20 @@ const WalkInQueue: React.FC = () => {
                           <p className="text-[10px] text-slate-400 uppercase tracking-wider">{group.count} patient{group.count !== 1 ? 's' : ''}</p>
                         </div>
                       </div>
-                      <button
-                        onClick={() => { setSelectedDate(group.date); setActiveTab('queue'); setLoading(true); }}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-primary bg-primary/10 rounded-lg hover:bg-primary/20 transition-colors">
-                        <span className="material-symbols-outlined text-sm">visibility</span>
-                        View Queue
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => exportUpcomingDateGroup(group)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
+                          <span className="material-symbols-outlined text-sm">download</span>
+                          Export
+                        </button>
+                        <button
+                          onClick={() => { setSelectedDate(group.date); setActiveTab('queue'); setLoading(true); }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-primary bg-primary/10 rounded-lg hover:bg-primary/20 transition-colors">
+                          <span className="material-symbols-outlined text-sm">visibility</span>
+                          View Queue
+                        </button>
+                      </div>
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full">
@@ -2470,7 +2551,7 @@ const WalkInQueue: React.FC = () => {
                   <span className="material-symbols-outlined text-base text-slate-400">confirmation_number</span>
                   <div>
                     <p className="text-[10px] text-slate-400">Token</p>
-                    <p className="text-sm font-bold text-slate-800">#{detailItem.queue_number}</p>
+                    <p className="text-sm font-bold text-slate-800">{detailItem.queue_number != null ? `#${detailItem.queue_number}` : 'NT'}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -2522,10 +2603,16 @@ const WalkInQueue: React.FC = () => {
                   <span className="material-symbols-outlined text-base">campaign</span> Call Patient
                 </button>
               )}
-              {canFilter && isSelectedDateToday && (detailItem.status === 'waiting' || detailItem.status === 'called') && detailItem.doctor_id && (
+              {canFilter && isSelectedDateToday && (detailItem.status === 'waiting' || detailItem.status === 'called') && detailItem.doctor_id && detailItem.queue_number != null && (
                 <button onClick={() => { handleSendPatientToDoctor(detailItem.queue_id, detailItem.patient_name || 'Patient'); setDetailItem(null); }}
                   className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-teal-500 rounded-lg hover:bg-teal-600 shadow-sm transition-colors">
                   <span className="material-symbols-outlined text-base">send</span> Send to Doctor
+                </button>
+              )}
+              {(canFilter || isNurse) && detailItem.queue_number == null && (
+                <button onClick={() => { handleAssignToken(detailItem.queue_id); setDetailItem(null); }}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-orange-500 rounded-lg hover:bg-orange-600 shadow-sm transition-colors">
+                  <span className="material-symbols-outlined text-base">confirmation_number</span> Assign Token
                 </button>
               )}
               {canActOnQueue && isSelectedDateToday && (detailItem.status === 'waiting' || detailItem.status === 'called' || detailItem.status === 'sent_to_doctor') && (

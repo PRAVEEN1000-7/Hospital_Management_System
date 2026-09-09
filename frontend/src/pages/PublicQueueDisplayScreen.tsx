@@ -110,7 +110,7 @@ const PublicQueueDisplayScreen: React.FC = () => {
     );
   }
 
-  const gridCols = GRID[Math.min(data.columns.length, 4)] || 'lg:grid-cols-4';
+  const gridCols = GRID[Math.min(data.columns.length, 6)] || 'lg:grid-cols-4';
   const totalActive = data.columns.reduce((s, c) => s + c.tokens.filter(t => !['completed', 'collected', 'skipped'].includes(t.status)).length, 0);
 
   return (

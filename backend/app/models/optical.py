@@ -130,6 +130,12 @@ class OpticalPrescription(Base):
     notes = Column(Text)
     is_finalized = Column(Boolean, default=False)
     valid_until = Column(Date)
+    # Optical counter staff dismissed this from the active Prescription Queue
+    # (patient never came back to buy glasses) — does NOT delete the record;
+    # it stays in full on the patient's optical history. Mirrors
+    # prescriptions.hidden_from_pharmacy_queue. See
+    # database_hole/2026-09-09_optical_prescription_ignore.sql.
+    hidden_from_optical_queue = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

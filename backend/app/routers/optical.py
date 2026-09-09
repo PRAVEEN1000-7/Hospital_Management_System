@@ -339,7 +339,7 @@ def _enrich_prescription_response(rx, has_sale: bool | None = None) -> OpticalPr
 async def list_pending_optical_prescriptions(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
-    status: Optional[str] = Query(None, description="pending | dispensed"),
+    status: Optional[str] = Query(None, description="pending | dispensed | ignored"),
     search: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(optical_view_guard),
@@ -348,6 +348,25 @@ async def list_pending_optical_prescriptions(
     return svc.list_pending_optical_prescriptions(
         db, current_user.hospital_id, page, limit, status, search
     )
+
+
+@router.post("/prescriptions/{prescription_id}/ignore")
+async def ignore_optical_prescription_in_queue(
+    prescription_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(optical_edit_guard),
+):
+    """Mark a finalized eye prescription as ignored in this hospital's optical
+    Prescription Queue — does NOT delete it; it stays visible on the
+    patient's optical history. Use for a patient who never came back to buy
+    glasses/lenses."""
+    try:
+        rx = svc.ignore_optical_prescription_in_queue(db, prescription_id, hospital_id=current_user.hospital_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not rx:
+        raise HTTPException(status_code=404, detail="Prescription not found")
+    return {"success": True}
 
 
 @router.get("/prescriptions", response_model=OpticalPrescriptionListResponse)

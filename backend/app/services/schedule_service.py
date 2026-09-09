@@ -34,6 +34,56 @@ def create_schedule(db: Session, doctor_id: str | uuid.UUID, data: dict) -> Doct
     return schedule
 
 
+def create_default_weekly_schedule(db: Session, doctor: Doctor) -> None:
+    """Give a newly created doctor a working schedule for every day of the
+    week immediately, instead of leaving them with zero availability until
+    staff manually adds a slot for each weekday. Uses the hospital's
+    configured OPD session timings (same source as _opd_settings_schedule_source
+    above, falling back to the same 10:00-14:00 / 17:00-20:30 default the
+    Doctor Schedule page's own Add Slot form pre-fills) spanning morning +
+    evening with the midday gap as a break. Open-ended (effective_to=None) so
+    it never silently expires — staff should only ever need to mark specific
+    LEAVE days (Doctor Schedule -> Add Leave) rather than configure
+    availability day by day. No-ops if this doctor already has a schedule
+    (defensive — this is only ever meant to run once, right after creation).
+    """
+    from ..models.hospital_settings import HospitalSettings
+
+    existing = db.query(DoctorSchedule).filter(DoctorSchedule.doctor_id == doctor.id).first()
+    if existing is not None:
+        return
+
+    settings = db.query(HospitalSettings).filter(
+        HospitalSettings.hospital_id == doctor.hospital_id
+    ).first()
+
+    morning_start = _parse_hhmm(getattr(settings, "opd_morning_start_time", None), time(10, 0))
+    morning_end = _parse_hhmm(getattr(settings, "opd_morning_end_time", None), time(14, 0))
+    evening_start = _parse_hhmm(getattr(settings, "opd_evening_start_time", None), time(17, 0))
+    evening_end = _parse_hhmm(getattr(settings, "opd_evening_end_time", None), time(20, 30))
+    slot_duration = (getattr(settings, "appointment_slot_duration_minutes", None) if settings else None) or 15
+    max_patients = (getattr(settings, "max_daily_appointments_per_doctor", None) if settings else None) or 20
+
+    today = date.today()
+    for day_of_week in range(7):  # 0=Sunday ... 6=Saturday
+        db.add(DoctorSchedule(
+            doctor_id=doctor.id,
+            day_of_week=day_of_week,
+            shift_name="default",
+            start_time=morning_start,
+            end_time=evening_end,
+            break_start_time=morning_end,
+            break_end_time=evening_start,
+            slot_duration_minutes=slot_duration,
+            max_patients=max_patients,
+            is_active=True,
+            effective_from=today,
+            effective_to=None,
+        ))
+    db.commit()
+    logger.info(f"Created default 7-day schedule for doctor_id={doctor.id}")
+
+
 def get_doctor_schedules(
     db: Session,
     doctor_id: str | uuid.UUID,

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
+import { useConfirm } from '../../contexts/ConfirmContext';
 import opticalService from '../../services/opticalService';
 import type { PendingOpticalPrescription } from '../../services/opticalService';
 import { formatDateTime } from '../../utils/calendarDate';
@@ -10,20 +11,23 @@ import { hasAccess as hasModuleAccess } from '../../config/modulePermissions';
 const STATUS_BADGES: Record<string, { label: string; color: string }> = {
   finalized: { label: 'Pending', color: 'bg-blue-100 text-blue-700' },
   dispensed: { label: 'Dispensed', color: 'bg-green-100 text-green-700' },
+  ignored: { label: 'Ignored', color: 'bg-slate-100 text-slate-500' },
 };
 
 const OpticalPendingPrescriptions: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { showToast } = useToast();
+  const confirm = useConfirm();
 
   const [prescriptions, setPrescriptions] = useState<PendingOpticalPrescription[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [total, setTotal] = useState(0);
+  const [ignoringId, setIgnoringId] = useState<string | null>(null);
 
-  const [statusFilter, setStatusFilter] = useState<'pending' | 'dispensed' | ''>('');
+  const [statusFilter, setStatusFilter] = useState<'pending' | 'dispensed' | 'ignored' | ''>('');
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
 
@@ -65,6 +69,31 @@ const OpticalPendingPrescriptions: React.FC = () => {
       display: mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h ${mins % 60}m`,
       color: mins > 120 ? 'text-red-600' : mins > 60 ? 'text-orange-600' : 'text-slate-500',
     };
+  };
+
+  // Only a not-yet-dispensed prescription can be ignored — the backend
+  // blocks this the moment glasses/lenses have actually been sold against it
+  // (see optical_service.ignore_optical_prescription_in_queue). This only
+  // takes it off the active queue — the prescription itself is untouched and
+  // stays visible on the patient's optical history.
+  const handleIgnore = async (rx: PendingOpticalPrescription) => {
+    const ok = await confirm({
+      title: 'Ignore Prescription',
+      message: `Ignore prescription ${rx.prescription_number} in the optical queue? The patient's prescription record is kept — this only removes it from the active Pending list.`,
+      confirmLabel: 'Ignore',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    setIgnoringId(rx.id);
+    try {
+      await opticalService.ignorePrescription(rx.id);
+      showToast('success', 'Prescription marked as ignored');
+      fetchPrescriptions();
+    } catch (err: any) {
+      showToast('error', err?.response?.data?.detail || 'Failed to ignore prescription');
+    } finally {
+      setIgnoringId(null);
+    }
   };
 
   if (!hasAccess) {
@@ -145,6 +174,7 @@ const OpticalPendingPrescriptions: React.FC = () => {
             <option value="">All Status</option>
             <option value="pending">Pending (Not Dispensed)</option>
             <option value="dispensed">Dispensed</option>
+            <option value="ignored">Ignored</option>
           </select>
         </div>
       </div>
@@ -230,14 +260,26 @@ const OpticalPendingPrescriptions: React.FC = () => {
                             <span className="material-symbols-outlined text-sm">visibility</span>
                             View
                           </button>
-                          {rx.status !== 'dispensed' && (
-                            <button
-                              onClick={() => navigate(`/optical/sales/new?prescription_id=${rx.id}`)}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-primary hover:bg-primary/90 text-white transition-colors"
-                            >
-                              <span className="material-symbols-outlined text-sm">point_of_sale</span>
-                              Sell Glasses
-                            </button>
+                          {rx.status !== 'dispensed' && rx.status !== 'ignored' && (
+                            <>
+                              <button
+                                onClick={() => navigate(`/optical/sales/new?prescription_id=${rx.id}`)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-primary hover:bg-primary/90 text-white transition-colors"
+                              >
+                                <span className="material-symbols-outlined text-sm">point_of_sale</span>
+                                Sell Glasses
+                              </button>
+                              <button
+                                onClick={() => handleIgnore(rx)}
+                                disabled={ignoringId === rx.id}
+                                title="Ignore"
+                                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                              >
+                                <span className="material-symbols-outlined text-base">
+                                  {ignoringId === rx.id ? 'progress_activity' : 'block'}
+                                </span>
+                              </button>
+                            </>
                           )}
                         </div>
                       </td>
@@ -297,14 +339,26 @@ const OpticalPendingPrescriptions: React.FC = () => {
                       <span className="material-symbols-outlined text-sm">visibility</span>
                       View
                     </button>
-                    {rx.status !== 'dispensed' && (
-                      <button
-                        onClick={() => navigate(`/optical/sales/new?prescription_id=${rx.id}`)}
-                        className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-primary hover:bg-primary/90 text-white transition-colors"
-                      >
-                        <span className="material-symbols-outlined text-sm">point_of_sale</span>
-                        Dispense
-                      </button>
+                    {rx.status !== 'dispensed' && rx.status !== 'ignored' && (
+                      <>
+                        <button
+                          onClick={() => navigate(`/optical/sales/new?prescription_id=${rx.id}`)}
+                          className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-primary hover:bg-primary/90 text-white transition-colors"
+                        >
+                          <span className="material-symbols-outlined text-sm">point_of_sale</span>
+                          Dispense
+                        </button>
+                        <button
+                          onClick={() => handleIgnore(rx)}
+                          disabled={ignoringId === rx.id}
+                          title="Ignore"
+                          className="px-3 py-2.5 text-slate-400 hover:text-red-600 hover:bg-red-50 border border-slate-200 rounded-lg transition-colors disabled:opacity-50"
+                        >
+                          <span className="material-symbols-outlined text-base">
+                            {ignoringId === rx.id ? 'progress_activity' : 'block'}
+                          </span>
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>

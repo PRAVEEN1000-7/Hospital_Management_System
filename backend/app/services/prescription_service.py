@@ -278,6 +278,7 @@ def create_prescription(
         vitals_weight=data.get("vitals_weight"),
         vitals_spo2=data.get("vitals_spo2"),
         vitals_blood_sugar=data.get("vitals_blood_sugar") if eye_features else None,
+        vitals_drs=data.get("vitals_drs") if eye_features else None,
         follow_up_date=data.get("follow_up_date"),
         queue_id=uuid.UUID(data["queue_id"]) if data.get("queue_id") else None,
         valid_until=data.get("valid_until"),
@@ -537,7 +538,7 @@ def update_prescription(
 
     # Eye-hospital feature pack only — silently ignored for general hospitals.
     if eye_features:
-        for k in ["vitals_blood_sugar", "is_opthal", "opthal_notes"]:
+        for k in ["vitals_blood_sugar", "vitals_drs", "is_opthal", "opthal_notes"]:
             if k in data:
                 setattr(rx, k, data[k])
         if "institution_id" in data:
@@ -621,7 +622,7 @@ def save_draft_vitals(
     existing = get_prescription_by_appointment(db, data["appointment_id"], hospital_id)
     vitals_keys = (
         "vitals_bp", "vitals_pulse", "vitals_temp",
-        "vitals_weight", "vitals_spo2", "vitals_blood_sugar",
+        "vitals_weight", "vitals_spo2", "vitals_blood_sugar", "vitals_drs",
     )
 
     if existing:

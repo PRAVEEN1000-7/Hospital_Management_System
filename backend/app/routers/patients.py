@@ -63,10 +63,12 @@ patient_create_role_guard = require_permission("general.patients", "edit")
 patient_read_role_guard = require_permission("general.patients", "view")
 patient_update_role_guard = require_permission("general.patients", "edit")
 patient_delete_role_guard = require_permission("general.patients", "edit")
-# Dashboard trend chart — Doctor + Admin only, deliberately narrower than the
-# general.patients view permission (e.g. receptionist/nurse can view patient
-# records but this chart isn't meant for their dashboards).
-patient_trend_role_guard = require_any_role("doctor", "admin", "super_admin")
+# Dashboard trend chart — Doctor + Admin + Receptionist, narrower than the
+# general.patients view permission (e.g. nurse can view patient records but
+# this chart isn't meant for their dashboard). Receptionist was previously
+# excluded, which is why the chart never rendered on the Reception Dashboard —
+# see the frontend gate in Dashboard.tsx.
+patient_trend_role_guard = require_any_role("doctor", "admin", "super_admin", "receptionist")
 
 
 _PATIENT_SEARCH_CARVEOUT_ROLES = {"pharmacist", "optical_staff", "lab_technician"}
@@ -617,10 +619,11 @@ async def get_new_vs_returning_patient_trend(
     db: Session = Depends(get_db),
     current_user: User = Depends(patient_trend_role_guard),
 ):
-    """Dashboard chart data (Doctor + Admin only). A doctor sees only their
-    own patients; admin/super_admin see the whole hospital — resolved from
-    the caller's role, never a client-supplied doctor_id, so a doctor can't
-    query another doctor's numbers.
+    """Dashboard chart data (Doctor + Admin + Receptionist). A doctor sees
+    only their own patients; everyone else allowed here (admin/super_admin/
+    receptionist) sees the whole hospital — resolved from the caller's role,
+    never a client-supplied doctor_id, so a doctor can't query another
+    doctor's numbers.
 
     granularity=day/week are single-period snapshots (today only / this week
     only); month is a 6-month trend; custom requires date_from/date_to and

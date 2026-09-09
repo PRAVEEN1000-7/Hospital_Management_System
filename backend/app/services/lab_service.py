@@ -12,7 +12,7 @@ import uuid
 import logging
 from decimal import Decimal
 from math import ceil
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
@@ -1197,27 +1197,45 @@ def _enrich_referral(db: Session, referral: LabReferral) -> dict:
 # Dashboard
 # ══════════════════════════════════════════════════
 
-def get_lab_dashboard(db: Session, hospital_id: uuid.UUID) -> dict:
+def get_lab_dashboard(
+    db: Session, hospital_id: uuid.UUID,
+    date_from: Optional[date] = None, date_to: Optional[date] = None,
+) -> dict:
+    """Bug fix: date-wise statistics were missing entirely — orders_count/
+    revenue were always hardcoded to "today" with no way to look at another
+    day or a range. date_from/date_to (both optional, default to today when
+    omitted — unchanged behavior for any other caller) now scope the
+    orders_count/revenue figures to that range. waiting_count/
+    pending_results_count are deliberately NOT date-scoped — they're live
+    "what's in the physical queue right now" counts, not historical, so they
+    stay as-is regardless of which date range is selected.
+    """
     today = hospital_today_by_id(db, hospital_id)
-    day_start, day_end = hospital_today_utc_range_by_id(db, hospital_id)
+    range_from = date_from or today
+    range_to = date_to or range_from
+    day_start, _ = hospital_today_utc_range_by_id(db, hospital_id, range_from)
+    _, day_end = hospital_today_utc_range_by_id(db, hospital_id, range_to)
+    today_start, today_end = hospital_today_utc_range_by_id(db, hospital_id, today)
 
     total_tests = db.query(func.count(LabTest.id)).filter(
         LabTest.hospital_id == hospital_id, LabTest.is_active == True
     ).scalar() or 0
 
-    today_orders = db.query(func.count(LabOrder.id)).filter(
+    orders_count = db.query(func.count(LabOrder.id)).filter(
         LabOrder.hospital_id == hospital_id,
         LabOrder.is_finalized == True,
         LabOrder.created_at >= day_start,
         LabOrder.created_at < day_end,
     ).scalar() or 0
 
+    # Live queue state for TODAY specifically (not the selected date_from/
+    # date_to range) — unchanged from prior behavior, see docstring above.
     waiting = db.query(func.count(LabOrder.id)).filter(
         LabOrder.hospital_id == hospital_id,
         LabOrder.is_finalized == True,
         LabOrder.queue_status == "waiting",
-        LabOrder.created_at >= day_start,
-        LabOrder.created_at < day_end,
+        LabOrder.created_at >= today_start,
+        LabOrder.created_at < today_end,
     ).scalar() or 0
 
     # Pending results = finalized orders not yet fully completed.
@@ -1227,15 +1245,18 @@ def get_lab_dashboard(db: Session, hospital_id: uuid.UUID) -> dict:
         LabOrder.status != "completed",
     ).scalar() or 0
 
-    today_revenue = db.query(func.coalesce(func.sum(LabSale.paid_amount), 0)).filter(
+    revenue = db.query(func.coalesce(func.sum(LabSale.paid_amount), 0)).filter(
         LabSale.hospital_id == hospital_id,
-        func.date(LabSale.created_at) == today,
+        LabSale.created_at >= day_start,
+        LabSale.created_at < day_end,
     ).scalar() or Decimal("0")
 
     return {
         "total_tests": total_tests,
-        "today_orders_count": today_orders,
+        "today_orders_count": orders_count,
         "waiting_count": waiting,
         "pending_results_count": pending_results,
-        "today_revenue": today_revenue,
+        "today_revenue": revenue,
+        "date_from": range_from.isoformat(),
+        "date_to": range_to.isoformat(),
     }

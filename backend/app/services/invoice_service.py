@@ -376,23 +376,42 @@ def list_invoices(
 
 def get_payment_status_summary(db: Session, hospital_id: uuid.UUID) -> dict:
     """BRD-001 — counts + total amounts per payment-status bucket
-    (not_paid/partially_paid/paid), hospital-scoped, for the Reports panel."""
+    (not_paid/partially_paid/paid), hospital-scoped, for the Reports panel.
+
+    `total_amount` is the full billed value of invoices in that bucket (kept
+    as-is — FinancialPanel.tsx's "Payment Status Summary" cards already show
+    this and it's a legitimate "how much billing value is in this state"
+    figure). `outstanding_amount` is the actual money still owed
+    (SUM(balance_amount)) — for "not_paid" the two happen to be equal (nothing
+    paid yet), but for "partially_paid" they differ significantly, since part
+    of that invoice's total has already been collected. The cashier
+    Dashboard's "Outstanding Amount" card was summing `total_amount` across
+    not_paid + partially_paid, which overstated what's actually still owed by
+    the amount already paid on every partially-paid invoice — use
+    `outstanding_amount` for anything that claims to show what's owed.
+    """
     rows = (
-        db.query(Invoice.status, func.count(Invoice.id), func.coalesce(func.sum(Invoice.total_amount), 0))
+        db.query(
+            Invoice.status,
+            func.count(Invoice.id),
+            func.coalesce(func.sum(Invoice.total_amount), 0),
+            func.coalesce(func.sum(Invoice.balance_amount), 0),
+        )
         .filter(Invoice.hospital_id == hospital_id, Invoice.is_deleted == False)
         .group_by(Invoice.status)
         .all()
     )
     summary = {
-        "not_paid": {"count": 0, "total_amount": Decimal("0")},
-        "partially_paid": {"count": 0, "total_amount": Decimal("0")},
-        "paid": {"count": 0, "total_amount": Decimal("0")},
+        "not_paid": {"count": 0, "total_amount": Decimal("0"), "outstanding_amount": Decimal("0")},
+        "partially_paid": {"count": 0, "total_amount": Decimal("0"), "outstanding_amount": Decimal("0")},
+        "paid": {"count": 0, "total_amount": Decimal("0"), "outstanding_amount": Decimal("0")},
     }
-    for inv_status, count, total in rows:
+    for inv_status, count, total, balance in rows:
         bucket = payment_status_bucket(inv_status)
         if bucket:
             summary[bucket]["count"] += count
             summary[bucket]["total_amount"] += (total or Decimal("0"))
+            summary[bucket]["outstanding_amount"] += (balance or Decimal("0"))
     return summary
 
 

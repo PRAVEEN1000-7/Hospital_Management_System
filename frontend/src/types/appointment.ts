@@ -226,6 +226,9 @@ export interface AppointmentStats {
   cancellation_rate: number;
   no_show_rate: number;
   average_wait_time: number;
+  new_patients: number;
+  follow_up_patients: number;
+  total_patients: number;
 }
 
 // ── Doctor (for dropdowns) ───────────────────────────────────────────────

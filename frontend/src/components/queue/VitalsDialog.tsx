@@ -3,6 +3,7 @@ import prescriptionService from '../../services/prescriptionService';
 import appointmentService from '../../services/appointmentService';
 import { useToast } from '../../contexts/ToastContext';
 import VitalsCard, { type VitalsValues } from '../prescription/VitalsCard';
+import DRSCard from '../prescription/DRSCard';
 
 const emptyVitals: VitalsValues = { bp: '', pulse: '', temp: '', weight: '', spo2: '' };
 
@@ -26,6 +27,7 @@ const VitalsDialog: React.FC<VitalsDialogProps> = ({ patientId, appointmentId, p
   const [saving, setSaving] = useState(false);
   const [vitals, setVitals] = useState<VitalsValues>(emptyVitals);
   const [bloodSugar, setBloodSugar] = useState('');
+  const [drs, setDrs] = useState('');
   const [complaint, setComplaint] = useState('');
 
   useEffect(() => {
@@ -45,6 +47,7 @@ const VitalsDialog: React.FC<VitalsDialogProps> = ({ patientId, appointmentId, p
           spo2: rx.vitals_spo2 || '',
         });
         setBloodSugar(rx.vitals_blood_sugar || '');
+        setDrs(rx.vitals_drs || '');
       }
     }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -63,6 +66,7 @@ const VitalsDialog: React.FC<VitalsDialogProps> = ({ patientId, appointmentId, p
           vitals_weight: vitals.weight || undefined,
           vitals_spo2: vitals.spo2 || undefined,
           vitals_blood_sugar: isEyeHospital ? (bloodSugar || undefined) : undefined,
+          vitals_drs: isEyeHospital ? (drs || undefined) : undefined,
         }),
         appointmentService.updateAppointment(appointmentId, { chief_complaint: complaint || undefined }),
       ]);
@@ -116,6 +120,9 @@ const VitalsDialog: React.FC<VitalsDialogProps> = ({ patientId, appointmentId, p
               bloodSugar={isEyeHospital ? bloodSugar : undefined}
               onBloodSugarChange={isEyeHospital ? setBloodSugar : undefined}
             />
+            {isEyeHospital && (
+              <DRSCard value={drs} onChange={setDrs} disabled={saving} />
+            )}
           </div>
         )}
 

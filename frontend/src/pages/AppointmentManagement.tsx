@@ -389,9 +389,19 @@ const AppointmentManagement: React.FC = () => {
   return (
     <div>
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900">Appointment Management</h1>
-        <p className="text-slate-500 text-sm mt-1">View and manage all appointments</p>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Appointment Management</h1>
+          <p className="text-slate-500 text-sm mt-1">View and manage all appointments</p>
+        </div>
+        {/* The richer doctor/department/trend/peak-time breakdown already
+            exists on the Appointment Reports page — link to it here instead
+            of duplicating charts on this list-management screen. */}
+        <button onClick={() => navigate('/appointments/reports')}
+          className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-primary bg-primary/10 rounded-lg hover:bg-primary/20 transition-colors shrink-0">
+          <span className="material-symbols-outlined text-sm">analytics</span>
+          View Full Reports
+        </button>
       </div>
 
       {/* Stats Cards */}
@@ -490,6 +500,37 @@ const AppointmentManagement: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Patient Mix — a proportional breakdown, not just another raw count,
+          so this reads as an actual dashboard signal (who's coming: new vs
+          returning-for-follow-up vs everyone else) rather than a flat row of
+          numbers with no relationship to each other. Reuses the same
+          distinct-patient new_patients/follow_up_patients/total_patients
+          fields added for the Admin Dashboard's "Today Registered Patients"
+          breakdown — here scoped to whatever date range/doctor filter is
+          currently applied, not hardcoded to today. */}
+      {stats && stats.total_patients > 0 && (() => {
+        const other = Math.max(0, stats.total_patients - stats.new_patients - stats.follow_up_patients);
+        const pct = (n: number) => Math.round((n / stats.total_patients) * 1000) / 10;
+        return (
+          <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Patient Mix</span>
+              <span className="text-xs text-slate-400">{stats.total_patients} distinct patient{stats.total_patients !== 1 ? 's' : ''}</span>
+            </div>
+            <div className="flex h-3 w-full overflow-hidden rounded-full bg-slate-100">
+              <div className="bg-emerald-500" style={{ width: `${pct(stats.new_patients)}%` }} title={`New: ${stats.new_patients}`} />
+              <div className="bg-amber-500" style={{ width: `${pct(stats.follow_up_patients)}%` }} title={`Follow-up: ${stats.follow_up_patients}`} />
+              <div className="bg-slate-300" style={{ width: `${pct(other)}%` }} title={`Other: ${other}`} />
+            </div>
+            <div className="flex items-center gap-5 mt-3 text-xs">
+              <span className="flex items-center gap-1.5 text-slate-600"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500 inline-block" />New: <span className="font-bold text-slate-800">{stats.new_patients}</span> ({pct(stats.new_patients)}%)</span>
+              <span className="flex items-center gap-1.5 text-slate-600"><span className="w-2.5 h-2.5 rounded-sm bg-amber-500 inline-block" />Follow-up: <span className="font-bold text-slate-800">{stats.follow_up_patients}</span> ({pct(stats.follow_up_patients)}%)</span>
+              <span className="flex items-center gap-1.5 text-slate-600"><span className="w-2.5 h-2.5 rounded-sm bg-slate-300 inline-block" />Other: <span className="font-bold text-slate-800">{other}</span> ({pct(other)}%)</span>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Filters */}
       <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6">

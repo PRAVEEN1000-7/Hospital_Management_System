@@ -12,7 +12,7 @@ import type {
 export interface PendingOpticalPrescription {
   id: string;
   prescription_number: string;
-  status: 'finalized' | 'dispensed';
+  status: 'finalized' | 'dispensed' | 'ignored';
   patient_name: string;
   patient_reference_number?: string | null;
   patient_age?: number | null;
@@ -116,6 +116,15 @@ export const opticalService = {
     if (search) params.search = search;
     const res = await api.get('/optical/prescriptions/pending', { params });
     return res.data;
+  },
+
+  /**
+   * Mark a finalized eye prescription as ignored in this hospital's optical
+   * Prescription Queue — does NOT delete the prescription itself, it stays
+   * visible on the patient's optical history.
+   */
+  async ignorePrescription(prescriptionId: string): Promise<void> {
+    await api.post(`/optical/prescriptions/${prescriptionId}/ignore`);
   },
 
   async getPrescriptions(

@@ -603,6 +603,30 @@ async def get_prescription_pdf(
     patient_weight = _esc((rx.vitals_weight or "").strip() if rx.vitals_weight else "")
     weight_label = t.get("weight", "Weight")
 
+    # Bug fix: BP/Pulse/Temp/SpO2 were recorded (VitalsCard, both nurse and
+    # doctor entry) but never appeared anywhere on the printed prescription —
+    # only weight (for dosage calc) and blood sugar (eye-hospital) made it
+    # onto this report. Units match VitalsCard's labels exactly (mmHg/bpm/
+    # °F/%) so a reading never shows differently on paper than it did on
+    # screen. Same fixed-unit convention as weight_label's " kg" above —
+    # each vital here only ever has one valid unit, so it's a plain suffix,
+    # not a per-row lookup.
+    _vital_fields = [
+        ("BP", rx.vitals_bp, "mmHg"),
+        ("Pulse", rx.vitals_pulse, "bpm"),
+        ("Temp", rx.vitals_temp, "&deg;F"),
+        ("SpO2", rx.vitals_spo2, "%"),
+    ]
+    _vital_parts = [
+        f"<strong>{label}:</strong> {_esc(str(value).strip())} {unit}"
+        for label, value, unit in _vital_fields
+        if value and str(value).strip()
+    ]
+    vitals_line_html = (
+        f'<div class="diagnosis"><strong>Vitals:</strong> {" | ".join(_vital_parts)}</div>'
+        if _vital_parts else ""
+    )
+
     # Build clean header lines so empty fields never render as "None" or stray commas
     # (hosp_address/hosp_city/hosp_phone/hosp_email are already escaped above)
     addr_line = ", ".join(p for p in (hosp_address, hosp_city) if p)
@@ -729,7 +753,11 @@ td {{ font-size:13px; }}
     {f'<p><strong>{t["allergies"]}:</strong> <span style="color:#dc2626;">{_esc(patient.known_allergies)}</span></p>' if patient and patient.known_allergies else ''}
 </div>
 
+{vitals_line_html}
+
 {f'<div class="diagnosis"><strong>Patient History:</strong> {"Blood Sugar: " + _esc(rx.vitals_blood_sugar) if rx.vitals_blood_sugar else ""}{" | Symptoms: " + _esc(", ".join(patient.symptoms)) if patient and patient.symptoms else ""}</div>' if rx.vitals_blood_sugar or (patient and patient.symptoms) else ''}
+
+{f'<div class="diagnosis"><strong>DRS (Diabetic Retinopathy Screening):</strong> {_esc(rx.vitals_drs)}</div>' if rx.vitals_drs else ''}
 
 {f'<div class="diagnosis"><strong>{t["clinical_notes"]}:</strong> {_esc(rx.clinical_notes)}</div>' if rx.clinical_notes else ''}
 {f'<div class="diagnosis"><strong>{t["diagnosis"]}:</strong> {_esc(rx.diagnosis)}</div>' if rx.diagnosis else ''}

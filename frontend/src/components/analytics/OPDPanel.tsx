@@ -87,10 +87,15 @@ const OPDPanel: React.FC = () => {
     >
       {/* Mini stats grid */}
       {opd.data && (
-        <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <MiniStat label="Total Today" value={opd.data.total_today} icon="groups" color="text-primary" />
+        <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-5">
+          <MiniStat label="Total" value={opd.data.total_today} icon="groups" color="text-primary" />
           <MiniStat label="Walk-ins" value={opd.data.walk_ins} icon="directions_walk" color="text-amber-500" />
           <MiniStat label="Scheduled" value={opd.data.scheduled} icon="event" color="text-emerald-500" />
+          {/* Patients actually seen (status=completed) — distinct from
+              "Total", which also counts no-shows/cancelled/still-pending.
+              Exported CSV includes this same field, so the on-screen and
+              exported counts can never disagree. */}
+          <MiniStat label="Patients Consulted" value={opd.data.patients_consulted} icon="stethoscope" color="text-blue-600" />
           <MiniStat
             label="Avg Wait"
             value={`${opd.data.avg_wait_time} min`}

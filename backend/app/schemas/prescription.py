@@ -233,6 +233,7 @@ class PrescriptionCreate(BaseModel):
     vitals_weight: Optional[str] = None
     vitals_spo2: Optional[str] = None
     vitals_blood_sugar: Optional[str] = None
+    vitals_drs: Optional[str] = None
     follow_up_date: Optional[date] = None
     queue_id: Optional[str] = None
     valid_until: Optional[date] = None
@@ -252,6 +253,7 @@ class PrescriptionUpdate(BaseModel):
     vitals_weight: Optional[str] = None
     vitals_spo2: Optional[str] = None
     vitals_blood_sugar: Optional[str] = None
+    vitals_drs: Optional[str] = None
     follow_up_date: Optional[date] = None
     valid_until: Optional[date] = None
     institution_id: Optional[str] = None
@@ -279,6 +281,7 @@ class PrescriptionVitalsUpdate(BaseModel):
     # hospital type since save_draft_vitals just passes through whatever's
     # provided; the frontend is what gates visibility.
     vitals_blood_sugar: Optional[str] = None
+    vitals_drs: Optional[str] = None
 
 
 class PrescriptionResponse(BaseModel):
@@ -297,6 +300,7 @@ class PrescriptionResponse(BaseModel):
     vitals_weight: Optional[str] = None
     vitals_spo2: Optional[str] = None
     vitals_blood_sugar: Optional[str] = None
+    vitals_drs: Optional[str] = None
     follow_up_date: Optional[date] = None
     queue_id: Optional[str] = None
     institution_id: Optional[str] = None

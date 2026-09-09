@@ -324,13 +324,13 @@ const NewOpticalPrescription: React.FC = () => {
           </div>
         )}
 
-        {/* Eye Exam — Vision / IOP / NLD, kept separate from and shown before
-            the spectacle (SPH/CYL/Axis) prescription below since it records
-            the raw exam findings rather than a lens prescription. */}
+        {/* Eye Investigation — Vision / IOP / NLD, kept separate from and shown
+            before the spectacle (SPH/CYL/Axis) prescription below since it
+            records the raw exam findings rather than a lens prescription. */}
         <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
           <h3 className="font-semibold flex items-center gap-2 mb-4">
             <span className="material-symbols-outlined text-primary text-sm">visibility</span>
-            Eye Exam
+            Eye Investigation
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="border border-slate-200 rounded-lg p-4 space-y-3">
@@ -426,7 +426,7 @@ const NewOpticalPrescription: React.FC = () => {
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Right Eye (OD) — shown first (screen-left) per the clinical
-                  convention of facing the patient, matching Eye Exam above. */}
+                  convention of facing the patient, matching Eye Investigation above. */}
               <div className="border border-slate-200 rounded-lg p-4 space-y-3">
                 <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Right Eye (OD)</h4>
                 <div>

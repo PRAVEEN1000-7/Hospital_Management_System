@@ -243,6 +243,11 @@ class InvoiceResponse(BaseModel):
 class PaymentStatusBucketSummary(BaseModel):
     count: int
     total_amount: Decimal
+    # Actual money still owed (SUM(balance_amount)) — differs from
+    # total_amount for the partially_paid bucket, where part of each
+    # invoice's total has already been collected. Use this for anything
+    # that claims to show "outstanding"/"owed" money.
+    outstanding_amount: Decimal
 
 
 class PaymentStatusSummaryResponse(BaseModel):

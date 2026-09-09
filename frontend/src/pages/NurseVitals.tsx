@@ -7,6 +7,7 @@ import type { Patient } from '../types/patient';
 import { useToast } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
 import VitalsCard, { type VitalsValues } from '../components/prescription/VitalsCard';
+import DRSCard from '../components/prescription/DRSCard';
 
 const emptyVitals: VitalsValues = { bp: '', pulse: '', temp: '', weight: '', spo2: '' };
 
@@ -33,6 +34,7 @@ const NurseVitals: React.FC = () => {
   // still eye-hospital only, matching the vitals_blood_sugar column's only
   // real use case.
   const [bloodSugar, setBloodSugar] = useState('');
+  const [drs, setDrs] = useState('');
   // Patient's issue/complaint at the time of this visit — the same field
   // reception fills in at registration (Appointment.chief_complaint), so a
   // nurse correcting or adding detail here updates the one appointment
@@ -67,6 +69,7 @@ const NurseVitals: React.FC = () => {
             spo2: rx.vitals_spo2 || '',
           });
           setBloodSugar(rx.vitals_blood_sugar || '');
+          setDrs(rx.vitals_drs || '');
         }
       })
       .catch(() => {
@@ -90,6 +93,7 @@ const NurseVitals: React.FC = () => {
           vitals_weight: vitals.weight || undefined,
           vitals_spo2: vitals.spo2 || undefined,
           vitals_blood_sugar: isEyeHospitalFeatureEnabled ? (bloodSugar || undefined) : undefined,
+          vitals_drs: isEyeHospitalFeatureEnabled ? (drs || undefined) : undefined,
         }),
         // Same permission nurse already holds for appointment editing
         // (appt.manage) — a plain partial update, untouched fields on the
@@ -142,6 +146,10 @@ const NurseVitals: React.FC = () => {
         bloodSugar={isEyeHospitalFeatureEnabled ? bloodSugar : undefined}
         onBloodSugarChange={isEyeHospitalFeatureEnabled ? setBloodSugar : undefined}
       />
+
+      {isEyeHospitalFeatureEnabled && (
+        <DRSCard value={drs} onChange={setDrs} disabled={saving} />
+      )}
 
       <div className="sticky bottom-4 z-10 rounded-2xl border border-slate-200 bg-white/95 px-5 py-4 shadow-lg backdrop-blur">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

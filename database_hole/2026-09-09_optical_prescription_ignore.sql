@@ -1,0 +1,21 @@
+-- ==============================================================================
+-- 2026-09-09 — OPTICAL PRESCRIPTION QUEUE "IGNORE" MUST NOT DELETE THE RECORD
+--
+-- Mirrors 2026-08-31_prescription_hidden_from_pharmacy_queue.sql for the
+-- Optical Store's own Prescription Queue (OpticalPendingPrescriptions.tsx):
+-- optical counter staff need a way to dismiss a finalized eye prescription
+-- whose patient never came back to buy glasses/lenses, without it counting
+-- against "Pending Prescriptions" forever. The prescription itself must stay
+-- exactly as-is in the patient's optical history — this only hides it from
+-- the active queue and the dashboard's pending count.
+--
+-- New column is scoped ONLY to the optical prescription queue's own listing
+-- (optical_service.list_pending_optical_prescriptions /
+-- get_optical_dashboard) — every other listing (patient history, the eye
+-- prescriptions list) ignores it entirely and keeps showing the prescription
+-- exactly as before.
+--
+-- Safe to run against an existing DB — idempotent.
+-- ==============================================================================
+
+ALTER TABLE optical_prescriptions ADD COLUMN IF NOT EXISTS hidden_from_optical_queue BOOLEAN NOT NULL DEFAULT false;

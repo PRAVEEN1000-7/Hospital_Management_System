@@ -26,6 +26,7 @@ import AutocompleteField from '../components/common/AutocompleteField';
 import { formatLocalDateISO, formatMonthKey } from '../utils/calendarDate';
 import PrescriptionHistoryGrid from '../components/patients/PrescriptionHistoryGrid';
 import VitalsCard from '../components/prescription/VitalsCard';
+import DRSCard from '../components/prescription/DRSCard';
 import { useConfirm } from '../contexts/ConfirmContext';
 
 const FREQUENCY_OPTIONS = ['1-0-0', '0-1-0', '0-0-1', '1-0-1', '1-1-0', '0-1-1', '1-1-1', '1-1-1-1', '1 hrs', '2 hrs'];
@@ -257,6 +258,7 @@ const PrescriptionBuilder: React.FC = () => {
   const [institutionId, setInstitutionId] = useState('');
   const [institutions, setInstitutions] = useState<HospitalInstitutionOption[]>([]);
   const [vitalsBloodSugar, setVitalsBloodSugar] = useState('');
+  const [vitalsDrs, setVitalsDrs] = useState('');
   const [historySymptoms, setHistorySymptoms] = useState<string[]>([]);
 
   useEffect(() => {
@@ -527,6 +529,7 @@ const PrescriptionBuilder: React.FC = () => {
         setIsOpthal(rx.is_opthal || false);
         setInstitutionId(rx.institution_id || '');
         setVitalsBloodSugar(rx.vitals_blood_sugar || '');
+        setVitalsDrs(rx.vitals_drs || '');
         setVitalsBp(rx.vitals_bp || '');
         setVitalsPulse(rx.vitals_pulse || '');
         setVitalsTemp(rx.vitals_temp || '');
@@ -1054,6 +1057,7 @@ const PrescriptionBuilder: React.FC = () => {
       vitals_weight: vitalsWeight || undefined,
       vitals_spo2: vitalsSpo2 || undefined,
       vitals_blood_sugar: isEyeHospital ? (vitalsBloodSugar || undefined) : undefined,
+      vitals_drs: isEyeHospital ? (vitalsDrs || undefined) : undefined,
       follow_up_date: followUpDate || undefined,
     };
     const institutionPayload = isEyeHospital ? { institution_id: institutionId || undefined } : {};
@@ -1726,6 +1730,16 @@ const PrescriptionBuilder: React.FC = () => {
             />
           )}
 
+          {/* DRS (Diabetic Retinopathy Screening) — positioned directly below
+              Vitals, same as the nurse's entry screens. Pre-filled from
+              whatever the nurse already recorded for this visit (see
+              NurseVitals.tsx / VitalsDialog.tsx) — the doctor sees it here
+              with no re-entry required, and can still amend it before
+              finalizing. */}
+          {patient && isEyeHospital && (
+            <DRSCard value={vitalsDrs} onChange={setVitalsDrs} />
+          )}
+
           {/* Institution selector (BRD §4.2) — eye-hospital feature pack only */}
           {isEyeHospital && institutions.length > 1 && (
             <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
@@ -1950,7 +1964,7 @@ const PrescriptionBuilder: React.FC = () => {
             <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
               <h3 className="font-semibold flex items-center gap-2 mb-4">
                 <span className="material-symbols-outlined text-primary text-sm">visibility</span>
-                Eye Exam
+                Eye Investigation
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="border border-slate-200 rounded-lg p-4 space-y-3">

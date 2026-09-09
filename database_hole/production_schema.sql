@@ -1310,6 +1310,8 @@ CREATE TABLE public.prescriptions (
     is_opthal boolean DEFAULT false,
     opthal_notes text,
     vitals_blood_sugar character varying(20),
+    -- Added 2026-09-09 — see database_hole/2026-09-09_prescription_drs_field.sql
+    vitals_drs text,
     CONSTRAINT prescriptions_pkey PRIMARY KEY (id),
     CONSTRAINT prescriptions_prescription_number_key UNIQUE (prescription_number)
 );
@@ -2510,6 +2512,8 @@ CREATE TABLE public.optical_prescriptions (
     left_machine_cyl numeric(5,2),
     left_machine_axis integer,
     left_machine_add numeric(4,2),
+    -- Added 2026-09-09 — see database_hole/2026-09-09_optical_prescription_ignore.sql
+    hidden_from_optical_queue boolean DEFAULT false NOT NULL,
     CONSTRAINT optical_prescriptions_pkey PRIMARY KEY (id),
     CONSTRAINT optical_prescriptions_prescription_number_key UNIQUE (prescription_number)
 );

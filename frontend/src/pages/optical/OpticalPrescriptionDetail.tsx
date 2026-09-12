@@ -207,10 +207,12 @@ const OpticalPrescriptionDetail: React.FC = () => {
                 <td className="px-3 py-2">{fmtAxis(rx.right_axis)}</td>
                 <td className="px-3 py-2">{fmtAxis(rx.left_axis)}</td>
               </tr>
+              {/* Single combined Add (new records) — falls back to whichever
+                  legacy per-eye value is set for older records saved before
+                  it existed. One shared value, so it spans both columns. */}
               <tr>
                 <td className="px-3 py-2 text-left font-semibold text-slate-700">Add</td>
-                <td className="px-3 py-2">{fmtPower(rx.right_add)}</td>
-                <td className="px-3 py-2">{fmtPower(rx.left_add)}</td>
+                <td className="px-3 py-2" colSpan={2}>{fmtPower(rx.add ?? rx.right_add ?? rx.left_add)}</td>
               </tr>
               <tr>
                 <td className="px-3 py-2 text-left font-semibold text-slate-700">Visual Acuity</td>
@@ -242,15 +244,36 @@ const OpticalPrescriptionDetail: React.FC = () => {
           </table>
         </div>
 
-        {(rx.pd_distance || rx.pd_near || rx.pd_right || rx.pd_left) && (
+        {/* Single combined PD (new records) — falls back to the legacy
+            4-field breakdown for older records saved before it existed. */}
+        {(rx.pd || rx.pd_distance || rx.pd_near || rx.pd_right || rx.pd_left) && (
           <div className="bg-blue-50 rounded-lg p-4 text-sm">
             <p className="font-semibold text-slate-700 mb-1">Pupillary Distance (PD)</p>
             <p className="text-slate-600">
+              {rx.pd
+                ? `${rx.pd} mm`
+                : [
+                    rx.pd_distance ? `Distance: ${rx.pd_distance} mm` : null,
+                    rx.pd_near ? `Near: ${rx.pd_near} mm` : null,
+                    rx.pd_right ? `Right: ${rx.pd_right} mm` : null,
+                    rx.pd_left ? `Left: ${rx.pd_left} mm` : null,
+                  ].filter(Boolean).join(' | ')}
+            </p>
+          </div>
+        )}
+
+        {(rx.inv_hiv || rx.inv_ecg || rx.inv_vdrl || rx.inv_bp || rx.inv_blood_sugar || rx.inv_spo2 || rx.inv_others) && (
+          <div className="bg-blue-50 rounded-lg p-4 text-sm">
+            <p className="font-semibold text-slate-700 mb-1">Investigations</p>
+            <p className="text-slate-600">
               {[
-                rx.pd_distance ? `Distance: ${rx.pd_distance} mm` : null,
-                rx.pd_near ? `Near: ${rx.pd_near} mm` : null,
-                rx.pd_right ? `Right: ${rx.pd_right} mm` : null,
-                rx.pd_left ? `Left: ${rx.pd_left} mm` : null,
+                rx.inv_hiv ? `HIV: ${rx.inv_hiv}` : null,
+                rx.inv_ecg ? `ECG: ${rx.inv_ecg}` : null,
+                rx.inv_vdrl ? `VDRL: ${rx.inv_vdrl}` : null,
+                rx.inv_bp ? `BP: ${rx.inv_bp} mmHg` : null,
+                rx.inv_blood_sugar ? `Blood Sugar: ${rx.inv_blood_sugar} mg/dL` : null,
+                rx.inv_spo2 ? `SpO2: ${rx.inv_spo2}%` : null,
+                rx.inv_others ? `Others: ${rx.inv_others}` : null,
               ].filter(Boolean).join(' | ')}
             </p>
           </div>

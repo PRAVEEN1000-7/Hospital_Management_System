@@ -126,6 +126,23 @@ export interface OpticalPrescription {
   pd_near: number | null;
   pd_right: number | null;
   pd_left: number | null;
+  // Single combined PD (mm) for both eyes — replaces the 4 fields above in
+  // the entry UI; those stay populated only on older records.
+  pd: number | null;
+  // Single combined Add power for both eyes — replaces right_add/left_add
+  // and right_machine_add/left_machine_add in the entry UI; those stay
+  // populated only on older records.
+  add: number | null;
+  machine_add: number | null;
+  // Systemic investigation fields (Eye Investigation section) — not split
+  // per eye, "value + unit" free text (e.g. "120/80 mmHg").
+  inv_hiv: string | null;
+  inv_ecg: string | null;
+  inv_vdrl: string | null;
+  inv_bp: string | null;
+  inv_blood_sugar: string | null;
+  inv_spo2: string | null;
+  inv_others: string | null;
   notes: string | null;
   is_finalized: boolean;
   valid_until: string | null;
@@ -171,6 +188,16 @@ export interface OpticalPrescriptionCreateData {
   pd_near?: number;
   pd_right?: number;
   pd_left?: number;
+  pd?: number;
+  add?: number;
+  machine_add?: number;
+  inv_hiv?: string;
+  inv_ecg?: string;
+  inv_vdrl?: string;
+  inv_bp?: string;
+  inv_blood_sugar?: string;
+  inv_spo2?: string;
+  inv_others?: string;
   notes?: string;
   valid_until?: string;
 }

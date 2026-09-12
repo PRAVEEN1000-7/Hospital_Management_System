@@ -405,21 +405,7 @@ const AppointmentManagement: React.FC = () => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
-        {/* Total */}
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total</span>
-            <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center">
-              <span className="material-symbols-outlined text-lg text-blue-500">calendar_month</span>
-            </div>
-          </div>
-          {stats ? (
-            <p className="text-2xl font-bold text-slate-900">{stats.total_appointments}</p>
-          ) : (
-            <div className="h-8 w-10 bg-slate-100 rounded animate-pulse mt-1" />
-          )}
-        </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
         {/* Scheduled (status = scheduled / rescheduled — awaiting confirmation) */}
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
           <div className="flex items-center justify-between mb-1">

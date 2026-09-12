@@ -76,6 +76,79 @@ const NewOpticalPrescription: React.FC = () => {
     const value = e.target.value;
     setOpticalRx(prev => ({ ...prev, [field]: value === '' ? undefined : Number(value) }));
   };
+  // Compact RE/LE × SPH/CYL/AXIS grid — one card per prescribed block (AR
+  // machine reading or the doctor's final call), matching the printed
+  // spectacle-prescription layout instead of two separate per-eye boxes,
+  // to cut vertical space. `showVA` also renders the per-eye Visual Acuity
+  // row (Doctor Prescribed only — an auto-refractometer doesn't produce an
+  // acuity reading). Same helper as PrescriptionBuilder.tsx's embedded
+  // Optical section.
+  const renderOpticalRxGrid = (prefix: 'machine' | '', addField: 'add' | 'machine_add', showVA: boolean) => {
+    const rf = (base: string) => `right_${prefix ? prefix + '_' : ''}${base}` as keyof OpticalPrescriptionCreateData;
+    const lf = (base: string) => `left_${prefix ? prefix + '_' : ''}${base}` as keyof OpticalPrescriptionCreateData;
+    const cellInput = (field: keyof OpticalPrescriptionCreateData, extraProps: Record<string, any> = {}) => (
+      <input
+        type="number"
+        value={(opticalRx as any)[field] ?? ''}
+        onChange={opticalNumField(field)}
+        className="w-full px-2 py-1.5 text-sm text-center border-0 cursor-text focus:outline-none focus:ring-2 focus:ring-primary/30 rounded"
+        {...extraProps}
+      />
+    );
+    return (
+      <div className="border border-slate-200 rounded-lg overflow-hidden">
+        <div className="grid grid-cols-2 text-center text-xs font-bold text-slate-600 uppercase tracking-wide bg-slate-50">
+          <div className="py-1.5 border-r border-slate-200">RE</div>
+          <div className="py-1.5">LE</div>
+        </div>
+        {/* All labels here use text-xs — same size as "RE"/"LE" above and
+            every other field label on this page — so nothing in this table
+            reads as a different scale from the rest of the form. */}
+        <div className="grid grid-cols-6 text-center text-xs font-semibold text-slate-500 uppercase border-t border-slate-200">
+          <div className="py-1 border-r border-slate-100">SPH</div>
+          <div className="py-1 border-r border-slate-100">CYL</div>
+          <div className="py-1 border-r border-slate-200">Axis</div>
+          <div className="py-1 border-r border-slate-100">SPH</div>
+          <div className="py-1 border-r border-slate-100">CYL</div>
+          <div className="py-1">Axis</div>
+        </div>
+        <div className="grid grid-cols-6 gap-px bg-slate-200 border-t border-slate-200">
+          <div className="bg-white">{cellInput(rf('sph'), { step: '0.25' })}</div>
+          <div className="bg-white">{cellInput(rf('cyl'), { step: '0.25' })}</div>
+          <div className="bg-white">{cellInput(rf('axis'), { min: 0, max: 180 })}</div>
+          <div className="bg-white">{cellInput(lf('sph'), { step: '0.25' })}</div>
+          <div className="bg-white">{cellInput(lf('cyl'), { step: '0.25' })}</div>
+          <div className="bg-white">{cellInput(lf('axis'), { min: 0, max: 180 })}</div>
+        </div>
+        {showVA && (
+          <div className="grid grid-cols-2 gap-px bg-slate-200 border-t border-slate-200">
+            <div className="bg-white p-2">
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Visual Acuity</label>
+              <input
+                value={opticalRx.right_va || ''}
+                onChange={(e) => setOpticalRx(prev => ({ ...prev, right_va: e.target.value }))}
+                placeholder="6/6"
+                className="input-field"
+              />
+            </div>
+            <div className="bg-white p-2">
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Visual Acuity</label>
+              <input
+                value={opticalRx.left_va || ''}
+                onChange={(e) => setOpticalRx(prev => ({ ...prev, left_va: e.target.value }))}
+                placeholder="6/6"
+                className="input-field"
+              />
+            </div>
+          </div>
+        )}
+        <div className="border-t border-slate-200 p-2">
+          <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Add</label>
+          <input type="number" step="0.25" value={(opticalRx as any)[addField] ?? ''} onChange={opticalNumField(addField)} className="input-field" />
+        </div>
+      </div>
+    );
+  };
   const [saving, setSaving] = useState(false);
 
   // ── Re-open an existing draft for this appointment instead of creating a
@@ -103,6 +176,12 @@ const NewOpticalPrescription: React.FC = () => {
         left_vision: rx.left_vision ?? undefined, left_iop: rx.left_iop ?? undefined, left_nld: rx.left_nld ?? undefined,
         pd_distance: rx.pd_distance ?? undefined, pd_near: rx.pd_near ?? undefined,
         pd_right: rx.pd_right ?? undefined, pd_left: rx.pd_left ?? undefined,
+        pd: rx.pd ?? rx.pd_distance ?? undefined,
+        add: rx.add ?? rx.right_add ?? rx.left_add ?? undefined,
+        machine_add: rx.machine_add ?? rx.right_machine_add ?? rx.left_machine_add ?? undefined,
+        inv_hiv: rx.inv_hiv ?? undefined, inv_ecg: rx.inv_ecg ?? undefined, inv_vdrl: rx.inv_vdrl ?? undefined,
+        inv_bp: rx.inv_bp ?? undefined, inv_blood_sugar: rx.inv_blood_sugar ?? undefined,
+        inv_spo2: rx.inv_spo2 ?? undefined, inv_others: rx.inv_others ?? undefined,
         notes: rx.notes ?? undefined,
       });
     }).catch(() => {});
@@ -364,147 +443,63 @@ const NewOpticalPrescription: React.FC = () => {
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Machine Prescribed — auto-refractometer / measurement-machine
-            reading, taken before the doctor reviews it. Stored as its own
-            set of columns, separate from Doctor Prescribed below, so both
-            are kept on the record independently. */}
-        <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-          <h3 className="font-semibold flex items-center gap-2 mb-4">
-            <span className="material-symbols-outlined text-primary text-sm">precision_manufacturing</span>
-            Machine Prescribed
-          </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="border border-slate-200 rounded-lg p-4 space-y-3">
-              <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Right Eye (OD)</h4>
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">SPH</label>
-                <input type="number" step="0.25" value={opticalRx.right_machine_sph ?? ''} onChange={opticalNumField('right_machine_sph')} className="input-field" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">CYL</label>
-                <input type="number" step="0.25" value={opticalRx.right_machine_cyl ?? ''} onChange={opticalNumField('right_machine_cyl')} className="input-field" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Axis</label>
-                <input type="number" min={0} max={180} value={opticalRx.right_machine_axis ?? ''} onChange={opticalNumField('right_machine_axis')} className="input-field" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Add</label>
-                <input type="number" step="0.25" value={opticalRx.right_machine_add ?? ''} onChange={opticalNumField('right_machine_add')} className="input-field" />
-              </div>
+          {/* Systemic investigations — one shared set of values for the
+              whole patient, not split per eye like Vision/IOP/NLD above. */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-4 pt-4 border-t border-slate-100">
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">HIV</label>
+              <input value={opticalRx.inv_hiv || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, inv_hiv: e.target.value }))} placeholder="Non-Reactive" className="input-field" />
             </div>
-            <div className="border border-slate-200 rounded-lg p-4 space-y-3">
-              <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Left Eye (OS)</h4>
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">SPH</label>
-                <input type="number" step="0.25" value={opticalRx.left_machine_sph ?? ''} onChange={opticalNumField('left_machine_sph')} className="input-field" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">CYL</label>
-                <input type="number" step="0.25" value={opticalRx.left_machine_cyl ?? ''} onChange={opticalNumField('left_machine_cyl')} className="input-field" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Axis</label>
-                <input type="number" min={0} max={180} value={opticalRx.left_machine_axis ?? ''} onChange={opticalNumField('left_machine_axis')} className="input-field" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Add</label>
-                <input type="number" step="0.25" value={opticalRx.left_machine_add ?? ''} onChange={opticalNumField('left_machine_add')} className="input-field" />
-              </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">ECG</label>
+              <input value={opticalRx.inv_ecg || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, inv_ecg: e.target.value }))} placeholder="Normal" className="input-field" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">VDRL</label>
+              <input value={opticalRx.inv_vdrl || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, inv_vdrl: e.target.value }))} placeholder="Non-Reactive" className="input-field" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">BP (mmHg)</label>
+              <input value={opticalRx.inv_bp || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, inv_bp: e.target.value }))} placeholder="120/80" className="input-field" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Blood Sugar (mg/dL)</label>
+              <input value={opticalRx.inv_blood_sugar || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, inv_blood_sugar: e.target.value }))} placeholder="110" className="input-field" />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">SpO2 (%)</label>
+              <input value={opticalRx.inv_spo2 || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, inv_spo2: e.target.value }))} placeholder="98" className="input-field" />
+            </div>
+            <div className="col-span-2">
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Others</label>
+              <input value={opticalRx.inv_others || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, inv_others: e.target.value }))} placeholder="Any other investigation finding" className="input-field" />
             </div>
           </div>
         </div>
 
-        {/* Doctor Prescribed — the final clinical spectacle prescription. */}
+        {/* AR Prescribed and Doctor Prescribed used to be two identical-
+            looking cards — collapsed to the one grid that matters for the
+            issued prescription, no label above it. The old machine-reading
+            fields (right_machine_sph etc., machine_add) stay in the data
+            model for backward compatibility with existing records; this UI
+            just no longer has separate inputs for them. */}
         <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-          <h3 className="font-semibold flex items-center gap-2 mb-4">
-            <span className="material-symbols-outlined text-primary text-sm">visibility</span>
-            Doctor Prescribed
-          </h3>
           <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Right Eye (OD) — shown first (screen-left) per the clinical
-                  convention of facing the patient, matching Eye Investigation above. */}
-              <div className="border border-slate-200 rounded-lg p-4 space-y-3">
-                <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Right Eye (OD)</h4>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">SPH</label>
-                  <input type="number" step="0.25" value={opticalRx.right_sph ?? ''} onChange={opticalNumField('right_sph')} className="input-field" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">CYL</label>
-                  <input type="number" step="0.25" value={opticalRx.right_cyl ?? ''} onChange={opticalNumField('right_cyl')} className="input-field" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Axis</label>
-                  <input type="number" min={0} max={180} value={opticalRx.right_axis ?? ''} onChange={opticalNumField('right_axis')} className="input-field" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Add</label>
-                  <input type="number" step="0.25" value={opticalRx.right_add ?? ''} onChange={opticalNumField('right_add')} className="input-field" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Visual Acuity</label>
-                  <input value={opticalRx.right_va || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, right_va: e.target.value }))} placeholder="6/6" className="input-field" />
-                </div>
-              </div>
+            {renderOpticalRxGrid('', 'add', true)}
 
-              {/* Left Eye (OS) */}
-              <div className="border border-slate-200 rounded-lg p-4 space-y-3">
-                <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Left Eye (OS)</h4>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">SPH</label>
-                  <input type="number" step="0.25" value={opticalRx.left_sph ?? ''} onChange={opticalNumField('left_sph')} className="input-field" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">CYL</label>
-                  <input type="number" step="0.25" value={opticalRx.left_cyl ?? ''} onChange={opticalNumField('left_cyl')} className="input-field" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Axis</label>
-                  <input type="number" min={0} max={180} value={opticalRx.left_axis ?? ''} onChange={opticalNumField('left_axis')} className="input-field" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Add</label>
-                  <input type="number" step="0.25" value={opticalRx.left_add ?? ''} onChange={opticalNumField('left_add')} className="input-field" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Visual Acuity</label>
-                  <input value={opticalRx.left_va || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, left_va: e.target.value }))} placeholder="6/6" className="input-field" />
-                </div>
-              </div>
-            </div>
-
+            {/* PD (single combined box for both eyes, replacing the previous
+                4 separate PD Distance/Near/Right/Left fields) and Optical
+                Notes side by side instead of stacked. */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">PD Distance (mm)</label>
-                <input type="number" step="0.5" value={opticalRx.pd_distance ?? ''} onChange={opticalNumField('pd_distance')} className="input-field" />
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">PD (mm)</label>
+                <input type="number" step="0.5" value={opticalRx.pd ?? ''} onChange={opticalNumField('pd')} className="input-field" />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">PD Near (mm)</label>
-                <input type="number" step="0.5" value={opticalRx.pd_near ?? ''} onChange={opticalNumField('pd_near')} className="input-field" />
+                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Optical Notes</label>
+                <input value={opticalRx.notes || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, notes: e.target.value }))} className="input-field" />
               </div>
-            </div>
-
-            {/* Per-eye PD — distinct from PD Distance/Near above (which split
-                by viewing distance, not by eye); some opticians measure and
-                prescribe PD per eye instead of a single binocular value. */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">PD Right / OD (mm)</label>
-                <input type="number" step="0.5" value={opticalRx.pd_right ?? ''} onChange={opticalNumField('pd_right')} className="input-field" />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">PD Left / OS (mm)</label>
-                <input type="number" step="0.5" value={opticalRx.pd_left ?? ''} onChange={opticalNumField('pd_left')} className="input-field" />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Optical Notes</label>
-              <input value={opticalRx.notes || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, notes: e.target.value }))} className="input-field" />
             </div>
           </div>
         </div>

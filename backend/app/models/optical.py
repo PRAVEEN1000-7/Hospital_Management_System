@@ -127,6 +127,27 @@ class OpticalPrescription(Base):
     pd_near = Column(Numeric(4, 1))
     pd_right = Column(Numeric(4, 1))
     pd_left = Column(Numeric(4, 1))
+    # Single combined PD (mm) for both eyes — replaces the 4 columns above in
+    # the entry UI going forward; those stay for existing records/back-compat.
+    pd = Column(Numeric(4, 1))
+    # Single combined Add power for both eyes — replaces right_add/left_add
+    # and right_machine_add/left_machine_add in the entry UI, same rationale
+    # as the shared `pd` column above (reading addition is clinically the
+    # same for both eyes in almost every prescription). Old per-eye columns
+    # stay for existing records/back-compat.
+    add = Column(Numeric(4, 2))
+    machine_add = Column(Numeric(4, 2))
+    # Systemic investigation fields, shown in the Eye Investigation section —
+    # deliberately NOT split per eye (these are whole-patient values, not
+    # per RE/OS), each stored "value + unit" as free text (e.g. "120/80
+    # mmHg"), same convention as VitalsCard's bare vitals fields.
+    inv_hiv = Column(String(20))
+    inv_ecg = Column(String(20))
+    inv_vdrl = Column(String(20))
+    inv_bp = Column(String(20))
+    inv_blood_sugar = Column(String(20))
+    inv_spo2 = Column(String(20))
+    inv_others = Column(Text)
     notes = Column(Text)
     is_finalized = Column(Boolean, default=False)
     valid_until = Column(Date)

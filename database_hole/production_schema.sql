@@ -2514,6 +2514,18 @@ CREATE TABLE public.optical_prescriptions (
     left_machine_add numeric(4,2),
     -- Added 2026-09-09 — see database_hole/2026-09-09_optical_prescription_ignore.sql
     hidden_from_optical_queue boolean DEFAULT false NOT NULL,
+    -- Added 2026-09-12 — see database_hole/2026-09-12_optical_prescription_pd_and_investigations.sql
+    pd numeric(4,1),
+    inv_hiv character varying(20),
+    inv_ecg character varying(20),
+    inv_vdrl character varying(20),
+    inv_bp character varying(20),
+    inv_blood_sugar character varying(20),
+    inv_spo2 character varying(20),
+    inv_others text,
+    -- Added 2026-09-12 — see database_hole/2026-09-12_optical_shared_add_power.sql
+    "add" numeric(4,2),
+    machine_add numeric(4,2),
     CONSTRAINT optical_prescriptions_pkey PRIMARY KEY (id),
     CONSTRAINT optical_prescriptions_prescription_number_key UNIQUE (prescription_number)
 );

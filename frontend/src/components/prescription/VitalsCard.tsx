@@ -54,6 +54,23 @@ const VitalsCard: React.FC<VitalsCardProps> = ({ values, onChange, disabled, blo
     onBloodSugarChange(amount.trim() ? `${amount.trim()} ${unit}` : '');
   };
 
+  // The unit shows inline inside the field, once a value is entered —
+  // rather than only appearing in the label above it — so BP/Pulse/Temp/
+  // Weight/SpO2 all display "value + unit" together, same idea as the
+  // Blood Sugar field's unit dropdown alongside its amount.
+  const field = (key: keyof VitalsValues, label: string, unit: string, placeholder: string) => (
+    <div>
+      <label className="block text-xs font-semibold text-slate-500 mb-1.5">{label}</label>
+      <div className="relative">
+        <input type="text" value={values[key]} onChange={set(key)} placeholder={placeholder} disabled={disabled}
+          className="input-field pr-14" />
+        {values[key] && (
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 pointer-events-none">{unit}</span>
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
       <h3 className="font-semibold mb-4 flex items-center gap-2">
@@ -64,31 +81,11 @@ const VitalsCard: React.FC<VitalsCardProps> = ({ values, onChange, disabled, blo
           only kicks in once it's actually present, so non-eye-hospital
           callers (5 fields only) keep the original 5-column row. */}
       <div className={`grid grid-cols-2 gap-4 ${bloodSugar !== undefined && onBloodSugarChange ? 'sm:grid-cols-6' : 'sm:grid-cols-5'}`}>
-        <div>
-          <label className="block text-xs font-semibold text-slate-500 mb-1.5">BP (mmHg)</label>
-          <input type="text" value={values.bp} onChange={set('bp')} placeholder="120/80" disabled={disabled}
-            className="input-field" />
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-slate-500 mb-1.5">Pulse (bpm)</label>
-          <input type="text" value={values.pulse} onChange={set('pulse')} placeholder="72" disabled={disabled}
-            className="input-field" />
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-slate-500 mb-1.5">Temp (&deg;F)</label>
-          <input type="text" value={values.temp} onChange={set('temp')} placeholder="98.6" disabled={disabled}
-            className="input-field" />
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-slate-500 mb-1.5">Weight (kg)</label>
-          <input type="text" value={values.weight} onChange={set('weight')} placeholder="70" disabled={disabled}
-            className="input-field" />
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-slate-500 mb-1.5">SpO2 (%)</label>
-          <input type="text" value={values.spo2} onChange={set('spo2')} placeholder="98" disabled={disabled}
-            className="input-field" />
-        </div>
+        {field('bp', 'BP', 'mmHg', '120/80')}
+        {field('pulse', 'Pulse', 'bpm', '72')}
+        {field('temp', 'Temp', '°F', '98.6')}
+        {field('weight', 'Weight', 'kg', '70')}
+        {field('spo2', 'SpO2', '%', '98')}
         {bloodSugar !== undefined && onBloodSugarChange && (
           <div>
             <label className="block text-xs font-semibold text-slate-500 mb-1.5">Blood Sugar</label>

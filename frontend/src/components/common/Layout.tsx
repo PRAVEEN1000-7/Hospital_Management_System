@@ -618,7 +618,15 @@ const Layout: React.FC = () => {
       { to: '/optical/prescriptions', label: 'Prescriptions', icon: 'description' },
       { to: '/optical/prescriptions/new', label: 'New Prescription', icon: 'add_circle' },
       { to: '/optical/sales', label: 'Sales', icon: 'point_of_sale' },
-      { to: '/optical/queue', label: 'Dispensing Queue', icon: 'queue' },
+      // Bug fix: this used to point at /optical/queue — a separate sale-
+      // fulfillment tracking board (DispensingQueueBoard, still reachable
+      // directly), not the queue of finalized prescriptions actually
+      // awaiting dispensing. Pharmacy's own "Pending Prescriptions" nav item
+      // and dashboard card already point at the same page
+      // (pharmacy/pending-prescriptions) — this makes Optical consistent
+      // with that, instead of the dashboard card and this nav item leading
+      // to two different queues.
+      { to: '/optical/prescriptions/pending', label: 'Dispensing Queue', icon: 'queue' },
       { to: '/optical/stock-adjustments', label: 'Stock Adjustments', icon: 'tune' },
     );
   }

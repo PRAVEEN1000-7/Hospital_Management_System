@@ -223,6 +223,27 @@ class OpticalPrescriptionCreate(BaseModel):
     pd_near: Optional[Decimal] = None
     pd_right: Optional[Decimal] = None
     pd_left: Optional[Decimal] = None
+    # Single combined PD (mm), for both eyes — replaces the 4 fields above in
+    # the entry UI (kept for backward compatibility with existing records
+    # that only ever had those). New saves populate this instead.
+    pd: Optional[Decimal] = None
+    # Single combined Add power, for both eyes — replaces right_add/left_add
+    # (Doctor Prescribed) and right_machine_add/left_machine_add (AR
+    # Prescribed) in the entry UI. Reading addition is clinically the same
+    # for both eyes in the vast majority of prescriptions, same rationale as
+    # the shared `pd` field above. Old per-eye columns are kept for backward
+    # compatibility with existing records.
+    add: Optional[Decimal] = None
+    machine_add: Optional[Decimal] = None
+    # Systemic investigation fields (Eye Investigation section) — one value
+    # each, not split per eye. "value + unit" free text, e.g. "120/80 mmHg".
+    inv_hiv: Optional[str] = Field(None, max_length=20)
+    inv_ecg: Optional[str] = Field(None, max_length=20)
+    inv_vdrl: Optional[str] = Field(None, max_length=20)
+    inv_bp: Optional[str] = Field(None, max_length=20)
+    inv_blood_sugar: Optional[str] = Field(None, max_length=20)
+    inv_spo2: Optional[str] = Field(None, max_length=20)
+    inv_others: Optional[str] = None
     notes: Optional[str] = None
     valid_until: Optional[date] = None
 
@@ -256,6 +277,27 @@ class OpticalPrescriptionUpdate(BaseModel):
     pd_near: Optional[Decimal] = None
     pd_right: Optional[Decimal] = None
     pd_left: Optional[Decimal] = None
+    # Single combined PD (mm), for both eyes — replaces the 4 fields above in
+    # the entry UI (kept for backward compatibility with existing records
+    # that only ever had those). New saves populate this instead.
+    pd: Optional[Decimal] = None
+    # Single combined Add power, for both eyes — replaces right_add/left_add
+    # (Doctor Prescribed) and right_machine_add/left_machine_add (AR
+    # Prescribed) in the entry UI. Reading addition is clinically the same
+    # for both eyes in the vast majority of prescriptions, same rationale as
+    # the shared `pd` field above. Old per-eye columns are kept for backward
+    # compatibility with existing records.
+    add: Optional[Decimal] = None
+    machine_add: Optional[Decimal] = None
+    # Systemic investigation fields (Eye Investigation section) — one value
+    # each, not split per eye. "value + unit" free text, e.g. "120/80 mmHg".
+    inv_hiv: Optional[str] = Field(None, max_length=20)
+    inv_ecg: Optional[str] = Field(None, max_length=20)
+    inv_vdrl: Optional[str] = Field(None, max_length=20)
+    inv_bp: Optional[str] = Field(None, max_length=20)
+    inv_blood_sugar: Optional[str] = Field(None, max_length=20)
+    inv_spo2: Optional[str] = Field(None, max_length=20)
+    inv_others: Optional[str] = None
     notes: Optional[str] = None
     valid_until: Optional[date] = None
 
@@ -295,6 +337,27 @@ class OpticalPrescriptionResponse(BaseModel):
     pd_near: Optional[Decimal] = None
     pd_right: Optional[Decimal] = None
     pd_left: Optional[Decimal] = None
+    # Single combined PD (mm), for both eyes — replaces the 4 fields above in
+    # the entry UI (kept for backward compatibility with existing records
+    # that only ever had those). New saves populate this instead.
+    pd: Optional[Decimal] = None
+    # Single combined Add power, for both eyes — replaces right_add/left_add
+    # (Doctor Prescribed) and right_machine_add/left_machine_add (AR
+    # Prescribed) in the entry UI. Reading addition is clinically the same
+    # for both eyes in the vast majority of prescriptions, same rationale as
+    # the shared `pd` field above. Old per-eye columns are kept for backward
+    # compatibility with existing records.
+    add: Optional[Decimal] = None
+    machine_add: Optional[Decimal] = None
+    # Systemic investigation fields (Eye Investigation section) — one value
+    # each, not split per eye. "value + unit" free text, e.g. "120/80 mmHg".
+    inv_hiv: Optional[str] = Field(None, max_length=20)
+    inv_ecg: Optional[str] = Field(None, max_length=20)
+    inv_vdrl: Optional[str] = Field(None, max_length=20)
+    inv_bp: Optional[str] = Field(None, max_length=20)
+    inv_blood_sugar: Optional[str] = Field(None, max_length=20)
+    inv_spo2: Optional[str] = Field(None, max_length=20)
+    inv_others: Optional[str] = None
     notes: Optional[str] = None
     is_finalized: bool = False
     valid_until: Optional[date] = None

@@ -99,6 +99,7 @@ export interface Prescription {
   final_amount?: number | null;
   dispensed_at?: string | null;
   has_lab_order?: boolean;
+  lab_order_id?: string | null;
   items: PrescriptionItem[];
 }
 

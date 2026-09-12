@@ -25,9 +25,9 @@ import { useListKeyboardNav } from '../hooks/useListKeyboardNav';
 import AutocompleteField from '../components/common/AutocompleteField';
 import { formatLocalDateISO, formatMonthKey } from '../utils/calendarDate';
 import PrescriptionHistoryGrid from '../components/patients/PrescriptionHistoryGrid';
+import LabTestHistoryCard from '../components/patients/LabTestHistoryCard';
 import VitalsCard from '../components/prescription/VitalsCard';
 import DRSCard from '../components/prescription/DRSCard';
-import { useConfirm } from '../contexts/ConfirmContext';
 
 const FREQUENCY_OPTIONS = ['1-0-0', '0-1-0', '0-0-1', '1-0-1', '1-1-0', '0-1-1', '1-1-1', '1-1-1-1', '1 hrs', '2 hrs'];
 // Fixed "Condition / History" checklist, shown below Prescription History —
@@ -128,7 +128,6 @@ const PrescriptionBuilder: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { user, isModuleEnabled } = useAuth();
   const { showToast } = useToast();
-  const confirm = useConfirm();
 
   const isEditMode = Boolean(editId);
   // True once the edit-mode load effect confirms this prescription was
@@ -182,11 +181,17 @@ const PrescriptionBuilder: React.FC = () => {
   const [queueId] = useState(searchParams.get('queue_id') || '');
   const isConsultationMode = Boolean(queueId);
   const [patient, setPatient] = useState<Patient | null>(null);
-  // "Condition / History" checklist — see MEDICAL_CONDITIONS_CHECKLIST / OTHER_MEDICAL_CONDITIONS.
-  const [medicalConditions, setMedicalConditions] = useState<MedicalConditionEntry[]>(
-    ALL_MEDICAL_CONDITIONS.map(condition => ({ condition, details: '', currently_in_treatment: null }))
-  );
+  // "Patient Past History" — a fixed list of selectable condition names (see
+  // ALL_MEDICAL_CONDITIONS). A condition is "selected" simply by being
+  // present in this array — no per-condition details/treatment fields.
+  const [medicalConditions, setMedicalConditions] = useState<MedicalConditionEntry[]>([]);
   const [savingConditions, setSavingConditions] = useState(false);
+  // One free-text "Others" slot — unlike MEDICAL_CONDITIONS_CHECKLIST /
+  // OTHER_MEDICAL_CONDITIONS (fixed, known condition names), this lets the
+  // doctor record a condition not on either list at all, by typing its own
+  // name. Kept out of the `medicalConditions` array (which is keyed by a
+  // fixed condition name) until save, when it's appended as one more entry.
+  const [customCondition, setCustomCondition] = useState<{ name: string; details: string }>({ name: '', details: '' });
   // Referral context (who referred this patient in, and why) — fetched so it's
   // visible to the receiving doctor instead of silently never surfacing.
   const [referralInfo, setReferralInfo] = useState<{
@@ -215,6 +220,81 @@ const PrescriptionBuilder: React.FC = () => {
     const value = e.target.value;
     setOpticalRx(prev => ({ ...prev, [field]: value === '' ? undefined : Number(value) }));
   };
+  // Compact RE/LE × SPH/CYL/AXIS grid — one card per prescribed block (AR
+  // machine reading or the doctor's final call), matching the printed
+  // spectacle-prescription layout instead of two separate per-eye boxes
+  // stacked vertically, to cut down the vertical space this section used to
+  // take before the doctor even reaches Diagnosis & Medicines below.
+  // `showVA` also renders the per-eye Visual Acuity row (Doctor Prescribed
+  // only — an auto-refractometer doesn't produce an acuity reading).
+  const renderOpticalRxGrid = (prefix: 'machine' | '', addField: 'add' | 'machine_add', showVA: boolean) => {
+    const rf = (base: string) => `right_${prefix ? prefix + '_' : ''}${base}` as keyof OpticalPrescriptionCreateData;
+    const lf = (base: string) => `left_${prefix ? prefix + '_' : ''}${base}` as keyof OpticalPrescriptionCreateData;
+    const cellInput = (field: keyof OpticalPrescriptionCreateData, extraProps: Record<string, any> = {}) => (
+      <input
+        type="number"
+        value={(opticalRx as any)[field] ?? ''}
+        onChange={opticalNumField(field)}
+        className="w-full px-2 py-1.5 text-sm text-center border-0 cursor-text focus:outline-none focus:ring-2 focus:ring-primary/30 rounded"
+        {...extraProps}
+      />
+    );
+    return (
+      <div className="border border-slate-200 rounded-lg overflow-hidden">
+        <div className="grid grid-cols-2 text-center text-xs font-bold text-slate-600 uppercase tracking-wide bg-slate-50">
+          <div className="py-1.5 border-r border-slate-200">RE</div>
+          <div className="py-1.5">LE</div>
+        </div>
+        {/* Sub-header, Visual Acuity and Add labels all use text-xs — same
+            size as the "RE"/"LE" header above and every other field label on
+            this page (PD, Optical Notes, etc.) — so nothing in this table
+            reads as a different scale from the rest of the form. */}
+        <div className="grid grid-cols-6 text-center text-xs font-semibold text-slate-500 uppercase border-t border-slate-200">
+          <div className="py-1 border-r border-slate-100">SPH</div>
+          <div className="py-1 border-r border-slate-100">CYL</div>
+          <div className="py-1 border-r border-slate-200">Axis</div>
+          <div className="py-1 border-r border-slate-100">SPH</div>
+          <div className="py-1 border-r border-slate-100">CYL</div>
+          <div className="py-1">Axis</div>
+        </div>
+        <div className="grid grid-cols-6 gap-px bg-slate-200 border-t border-slate-200">
+          <div className="bg-white">{cellInput(rf('sph'), { step: '0.25' })}</div>
+          <div className="bg-white">{cellInput(rf('cyl'), { step: '0.25' })}</div>
+          <div className="bg-white">{cellInput(rf('axis'), { min: 0, max: 180 })}</div>
+          <div className="bg-white">{cellInput(lf('sph'), { step: '0.25' })}</div>
+          <div className="bg-white">{cellInput(lf('cyl'), { step: '0.25' })}</div>
+          <div className="bg-white">{cellInput(lf('axis'), { min: 0, max: 180 })}</div>
+        </div>
+        {showVA && (
+          <div className="grid grid-cols-2 gap-px bg-slate-200 border-t border-slate-200">
+            <div className="bg-white p-2">
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Visual Acuity</label>
+              <input
+                value={opticalRx.right_va || ''}
+                onChange={(e) => setOpticalRx(prev => ({ ...prev, right_va: e.target.value }))}
+                placeholder="6/6"
+                className="input-field"
+              />
+            </div>
+            <div className="bg-white p-2">
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Visual Acuity</label>
+              <input
+                value={opticalRx.left_va || ''}
+                onChange={(e) => setOpticalRx(prev => ({ ...prev, left_va: e.target.value }))}
+                placeholder="6/6"
+                className="input-field"
+              />
+            </div>
+          </div>
+        )}
+        {/* Add — one shared field for both eyes, same convention as PD below. */}
+        <div className="border-t border-slate-200 p-2">
+          <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Add</label>
+          <input type="number" step="0.25" value={(opticalRx as any)[addField] ?? ''} onChange={opticalNumField(addField)} className="input-field" />
+        </div>
+      </div>
+    );
+  };
   // Optional Laboratory tests, ordered alongside the drug prescription in the
   // same visit — any hospital type (gated by labModuleEnabled).
   const [labTests, setLabTests] = useState<LabTest[]>([]);
@@ -223,7 +303,17 @@ const PrescriptionBuilder: React.FC = () => {
   const [labPanels, setLabPanels] = useState<LabTestPanel[]>([]);
   const [selectedLabTestIds, setSelectedLabTestIds] = useState<string[]>([]);
   const [labNotes, setLabNotes] = useState('');
-  const [labTestSearch, setLabTestSearch] = useState('');
+  // Lab Notes doubles as the search-and-select input for adding tests beyond
+  // whatever a Health Checkup Package already covers — typing shows a
+  // typeahead of matching catalog tests, and picking one actually selects
+  // that test (adds it to selectedLabTestIds, the real order). There used to
+  // be a second, separate "Investigation" box for this same search/suggest
+  // behavior, but it was purely descriptive text for the print output —
+  // redundant with this one full catalog search, so it's gone; Lab Notes is
+  // now the only input here. Replaces the old separate search box + full
+  // categorized checkbox grid, which took up a lot of
+  // vertical space before the doctor even reached Diagnosis & Medicines.
+  const [labNotesSuggestOpen, setLabNotesSuggestOpen] = useState(false);
   // Completed/pending lab results for THIS patient — shown read-only in the
   // consultation view so the doctor sees the tests they advised (and their
   // results once done) without leaving the prescription screen.
@@ -334,26 +424,29 @@ const PrescriptionBuilder: React.FC = () => {
     [referDoctors, user?.id],
   );
 
-  // Lab test catalog can grow large (dozens of tests across several
-  // categories) — filter client-side by name/code/category, then group the
-  // filtered list under category subheadings so the checkbox grid stays
-  // scannable instead of one long unbroken list.
-  const labTestGroups = useMemo(() => {
-    const q = labTestSearch.trim().toLowerCase();
-    const filtered = q
-      ? labTests.filter((t) =>
-          t.name.toLowerCase().includes(q) ||
-          t.code.toLowerCase().includes(q) ||
-          (t.category || '').toLowerCase().includes(q))
-      : labTests;
-    const groups = new Map<string, LabTest[]>();
-    filtered.forEach((t) => {
-      const key = t.category || 'Other';
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(t);
-    });
-    return Array.from(groups.entries()).map(([category, tests]) => ({ category, tests }));
-  }, [labTests, labTestSearch]);
+  // Suggestions for Lab Notes, which doubles as the search-and-select input
+  // for the real test order — matched against whatever the doctor is
+  // currently typing after the last comma (so "CBC, Lipid" still suggests
+  // off of "Lipid" alone), excluding tests already selected so the dropdown
+  // only ever offers "remaining" tests to add.
+  const labNotesSuggestions = useMemo(() => {
+    const parts = labNotes.split(',');
+    const current = parts[parts.length - 1].trim().toLowerCase();
+    if (!current) return [];
+    return labTests
+      .filter((t) => !selectedLabTestIds.includes(t.id) && t.name.toLowerCase().includes(current))
+      .slice(0, 8);
+  }, [labTests, labNotes, selectedLabTestIds]);
+
+  // Names of every currently selected test, for the removable-chip summary
+  // below the Lab Notes input — the doctor's only way to review/undo an
+  // individual selection now that the full checkbox grid is gone.
+  const selectedLabTestNames = useMemo(
+    () => selectedLabTestIds
+      .map((id) => labTests.find((t) => t.id === id))
+      .filter((t): t is LabTest => !!t),
+    [selectedLabTestIds, labTests],
+  );
 
   const {
     availabilityMap: referDateAvailability,
@@ -402,59 +495,51 @@ const PrescriptionBuilder: React.FC = () => {
   useEffect(() => {
     if (!patient) return;
     const saved = patient.medical_conditions || [];
-    setMedicalConditions(ALL_MEDICAL_CONDITIONS.map(condition => {
-      const existing = saved.find(e => e.condition === condition);
-      return existing || { condition, details: '', currently_in_treatment: null };
-    }));
+    // A fixed-list condition counts as "selected" simply by being present
+    // in the saved array — old records that still carry details/treatment
+    // values from before this became a plain checklist keep showing as
+    // selected; those old fields are just no longer surfaced or editable.
+    setMedicalConditions(saved.filter(e => ALL_MEDICAL_CONDITIONS.includes(e.condition)));
+    // Any saved entry whose condition name isn't one of the fixed ones is
+    // the free-text "Others" slot from a previous save — restore it instead
+    // of silently dropping it.
+    const custom = saved.find(e => !ALL_MEDICAL_CONDITIONS.includes(e.condition));
+    setCustomCondition(custom ? { name: custom.condition, details: custom.details || '' } : { name: '', details: '' });
   }, [patient]);
 
-  const updateConditionDetails = (condition: string, details: string) => {
-    setMedicalConditions(prev => prev.map(e => (e.condition === condition ? { ...e, details } : e)));
-  };
-  const updateConditionTreatment = (condition: string, value: boolean) => {
-    setMedicalConditions(prev => prev.map(e => (e.condition === condition ? { ...e, currently_in_treatment: value } : e)));
-  };
-  // Delete one condition's recorded history (details + Currently in
-  // Treatment) — e.g. entered by mistake, or no longer accurate. The
-  // condition itself stays in the fixed checklist; only its data is
-  // cleared. Saves immediately (not just a local edit awaiting the card's
-  // own Save button) since deletion is expected to take effect right away.
-  const handleDeleteConditionEntry = async (condition: string) => {
+  // Persists immediately — there's no separate Save button for this card;
+  // every click/edit here takes effect right away.
+  const persistMedicalConditions = async (fixedList: MedicalConditionEntry[], custom: { name: string; details: string }) => {
     if (!patient) return;
-    const ok = await confirm({
-      title: 'Delete Condition History?',
-      message: `Delete recorded history for "${condition}"?`,
-      confirmLabel: 'Delete',
-      variant: 'danger',
+    setSavingConditions(true);
+    try {
+      const trimmedName = custom.name.trim();
+      const toSave = trimmedName
+        ? [...fixedList, { condition: trimmedName, details: custom.details || null, currently_in_treatment: null }]
+        : fixedList;
+      const updated = await patientService.updateMedicalConditions(patient.id, toSave);
+      setPatient(updated);
+    } catch {
+      showToast('error', 'Failed to save Patient Past History');
+    } finally {
+      setSavingConditions(false);
+    }
+  };
+  // Click to select, click again to deselect — a fixed-list condition's
+  // presence in medicalConditions IS its selected state. Saves immediately.
+  const toggleCondition = (condition: string) => {
+    setMedicalConditions(prev => {
+      const next = prev.some(e => e.condition === condition)
+        ? prev.filter(e => e.condition !== condition)
+        : [...prev, { condition, details: null, currently_in_treatment: null }];
+      persistMedicalConditions(next, customCondition);
+      return next;
     });
-    if (!ok) return;
-    const updatedList = medicalConditions.map(e =>
-      e.condition === condition ? { ...e, details: '', currently_in_treatment: null } : e
-    );
-    setMedicalConditions(updatedList);
-    setSavingConditions(true);
-    try {
-      const updated = await patientService.updateMedicalConditions(patient.id, updatedList);
-      setPatient(updated);
-      showToast('success', `Cleared history for "${condition}"`);
-    } catch {
-      showToast('error', 'Failed to delete condition history');
-    } finally {
-      setSavingConditions(false);
-    }
   };
-  const handleSaveMedicalConditions = async () => {
-    if (!patient) return;
-    setSavingConditions(true);
-    try {
-      const updated = await patientService.updateMedicalConditions(patient.id, medicalConditions);
-      setPatient(updated);
-      showToast('success', 'Condition / History saved');
-    } catch {
-      showToast('error', 'Failed to save Condition / History');
-    } finally {
-      setSavingConditions(false);
-    }
+  // The free-text "Others" box has no click-to-select action, so it saves on
+  // blur instead (still no explicit Save button to press).
+  const persistCustomConditionOnBlur = () => {
+    persistMedicalConditions(medicalConditions, customCondition);
   };
 
   // Returning from the full Patient Registration form (Register.tsx) after
@@ -623,6 +708,16 @@ const PrescriptionBuilder: React.FC = () => {
           left_vision: rx.left_vision ?? undefined, left_iop: rx.left_iop ?? undefined, left_nld: rx.left_nld ?? undefined,
           pd_distance: rx.pd_distance ?? undefined, pd_near: rx.pd_near ?? undefined,
           pd_right: rx.pd_right ?? undefined, pd_left: rx.pd_left ?? undefined,
+          // Fall back to the old pd_distance value for a record saved before
+          // the single-PD field existed, so re-opening it doesn't show blank.
+          pd: rx.pd ?? rx.pd_distance ?? undefined,
+          // Same fallback for the shared Add fields — old records only ever
+          // had the per-eye values, and the two normally match anyway.
+          add: rx.add ?? rx.right_add ?? rx.left_add ?? undefined,
+          machine_add: rx.machine_add ?? rx.right_machine_add ?? rx.left_machine_add ?? undefined,
+          inv_hiv: rx.inv_hiv ?? undefined, inv_ecg: rx.inv_ecg ?? undefined, inv_vdrl: rx.inv_vdrl ?? undefined,
+          inv_bp: rx.inv_bp ?? undefined, inv_blood_sugar: rx.inv_blood_sugar ?? undefined,
+          inv_spo2: rx.inv_spo2 ?? undefined, inv_others: rx.inv_others ?? undefined,
           notes: rx.notes ?? undefined,
         });
       })
@@ -1562,109 +1657,73 @@ const PrescriptionBuilder: React.FC = () => {
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold flex items-center gap-2">
                   <span className="material-symbols-outlined text-primary text-sm">history_edu</span>
-                  Condition / History
+                  Patient Past History
                 </h3>
-                <button
-                  type="button"
-                  onClick={handleSaveMedicalConditions}
-                  disabled={savingConditions}
-                  className="px-3 py-1.5 text-xs font-bold rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors disabled:opacity-50"
-                >
-                  {savingConditions ? 'Saving...' : 'Save'}
-                </button>
+                {/* No Save button — every click/edit below persists
+                    immediately (see persistMedicalConditions). This is just a
+                    quiet in-flight indicator. */}
+                {savingConditions && (
+                  <span className="text-sm text-slate-400 flex items-center gap-1">
+                    <span className="material-symbols-outlined text-sm animate-spin">progress_activity</span>
+                    Saving...
+                  </span>
+                )}
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-[10px] font-semibold text-slate-500 uppercase tracking-wide border-b border-slate-100">
-                      <th className="py-2 pr-3">Condition / History</th>
-                      <th className="py-2 pr-3">Details</th>
-                      <th className="py-2">Currently in Treatment</th>
-                      <th className="py-2 w-8"></th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {medicalConditions.filter(e => MEDICAL_CONDITIONS_CHECKLIST.includes(e.condition)).map(entry => {
-                      const hasData = Boolean(entry.details) || entry.currently_in_treatment !== null;
-                      return (
-                      <tr key={entry.condition}>
-                        <td className="py-2 pr-3 font-medium text-slate-700 whitespace-nowrap">{entry.condition}</td>
-                        <td className="py-2 pr-3 min-w-[160px]">
-                          <input
-                            value={entry.details || ''}
-                            onChange={(e) => updateConditionDetails(entry.condition, e.target.value)}
-                            placeholder="—"
-                            className="input-field"
-                          />
-                        </td>
-                        <td className="py-2">
-                          <div className="flex items-center gap-4">
-                            <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={entry.currently_in_treatment === true}
-                                onChange={() => updateConditionTreatment(entry.condition, true)}
-                                className="w-4 h-4 rounded border-slate-300 text-primary focus:ring-2 focus:ring-primary/30"
-                              />
-                              Yes
-                            </label>
-                            <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600 cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={entry.currently_in_treatment === false}
-                                onChange={() => updateConditionTreatment(entry.condition, false)}
-                                className="w-4 h-4 rounded border-slate-300 text-primary focus:ring-2 focus:ring-primary/30"
-                              />
-                              No
-                            </label>
-                          </div>
-                        </td>
-                        <td className="py-2">
-                          {hasData && (
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteConditionEntry(entry.condition)}
-                              title="Delete recorded history for this condition"
-                              className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                            >
-                              <span className="material-symbols-outlined text-base">delete</span>
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              {/* Click a condition to select it, click again to deselect —
+                  same chip toggle mechanic as the Lab Test Panels above. Text
+                  size matches the "Others" label/inputs below (text-sm) for
+                  a consistent look across the card. */}
+              <div className="flex flex-wrap gap-2">
+                {ALL_MEDICAL_CONDITIONS.map(condition => {
+                  const selected = medicalConditions.some(e => e.condition === condition);
+                  return (
+                    <button
+                      key={condition}
+                      type="button"
+                      onClick={() => toggleCondition(condition)}
+                      className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
+                        selected ? 'border-primary bg-primary/10 text-primary' : 'border-slate-200 text-slate-600 hover:border-primary/40'
+                      }`}
+                    >
+                      {selected && <span className="material-symbols-outlined text-sm align-middle mr-1">check_circle</span>}
+                      {condition}
+                    </button>
+                  );
+                })}
               </div>
 
-              {/* Others — free-text only, no Currently in Treatment toggle */}
+              {/* One free-text "Others" slot — a condition not on the fixed
+                  list above, named by the doctor. Saves on blur since typing
+                  isn't a "select" action. */}
               <div className="mt-5 pt-4 border-t border-slate-100">
-                <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2">Others</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {medicalConditions.filter(e => OTHER_MEDICAL_CONDITIONS.includes(e.condition)).map(entry => (
-                    <div key={entry.condition}>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="block text-xs font-medium text-slate-600">{entry.condition}</label>
-                        {Boolean(entry.details) && (
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteConditionEntry(entry.condition)}
-                            title="Delete recorded history for this condition"
-                            className="p-0.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                          >
-                            <span className="material-symbols-outlined text-sm">delete</span>
-                          </button>
-                        )}
-                      </div>
-                      <input
-                        value={entry.details || ''}
-                        onChange={(e) => updateConditionDetails(entry.condition, e.target.value)}
-                        placeholder="Details, if any"
-                        className="input-field"
-                      />
-                    </div>
-                  ))}
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-sm font-medium text-slate-600">Others</label>
+                  {(customCondition.name || customCondition.details) && (
+                    <button
+                      type="button"
+                      onClick={() => { setCustomCondition({ name: '', details: '' }); persistMedicalConditions(medicalConditions, { name: '', details: '' }); }}
+                      title="Clear this entry"
+                      className="p-0.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-sm">delete</span>
+                    </button>
+                  )}
+                </div>
+                <div className="flex gap-2 max-w-md">
+                  <input
+                    value={customCondition.name}
+                    onChange={(e) => setCustomCondition(prev => ({ ...prev, name: e.target.value }))}
+                    onBlur={persistCustomConditionOnBlur}
+                    placeholder="Condition name"
+                    className="input-field flex-1 min-w-0 text-sm"
+                  />
+                  <input
+                    value={customCondition.details}
+                    onChange={(e) => setCustomCondition(prev => ({ ...prev, details: e.target.value }))}
+                    onBlur={persistCustomConditionOnBlur}
+                    placeholder="Details, if any"
+                    className="input-field flex-1 min-w-0 text-sm"
+                  />
                 </div>
               </div>
             </div>
@@ -1814,146 +1873,30 @@ const PrescriptionBuilder: React.FC = () => {
               </div>
               {addOpticalRx && (
                 <div className="space-y-4">
-                  {/* Machine Prescribed (left) vs Doctor Prescribed (right) —
-                      side by side instead of stacked, so the doctor can read
-                      the auto-refractometer reading and their own final call
-                      for the same eye at a glance and see the difference.
-                      Within each side, Right Eye (OD) is shown above Left Eye
-                      (OS). */}
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-4">
-                    {/* Machine Prescribed — auto-refractometer / measurement-
-                        machine reading, taken before the doctor's final call.
-                        Stored as its own set of fields, separate from Doctor
-                        Prescribed on the right. */}
-                    <div>
-                      <p className="text-xs font-bold text-primary uppercase tracking-wide mb-2">Machine Prescribed</p>
-                      <div className="space-y-4">
-                        <div className="border border-slate-200 rounded-lg p-4 space-y-3">
-                          <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Right Eye (OD)</h4>
-                          <div>
-                            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">SPH</label>
-                            <input type="number" step="0.25" value={opticalRx.right_machine_sph ?? ''} onChange={opticalNumField('right_machine_sph')} className="input-field" />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">CYL</label>
-                            <input type="number" step="0.25" value={opticalRx.right_machine_cyl ?? ''} onChange={opticalNumField('right_machine_cyl')} className="input-field" />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Axis</label>
-                            <input type="number" min={0} max={180} value={opticalRx.right_machine_axis ?? ''} onChange={opticalNumField('right_machine_axis')} className="input-field" />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Add</label>
-                            <input type="number" step="0.25" value={opticalRx.right_machine_add ?? ''} onChange={opticalNumField('right_machine_add')} className="input-field" />
-                          </div>
-                        </div>
-                        <div className="border border-slate-200 rounded-lg p-4 space-y-3">
-                          <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Left Eye (OS)</h4>
-                          <div>
-                            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">SPH</label>
-                            <input type="number" step="0.25" value={opticalRx.left_machine_sph ?? ''} onChange={opticalNumField('left_machine_sph')} className="input-field" />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">CYL</label>
-                            <input type="number" step="0.25" value={opticalRx.left_machine_cyl ?? ''} onChange={opticalNumField('left_machine_cyl')} className="input-field" />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Axis</label>
-                            <input type="number" min={0} max={180} value={opticalRx.left_machine_axis ?? ''} onChange={opticalNumField('left_machine_axis')} className="input-field" />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Add</label>
-                            <input type="number" step="0.25" value={opticalRx.left_machine_add ?? ''} onChange={opticalNumField('left_machine_add')} className="input-field" />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                  {/* AR Prescribed and Doctor Prescribed used to be shown as
+                      two identical-looking side-by-side grids, which read as
+                      pure duplication. Collapsed to the one grid that matters
+                      for the issued prescription — no label above it — with
+                      Visual Acuity per eye below the SPH/CYL/AXIS row, then
+                      one shared Add for both eyes. The old machine-reading
+                      fields (right_machine_sph etc., machine_add) stay in the
+                      data model for backward compatibility with existing
+                      records; this UI just no longer has separate inputs for
+                      them. */}
+                  {renderOpticalRxGrid('', 'add', true)}
 
-                    {/* Doctor Prescribed — the doctor's final call, mirrored
-                        on the right so it lines up beside Machine Prescribed. */}
-                    <div>
-                      <p className="text-xs font-bold text-primary uppercase tracking-wide mb-2">Doctor Prescribed</p>
-                      <div className="space-y-4">
-                        <div className="border border-slate-200 rounded-lg p-4 space-y-3">
-                          <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Right Eye (OD)</h4>
-                          <div>
-                            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">SPH</label>
-                            <input type="number" step="0.25" value={opticalRx.right_sph ?? ''} onChange={opticalNumField('right_sph')} className="input-field" />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">CYL</label>
-                            <input type="number" step="0.25" value={opticalRx.right_cyl ?? ''} onChange={opticalNumField('right_cyl')} className="input-field" />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Axis</label>
-                            <input type="number" min={0} max={180} value={opticalRx.right_axis ?? ''} onChange={opticalNumField('right_axis')} className="input-field" />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Add</label>
-                            <input type="number" step="0.25" value={opticalRx.right_add ?? ''} onChange={opticalNumField('right_add')} className="input-field" />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Visual Acuity</label>
-                            <input value={opticalRx.right_va || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, right_va: e.target.value }))} placeholder="6/6" className="input-field" />
-                          </div>
-                        </div>
-
-                        <div className="border border-slate-200 rounded-lg p-4 space-y-3">
-                          <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-1 border-b border-slate-100">Left Eye (OS)</h4>
-                          <div>
-                            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">SPH</label>
-                            <input type="number" step="0.25" value={opticalRx.left_sph ?? ''} onChange={opticalNumField('left_sph')} className="input-field" />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">CYL</label>
-                            <input type="number" step="0.25" value={opticalRx.left_cyl ?? ''} onChange={opticalNumField('left_cyl')} className="input-field" />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Axis</label>
-                            <input type="number" min={0} max={180} value={opticalRx.left_axis ?? ''} onChange={opticalNumField('left_axis')} className="input-field" />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Add</label>
-                            <input type="number" step="0.25" value={opticalRx.left_add ?? ''} onChange={opticalNumField('left_add')} className="input-field" />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Visual Acuity</label>
-                            <input value={opticalRx.left_va || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, left_va: e.target.value }))} placeholder="6/6" className="input-field" />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
+                  {/* PD (single combined box for both eyes, same convention
+                      as the shared "Add" field above) and Optical Notes side
+                      by side instead of stacked. */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">PD Distance (mm)</label>
-                      <input type="number" step="0.5" value={opticalRx.pd_distance ?? ''} onChange={opticalNumField('pd_distance')} className="input-field" />
+                      <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">PD (mm)</label>
+                      <input type="number" step="0.5" value={opticalRx.pd ?? ''} onChange={opticalNumField('pd')} className="input-field" />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">PD Near (mm)</label>
-                      <input type="number" step="0.5" value={opticalRx.pd_near ?? ''} onChange={opticalNumField('pd_near')} className="input-field" />
+                      <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Optical Notes</label>
+                      <AutocompleteField as="input" field="optical_prescription_notes" value={opticalRx.notes || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, notes: e.target.value }))} className="input-field" />
                     </div>
-                  </div>
-
-                  {/* Per-eye PD — distinct from PD Distance/Near above (which
-                      split by viewing distance, not by eye); some opticians
-                      measure and prescribe PD per eye instead of a single
-                      binocular value. */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">PD Right / OD (mm)</label>
-                      <input type="number" step="0.5" value={opticalRx.pd_right ?? ''} onChange={opticalNumField('pd_right')} className="input-field" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">PD Left / OS (mm)</label>
-                      <input type="number" step="0.5" value={opticalRx.pd_left ?? ''} onChange={opticalNumField('pd_left')} className="input-field" />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Optical Notes</label>
-                    <AutocompleteField as="input" field="optical_prescription_notes" value={opticalRx.notes || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, notes: e.target.value }))} className="input-field" />
                   </div>
                 </div>
               )}
@@ -1998,8 +1941,48 @@ const PrescriptionBuilder: React.FC = () => {
                   </div>
                 </div>
               </div>
+
+              {/* Systemic investigations — one shared set of values for the
+                  whole patient, not split per eye like Vision/IOP/NLD above. */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-4 pt-4 border-t border-slate-100">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">HIV</label>
+                  <input value={opticalRx.inv_hiv || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, inv_hiv: e.target.value }))} placeholder="Non-Reactive" className="input-field" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">ECG</label>
+                  <input value={opticalRx.inv_ecg || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, inv_ecg: e.target.value }))} placeholder="Normal" className="input-field" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">VDRL</label>
+                  <input value={opticalRx.inv_vdrl || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, inv_vdrl: e.target.value }))} placeholder="Non-Reactive" className="input-field" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">BP (mmHg)</label>
+                  <input value={opticalRx.inv_bp || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, inv_bp: e.target.value }))} placeholder="120/80" className="input-field" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Blood Sugar (mg/dL)</label>
+                  <input value={opticalRx.inv_blood_sugar || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, inv_blood_sugar: e.target.value }))} placeholder="110" className="input-field" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">SpO2 (%)</label>
+                  <input value={opticalRx.inv_spo2 || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, inv_spo2: e.target.value }))} placeholder="98" className="input-field" />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Others</label>
+                  <input value={opticalRx.inv_others || ''} onChange={(e) => setOpticalRx(prev => ({ ...prev, inv_others: e.target.value }))} placeholder="Any other investigation finding" className="input-field" />
+                </div>
+              </div>
             </div>
           )}
+
+          {/* Laboratory Test History — this patient's past lab orders, right
+              above the ordering card below so the doctor sees it without
+              scrolling back up to the Prescription History card near the
+              top (which also shows the same list, alongside Rx history).
+              Reuses the pastLabResults fetch already done for that card. */}
+          {labModuleEnabled && !isEditMode && <LabTestHistoryCard labResults={pastLabResults} />}
 
           {/* Laboratory Tests — any hospital type (gated by the lab module),
               create-mode only. Ordered as an independent record; the server-side
@@ -2058,87 +2041,64 @@ const PrescriptionBuilder: React.FC = () => {
                     </div>
                   )}
                   <div className="relative">
-                    <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-lg">search</span>
-                    <input
-                      value={labTestSearch}
-                      onChange={e => setLabTestSearch(e.target.value)}
-                      placeholder="Search tests by name, code, or category..."
-                      className="w-full pl-10 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-                    />
-                  </div>
-                  <div className="max-h-64 overflow-y-auto space-y-3">
-                    {labTestGroups.length === 0 ? (
-                      <p className="text-sm text-slate-400">No tests match "{labTestSearch}".</p>
-                    ) : (
-                      labTestGroups.map(({ category, tests }) => {
-                        // "Select all" toggles every test in this one category
-                        // group at once — for a patient who needs the whole
-                        // panel (e.g. all Liver Function Tests) — without
-                        // disturbing the existing per-test checkboxes, which
-                        // still work individually exactly as before.
-                        const groupIds = tests.map(t => t.id);
-                        const allChecked = groupIds.length > 0 && groupIds.every(id => selectedLabTestIds.includes(id));
-                        const someChecked = groupIds.some(id => selectedLabTestIds.includes(id));
-                        return (
-                        <div key={category}>
-                          <div className="flex items-center justify-between mb-1.5">
-                            <div className="text-xs font-bold text-slate-500 uppercase tracking-wide">
-                              {category}
-                            </div>
-                            <label className="flex items-center gap-1.5 text-xs font-semibold text-primary cursor-pointer select-none">
-                              <input
-                                type="checkbox"
-                                checked={allChecked}
-                                ref={el => { if (el) el.indeterminate = someChecked && !allChecked; }}
-                                onChange={() => setSelectedLabTestIds(prev =>
-                                  allChecked
-                                    ? prev.filter(id => !groupIds.includes(id))
-                                    : [...new Set([...prev, ...groupIds])]
-                                )}
-                                className="accent-primary"
-                              />
-                              Select all
-                            </label>
-                          </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                            {tests.map(t => {
-                              const checked = selectedLabTestIds.includes(t.id);
-                              return (
-                                <label
-                                  key={t.id}
-                                  className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer text-sm transition-colors ${
-                                    checked ? 'border-primary bg-primary/5' : 'border-slate-200 hover:border-primary/40'
-                                  }`}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    onChange={() => setSelectedLabTestIds(prev =>
-                                      prev.includes(t.id) ? prev.filter(id => id !== t.id) : [...prev, t.id]
-                                    )}
-                                    className="accent-primary"
-                                  />
-                                  <span className="min-w-0 flex-1">
-                                    <span className="block font-medium text-slate-800 truncate">{t.name}</span>
-                                  </span>
-                                </label>
-                              );
-                            })}
-                          </div>
-                        </div>
-                        );
-                      })
-                    )}
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Lab Notes</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                      Lab Notes
+                      <span className="text-[10px] font-normal text-slate-400 ml-1.5">
+                        Search &amp; select remaining tests, or type instructions for the lab
+                      </span>
+                    </label>
                     <textarea
                       rows={2}
                       value={labNotes}
                       onChange={e => setLabNotes(e.target.value)}
+                      onFocus={() => setLabNotesSuggestOpen(true)}
+                      onBlur={() => setTimeout(() => setLabNotesSuggestOpen(false), 150)}
                       className="input-field"
-                      placeholder="Instructions for the lab (optional)..."
+                      placeholder="Type a test name to search, or write instructions for the lab..."
                     />
+                    {labNotesSuggestOpen && labNotesSuggestions.length > 0 && (
+                      <div className="absolute z-10 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                        {labNotesSuggestions.map((t) => (
+                          <button
+                            key={t.id}
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => {
+                              setSelectedLabTestIds(prev => [...prev, t.id]);
+                              const parts = labNotes.split(',');
+                              parts[parts.length - 1] = ` ${t.name}`;
+                              setLabNotes(parts.join(',').replace(/^ /, '') + ', ');
+                            }}
+                            className="w-full text-left px-3 py-1.5 text-sm hover:bg-primary/5 flex items-center gap-2"
+                          >
+                            <span className="material-symbols-outlined text-primary text-sm">biotech</span>
+                            {t.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {/* Selected-tests summary — the only way left to review or
+                        undo an individual test now that the full checkbox
+                        grid is gone. Includes package-selected tests too, so
+                        deselecting one here also unchecks its package chip
+                        above if that breaks the package's "all selected"
+                        match. */}
+                    {selectedLabTestNames.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {selectedLabTestNames.map((t) => (
+                          <span key={t.id} className="inline-flex items-center gap-1 pl-2.5 pr-1.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold">
+                            {t.name}
+                            <button
+                              type="button"
+                              onClick={() => setSelectedLabTestIds(prev => prev.filter(id => id !== t.id))}
+                              className="p-0.5 hover:bg-primary/20 rounded-full"
+                            >
+                              <span className="material-symbols-outlined text-[14px] align-middle">close</span>
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

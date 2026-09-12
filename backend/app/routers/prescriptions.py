@@ -539,6 +539,39 @@ async def get_prescription_pdf(
             return ""
         return _html_mod.escape(str(value), quote=True)
 
+    # Investigation summary — bug fix: individual checkbox-selected lab test
+    # names must NOT appear on the printed prescription (lab staff still get
+    # the full precise list via the lab order/queue itself); only the named
+    # package(s) selected (e.g. "HHC", "MHC" — detected by checking whether a
+    # panel's full test set is a subset of what was ordered, so this works
+    # for whatever packages this hospital has configured, not hardcoded
+    # names) are shown.
+    investigation_html = ""
+    lab_order_id = enriched.get("lab_order_id")
+    if lab_order_id:
+        from ..models.lab import LabOrder, LabTestPanel
+
+        lab_order = db.query(LabOrder).filter(LabOrder.id == uuid_mod.UUID(lab_order_id)).first()
+        if lab_order:
+            ordered_test_ids = {item.lab_test_id for item in (lab_order.items or [])}
+            panels = db.query(LabTestPanel).filter(
+                LabTestPanel.hospital_id == rx.hospital_id, LabTestPanel.is_active == True,
+            ).all()
+            matched_panel_names = [
+                p.name for p in panels if p.test_ids and set(p.test_ids).issubset(ordered_test_ids)
+            ]
+            if matched_panel_names:
+                investigation_html = f'<div class="diagnosis"><strong>Investigation:</strong> {_esc(", ".join(matched_panel_names))}</div>'
+
+    # Bug fix: Advice is intentionally NOT printed on this template anymore —
+    # same "kept in the record, hidden from the printed prescription"
+    # treatment Condition/History (patients.medical_conditions) already had
+    # (that one was simply never added to this template). rx.advice is still
+    # fully visible to staff in PrescriptionHistoryDialog.tsx/
+    # PrescriptionDetail.tsx and editable as always in PrescriptionBuilder.tsx
+    # — only this printed document omits it. See the (now-removed) advice
+    # <div> below the medicines table.
+
     # Support dual-letterhead via institution_id
     institution = None
     if rx.institution_id:
@@ -759,6 +792,8 @@ td {{ font-size:13px; }}
 
 {f'<div class="diagnosis"><strong>DRS (Diabetic Retinopathy Screening):</strong> {_esc(rx.vitals_drs)}</div>' if rx.vitals_drs else ''}
 
+{investigation_html}
+
 {f'<div class="diagnosis"><strong>{t["clinical_notes"]}:</strong> {_esc(rx.clinical_notes)}</div>' if rx.clinical_notes else ''}
 {f'<div class="diagnosis"><strong>{t["diagnosis"]}:</strong> {_esc(rx.diagnosis)}</div>' if rx.diagnosis else ''}
 
@@ -796,7 +831,6 @@ td {{ font-size:13px; }}
 <tbody>{items_html}</tbody>
 </table>
 
-{f'<div class="advice"><strong>{t["advice"]}:</strong> {_esc(rx.advice)}</div>' if rx.advice else ''}
 
 <div class="footer">
     <div class="signature">

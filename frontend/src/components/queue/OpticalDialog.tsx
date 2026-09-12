@@ -64,6 +64,9 @@ const OpticalDialog: React.FC<OpticalDialogProps> = ({ patientId, appointmentId,
           left_vision: existing.left_vision ?? undefined, left_iop: existing.left_iop ?? undefined, left_nld: existing.left_nld ?? undefined,
           pd_distance: existing.pd_distance ?? undefined, pd_near: existing.pd_near ?? undefined,
           pd_right: existing.pd_right ?? undefined, pd_left: existing.pd_left ?? undefined,
+          pd: existing.pd ?? existing.pd_distance ?? undefined,
+          add: existing.add ?? existing.right_add ?? existing.left_add ?? undefined,
+          machine_add: existing.machine_add ?? existing.right_machine_add ?? existing.left_machine_add ?? undefined,
           notes: existing.notes ?? undefined,
         });
       }
@@ -93,72 +96,82 @@ const OpticalDialog: React.FC<OpticalDialogProps> = ({ patientId, appointmentId,
     }
   };
 
-  // Machine Prescribed — auto-refractometer reading, kept as its own set of
-  // fields (SPH/CYL/Axis/Add only, no VA/Vision/IOP/NLD) separate from the
-  // doctor-prescribed values in eyeCard() below.
-  const machineCard = (side: 'left' | 'right', label: string) => (
-    <div className="border border-slate-200 rounded-lg p-4">
-      <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-2 mb-3 border-b border-slate-100">{label}</h4>
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">SPH</label>
-          <input type="number" step="0.25" value={(rx as any)[`${side}_machine_sph`] ?? ''} onChange={numField(`${side}_machine_sph` as keyof OpticalFields)} className="input-field" disabled={saving} />
+  // Compact RE/LE × SPH/CYL/AXIS grid — one card per prescribed block (AR
+  // machine reading or the doctor's final call), matching the printed
+  // spectacle-prescription layout instead of two separate per-eye cards, to
+  // save vertical space in this already-compact dialog. `showExam` also
+  // renders the exam-findings row (Vision/IOP/NLD/VA) below the grid —
+  // Doctor Prescribed only, since an auto-refractometer produces none of
+  // those. `addField` is the single shared Add power for this block.
+  const rxGrid = (prefix: 'machine' | '', addField: 'add' | 'machine_add', showExam: boolean) => {
+    const rf = (base: string) => `right_${prefix ? prefix + '_' : ''}${base}` as keyof OpticalFields;
+    const lf = (base: string) => `left_${prefix ? prefix + '_' : ''}${base}` as keyof OpticalFields;
+    const cellInput = (field: keyof OpticalFields, extraProps: Record<string, any> = {}) => (
+      <input
+        type="number"
+        value={(rx as any)[field] ?? ''}
+        onChange={numField(field)}
+        disabled={saving}
+        className="w-full px-2 py-1.5 text-sm text-center border-0 cursor-text focus:outline-none focus:ring-2 focus:ring-primary/30 rounded"
+        {...extraProps}
+      />
+    );
+    return (
+      <div className="border border-slate-200 rounded-lg overflow-hidden">
+        <div className="grid grid-cols-2 text-center text-xs font-bold text-slate-600 uppercase tracking-wide bg-slate-50">
+          <div className="py-1.5 border-r border-slate-200">RE</div>
+          <div className="py-1.5">LE</div>
         </div>
-        <div>
-          <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">CYL</label>
-          <input type="number" step="0.25" value={(rx as any)[`${side}_machine_cyl`] ?? ''} onChange={numField(`${side}_machine_cyl` as keyof OpticalFields)} className="input-field" disabled={saving} />
+        {/* Field labels use text-[11px] — same size as PD/Optical Notes/
+            Complaint elsewhere in this dialog — so nothing in this table
+            reads as a different scale from the rest of the form. */}
+        <div className="grid grid-cols-6 text-center text-[11px] font-semibold text-slate-500 uppercase border-t border-slate-200">
+          <div className="py-1 border-r border-slate-100">SPH</div>
+          <div className="py-1 border-r border-slate-100">CYL</div>
+          <div className="py-1 border-r border-slate-200">Axis</div>
+          <div className="py-1 border-r border-slate-100">SPH</div>
+          <div className="py-1 border-r border-slate-100">CYL</div>
+          <div className="py-1">Axis</div>
         </div>
-        <div>
-          <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Axis</label>
-          <input type="number" min={0} max={180} value={(rx as any)[`${side}_machine_axis`] ?? ''} onChange={numField(`${side}_machine_axis` as keyof OpticalFields)} className="input-field" disabled={saving} />
+        <div className="grid grid-cols-6 gap-px bg-slate-200 border-t border-slate-200">
+          <div className="bg-white">{cellInput(rf('sph'), { step: '0.25' })}</div>
+          <div className="bg-white">{cellInput(rf('cyl'), { step: '0.25' })}</div>
+          <div className="bg-white">{cellInput(rf('axis'), { min: 0, max: 180 })}</div>
+          <div className="bg-white">{cellInput(lf('sph'), { step: '0.25' })}</div>
+          <div className="bg-white">{cellInput(lf('cyl'), { step: '0.25' })}</div>
+          <div className="bg-white">{cellInput(lf('axis'), { min: 0, max: 180 })}</div>
         </div>
-        <div>
+        {showExam && (
+          <div className="grid grid-cols-2 gap-px bg-slate-200 border-t border-slate-200">
+            {(['right', 'left'] as const).map((side) => (
+              <div key={side} className="bg-white p-2 space-y-2">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Vision</label>
+                  <input value={(rx as any)[`${side}_vision`] || ''} onChange={textField(`${side}_vision` as keyof OpticalFields)} placeholder="6/9" className="input-field" disabled={saving} />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">IOP (Schiotz)</label>
+                  <input value={(rx as any)[`${side}_iop`] || ''} onChange={textField(`${side}_iop` as keyof OpticalFields)} placeholder="16 mmHg" className="input-field" disabled={saving} />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">NLD</label>
+                  <input value={(rx as any)[`${side}_nld`] || ''} onChange={textField(`${side}_nld` as keyof OpticalFields)} placeholder="Patent" className="input-field" disabled={saving} />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Visual Acuity</label>
+                  <input value={(rx as any)[`${side}_va`] || ''} onChange={textField(`${side}_va` as keyof OpticalFields)} placeholder="6/6" className="input-field" disabled={saving} />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="border-t border-slate-200 p-2">
           <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Add</label>
-          <input type="number" step="0.25" value={(rx as any)[`${side}_machine_add`] ?? ''} onChange={numField(`${side}_machine_add` as keyof OpticalFields)} className="input-field" disabled={saving} />
+          <input type="number" step="0.25" value={(rx as any)[addField] ?? ''} onChange={numField(addField)} className="input-field" disabled={saving} />
         </div>
       </div>
-    </div>
-  );
-
-  const eyeCard = (side: 'left' | 'right', label: string) => (
-    <div className="border border-slate-200 rounded-lg p-4">
-      <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-2 mb-3 border-b border-slate-100">{label}</h4>
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Vision</label>
-          <input value={(rx as any)[`${side}_vision`] || ''} onChange={textField(`${side}_vision` as keyof OpticalFields)} placeholder="6/9" className="input-field" disabled={saving} />
-        </div>
-        <div>
-          <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">IOP (Schiotz)</label>
-          <input value={(rx as any)[`${side}_iop`] || ''} onChange={textField(`${side}_iop` as keyof OpticalFields)} placeholder="16 mmHg" className="input-field" disabled={saving} />
-        </div>
-        <div>
-          <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">NLD</label>
-          <input value={(rx as any)[`${side}_nld`] || ''} onChange={textField(`${side}_nld` as keyof OpticalFields)} placeholder="Patent" className="input-field" disabled={saving} />
-        </div>
-        <div>
-          <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">VA</label>
-          <input value={(rx as any)[`${side}_va`] || ''} onChange={textField(`${side}_va` as keyof OpticalFields)} placeholder="6/6" className="input-field" disabled={saving} />
-        </div>
-        <div>
-          <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">SPH</label>
-          <input type="number" step="0.25" value={(rx as any)[`${side}_sph`] ?? ''} onChange={numField(`${side}_sph` as keyof OpticalFields)} className="input-field" disabled={saving} />
-        </div>
-        <div>
-          <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">CYL</label>
-          <input type="number" step="0.25" value={(rx as any)[`${side}_cyl`] ?? ''} onChange={numField(`${side}_cyl` as keyof OpticalFields)} className="input-field" disabled={saving} />
-        </div>
-        <div>
-          <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Axis</label>
-          <input type="number" min={0} max={180} value={(rx as any)[`${side}_axis`] ?? ''} onChange={numField(`${side}_axis` as keyof OpticalFields)} className="input-field" disabled={saving} />
-        </div>
-        <div>
-          <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Add</label>
-          <input type="number" step="0.25" value={(rx as any)[`${side}_add`] ?? ''} onChange={numField(`${side}_add` as keyof OpticalFields)} className="input-field" disabled={saving} />
-        </div>
-      </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -199,50 +212,28 @@ const OpticalDialog: React.FC<OpticalDialogProps> = ({ patientId, appointmentId,
               </div>
               <div className="border border-slate-200 rounded-lg p-4">
                 <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wide pb-2 mb-3 border-b border-slate-100">PD &amp; Notes</h4>
-                <div className="grid grid-cols-2 gap-3 mb-3">
+                <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">PD Distance (mm)</label>
-                    <input type="number" step="0.5" value={rx.pd_distance ?? ''} onChange={numField('pd_distance')} className="input-field" disabled={saving} />
+                    <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">PD (mm)</label>
+                    <input type="number" step="0.5" value={rx.pd ?? ''} onChange={numField('pd')} className="input-field" disabled={saving} />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">PD Near (mm)</label>
-                    <input type="number" step="0.5" value={rx.pd_near ?? ''} onChange={numField('pd_near')} className="input-field" disabled={saving} />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">PD Right / OD (mm)</label>
-                    <input type="number" step="0.5" value={rx.pd_right ?? ''} onChange={numField('pd_right')} className="input-field" disabled={saving} />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">PD Left / OS (mm)</label>
-                    <input type="number" step="0.5" value={rx.pd_left ?? ''} onChange={numField('pd_left')} className="input-field" disabled={saving} />
+                    <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Optical Notes</label>
+                    <input value={rx.notes || ''} onChange={textField('notes')} className="input-field" disabled={saving} />
                   </div>
                 </div>
-                <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Optical Notes</label>
-                <input value={rx.notes || ''} onChange={textField('notes')} className="input-field" disabled={saving} />
               </div>
             </div>
 
-            {/* Machine Prescribed — auto-refractometer reading. */}
-            <div>
-              <h4 className="text-xs font-bold text-primary uppercase tracking-wide mb-2">Machine Prescribed</h4>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {machineCard('right', 'Right Eye (OD)')}
-                {machineCard('left', 'Left Eye (OS)')}
-              </div>
-            </div>
-
-            {/* Doctor Prescribed — Vision/IOP/NLD exam findings and
-                SPH/CYL/Axis/Add/VA spectacle prescription together in one
-                card per eye. */}
-            <div>
-              <h4 className="text-xs font-bold text-primary uppercase tracking-wide mb-2">Doctor Prescribed</h4>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {/* Right Eye (OD) shown first (screen-left) per the clinical
-                    convention of facing the patient. */}
-                {eyeCard('right', 'Right Eye (OD)')}
-                {eyeCard('left', 'Left Eye (OS)')}
-              </div>
-            </div>
+            {/* AR Prescribed and Doctor Prescribed used to be two identical-
+                looking cards — collapsed to the one grid that matters for
+                the issued prescription, no label above it, plus the
+                Vision/IOP/NLD/VA exam findings per eye below it. The old
+                machine-reading fields (right_machine_sph etc., machine_add)
+                stay in the data model for backward compatibility with
+                existing records; this dialog just no longer has separate
+                inputs for them. */}
+            {rxGrid('', 'add', true)}
           </div>
         )}
 

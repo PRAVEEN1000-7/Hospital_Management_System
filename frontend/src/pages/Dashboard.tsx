@@ -4,7 +4,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { useDashboardRefresh } from '../contexts/DashboardRefreshContext';
 import { formatRole } from '../utils/constants';
 import { hasAccess } from '../config/modulePermissions';
-import patientService from '../services/patientService';
 import hospitalService from '../services/hospitalService';
 import doctorService from '../services/doctorService';
 import walkInService from '../services/walkInService';
@@ -185,7 +184,6 @@ const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const toast = useToast();
   const { refreshTrigger } = useDashboardRefresh();
-  const [totalPatients, setTotalPatients] = useState<number>(0);
   const [hospitalName, setHospitalName] = useState<string>('HMS Core');
   const [loading, setLoading] = useState(true);
   const [doctorProfile, setDoctorProfile] = useState<DoctorProfile | null>(null);
@@ -229,14 +227,6 @@ const Dashboard: React.FC = () => {
   useEffect(() => {
     const fetchDashboardData = async () => {
       setLoading(true);
-
-      // Patient count only for roles allowed to read patient records
-      if (canAccessPatients) {
-        try {
-          const patientsRes = await patientService.getPatients(1, 1);
-          setTotalPatients(patientsRes.total);
-        } catch { /* silent */ }
-      }
 
       // Common: hospital name
       try {
@@ -338,26 +328,22 @@ const Dashboard: React.FC = () => {
           { label: 'Queue Waiting',    value: queueWaiting.toString(),    icon: 'hourglass_top', iconColor: 'text-amber-500' },
           { label: 'In Consultation',  value: queueInProgress.toString(), icon: 'stethoscope',   iconColor: 'text-blue-500' },
           { label: 'Completed Today',  value: queueCompleted.toString(),  icon: 'task_alt',      iconColor: 'text-emerald-500' },
-          { label: 'Total Patients',   value: totalPatients.toLocaleString(), icon: 'group',     iconColor: 'text-purple-500' },
         ];
       case 'super_admin':
       case 'admin':
         return [
-          { label: 'Total Patients', value: totalPatients.toLocaleString(), icon: 'group', iconColor: 'text-blue-500' },
           { label: 'New Today', value: (todayRegistration?.new_patients ?? 0).toLocaleString(), icon: 'person_add', iconColor: 'text-emerald-500' },
           { label: 'Follow-up Today', value: (todayRegistration?.follow_up_patients ?? 0).toLocaleString(), icon: 'event_repeat', iconColor: 'text-amber-500' },
           { label: 'Total Today', value: (todayRegistration?.total_patients ?? 0).toLocaleString(), icon: 'today', iconColor: 'text-purple-500' },
         ];
       case 'receptionist':
         return [
-          { label: 'Total Patients', value: totalPatients.toLocaleString(), icon: 'group', iconColor: 'text-blue-500' },
           { label: 'Queue Waiting', value: queueWaiting.toString(), icon: 'hourglass_top', iconColor: 'text-amber-500' },
           { label: 'In Consultation', value: queueInProgress.toString(), icon: 'stethoscope', iconColor: 'text-blue-500' },
           { label: 'Waitlisted', value: waitlistWaiting.toString(), icon: 'playlist_add', iconColor: 'text-purple-500' },
         ];
       case 'pharmacist':
         return [
-          { label: 'Total Patients', value: totalPatients.toLocaleString(), icon: 'group', iconColor: 'text-blue-500' },
           { label: 'System Status', value: 'Online', icon: 'check_circle', iconColor: 'text-emerald-500' },
           { label: 'Billing Access', value: 'Active', icon: 'receipt_long', iconColor: 'text-green-500' },
         ];
@@ -560,12 +546,6 @@ const Dashboard: React.FC = () => {
                     <p className="text-[10px] font-bold text-emerald-500 uppercase mb-1">Completed Today</p>
                     <p className="text-sm font-semibold text-emerald-700">{queueCompleted}</p>
                   </div>
-                  {canAccessPatients && (
-                    <div className="p-4 rounded-lg bg-slate-50">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Total Patients</p>
-                      <p className="text-sm font-semibold text-slate-800">{totalPatients.toLocaleString()}</p>
-                    </div>
-                  )}
                 </div>
               </div>
             </>
@@ -676,12 +656,6 @@ const Dashboard: React.FC = () => {
                     <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Your Role</p>
                     <p className="text-sm font-semibold text-slate-800">{formatRole(role)}</p>
                   </div>
-                  {canAccessPatients && (
-                    <div className="p-4 rounded-lg bg-slate-50">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Total Patients</p>
-                      <p className="text-sm font-semibold text-slate-800">{totalPatients.toLocaleString()}</p>
-                    </div>
-                  )}
                   {isReceptionist && (
                     <>
                       <div className="p-4 rounded-lg bg-amber-50">

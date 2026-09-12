@@ -222,6 +222,17 @@ const PrescriptionHistoryDialog: React.FC<PrescriptionHistoryDialogProps> = ({ p
           <button onClick={onClose} className="px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 rounded-lg">
             Close
           </button>
+          {/* Lab patients only — jumps straight to this visit's lab order/report
+              instead of making the doctor find it separately from the Lab module. */}
+          {rx?.lab_order_id && (
+            <button
+              onClick={() => navigate(`/lab/orders/${rx.lab_order_id}`)}
+              className="px-4 py-2 text-sm font-semibold text-primary bg-primary/10 rounded-lg hover:bg-primary/20 flex items-center gap-1.5"
+            >
+              <span className="material-symbols-outlined text-base">science</span>
+              View Report
+            </button>
+          )}
           {rx && (
             <button
               onClick={() => navigate(`/prescriptions/${rx.id}`)}

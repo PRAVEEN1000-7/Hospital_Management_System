@@ -340,6 +340,10 @@ class PrescriptionResponse(BaseModel):
     # "this prescription already has its one lab order" (never create a
     # second). See PrescriptionBuilder.tsx's save handler.
     has_lab_order: bool = False
+    # The linked lab order's id, when has_lab_order is True — lets a "View
+    # Report" action navigate straight to /lab/orders/{id} from this
+    # prescription's history view without a second lookup.
+    lab_order_id: Optional[str] = None
     items: list[PrescriptionItemResponse] = []
 
     @model_validator(mode="before")

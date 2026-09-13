@@ -277,7 +277,11 @@ def create_prescription(
         vitals_temp=data.get("vitals_temp"),
         vitals_weight=data.get("vitals_weight"),
         vitals_spo2=data.get("vitals_spo2"),
-        vitals_blood_sugar=data.get("vitals_blood_sugar") if eye_features else None,
+        # Bug fix: Blood Sugar is a general vital, unlike DRS (diabetic
+        # retinopathy screening, genuinely eye-specific) — it was wrongly
+        # gated the same as DRS, silently dropping it for every non-eye
+        # hospital even though the doctor had typed a value.
+        vitals_blood_sugar=data.get("vitals_blood_sugar"),
         vitals_drs=data.get("vitals_drs") if eye_features else None,
         follow_up_date=data.get("follow_up_date"),
         queue_id=uuid.UUID(data["queue_id"]) if data.get("queue_id") else None,
@@ -529,16 +533,19 @@ def update_prescription(
 
     eye_features = _eye_hospital_features_enabled(db, rx.hospital_id)
 
-    # Update top-level fields
+    # Update top-level fields — vitals_blood_sugar is a general vital, unlike
+    # vitals_drs (diabetic retinopathy screening, genuinely eye-specific), so
+    # it belongs here rather than gated behind eye_features below (bug fix:
+    # it used to be silently dropped for every non-eye hospital).
     for k in ["diagnosis", "clinical_notes", "advice", "valid_until",
               "vitals_bp", "vitals_pulse", "vitals_temp", "vitals_weight", "vitals_spo2",
-              "follow_up_date"]:
+              "vitals_blood_sugar", "follow_up_date"]:
         if k in data:
             setattr(rx, k, data[k])
 
     # Eye-hospital feature pack only — silently ignored for general hospitals.
     if eye_features:
-        for k in ["vitals_blood_sugar", "vitals_drs", "is_opthal", "opthal_notes"]:
+        for k in ["vitals_drs", "is_opthal", "opthal_notes"]:
             if k in data:
                 setattr(rx, k, data[k])
         if "institution_id" in data:

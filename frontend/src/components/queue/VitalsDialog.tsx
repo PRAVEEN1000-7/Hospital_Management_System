@@ -65,7 +65,10 @@ const VitalsDialog: React.FC<VitalsDialogProps> = ({ patientId, appointmentId, p
           vitals_temp: vitals.temp || undefined,
           vitals_weight: vitals.weight || undefined,
           vitals_spo2: vitals.spo2 || undefined,
-          vitals_blood_sugar: isEyeHospital ? (bloodSugar || undefined) : undefined,
+          // Blood Sugar is a general vital, unlike DRS (genuinely eye-
+          // specific) — the backend column has never been hospital-type-
+          // restricted, so it shouldn't be hidden here either.
+          vitals_blood_sugar: bloodSugar || undefined,
           vitals_drs: isEyeHospital ? (drs || undefined) : undefined,
         }),
         appointmentService.updateAppointment(appointmentId, { chief_complaint: complaint || undefined }),
@@ -117,8 +120,8 @@ const VitalsDialog: React.FC<VitalsDialogProps> = ({ patientId, appointmentId, p
               values={vitals}
               onChange={setVitals}
               disabled={saving}
-              bloodSugar={isEyeHospital ? bloodSugar : undefined}
-              onBloodSugarChange={isEyeHospital ? setBloodSugar : undefined}
+              bloodSugar={bloodSugar}
+              onBloodSugarChange={setBloodSugar}
             />
             {isEyeHospital && (
               <DRSCard value={drs} onChange={setDrs} disabled={saving} />

@@ -29,10 +29,10 @@ const NurseVitals: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [vitals, setVitals] = useState<VitalsValues>(emptyVitals);
-  // Blood sugar now renders inside VitalsCard itself (see that component) —
-  // still tracked separately here since it isn't part of VitalsValues, and
-  // still eye-hospital only, matching the vitals_blood_sugar column's only
-  // real use case.
+  // Blood sugar renders inside VitalsCard itself (see that component) —
+  // tracked separately here since it isn't part of VitalsValues. Available
+  // for every hospital type, same as the other vitals — the
+  // vitals_blood_sugar column was never hospital-type-restricted, unlike DRS.
   const [bloodSugar, setBloodSugar] = useState('');
   const [drs, setDrs] = useState('');
   // Patient's issue/complaint at the time of this visit — the same field
@@ -92,7 +92,10 @@ const NurseVitals: React.FC = () => {
           vitals_temp: vitals.temp || undefined,
           vitals_weight: vitals.weight || undefined,
           vitals_spo2: vitals.spo2 || undefined,
-          vitals_blood_sugar: isEyeHospitalFeatureEnabled ? (bloodSugar || undefined) : undefined,
+          // Blood Sugar is a general vital, unlike DRS (genuinely eye-
+          // specific) — the backend column has never been hospital-type-
+          // restricted, so it shouldn't be hidden here either.
+          vitals_blood_sugar: bloodSugar || undefined,
           vitals_drs: isEyeHospitalFeatureEnabled ? (drs || undefined) : undefined,
         }),
         // Same permission nurse already holds for appointment editing
@@ -143,8 +146,8 @@ const NurseVitals: React.FC = () => {
         values={vitals}
         onChange={setVitals}
         disabled={saving}
-        bloodSugar={isEyeHospitalFeatureEnabled ? bloodSugar : undefined}
-        onBloodSugarChange={isEyeHospitalFeatureEnabled ? setBloodSugar : undefined}
+        bloodSugar={bloodSugar}
+        onBloodSugarChange={setBloodSugar}
       />
 
       {isEyeHospitalFeatureEnabled && (

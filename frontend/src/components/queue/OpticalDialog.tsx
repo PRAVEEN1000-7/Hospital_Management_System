@@ -141,6 +141,11 @@ const OpticalDialog: React.FC<OpticalDialogProps> = ({ patientId, appointmentId,
           <div className="bg-white">{cellInput(lf('cyl'), { step: '0.25' })}</div>
           <div className="bg-white">{cellInput(lf('axis'), { min: 0, max: 180 })}</div>
         </div>
+        {/* Add comes before Visual Acuity per the requested field order. */}
+        <div className="border-t border-slate-200 p-2">
+          <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Add</label>
+          <input type="number" step="0.25" value={(rx as any)[addField] ?? ''} onChange={numField(addField)} className="input-field" disabled={saving} />
+        </div>
         {showExam && (
           <div className="grid grid-cols-2 gap-px bg-slate-200 border-t border-slate-200">
             {(['right', 'left'] as const).map((side) => (
@@ -165,10 +170,6 @@ const OpticalDialog: React.FC<OpticalDialogProps> = ({ patientId, appointmentId,
             ))}
           </div>
         )}
-        <div className="border-t border-slate-200 p-2">
-          <label className="block text-[11px] font-semibold text-slate-500 uppercase mb-1">Add</label>
-          <input type="number" step="0.25" value={(rx as any)[addField] ?? ''} onChange={numField(addField)} className="input-field" disabled={saving} />
-        </div>
       </div>
     );
   };
@@ -225,15 +226,18 @@ const OpticalDialog: React.FC<OpticalDialogProps> = ({ patientId, appointmentId,
               </div>
             </div>
 
-            {/* AR Prescribed and Doctor Prescribed used to be two identical-
-                looking cards — collapsed to the one grid that matters for
-                the issued prescription, no label above it, plus the
-                Vision/IOP/NLD/VA exam findings per eye below it. The old
-                machine-reading fields (right_machine_sph etc., machine_add)
-                stay in the data model for backward compatibility with
-                existing records; this dialog just no longer has separate
-                inputs for them. */}
-            {rxGrid('', 'add', true)}
+            {/* AR Prescribed (auto-refractometer reading) and Doctor
+                Prescribed (the doctor's final call, plus Vision/IOP/NLD/VA
+                exam findings) — same grid format for both, stacked
+                vertically one after another rather than side by side. */}
+            <div>
+              <h4 className="text-xs font-bold text-primary uppercase tracking-wide mb-2">AR Prescribed</h4>
+              {rxGrid('machine', 'machine_add', false)}
+            </div>
+            <div>
+              <h4 className="text-xs font-bold text-primary uppercase tracking-wide mb-2">Doctor Prescribed</h4>
+              {rxGrid('', 'add', true)}
+            </div>
           </div>
         )}
 

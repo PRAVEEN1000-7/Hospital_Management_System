@@ -120,6 +120,11 @@ const NewOpticalPrescription: React.FC = () => {
           <div className="bg-white">{cellInput(lf('cyl'), { step: '0.25' })}</div>
           <div className="bg-white">{cellInput(lf('axis'), { min: 0, max: 180 })}</div>
         </div>
+        {/* Add comes before Visual Acuity per the requested field order. */}
+        <div className="border-t border-slate-200 p-2">
+          <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Add</label>
+          <input type="number" step="0.25" value={(opticalRx as any)[addField] ?? ''} onChange={opticalNumField(addField)} className="input-field" />
+        </div>
         {showVA && (
           <div className="grid grid-cols-2 gap-px bg-slate-200 border-t border-slate-200">
             <div className="bg-white p-2">
@@ -142,10 +147,6 @@ const NewOpticalPrescription: React.FC = () => {
             </div>
           </div>
         )}
-        <div className="border-t border-slate-200 p-2">
-          <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Add</label>
-          <input type="number" step="0.25" value={(opticalRx as any)[addField] ?? ''} onChange={opticalNumField(addField)} className="input-field" />
-        </div>
       </div>
     );
   };
@@ -478,15 +479,19 @@ const NewOpticalPrescription: React.FC = () => {
           </div>
         </div>
 
-        {/* AR Prescribed and Doctor Prescribed used to be two identical-
-            looking cards — collapsed to the one grid that matters for the
-            issued prescription, no label above it. The old machine-reading
-            fields (right_machine_sph etc., machine_add) stay in the data
-            model for backward compatibility with existing records; this UI
-            just no longer has separate inputs for them. */}
+        {/* AR Prescribed (auto-refractometer reading) and Doctor Prescribed
+            (the doctor's final call) — same grid format for both, stacked
+            vertically one after another rather than side by side. */}
         <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
           <div className="space-y-4">
-            {renderOpticalRxGrid('', 'add', true)}
+            <div>
+              <p className="text-xs font-bold text-primary uppercase tracking-wide mb-2">AR Prescribed</p>
+              {renderOpticalRxGrid('machine', 'machine_add', false)}
+            </div>
+            <div>
+              <p className="text-xs font-bold text-primary uppercase tracking-wide mb-2">Doctor Prescribed</p>
+              {renderOpticalRxGrid('', 'add', true)}
+            </div>
 
             {/* PD (single combined box for both eyes, replacing the previous
                 4 separate PD Distance/Near/Right/Left fields) and Optical

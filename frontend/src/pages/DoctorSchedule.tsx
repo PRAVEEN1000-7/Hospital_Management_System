@@ -93,8 +93,13 @@ const DoctorSchedulePage: React.FC = () => {
 
   const handleRepeatToggle = (checked: boolean) => {
     setFormRepeat(checked);
-    if (checked && formRepeatDays.size === 0 && formDate) {
-      setFormRepeatDays(new Set([new Date(formDate + 'T00:00:00').getDay()]));
+    // Default to every day of the week — a doctor is assumed to work every
+    // day unless the admin unchecks a specific weekday here, or marks a
+    // one-off date as Leave separately. Previously this defaulted to just
+    // the single weekday matching formDate, which meant a doctor showed as
+    // "not working" on every other day until each one was checked by hand.
+    if (checked && formRepeatDays.size === 0) {
+      setFormRepeatDays(new Set([0, 1, 2, 3, 4, 5, 6]));
     }
   };
 

@@ -202,6 +202,14 @@ const PrescriptionBuilder: React.FC = () => {
   } | null>(null);
   const [clinicalNotes, setClinicalNotes] = useState('');
   const [advice, setAdvice] = useState('');
+  // Both cards are collapsed by default — a doctor clicks to open and type.
+  // Once there's real content (typed here, or loaded from an existing
+  // draft/prescription), the card stays expanded regardless of this flag so
+  // existing notes are never hidden from view.
+  const [clinicalNotesOpen, setClinicalNotesOpen] = useState(false);
+  const [adviceOpen, setAdviceOpen] = useState(false);
+  const clinicalNotesExpanded = clinicalNotesOpen || Boolean(clinicalNotes.trim());
+  const adviceExpanded = adviceOpen || Boolean(advice.trim());
   const [isOpthal, setIsOpthal] = useState(user?.hospital_specialty === 'eye_hospital');
   // Optional Optical (Spectacle) Prescription, created alongside the drug
   // prescription in the same visit — eye hospitals only. Defaulted open (not
@@ -265,6 +273,12 @@ const PrescriptionBuilder: React.FC = () => {
           <div className="bg-white">{cellInput(lf('cyl'), { step: '0.25' })}</div>
           <div className="bg-white">{cellInput(lf('axis'), { min: 0, max: 180 })}</div>
         </div>
+        {/* Add — one shared field for both eyes, same convention as PD below.
+            Comes before Visual Acuity per the requested field order. */}
+        <div className="border-t border-slate-200 p-2">
+          <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Add</label>
+          <input type="number" step="0.25" value={(opticalRx as any)[addField] ?? ''} onChange={opticalNumField(addField)} className="input-field" />
+        </div>
         {showVA && (
           <div className="grid grid-cols-2 gap-px bg-slate-200 border-t border-slate-200">
             <div className="bg-white p-2">
@@ -287,11 +301,6 @@ const PrescriptionBuilder: React.FC = () => {
             </div>
           </div>
         )}
-        {/* Add — one shared field for both eyes, same convention as PD below. */}
-        <div className="border-t border-slate-200 p-2">
-          <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Add</label>
-          <input type="number" step="0.25" value={(opticalRx as any)[addField] ?? ''} onChange={opticalNumField(addField)} className="input-field" />
-        </div>
       </div>
     );
   };
@@ -478,10 +487,16 @@ const PrescriptionBuilder: React.FC = () => {
           setShowPatientSearch(false);
           // Patient History auto-fill (BRD §2.5/§4.4) — only for a brand-new
           // prescription; editing an existing one keeps what was saved on it.
+          // Bug fix: this used to also copy the patient's last known blood
+          // sugar into today's Vitals card and their registration-time
+          // reason_for_visit into Clinical Notes — both looked like real
+          // data entered for THIS visit when they weren't (and the latter
+          // defeated Clinical Notes' hidden-by-default behavior, since a
+          // non-empty value auto-expands it). Symptoms still auto-fill since
+          // they're shown read-only in the separate Patient History card
+          // below, not injected into an editable field.
           if (isEyeHospital && !editId) {
-            if (p.blood_sugar_value != null) setVitalsBloodSugar(`${p.blood_sugar_value} ${p.blood_sugar_unit || 'mg/dL'}`);
             if (p.symptoms?.length) setHistorySymptoms(p.symptoms);
-            if (p.reason_for_visit) setClinicalNotes(prev => prev || p.reason_for_visit || '');
           }
         })
         .catch(() => showToast('error', 'Patient not found'));
@@ -1151,7 +1166,12 @@ const PrescriptionBuilder: React.FC = () => {
       vitals_temp: vitalsTemp || undefined,
       vitals_weight: vitalsWeight || undefined,
       vitals_spo2: vitalsSpo2 || undefined,
-      vitals_blood_sugar: isEyeHospital ? (vitalsBloodSugar || undefined) : undefined,
+      // Blood Sugar is a general vital, unlike DRS (diabetic retinopathy
+      // screening, genuinely eye-specific) — the backend column has never
+      // been hospital-type-restricted, so it shouldn't be hidden here
+      // either. Bug fix: it used to be gated the same as DRS, which meant
+      // a doctor at a non-eye hospital had no way to enter it at all.
+      vitals_blood_sugar: vitalsBloodSugar || undefined,
       vitals_drs: isEyeHospital ? (vitalsDrs || undefined) : undefined,
       follow_up_date: followUpDate || undefined,
     };
@@ -1784,8 +1804,8 @@ const PrescriptionBuilder: React.FC = () => {
                 setVitalsWeight(v.weight);
                 setVitalsSpo2(v.spo2);
               }}
-              bloodSugar={isEyeHospital ? vitalsBloodSugar : undefined}
-              onBloodSugarChange={isEyeHospital ? setVitalsBloodSugar : undefined}
+              bloodSugar={vitalsBloodSugar}
+              onBloodSugarChange={setVitalsBloodSugar}
             />
           )}
 
@@ -1824,20 +1844,29 @@ const PrescriptionBuilder: React.FC = () => {
             </div>
           )}
 
-          {/* Clinical Notes */}
+          {/* Clinical Notes — collapsed by default, click to open and type. */}
           <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-            <h3 className="font-semibold mb-4 flex items-center gap-2">
-              <span className="material-symbols-outlined text-primary text-sm">clinical_notes</span> Clinical Notes
+            <h3
+              className={`font-semibold flex items-center gap-2 cursor-pointer select-none ${clinicalNotesExpanded ? 'mb-4' : ''}`}
+              onClick={() => setClinicalNotesOpen((v) => !v)}
+            >
+              <span className="material-symbols-outlined text-primary text-sm">clinical_notes</span>
+              <span className="flex-1">Clinical Notes</span>
+              <span className="material-symbols-outlined text-primary text-lg transition-transform" style={{ transform: clinicalNotesExpanded ? 'rotate(180deg)' : 'none' }}>
+                expand_more
+              </span>
             </h3>
-            <AutocompleteField
-              as="textarea"
-              field="clinical_notes"
-              rows={3}
-              value={clinicalNotes}
-              onChange={e => setClinicalNotes(e.target.value)}
-              className="input-field"
-              placeholder="Patient presents with..."
-            />
+            {clinicalNotesExpanded && (
+              <AutocompleteField
+                as="textarea"
+                field="clinical_notes"
+                rows={3}
+                value={clinicalNotes}
+                onChange={e => setClinicalNotes(e.target.value)}
+                className="input-field"
+                placeholder="Patient presents with..."
+              />
+            )}
           </div>
 
           {/* Optical (Spectacle) Prescription — eye-hospital feature pack only.
@@ -1873,17 +1902,18 @@ const PrescriptionBuilder: React.FC = () => {
               </div>
               {addOpticalRx && (
                 <div className="space-y-4">
-                  {/* AR Prescribed and Doctor Prescribed used to be shown as
-                      two identical-looking side-by-side grids, which read as
-                      pure duplication. Collapsed to the one grid that matters
-                      for the issued prescription — no label above it — with
-                      Visual Acuity per eye below the SPH/CYL/AXIS row, then
-                      one shared Add for both eyes. The old machine-reading
-                      fields (right_machine_sph etc., machine_add) stay in the
-                      data model for backward compatibility with existing
-                      records; this UI just no longer has separate inputs for
-                      them. */}
-                  {renderOpticalRxGrid('', 'add', true)}
+                  {/* AR Prescribed (auto-refractometer reading) and Doctor
+                      Prescribed (the doctor's final call) — same grid format
+                      for both, stacked vertically one after another rather
+                      than side by side. */}
+                  <div>
+                    <p className="text-xs font-bold text-primary uppercase tracking-wide mb-2">AR Prescribed</p>
+                    {renderOpticalRxGrid('machine', 'machine_add', false)}
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-primary uppercase tracking-wide mb-2">Doctor Prescribed</p>
+                    {renderOpticalRxGrid('', 'add', true)}
+                  </div>
 
                   {/* PD (single combined box for both eyes, same convention
                       as the shared "Add" field above) and Optical Notes side
@@ -2389,20 +2419,29 @@ const PrescriptionBuilder: React.FC = () => {
             </div>
           </div>
 
-          {/* Advice */}
+          {/* Advice — collapsed by default, click to open and type. */}
           <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-            <h3 className="font-semibold mb-4 flex items-center gap-2">
-              <span className="material-symbols-outlined text-primary text-sm">info</span> Advice
+            <h3
+              className={`font-semibold flex items-center gap-2 cursor-pointer select-none ${adviceExpanded ? 'mb-4' : ''}`}
+              onClick={() => setAdviceOpen((v) => !v)}
+            >
+              <span className="material-symbols-outlined text-primary text-sm">info</span>
+              <span className="flex-1">Advice</span>
+              <span className="material-symbols-outlined text-primary text-lg transition-transform" style={{ transform: adviceExpanded ? 'rotate(180deg)' : 'none' }}>
+                expand_more
+              </span>
             </h3>
-            <AutocompleteField
-              as="textarea"
-              field="advice"
-              rows={3}
-              value={advice}
-              onChange={e => setAdvice(e.target.value)}
-              className="input-field"
-              placeholder="Diet, exercise, follow-up instructions..."
-            />
+            {adviceExpanded && (
+              <AutocompleteField
+                as="textarea"
+                field="advice"
+                rows={3}
+                value={advice}
+                onChange={e => setAdvice(e.target.value)}
+                className="input-field"
+                placeholder="Diet, exercise, follow-up instructions..."
+              />
+            )}
           </div>
 
           {/* Follow-up Date */}

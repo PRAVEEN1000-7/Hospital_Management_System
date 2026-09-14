@@ -59,41 +59,49 @@ const VitalsCard: React.FC<VitalsCardProps> = ({ values, onChange, disabled, blo
   // Weight/SpO2 all display "value + unit" together, same idea as the
   // Blood Sugar field's unit dropdown alongside its amount.
   const field = (key: keyof VitalsValues, label: string, unit: string, placeholder: string) => (
-    <div>
+    <div className="min-w-0">
       <label className="block text-xs font-semibold text-slate-500 mb-1.5">{label}</label>
       <div className="relative">
         <input type="text" value={values[key]} onChange={set(key)} placeholder={placeholder} disabled={disabled}
-          className="input-field pr-14" />
+          className="input-field pl-2 pr-9" />
         {values[key] && (
-          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 pointer-events-none">{unit}</span>
+          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 pointer-events-none">{unit}</span>
         )}
       </div>
     </div>
   );
+
+  const hasBloodSugar = bloodSugar !== undefined && !!onBloodSugarChange;
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
       <h3 className="font-semibold mb-4 flex items-center gap-2">
         <span className="material-symbols-outlined text-primary text-sm">vital_signs</span> Vitals
       </h3>
-      {/* Blood sugar (when the caller supplies it) joins this same single
-          row as a 6th field instead of a separate row below — grid-cols-6
-          only kicks in once it's actually present, so non-eye-hospital
-          callers (5 fields only) keep the original 5-column row. */}
-      <div className={`grid grid-cols-2 gap-4 ${bloodSugar !== undefined && onBloodSugarChange ? 'sm:grid-cols-6' : 'sm:grid-cols-5'}`}>
+      {/* All fields in a single row, always, with no horizontal scroll —
+          CSS grid `fr` columns shrink proportionally to whatever width the
+          container actually has (unlike Tailwind's grid-cols-N breakpoints,
+          which are viewport-width driven and used to force these into
+          stacked rows inside any narrower container). Blood Sugar's column
+          is wider (it holds two controls: amount + unit) than the plain
+          single-input columns. */}
+      <div
+        className="grid gap-2"
+        style={{ gridTemplateColumns: hasBloodSugar ? 'repeat(5, 1fr) 1.6fr' : 'repeat(5, 1fr)' }}
+      >
         {field('bp', 'BP', 'mmHg', '120/80')}
         {field('pulse', 'Pulse', 'bpm', '72')}
         {field('temp', 'Temp', '°F', '98.6')}
         {field('weight', 'Weight', 'kg', '70')}
         {field('spo2', 'SpO2', '%', '98')}
-        {bloodSugar !== undefined && onBloodSugarChange && (
-          <div>
+        {hasBloodSugar && (
+          <div className="min-w-0">
             <label className="block text-xs font-semibold text-slate-500 mb-1.5">Blood Sugar</label>
-            <div className="flex gap-1.5">
+            <div className="flex gap-1">
               <input type="text" value={bsAmount} onChange={(e) => emitBloodSugar(e.target.value, bsUnit)} disabled={disabled}
-                placeholder="110" className="input-field flex-1 min-w-0" />
+                placeholder="110" className="input-field flex-1 min-w-0 px-2" />
               <select value={bsUnit} onChange={(e) => emitBloodSugar(bsAmount, e.target.value)} disabled={disabled}
-                className="input-field w-[5.5rem] shrink-0 px-1.5">
+                className="input-field w-[4.5rem] shrink-0 px-1 text-xs">
                 {BLOOD_SUGAR_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
               </select>
             </div>

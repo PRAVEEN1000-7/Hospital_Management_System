@@ -1,39 +1,38 @@
 import React, { useMemo, useState } from 'react';
-import type { DoctorSchedule, DoctorLeave } from '../../types/appointment';
+import type { DoctorLeave } from '../../types/appointment';
 import { formatLocalDateISO, formatMonthKey, formatDateOnly } from '../../utils/calendarDate';
 import { formatTimeStr } from '../../pages/DoctorSchedule';
 
 interface ScheduleMonthCalendarProps {
-  schedules: DoctorSchedule[];
   doctorLeaves: DoctorLeave[];
-  onEditSlotForDate: (s: DoctorSchedule, iso: string) => void;
-  onDeleteSlotForDate: (s: DoctorSchedule, iso: string) => void;
   onDeleteLeave: (id: string) => void;
-  onAddSlotForDate: (iso: string) => void;
   onAddLeaveForDate: (iso: string) => void;
+  // Hospital's OPD Session Timings — get_available_slots() falls back to
+  // these for every day, since there is no more per-day "Add Slot"
+  // customization in this UI. A day is available by default; the only way
+  // to block it is to mark it as Leave.
+  sessionDefaults: { start: string; breakStart: string; breakEnd: string; end: string };
 }
 
 const WEEK_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-type DayStatus = 'blocked' | 'partial' | 'scheduled' | 'empty';
+type DayStatus = 'blocked' | 'partial' | 'available';
 
 interface DayInfo {
   day: number;
   iso: string;
-  slots: DoctorSchedule[];
   leave: DoctorLeave | undefined;
   status: DayStatus;
 }
 
 const STATUS_STYLES: Record<DayStatus, string> = {
-  scheduled: 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100',
+  available: 'bg-sky-50 text-sky-600 border-sky-200 hover:bg-sky-100',
   partial: 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100',
   blocked: 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100',
-  empty: 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50',
 };
 
 const ScheduleMonthCalendar: React.FC<ScheduleMonthCalendarProps> = ({
-  schedules, doctorLeaves, onEditSlotForDate, onDeleteSlotForDate, onDeleteLeave, onAddSlotForDate, onAddLeaveForDate,
+  doctorLeaves, onDeleteLeave, onAddLeaveForDate, sessionDefaults,
 }) => {
   const [monthKey, setMonthKey] = useState(() => formatMonthKey());
   const [selectedIso, setSelectedIso] = useState(() => formatLocalDateISO());
@@ -48,22 +47,14 @@ const ScheduleMonthCalendar: React.FC<ScheduleMonthCalendarProps> = ({
       const day = i + 1;
       const cellDate = new Date(year, (month || 1) - 1, day);
       const iso = formatLocalDateISO(cellDate);
-      const weekday = cellDate.getDay();
 
-      const slots = schedules.filter(s =>
-        s.is_active &&
-        s.day_of_week === weekday &&
-        (!s.effective_from || iso >= s.effective_from) &&
-        (!s.effective_to || iso <= s.effective_to)
-      );
       const leave = doctorLeaves.find(lv => lv.leave_date === iso);
 
-      let status: DayStatus = 'empty';
+      let status: DayStatus = 'available';
       if (leave?.leave_type === 'full_day') status = 'blocked';
       else if (leave) status = 'partial';
-      else if (slots.length > 0) status = 'scheduled';
 
-      return { day, iso, slots, leave, status };
+      return { day, iso, leave, status };
     });
 
     return {
@@ -71,7 +62,7 @@ const ScheduleMonthCalendar: React.FC<ScheduleMonthCalendarProps> = ({
       firstWeekday,
       dayCells,
     };
-  }, [monthKey, schedules, doctorLeaves]);
+  }, [monthKey, doctorLeaves]);
 
   const selectedDay = calendar.dayCells.find(c => c.iso === selectedIso);
 
@@ -120,14 +111,10 @@ const ScheduleMonthCalendar: React.FC<ScheduleMonthCalendarProps> = ({
                 title={
                   cell.status === 'blocked' ? 'Full day leave'
                   : cell.status === 'partial' ? `${cell.leave?.leave_type} leave`
-                  : cell.status === 'scheduled' ? `${cell.slots.length} shift(s)`
-                  : 'No schedule'
+                  : `Available (default hours: ${formatTimeStr(sessionDefaults.start)} – ${formatTimeStr(sessionDefaults.end)})`
                 }
               >
                 <span className="text-xs font-bold">{cell.day}</span>
-                {cell.status === 'scheduled' && (
-                  <span className="text-[9px] font-semibold">{cell.slots.length} shift{cell.slots.length !== 1 ? 's' : ''}</span>
-                )}
                 {(cell.status === 'blocked' || cell.status === 'partial') && (
                   <span className="material-symbols-outlined text-xs leading-none">event_busy</span>
                 )}
@@ -137,10 +124,9 @@ const ScheduleMonthCalendar: React.FC<ScheduleMonthCalendarProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-3 mt-3 text-[11px]">
-          <span className="inline-flex items-center gap-1 text-emerald-700"><span className="w-2 h-2 rounded-full bg-emerald-500" />Scheduled</span>
+          <span className="inline-flex items-center gap-1 text-sky-600"><span className="w-2 h-2 rounded-full bg-sky-400" />Available</span>
           <span className="inline-flex items-center gap-1 text-amber-700"><span className="w-2 h-2 rounded-full bg-amber-500" />Partial leave</span>
           <span className="inline-flex items-center gap-1 text-red-700"><span className="w-2 h-2 rounded-full bg-red-500" />Full leave</span>
-          <span className="inline-flex items-center gap-1 text-slate-400"><span className="w-2 h-2 rounded-full bg-slate-300" />No schedule</span>
         </div>
       </div>
 
@@ -151,18 +137,12 @@ const ScheduleMonthCalendar: React.FC<ScheduleMonthCalendarProps> = ({
             <h3 className="text-sm font-bold text-slate-800">
               {formatDateOnly(selectedDay.iso, 'EEEE, MMMM d, yyyy')}
             </h3>
-            <div className="flex items-center gap-2">
-              <button onClick={() => onAddSlotForDate(selectedDay.iso)}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-primary/10 text-primary rounded-lg text-[11px] font-semibold hover:bg-primary/20 transition-colors">
-                <span className="material-symbols-outlined text-sm">add_circle</span> Add Slot
+            {!selectedDay.leave && (
+              <button onClick={() => onAddLeaveForDate(selectedDay.iso)}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg text-[11px] font-semibold hover:bg-slate-50 transition-colors">
+                <span className="material-symbols-outlined text-sm">event_busy</span> Mark Leave
               </button>
-              {!selectedDay.leave && (
-                <button onClick={() => onAddLeaveForDate(selectedDay.iso)}
-                  className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg text-[11px] font-semibold hover:bg-slate-50 transition-colors">
-                  <span className="material-symbols-outlined text-sm">event_busy</span> Mark Leave
-                </button>
-              )}
-            </div>
+            )}
           </div>
 
           {selectedDay.leave && (
@@ -182,33 +162,17 @@ const ScheduleMonthCalendar: React.FC<ScheduleMonthCalendarProps> = ({
             </div>
           )}
 
-          {selectedDay.slots.length === 0 ? (
-            <p className="text-xs text-slate-400 italic">No schedule slots on this date</p>
+          {selectedDay.status === 'blocked' ? (
+            <p className="text-xs text-slate-400 italic">No slots — full day leave</p>
           ) : (
-            <div className={`space-y-2 ${selectedDay.status === 'blocked' ? 'opacity-40 pointer-events-none' : ''}`}>
-              {selectedDay.slots.map(s => (
-                <div key={s.id} className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2">
-                  <div className="flex items-center gap-3">
-                    <span className="material-symbols-outlined text-lg text-primary">schedule</span>
-                    <div>
-                      <span className="text-sm font-semibold text-slate-700">{formatTimeStr(s.start_time)} – {formatTimeStr(s.end_time)}</span>
-                      <div className="flex gap-2 mt-0.5">
-                        <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-semibold">Max {s.max_patients} patients</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <button onClick={() => onEditSlotForDate(s, selectedDay.iso)}
-                      className="text-slate-400 hover:text-primary transition-colors p-1" title="Edit this date only">
-                      <span className="material-symbols-outlined text-lg">edit</span>
-                    </button>
-                    <button onClick={() => onDeleteSlotForDate(s, selectedDay.iso)}
-                      className="text-slate-400 hover:text-red-500 transition-colors p-1" title="Remove this date only">
-                      <span className="material-symbols-outlined text-lg">delete</span>
-                    </button>
-                  </div>
-                </div>
-              ))}
+            <div className="flex items-center gap-2 bg-sky-50 border border-sky-200 rounded-lg px-3 py-2">
+              <span className="material-symbols-outlined text-sky-600 text-lg">event_available</span>
+              <div>
+                <p className="text-xs font-semibold text-sky-700">Available by default</p>
+                <p className="text-[11px] text-sky-600">
+                  {formatTimeStr(sessionDefaults.start)} – {formatTimeStr(sessionDefaults.breakStart)}, {formatTimeStr(sessionDefaults.breakEnd)} – {formatTimeStr(sessionDefaults.end)} (Appointment Settings)
+                </p>
+              </div>
             </div>
           )}
         </div>

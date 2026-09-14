@@ -1791,9 +1791,10 @@ const PrescriptionBuilder: React.FC = () => {
           {/* Vitals Section — nurse can pre-fill this before the doctor opens
               the consultation (see NurseVitals.tsx); shared field/layout via
               VitalsCard so both screens look identical. Blood sugar renders
-              inside this same card (eye hospitals only) rather than as a
-              separate "Patient History" box further down the page — it's
-              one of the vitals, so it belongs with the rest of them. */}
+              inside this same card (every hospital type, same as the other
+              vitals) rather than as a separate "Patient History" box further
+              down the page — it's one of the vitals, so it belongs with the
+              rest of them. */}
           {patient && (
             <VitalsCard
               values={{ bp: vitalsBp, pulse: vitalsPulse, temp: vitalsTemp, weight: vitalsWeight, spo2: vitalsSpo2 }}

@@ -85,7 +85,7 @@ const PatientBulkUploadPanel: React.FC = () => {
     const guideRows = [
       {
         field: 'title',
-        allowed_values: `${TITLE_OPTIONS.join(', ')}. REQUIRED (matches the single-patient Register form, which also requires it). "Baby"/"Master" are only valid for patients under 5 years old (based on date_of_birth); other titles are only valid for 5+. A child given an adult title is auto-corrected to Baby/Master; an adult given a child-only title is rejected — fix the value.`,
+        allowed_values: `${TITLE_OPTIONS.join(', ')}. REQUIRED (matches the single-patient Register form, which also requires it). "Baby"/"Master" are only valid for patients under 13 years old (based on date_of_birth); other titles are only valid for 13+. A child given an adult title is auto-corrected to Baby/Master; an adult given a child-only title is rejected — fix the value.`,
       },
       {
         field: 'gender',
@@ -263,7 +263,7 @@ const PatientBulkUploadPanel: React.FC = () => {
     const matched = matchOption(rawTitle, TITLE_OPTIONS);
     if (!matched || !dob) return matched;
     const ageYears = (Date.now() - new Date(dob).getTime()) / (365.25 * 24 * 60 * 60 * 1000);
-    const isChild = ageYears < 5;
+    const isChild = ageYears < 13;
     if (isChild && ADULT_ONLY_TITLES.includes(matched)) {
       return gender === 'Male' ? 'Master' : 'Baby';
     }
@@ -373,7 +373,7 @@ const PatientBulkUploadPanel: React.FC = () => {
       } else if (!matchOption(row.title, TITLE_OPTIONS)) {
         errors.push(`'title' must be one of ${TITLE_OPTIONS.join(', ')}.`);
       } else {
-        errors.push(`'title' ("${rawTitleText}") doesn't match the patient's age — use Baby/Master for under 5, or Mr./Mrs./Ms./Dr./Prof. for 5+.`);
+        errors.push(`'title' ("${rawTitleText}") doesn't match the patient's age — use Baby/Master for under 13, or Mr./Mrs./Ms./Dr./Prof. for 13+.`);
       }
     }
 

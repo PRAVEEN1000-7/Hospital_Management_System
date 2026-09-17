@@ -63,19 +63,19 @@ export const patientSchema = z.object({
     if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) {
       ageYears--;
     }
-    const isChild = ageYears < 5;
+    const isChild = ageYears < 13;
     const title = data.title as string;
     if (isChild && (ADULT_TITLES as readonly string[]).includes(title)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: `For children under 5, please use Baby or Master instead of ${title}`,
+        message: `For children under 13, please use Baby or Master instead of ${title}`,
         path: ['title'],
       });
     }
     if (!isChild && (CHILD_TITLES as readonly string[]).includes(title)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: `Title "${title}" is only for children under 5. Please select Mr./Mrs./Ms./Dr./Prof.`,
+        message: `Title "${title}" is only for children under 13. Please select Mr./Mrs./Ms./Dr./Prof.`,
         path: ['title'],
       });
     }

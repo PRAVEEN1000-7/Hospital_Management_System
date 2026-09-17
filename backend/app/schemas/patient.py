@@ -132,13 +132,13 @@ class PatientCreate(PatientBase):
     def validate_rules(self) -> "PatientCreate":
         if self.date_of_birth and self.title:
             age_years = (date.today() - self.date_of_birth).days / 365.25
-            if age_years < 5 and self.title in ADULT_ONLY_TITLES:
+            if age_years < 13 and self.title in ADULT_ONLY_TITLES:
                 raise ValueError(
-                    f"For children under 5, please use Baby or Master instead of {self.title}"
+                    f"For children under 13, please use Baby or Master instead of {self.title}"
                 )
-            if age_years >= 5 and self.title in CHILD_TITLES:
+            if age_years >= 13 and self.title in CHILD_TITLES:
                 raise ValueError(
-                    f'Title "{self.title}" is only for children under 5. Please select Mr./Mrs./Ms./Dr./Prof.'
+                    f'Title "{self.title}" is only for children under 13. Please select Mr./Mrs./Ms./Dr./Prof.'
                 )
         if (
             self.emergency_contact_phone
@@ -163,13 +163,13 @@ class PatientUpdate(PatientBase):
     def validate_rules(self) -> "PatientUpdate":
         if self.date_of_birth and self.title:
             age_years = (date.today() - self.date_of_birth).days / 365.25
-            if age_years < 5 and self.title in ADULT_ONLY_TITLES:
+            if age_years < 13 and self.title in ADULT_ONLY_TITLES:
                 raise ValueError(
-                    f"For children under 5, please use Baby or Master instead of {self.title}"
+                    f"For children under 13, please use Baby or Master instead of {self.title}"
                 )
-            if age_years >= 5 and self.title in CHILD_TITLES:
+            if age_years >= 13 and self.title in CHILD_TITLES:
                 raise ValueError(
-                    f'Title "{self.title}" is only for children under 5. Please select Mr./Mrs./Ms./Dr./Prof.'
+                    f'Title "{self.title}" is only for children under 13. Please select Mr./Mrs./Ms./Dr./Prof.'
                 )
         if (
             self.emergency_contact_phone

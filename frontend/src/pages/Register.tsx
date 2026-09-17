@@ -214,7 +214,7 @@ const Register: React.FC = () => {
     return () => subscription.unsubscribe();
   }, [watch]);
 
-  // Auto-correct title when DOB indicates a child (under 5)
+  // Auto-correct title when DOB indicates a child (under 13)
   const CHILD_TITLES = ['Baby', 'Master'];
   const ADULT_ONLY_TITLES = ['Mr.', 'Mrs.', 'Ms.', 'Dr.', 'Prof.'];
   const isChild = (() => {
@@ -224,7 +224,7 @@ const Register: React.FC = () => {
     let age = today.getFullYear() - dob.getFullYear();
     const m = today.getMonth() - dob.getMonth();
     if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
-    return age < 5;
+    return age < 13;
   })();
 
   useEffect(() => {
@@ -241,11 +241,11 @@ const Register: React.FC = () => {
       // default and gets refined to "Master" below once gender is known.
       const corrected = watchGender === 'Male' ? 'Master' : 'Baby';
       setValue('title', corrected);
-      toast.info(`Title auto-corrected to "${corrected}" — patient is under 5 years old`);
+      toast.info(`Title auto-corrected to "${corrected}" — patient is under 13 years old`);
     }
     if (!isChild && watchTitle && CHILD_TITLES.includes(watchTitle)) {
       setValue('title', '');
-      toast.info('Please select a title — patient is 5 years or older');
+      toast.info('Please select a title — patient is 13 years or older');
     }
   }, [isChild, watchDob, watchTitle, watchGender, dobBlurred, setValue]);
 
@@ -334,11 +334,11 @@ const Register: React.FC = () => {
       let ageYears = new Date().getFullYear() - dob.getFullYear();
       const mm = new Date().getMonth() - dob.getMonth();
       if (mm < 0 || (mm === 0 && new Date().getDate() < dob.getDate())) ageYears--;
-      const isChild = ageYears < 5;
+      const isChild = ageYears < 13;
       if (isChild && ADULT_TITLES_V.includes(d.title))
-        e.title = `Children under 5 must use "Baby" or "Master" instead of "${d.title}"`;
+        e.title = `Children under 13 must use "Baby" or "Master" instead of "${d.title}"`;
       if (!isChild && CHILD_TITLES_V.includes(d.title))
-        e.title = `"${d.title}" is only for children under 5`;
+        e.title = `"${d.title}" is only for children under 13`;
     }
     return e;
   };

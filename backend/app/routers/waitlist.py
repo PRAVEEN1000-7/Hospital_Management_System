@@ -308,7 +308,10 @@ async def book_from_waitlist(
         from sqlalchemy import func as sqlfunc
         from ..services.billing_queue_service import get_or_assign_visit_token
 
-        q_num = get_or_assign_visit_token(db, entry.hospital_id, appointment_id=appt.id, patient_id=entry.patient_id)
+        q_num = get_or_assign_visit_token(
+            db, entry.hospital_id, appointment_id=appt.id, patient_id=entry.patient_id,
+            doctor_id=target_doctor_id,
+        )
 
         waiting_count = (
             db.query(sqlfunc.count(AppointmentQueue.id))

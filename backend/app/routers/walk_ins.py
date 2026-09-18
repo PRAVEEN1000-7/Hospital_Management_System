@@ -162,6 +162,17 @@ async def register_walk_in(
         if not patient:
             raise HTTPException(status_code=404, detail="Patient not found")
 
+        # Serialize per hospital+day BEFORE the duplicate check below. That
+        # check is a plain read, so two near-simultaneous registrations of
+        # the same patient (a double-click, two receptionists) both passed
+        # it, and each went on to create its own appointment + queue entry
+        # with its own token. Holding the same advisory lock that token
+        # minting uses makes the second request wait until the first has
+        # committed, so it then sees the first's queue entry and gets a clean
+        # 409 instead. Released automatically at commit/rollback.
+        from ..services.billing_queue_service import acquire_visit_token_lock
+        acquire_visit_token_lock(db, current_user.hospital_id, today)
+
         # ── Check duplicate: patient must not already have an active queue
         # entry today. Without this, registering a patient who's already
         # queued mints them the SAME hospital-wide daily token a second time
@@ -309,7 +320,9 @@ async def register_walk_in(
         if doctor_id:
             from ..services.billing_queue_service import get_or_assign_visit_token
 
-            q_num = get_or_assign_visit_token(db, current_user.hospital_id, appointment_id=appt.id, patient_id=patient_id)
+            q_num = get_or_assign_visit_token(
+                db, current_user.hospital_id, appointment_id=appt.id, patient_id=patient_id, doctor_id=doctor_id,
+            )
             q_pos = _next_position(db, doctor_id, today)
             queue_entry = AppointmentQueue(
                 appointment_id=appt.id,
@@ -646,7 +659,15 @@ async def get_queue_status(
             "opd_assigned_at": qe.opd_assigned_at.isoformat() if qe.opd_assigned_at else None,
         })
 
-    total_waiting = sum(1 for i in items if i["status"] in ("waiting", "called", "sent_to_doctor"))
+    # "NT" follow-up rows (queue_number NULL) haven't been given a token by
+    # reception yet, so they are not in the waiting queue — they live in the
+    # Follow-up tab. Counting them here made the "In Queue" card (and the
+    # Dashboard's queue-waiting number) disagree with "Total Active" and with
+    # the New/Waiting tab, which already exclude them.
+    total_waiting = sum(
+        1 for i in items
+        if i["status"] in ("waiting", "called", "sent_to_doctor") and i["queue_number"] is not None
+    )
     total_in_progress = sum(1 for i in items if i["status"] == "in_consultation")
     total_completed = sum(1 for i in items if i["status"] == "completed")
 
@@ -715,6 +736,15 @@ async def send_to_doctor_queue(
     qe = db.query(AppointmentQueue).filter(AppointmentQueue.id == q_uuid).first()
     if not qe:
         raise HTTPException(status_code=404, detail="Queue entry not found")
+
+    # Tenant isolation: AppointmentQueue has no hospital_id of its own — scope
+    # via the queue entry's doctor, same technique as mark_opd_assigned /
+    # assign_token. Without it any admin/receptionist could move ANOTHER
+    # hospital's patient between queue states by guessing a queue_id.
+    if getattr(current_user, "hospital_id", None):
+        entry_doctor = db.query(Doctor).filter(Doctor.id == qe.doctor_id).first()
+        if not entry_doctor or str(entry_doctor.hospital_id) != str(current_user.hospital_id):
+            raise HTTPException(status_code=404, detail="Queue entry not found")
 
     if qe.status not in ("waiting", "called"):
         raise HTTPException(
@@ -811,6 +841,16 @@ async def skip_patient(
         raise HTTPException(status_code=404, detail="Queue entry not found")
 
     _require_queue_actor(db, current_user, qe)
+
+    # "Skip" means no-show. With no status check this also ran on patients who
+    # were mid-consultation or already completed, silently flipping a finished
+    # visit's appointment to "no-show" (and removing it from the queue/
+    # analytics as a real consultation).
+    if qe.status not in ("waiting", "called", "sent_to_doctor"):
+        raise HTTPException(
+            status_code=400,
+            detail="Only patients who have not started their consultation can be skipped",
+        )
     _ensure_today_queue_action(qe, current_user.hospital.timezone if current_user.hospital else None)
 
     qe.status = "skipped"
@@ -960,6 +1000,25 @@ async def assign_doctor_to_walkin(
             detail="This patient is locked to a specific doctor (Specialist Assignment) and cannot be reassigned to a different doctor.",
         )
 
+    # Reassignment deletes and re-creates the queue row as "waiting". Doing
+    # that to a patient whose consultation has already started or finished
+    # wiped their called_at/status history and put an already-seen patient
+    # back at the head of the waiting list (while their appointment stayed
+    # "completed"), so it is only allowed before the consultation begins.
+    in_progress_or_done = (
+        db.query(AppointmentQueue.id)
+        .filter(
+            AppointmentQueue.appointment_id == appt_uuid,
+            AppointmentQueue.status.in_(["in_consultation", "completed"]),
+        )
+        .first()
+    )
+    if in_progress_or_done:
+        raise HTTPException(
+            status_code=400,
+            detail="This patient's consultation has already started or finished and cannot be reassigned.",
+        )
+
     appt.doctor_id = doctor_uuid
     db.flush()
 
@@ -972,8 +1031,13 @@ async def assign_doctor_to_walkin(
 
     # Reuses appt's existing visit_token (set when the walk-in was first
     # registered) rather than minting a new one — reassigning to a
-    # different doctor must not change the patient's token.
-    q_num = get_or_assign_visit_token(db, appt.hospital_id, appointment_id=appt.id, patient_id=appt.patient_id)
+    # different doctor must not change the patient's token. visit_date is the
+    # appointment's own date (matching queue_date below), not "today", so a
+    # future-dated appointment that has no token yet mints against ITS day.
+    q_num = get_or_assign_visit_token(
+        db, appt.hospital_id, appointment_id=appt.id, visit_date=appt.appointment_date,
+        patient_id=appt.patient_id, doctor_id=doctor_uuid,
+    )
     # Queue by the appointment's own date, not "today" — a future-dated
     # follow-up/referral assigned through this endpoint must not show up in
     # today's waiting count (see get_doctor_queue_loads below, and the
@@ -1110,7 +1174,7 @@ async def assign_token(
         from ..services.billing_queue_service import get_or_assign_visit_token
         qe.queue_number = get_or_assign_visit_token(
             db, doctor.hospital_id, appointment_id=appt.id,
-            visit_date=qe.queue_date, patient_id=appt.patient_id,
+            visit_date=qe.queue_date, patient_id=appt.patient_id, doctor_id=qe.doctor_id,
         )
         db.commit()
 
@@ -1242,6 +1306,8 @@ async def get_doctor_queue_loads(
             # fully "completed" still inflated the badge (Bug: waiting count
             # includes completed patients).
             AppointmentQueue.status.in_(["waiting", "called", "sent_to_doctor"]),
+            # NT follow-ups (no token yet) are not in this doctor's live queue.
+            AppointmentQueue.queue_number.isnot(None),
         )
     )
     # Without this, doctor workload counts were computed across every
@@ -1569,13 +1635,23 @@ async def refer_patient_to_doctor(
 
         from ..services.billing_queue_service import get_or_assign_visit_token
 
-        # Inherit the original appointment's visit token so the patient keeps
-        # the same number with the new doctor instead of getting a fresh one.
-        if original_appt.visit_token:
+        # A SAME-DAY referral inherits the original appointment's visit token
+        # so the patient keeps the same number with the new doctor instead of
+        # getting a fresh one. A referral for a LATER date must NOT: tokens are
+        # a per-day, hospital-wide counter, so today's number carried onto a
+        # different day collides with (or is duplicated by) whatever that day's
+        # own counter hands out — two patients ended up holding the same token
+        # number on the same future day, and referring two such patients to
+        # the same doctor hit the (doctor_id, queue_date, queue_number) unique
+        # constraint as a 500. It mints from the referral date's own counter.
+        if original_appt.visit_token and referral_date == today:
             referral_appt.visit_token = original_appt.visit_token
 
         # ── Add to target doctor's queue for the referral date ──
-        q_num = get_or_assign_visit_token(db, original_appt.hospital_id, appointment_id=referral_appt.id, patient_id=original_appt.patient_id)
+        q_num = get_or_assign_visit_token(
+            db, original_appt.hospital_id, appointment_id=referral_appt.id,
+            visit_date=referral_date, patient_id=original_appt.patient_id, doctor_id=to_doctor_uuid,
+        )
         q_pos = _next_position(db, to_doctor_uuid, referral_date)
         new_queue = AppointmentQueue(
             appointment_id=referral_appt.id,

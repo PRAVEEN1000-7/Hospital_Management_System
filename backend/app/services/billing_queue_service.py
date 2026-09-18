@@ -51,6 +51,45 @@ def compute_payment_breakdown(
     }
 
 
+def acquire_visit_token_lock(db: Session, hospital_id: uuid.UUID, target_date: date) -> None:
+    """Transaction-scoped advisory lock keyed per hospital + day. Everything
+    that reads "does this patient already have a token today?" and then mints
+    one must hold it across BOTH steps: taking it only around the MAX()+1 mint
+    (as this used to) left a window where two concurrent requests for the same
+    patient both saw "no token yet", queued on the lock, and then each minted
+    one — one patient, one visit, two different tokens. Released automatically
+    at commit/rollback."""
+    lock_key = int(hashlib.md5(f"visit_token:{hospital_id}:{target_date}".encode()).hexdigest()[:15], 16)
+    db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": lock_key})
+
+
+def _stale_token_conflict(
+    db: Session, doctor_id: uuid.UUID, queue_date: date, token: int, appointment_id: Optional[uuid.UUID],
+) -> bool:
+    """True when `token` is already occupied on this doctor's queue for
+    `queue_date` by a DIFFERENT appointment whose entry is finished
+    (completed/skipped) — i.e. the same patient is coming back for a second
+    visit with the same doctor the same day. The DB's (doctor_id, queue_date,
+    queue_number) unique constraint would reject re-using the shared token
+    there (a raw 500), so the caller mints a fresh one for the new visit.
+
+    A conflict with a still-ACTIVE entry deliberately returns False: that's a
+    genuine duplicate registration, and keeping the old behavior (the
+    constraint / duplicate-queue guards reject it) is safer than silently
+    creating a second live queue entry for the same patient."""
+    from ..models.appointment import AppointmentQueue
+
+    q = db.query(AppointmentQueue.status).filter(
+        AppointmentQueue.doctor_id == doctor_id,
+        AppointmentQueue.queue_date == queue_date,
+        AppointmentQueue.queue_number == token,
+    )
+    if appointment_id:
+        q = q.filter(AppointmentQueue.appointment_id != appointment_id)
+    statuses = [s for (s,) in q.all()]
+    return bool(statuses) and all(s in ("completed", "skipped") for s in statuses)
+
+
 def _next_hospital_wide_daily_token(
     db: Session, hospital_id: uuid.UUID, visit_date: Optional[date] = None
 ) -> int:
@@ -93,8 +132,9 @@ def _next_hospital_wide_daily_token(
     target_date = visit_date or hospital_today_by_id(db, hospital_id)
     day_start, day_end = hospital_today_utc_range_by_id(db, hospital_id, target_date)
 
-    lock_key = int(hashlib.md5(f"visit_token:{hospital_id}:{target_date}".encode()).hexdigest()[:15], 16)
-    db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": lock_key})
+    # Re-entrant within one transaction, so it's fine that
+    # get_or_assign_visit_token() may already hold this same lock.
+    acquire_visit_token_lock(db, hospital_id, target_date)
 
     def _max_today(model, token_col):
         return (
@@ -217,6 +257,7 @@ def get_or_assign_visit_token(
     appointment_id: Optional[uuid.UUID] = None,
     visit_date: Optional[date] = None,
     patient_id: Optional[uuid.UUID] = None,
+    doctor_id: Optional[uuid.UUID] = None,
 ) -> int:
     """
     The one token for a patient's whole visit — shared by every department
@@ -242,26 +283,43 @@ def get_or_assign_visit_token(
     walk-ins, pharmacy, optical). Pass the appointment's own date for a
     pre-booked-ahead appointment so its token resets against that date's
     count instead of the (irrelevant) day it happened to be booked on.
+
+    `doctor_id` is passed by callers that are about to insert an
+    AppointmentQueue row for this token. It lets a returning patient (a
+    second visit with the SAME doctor the same day, after the first one was
+    completed/skipped) get a fresh token instead of re-using one that the
+    (doctor_id, queue_date, queue_number) unique constraint already has
+    occupied — see _stale_token_conflict.
     """
     from ..models.appointment import Appointment
     from ..core.hospital_time import hospital_today_by_id
+
+    target_date = visit_date or hospital_today_by_id(db, hospital_id)
 
     appt = None
     if appointment_id:
         appt = db.query(Appointment).filter(Appointment.id == appointment_id).first()
         if appt and appt.visit_token:
-            return appt.visit_token
+            if doctor_id and _stale_token_conflict(db, doctor_id, target_date, appt.visit_token, appt.id):
+                appt.visit_token = None
+            else:
+                return appt.visit_token
+
+    # Lock BEFORE the "does this patient already have a token?" lookup, not
+    # just around the mint — see acquire_visit_token_lock.
+    acquire_visit_token_lock(db, hospital_id, target_date)
 
     if patient_id:
-        target_date = visit_date or hospital_today_by_id(db, hospital_id)
         existing = _find_existing_token_for_patient(db, hospital_id, patient_id, target_date)
-        if existing:
+        if existing and not (
+            doctor_id and _stale_token_conflict(db, doctor_id, target_date, existing, appointment_id)
+        ):
             if appt:
                 appt.visit_token = existing
                 db.flush()
             return existing
 
-    token = _next_hospital_wide_daily_token(db, hospital_id, visit_date)
+    token = _next_hospital_wide_daily_token(db, hospital_id, target_date)
     if appt:
         appt.visit_token = token
         db.flush()

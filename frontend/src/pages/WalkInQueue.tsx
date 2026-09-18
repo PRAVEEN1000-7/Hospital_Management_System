@@ -157,6 +157,19 @@ const WalkInQueue: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState<string>(today);
   const isSelectedDateToday = selectedDate === today;
 
+  // `selectedDate` is only seeded from `today` once, at mount. A reception
+  // tab left open overnight kept showing YESTERDAY's queue — flagged
+  // "read-only", with every Call/Send/Start action disabled — until someone
+  // manually refreshed the page. When the calendar day rolls over, follow it
+  // — but only if the user hadn't deliberately browsed to another date.
+  const prevTodayRef = useRef(today);
+  useEffect(() => {
+    if (prevTodayRef.current === today) return;
+    const previousToday = prevTodayRef.current;
+    prevTodayRef.current = today;
+    setSelectedDate(current => (current === previousToday ? today : current));
+  }, [today]);
+
   // ── Book Next Appointment Modal State ─────────────────────────
   const [bookNextItem, setBookNextItem] = useState<QueueItem | null>(null);
   const [bookNextDate, setBookNextDate] = useState<string>('');
@@ -408,6 +421,18 @@ const WalkInQueue: React.FC = () => {
   }, 15000);
 
   // ── Queue actions ──────────────────────────────────────────────
+  // Show the backend's actual reason (e.g. "Only 'waiting' patients can be
+  // called", "Queue actions are allowed only for today's queue", a 403 for
+  // the wrong role) instead of a bare "Failed to ..." — and re-fetch, since a
+  // rejected status transition almost always means this screen was showing a
+  // stale row (another user/tab already moved the patient on) and would
+  // otherwise keep offering the same now-invalid button until the next poll.
+  const queueActionError = (err: any, fallback: string) => {
+    const detail = err?.response?.data?.detail;
+    toast.error(typeof detail === 'string' && detail ? detail : fallback);
+    fetchQueue();
+  };
+
   const handleCall = async (queueId: string) => {
     try {
       if (!isSelectedDateToday) {
@@ -417,7 +442,7 @@ const WalkInQueue: React.FC = () => {
       await walkInService.callPatient(queueId);
       toast.success('Patient called');
       fetchQueue();
-    } catch { toast.error('Failed to call patient'); }
+    } catch (err) { queueActionError(err, 'Failed to call patient'); }
   };
 
   const handleAssignToken = async (queueId: string) => {
@@ -425,7 +450,7 @@ const WalkInQueue: React.FC = () => {
       const res = await walkInService.assignToken(queueId);
       toast.success(`Token #${res.queue_number} assigned`);
       fetchQueue();
-    } catch { toast.error('Failed to assign token'); }
+    } catch (err) { queueActionError(err, 'Failed to assign token'); }
   };
 
   const handleStartConsultation = async (queueId: string) => {
@@ -447,7 +472,7 @@ const WalkInQueue: React.FC = () => {
         });
         navigate(`/prescriptions/new?${params.toString()}`);
       }
-    } catch { toast.error('Failed to start consultation'); }
+    } catch (err) { queueActionError(err, 'Failed to start consultation'); }
   };
 
   const handleEnterVitals = (item: QueueItem) => setVitalsDialogItem(item);
@@ -485,7 +510,7 @@ const WalkInQueue: React.FC = () => {
       await walkInService.completePatient(queueId);
       toast.success('Consultation completed');
       fetchQueue();
-    } catch { toast.error('Failed to complete'); }
+    } catch (err) { queueActionError(err, 'Failed to complete'); }
   };
 
   const handleSkip = async (queueId: string) => {
@@ -497,7 +522,7 @@ const WalkInQueue: React.FC = () => {
       await walkInService.skipPatient(queueId);
       toast.success('Patient skipped');
       fetchQueue();
-    } catch { toast.error('Failed to skip'); }
+    } catch (err) { queueActionError(err, 'Failed to skip'); }
   };
 
   // ── Book Next Appointment Handler ────────────────────────────────
@@ -522,8 +547,8 @@ const WalkInQueue: React.FC = () => {
       toast.success('Follow-up appointment booked successfully');
       fetchUpcoming();
       closeBookNextModal();
-    } catch {
-      toast.error('Failed to book appointment');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to book appointment');
     }
     setBookingSaving(false);
   };

@@ -51,6 +51,10 @@ def _doctor_walk_in_tokens(db: Session, hospital_id: uuid.UUID, doctor_id: Optio
             Appointment.appointment_date == today,
             Appointment.hospital_id == hospital_id,
             AppointmentQueue.status.in_(["waiting", "called", "sent_to_doctor", "being_served", "in_consultation"]),
+            # NT follow-ups (no token yet) must not appear on the public screen:
+            # they rendered as a blank "—" waiting entry, inflated the column's
+            # "N waiting" count, and could even be picked as "Now Serving".
+            AppointmentQueue.queue_number.isnot(None),
         )
     )
     if doctor_id:
@@ -75,10 +79,34 @@ def _build_queue_columns(
     show_doctor2: bool,
     show_pharmacy: bool,
     show_opthal: bool,
+    configured_doctors_only: bool = False,
 ) -> list[PublicQueueColumn]:
     """Shared column-building logic — used by both the legacy hospital-wide
     endpoint and the new per-screen endpoint (BRD-005) so the two never drift
-    out of sync with each other."""
+    out of sync with each other.
+
+    `configured_doctors_only` (per-screen endpoint only): a BRD-005 screen has
+    a mandatory Doctor and an optional 2nd Doctor, so it must show exactly
+    those columns. Previously the screen's doctors were only used as a
+    fallback when NOBODY in the hospital had an active token — the moment any
+    doctor had a queue, every screen (regardless of its configuration) showed
+    a column for every active doctor in the hospital instead."""
+    if configured_doctors_only and (doctor1_id or (show_doctor2 and doctor2_id)):
+        configured_columns: list[PublicQueueColumn] = []
+        seen: set = set()
+        for did in (doctor1_id, doctor2_id if show_doctor2 else None):
+            if not did or did in seen:
+                continue
+            seen.add(did)
+            configured_columns.append(
+                PublicQueueColumn(
+                    id=f"doctor_{did}",
+                    name=_doctor_label(db, did, "Doctor"),
+                    tokens=[PublicQueueToken(**t) for t in _doctor_walk_in_tokens(db, hospital_id, did, today)],
+                )
+            )
+        return configured_columns + _build_department_columns(db, hospital_id, show_pharmacy, show_opthal)
+
     active_doctor_ids = (
         db.query(AppointmentQueue.doctor_id)
         .join(Appointment, Appointment.id == AppointmentQueue.appointment_id)
@@ -87,6 +115,7 @@ def _build_queue_columns(
             Appointment.appointment_date == today,
             Appointment.hospital_id == hospital_id,
             AppointmentQueue.doctor_id.isnot(None),
+            AppointmentQueue.queue_number.isnot(None),
             AppointmentQueue.status.in_(["waiting", "called", "sent_to_doctor", "being_served", "in_consultation"]),
         )
         .distinct()
@@ -121,6 +150,16 @@ def _build_queue_columns(
                 name=_doctor_label(db, doctor2_id, "Doctor 2"),
                 tokens=[PublicQueueToken(**t) for t in _doctor_walk_in_tokens(db, hospital_id, doctor2_id, today)] if doctor2_id else [],
             ))
+
+    return columns + _build_department_columns(db, hospital_id, show_pharmacy, show_opthal)
+
+
+def _build_department_columns(
+    db: Session, hospital_id: uuid.UUID, show_pharmacy: bool, show_opthal: bool,
+) -> list[PublicQueueColumn]:
+    """The Pharmacy / Opthal token columns — shared by both the "all active
+    doctors" layout and the per-screen "configured doctors only" layout."""
+    columns: list[PublicQueueColumn] = []
 
     if show_pharmacy:
         pharmacy_entries = billing_queue_service.list_pharmacy_queue_entries(db, hospital_id)
@@ -233,6 +272,7 @@ async def get_public_queue_display_screen(
         db, hospital.id, today,
         screen.doctor_id, screen.doctor2_id,
         screen.show_doctor2, screen.show_pharmacy, screen.show_opthal,
+        configured_doctors_only=True,
     )
     # token_format ("#{n}" etc.) is applied client-side for display — tokens
     # stay raw ints here so the response shape matches the legacy endpoint
